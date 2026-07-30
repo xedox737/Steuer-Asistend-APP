@@ -510,7 +510,6 @@ object GeminiClient {
                     val adapter = moshi.adapter(ExtractedReceipt::class.java)
                     adapter.fromJson(cleanedJson) ?: throw Exception("Moshi returned null")
                 } catch (pe: Exception) {
-                    Log.e(TAG, "JSON parsing error for cleaned response: $cleanedJson", pe)
                     throw GeminiAnalysisException.InvalidResponse(pe.localizedMessage ?: "Moshi deserialization failed")
                 }
             } else {
@@ -652,7 +651,6 @@ object GeminiClient {
             val response = service.generateContent(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
-                Log.d(TAG, "Raw Distance Response: $jsonText")
                 val cleanedJson = jsonText.trim()
                     .removePrefix("```json")
                     .removePrefix("```")
@@ -726,7 +724,6 @@ object GeminiClient {
             val response = service.generateContent(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
-                Log.d(TAG, "Raw Natural Language Search Response: $jsonText")
                 val cleanedJson = jsonText.trim()
                     .removePrefix("```json")
                     .removePrefix("```")
