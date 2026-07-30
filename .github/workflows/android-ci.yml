@@ -52,10 +52,12 @@ jobs:
           fi
 
       - name: Run lint and unit tests
-        run: gradle lintDebug testDebugUnitTest --stacktrace
+        timeout-minutes: 12
+        run: gradle lintDebug testDebugUnitTest --stacktrace --no-daemon
 
       - name: Build debug APK
-        run: gradle assembleDebug --stacktrace
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
 
       - name: Upload reports
         if: always()
