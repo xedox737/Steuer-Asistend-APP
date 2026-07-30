@@ -2486,7 +2486,7 @@ data class AiSearchUiState(
             return FileValidationResult(false, file, "", "", 0L, "", "Datei ist leer (0 Bytes).")
         }
 
-        val header = file.inputStream().use { it.readNBytes(16) }
+        val header = file.inputStream().use { run { val buffer = ByteArray(16); var offset = 0; while (offset < buffer.size) { val count = it.read(buffer, offset, buffer.size - offset); if (count < 0) break; offset += count }; buffer.copyOf(offset) } }
         var mimeType = ""
         var formatName = ""
 

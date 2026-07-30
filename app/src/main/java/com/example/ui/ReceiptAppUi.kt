@@ -4709,7 +4709,7 @@ fun ReceiptPreviewSection(receipt: Receipt, viewModel: ReceiptViewModel) {
                                             var detectedFormat = "Unbekannt"
                                             var isPdf = false
                                             file.inputStream().use {
-                                                val header = it.readNBytes(16)
+                                                val header = run { val buffer = ByteArray(16); var offset = 0; while (offset < buffer.size) { val count = it.read(buffer, offset, buffer.size - offset); if (count < 0) break; offset += count }; buffer.copyOf(offset) }
                                                 val hex = header.joinToString(" ") { b -> "%02X".format(b) }
                                                 
                                                 if (header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x25, 0x50, 0x44, 0x46))) {
