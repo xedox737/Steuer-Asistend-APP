@@ -25,11 +25,17 @@ jobs:
           java-version: "17"
           cache: gradle
 
-      - name: Set up Gradle
+      - name: Set up Gradle 8.14.3
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
 
-      - name: Make Gradle wrapper executable
-        run: chmod +x gradlew
+      - name: Verify project files
+        run: |
+          test -f settings.gradle.kts
+          test -f build.gradle.kts
+          test -f app/build.gradle.kts
+          gradle --version
 
       - name: Create local debug keystore when missing
         run: |
@@ -46,10 +52,10 @@ jobs:
           fi
 
       - name: Run lint and unit tests
-        run: ./gradlew lintDebug testDebugUnitTest --stacktrace
+        run: gradle lintDebug testDebugUnitTest --stacktrace
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload reports
         if: always()
