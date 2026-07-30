@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import org.gradle.api.tasks.testing.Test
 
 plugins {
   alias(libs.plugins.android.application)
@@ -57,6 +58,10 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+}
+
+tasks.withType<Test>().configureEach {
+  systemProperty("robolectric.enabledSdks", "35")
 }
 
 secrets {
