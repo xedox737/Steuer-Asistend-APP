@@ -499,7 +499,6 @@ object GeminiClient {
                 Log.d(TAG, "HTTP Status: 200")
                 Log.d(TAG, "Status: SUCCESS")
 
-                Log.d(TAG, "Raw Response from Gemini: $jsonText")
                 // Sanitize potential markdown wrap
                 val cleanedJson = jsonText.trim()
                     .removePrefix("```json")
