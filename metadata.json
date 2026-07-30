@@ -1,0 +1,6 @@
+{
+  "name": "Steuer-Assistent Anlage V",
+  "description": "Ein hochpräziser digitaler Steuer- und Buchhaltungsassistent für ein deutsches 7-Familienhaus (Anlage V) mit automatischer Belegs- und Quittungsanalyse per Gemini-KI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
