@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   verify:
@@ -18,135 +18,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply idempotent security migration
-        if: github.event_name == 'push' && github.ref == 'refs/heads/agent/security-round-2'
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          gemini = Path("app/src/main/java/com/example/api/GeminiClient.kt")
-          text = gemini.read_text(encoding="utf-8")
-          original = text
-          text = text.replace('level = HttpLoggingInterceptor.Level.BODY', 'level = HttpLoggingInterceptor.Level.NONE')
-          for old in [
-              '                Log.d(TAG, "Raw Response from Gemini: $jsonText")\n',
-              '                    Log.e(TAG, "JSON parsing error for cleaned response: $cleanedJson", pe)\n',
-              '                Log.d(TAG, "Raw Distance Response: $jsonText")\n',
-              '                Log.d(TAG, "Raw Natural Language Search Response: $jsonText")\n',
-          ]:
-              text = text.replace(old, '')
-          sensitive = re.compile(r'^\s*Log\.[dviwe]\([^\n]*(receiptText|jsonText|cleanedJson|mieter|tenant|email|purpose|konto|account|raw response)[^\n]*\)\s*$', re.I | re.M)
-          text = sensitive.sub('', text)
-          if text != original:
-              gemini.write_text(text, encoding="utf-8")
-
-          policy = Path("app/src/main/java/com/example/data/DriveSyncFailurePolicy.kt")
-          policy_content = '''package com.example.data
-
-import java.io.IOException
-import java.net.SocketTimeoutException
-
-object DriveSyncFailurePolicy {
-    fun isRetryable(throwable: Throwable): Boolean = when (throwable) {
-        is SocketTimeoutException, is IOException -> true
-        else -> false
-    }
-
-    fun retryDelayMillis(attempt: Int): Long {
-        val safeAttempt = attempt.coerceIn(0, 5)
-        return (1_000L shl safeAttempt).coerceAtMost(32_000L)
-    }
-
-    fun userMessage(throwable: Throwable): String = when {
-        throwable is SocketTimeoutException -> "Zeitüberschreitung bei Google Drive. Die Synchronisierung kann erneut versucht werden."
-        throwable is IOException -> "Google Drive ist momentan nicht erreichbar. Die Daten bleiben lokal gespeichert."
-        throwable.message?.contains("401") == true || throwable.message?.contains("403") == true ->
-            "Die Google-Drive-Anmeldung ist abgelaufen oder nicht ausreichend berechtigt."
-        else -> "Die Google-Drive-Synchronisierung ist fehlgeschlagen. Die lokalen Daten bleiben erhalten."
-    }
-}
-'''
-          policy.parent.mkdir(parents=True, exist_ok=True)
-          if not policy.exists() or policy.read_text(encoding="utf-8") != policy_content:
-              policy.write_text(policy_content, encoding="utf-8")
-
-          test = Path("app/src/test/java/com/example/data/DriveSyncFailurePolicyTest.kt")
-          test_content = '''package com.example.data
-
-import java.io.IOException
-import java.net.SocketTimeoutException
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
-
-class DriveSyncFailurePolicyTest {
-    @Test fun timeoutIsRetryable() = assertTrue(DriveSyncFailurePolicy.isRetryable(SocketTimeoutException("timeout")))
-    @Test fun ioFailureIsRetryable() = assertTrue(DriveSyncFailurePolicy.isRetryable(IOException("offline")))
-    @Test fun programmingFailureIsNotRetryable() = assertFalse(DriveSyncFailurePolicy.isRetryable(IllegalStateException("invalid state")))
-
-    @Test fun retryDelayUsesBoundedExponentialBackoff() {
-        assertEquals(1_000L, DriveSyncFailurePolicy.retryDelayMillis(0))
-        assertEquals(4_000L, DriveSyncFailurePolicy.retryDelayMillis(2))
-        assertEquals(32_000L, DriveSyncFailurePolicy.retryDelayMillis(99))
-    }
-
-    @Test fun authFailureGetsActionableMessage() {
-        assertTrue(DriveSyncFailurePolicy.userMessage(RuntimeException("HTTP 403")).contains("Anmeldung"))
-    }
-}
-'''
-          test.parent.mkdir(parents=True, exist_ok=True)
-          if not test.exists() or test.read_text(encoding="utf-8") != test_content:
-              test.write_text(test_content, encoding="utf-8")
-
-          gradle = Path("app/build.gradle.kts")
-          text = gradle.read_text(encoding="utf-8")
-          original = text
-          old_signing = '''  signingConfigs {
-    create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
-    }
-    create("debugConfig") {'''
-          new_signing = '''  val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
-  val hasReleaseSigning = !releaseKeystorePath.isNullOrBlank() &&
-    !System.getenv("STORE_PASSWORD").isNullOrBlank() &&
-    !System.getenv("KEY_PASSWORD").isNullOrBlank()
-
-  signingConfigs {
-    if (hasReleaseSigning) {
-      create("release") {
-        storeFile = file(releaseKeystorePath!!)
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-        keyPassword = System.getenv("KEY_PASSWORD")
-      }
-    }
-    create("debugConfig") {'''
-          text = text.replace(old_signing, new_signing)
-          text = text.replace('      signingConfig = signingConfigs.getByName("release")', '      if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")')
-          if text != original:
-              gradle.write_text(text, encoding="utf-8")
-          PY
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/example/api/GeminiClient.kt \
-                  app/src/main/java/com/example/data/DriveSyncFailurePolicy.kt \
-                  app/src/test/java/com/example/data/DriveSyncFailurePolicyTest.kt \
-                  app/build.gradle.kts
-          if ! git diff --cached --quiet; then
-            git commit -m "Harden logs, Drive failures, tests, and release signing"
-            git push
-          fi
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -167,10 +38,18 @@ class DriveSyncFailurePolicyTest {
           test -f app/build.gradle.kts
           gradle --version
 
-      - name: Create local debug keystore when missing
+      - name: Create local debug keystore
         run: |
           if [ ! -f debug.keystore ]; then
-            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+            keytool -genkeypair \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
           fi
 
       - name: Run lint and unit tests
@@ -215,7 +94,7 @@ class DriveSyncFailurePolicyTest {
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Upload release APK
+      - name: Upload signed release APK
         if: ${{ success() && secrets.RELEASE_KEYSTORE_BASE64 != '' }}
         uses: actions/upload-artifact@v4
         with:
