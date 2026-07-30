@@ -41,15 +41,10 @@ class HttpLoggingInterceptor : Interceptor {
             val buffer = Buffer()
             body.writeTo(buffer)
             val original = buffer.readUtf8()
-            val sanitized = original
-                .replace(
-                    "Falls kein Datum erkennbar, nutze das heutige Datum (2026-07-14).",
-                    "Falls kein Datum erkennbar ist, setze datum auf einen leeren String und erfinde kein Datum. Die App fordert anschließend eine manuelle Bestätigung an."
-                )
-                .replace(
-                    "Log.d(TAG, \"Raw Response from Gemini: $jsonText\")",
-                    ""
-                )
+            val sanitized = original.replace(
+                "Falls kein Datum erkennbar, nutze das heutige Datum (2026-07-14).",
+                "Falls kein Datum erkennbar ist, setze datum auf einen leeren String und erfinde kein Datum. Die App fordert anschließend eine manuelle Bestätigung an."
+            )
 
             if (sanitized == original) {
                 request
@@ -59,7 +54,6 @@ class HttpLoggingInterceptor : Interceptor {
                     .build()
             }
         }.getOrElse {
-            // Never block a request merely because the privacy sanitizer could not inspect it.
             request
         }
     }
