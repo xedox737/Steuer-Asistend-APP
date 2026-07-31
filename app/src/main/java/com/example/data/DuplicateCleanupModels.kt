@@ -54,6 +54,7 @@ data class DuplicateCleanupJournal(
     val phase: DuplicateCleanupPhase,
     val createdAt: String,
     val updatedAt: String,
+    val removedMetadataFileIds: Set<String> = emptySet(),
     val errors: List<String> = emptyList()
 )
 
