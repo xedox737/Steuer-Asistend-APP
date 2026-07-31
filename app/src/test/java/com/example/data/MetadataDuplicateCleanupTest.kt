@@ -21,9 +21,11 @@ class MetadataDuplicateCleanupTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun cleanupRequiresExplicitConfirmation() = runBlocking {
-        MetadataDuplicateCleanupExecutor(MetadataDuplicateFileDeleter { true })
-            .execute(MetadataDuplicateCleanupPlanner.plan(group()), explicitlyConfirmed = false)
+    fun cleanupRequiresExplicitConfirmation() {
+        runBlocking {
+            MetadataDuplicateCleanupExecutor(MetadataDuplicateFileDeleter { true })
+                .execute(MetadataDuplicateCleanupPlanner.plan(group()), explicitlyConfirmed = false)
+        }
     }
 
     @Test
