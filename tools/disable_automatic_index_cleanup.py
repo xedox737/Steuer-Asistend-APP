@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-time branch migration. The script is intentionally idempotent after the method is replaced.
 path = Path("app/src/main/java/com/example/data/DrivePersistenceRepository.kt")
 text = path.read_text(encoding="utf-8")
 start_marker = "    suspend fun sanitizeIndexEntries("
