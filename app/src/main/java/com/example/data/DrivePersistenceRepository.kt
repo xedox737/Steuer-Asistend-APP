@@ -1631,7 +1631,7 @@ class DrivePersistenceRepository(
                                 syncError = "Die hochgeladene Datei ist fehlerhaft oder leer."
                             )
                             localRepository.insert(updatedReceipt)
-                            return false
+                            return@run false
                         }
                         driveFileId = uploadedId
                         
@@ -1650,7 +1650,7 @@ class DrivePersistenceRepository(
                             syncError = "Fehler beim Hochladen der Belegdatei."
                         )
                         localRepository.insert(updatedReceipt)
-                        return false
+                        return@run false
                     }
                 } else {
                     // "Nach CREATE die neue Drive-ID sofort lokal sichern, bevor weitere Netzwerkaktionen erfolgen."
@@ -1669,7 +1669,7 @@ class DrivePersistenceRepository(
                     syncError = "Keine lokale Quelldatei gefunden oder Datei ist leer."
                 )
                 localRepository.insert(updatedReceipt)
-                return false
+                return@run false
             }
 
             val existingDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
@@ -1723,7 +1723,7 @@ class DrivePersistenceRepository(
                     syncError = "Fehler beim Hochladen der Belegmetadaten."
                 )
                 localRepository.insert(updatedReceipt)
-                return false
+                return@run false
             }
 
             val indexEntry = ReceiptIndexEntry(
@@ -1766,14 +1766,14 @@ class DrivePersistenceRepository(
                 )
                 localRepository.insert(finalReceipt)
                 Log.d(TAG, "Receipt fully synced and saved locally. ID: ${finalReceipt.id}")
-                return true
+                return@run true
             } else {
                 val updatedReceipt = currentReceipt.copy(
                     syncStatus = "ERROR",
                     syncError = "Index-Eintrag konnte nicht aktualisiert werden."
                 )
                 localRepository.insert(updatedReceipt)
-                return false
+                return@run false
             }
 
         } catch (e: Exception) {
@@ -1783,7 +1783,7 @@ class DrivePersistenceRepository(
                 syncError = e.message ?: e.toString()
             )
             localRepository.insert(updatedReceipt)
-            return false
+            return@run false
         }
     }
 
