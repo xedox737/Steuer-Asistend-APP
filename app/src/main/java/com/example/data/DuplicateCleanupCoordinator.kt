@@ -87,7 +87,7 @@ class RepositoryDuplicateCleanupGateway(
         val targetRoomIds = targets.map { it.id }.toSet()
         val metadataStillReferenced = current.any { receipt ->
             receipt.id !in targetRoomIds &&
-                receipt.driveMetadataFileId in journal.metadataFileIds
+                receipt.driveMetadataFileId?.let { it in journal.metadataFileIds } == true
         }
         require(!metadataStillReferenced) {
             "Mindestens eine geplante Metadatendatei wird inzwischen von einem anderen Beleg verwendet."
