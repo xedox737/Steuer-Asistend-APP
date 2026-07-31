@@ -282,10 +282,6 @@ interface GeminiApiService {
 object GeminiClient {
     private const val TAG = "GeminiClient"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/"
-    private const val MAX_RETRY_ATTEMPTS = 2
-    private const val INITIAL_RETRY_DELAY_MS = 500L
-    private const val MAX_RECEIPT_PAGES = 20
-    private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024
     private val modelName: String =
         BuildConfig.GEMINI_MODEL.trim().ifEmpty { "gemini-3.5-flash" }
 
@@ -321,9 +317,8 @@ object GeminiClient {
             try {
                 return service.generateContent(modelName, apiKey, request)
             } catch (e: HttpException) {
-                val retryable = e.code() == 429 || e.code() == 503
-                if (!retryable || attempt >= MAX_RETRY_ATTEMPTS) throw e
-                delay(INITIAL_RETRY_DELAY_MS * (1L shl attempt))
+                if (!GeminiRetryPolicy.shouldRetry(e.code(), attempt)) throw e
+                delay(GeminiRetryPolicy.delayMillis(attempt))
                 attempt++
             }
         }
@@ -355,11 +350,13 @@ object GeminiClient {
             bitmap?.let(::add)
             bitmaps?.let(::addAll)
         }
-        if (suppliedBitmaps.size > MAX_RECEIPT_PAGES ||
-            suppliedBitmaps.sumOf { it.byteCount } > MAX_IMAGE_BYTES
+        if (!GeminiReceiptSizePolicy.isAllowed(
+                suppliedBitmaps.size,
+                suppliedBitmaps.sumOf { it.byteCount.toLong() }
+            )
         ) {
             throw GeminiAnalysisException.RequestTooLarge(
-                "Maximal $MAX_RECEIPT_PAGES Seiten beziehungsweise 20 MB Bilddaten sind erlaubt."
+                "Maximal ${GeminiReceiptSizePolicy.maxPages} Seiten beziehungsweise 20 MB Bilddaten sind erlaubt."
             )
         }
         val mimeType = if (bitmap != null || bitmaps?.isNotEmpty() == true) "image/jpeg" else "text/plain"
