@@ -5,6 +5,7 @@ import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Insert
+import androidx.room.Index
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -66,7 +67,14 @@ object ReceiptItemConverter {
     }
 }
 
-@Entity(tableName = "receipts")
+@Entity(
+    tableName = "receipts",
+    indices = [
+        Index(value = ["internalId"], name = "index_receipts_internalId"),
+        Index(value = ["driveFileId"], name = "index_receipts_driveFileId"),
+        Index(value = ["driveMetadataFileId"], name = "index_receipts_driveMetadataFileId")
+    ]
+)
 data class Receipt(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val aussteller: String,
@@ -138,6 +146,15 @@ interface ReceiptDao {
 
     @Query("SELECT * FROM receipts WHERE id = :id")
     suspend fun getReceiptById(id: Int): Receipt?
+
+    @Query("SELECT * FROM receipts WHERE internalId = :internalId ORDER BY id LIMIT 1")
+    suspend fun getReceiptByInternalId(internalId: String): Receipt?
+
+    @Query("SELECT * FROM receipts WHERE driveFileId = :mainDriveFileId ORDER BY id LIMIT 1")
+    suspend fun getReceiptByMainDriveFileId(mainDriveFileId: String): Receipt?
+
+    @Query("SELECT * FROM receipts WHERE driveMetadataFileId = :metadataFileId ORDER BY id")
+    suspend fun getReceiptsByMetadataFileId(metadataFileId: String): List<Receipt>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReceipt(receipt: Receipt): Long
@@ -293,7 +310,18 @@ val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 12, exportSchema = false)
+val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        // Intentionally non-unique: existing duplicate identities must not break app startup.
+        // Restore writes are guarded by DAO-based upsert until explicit cleanup makes a UNIQUE
+        // index safe for every installation.
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_receipts_internalId ON receipts(internalId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_receipts_driveFileId ON receipts(driveFileId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_receipts_driveMetadataFileId ON receipts(driveMetadataFileId)")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 13, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -313,7 +341,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "receipt_database"
                 )
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                 .fallbackToDestructiveMigration()
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
@@ -657,6 +685,15 @@ class ReceiptRepository(
     suspend fun getReceiptById(id: Int): Receipt? {
         return receiptDao.getReceiptById(id)
     }
+
+    suspend fun getReceiptByInternalId(internalId: String): Receipt? =
+        internalId.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptByInternalId(it) }
+
+    suspend fun getReceiptByMainDriveFileId(mainDriveFileId: String?): Receipt? =
+        mainDriveFileId?.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptByMainDriveFileId(it) }
+
+    suspend fun getReceiptsByMetadataFileId(metadataFileId: String): List<Receipt> =
+        metadataFileId.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptsByMetadataFileId(it) }.orEmpty()
 
     suspend fun insert(receipt: Receipt): Long {
         val preparedInternalId = if (receipt.internalId.isBlank()) java.util.UUID.randomUUID().toString() else receipt.internalId
