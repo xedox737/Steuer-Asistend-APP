@@ -3525,6 +3525,52 @@ class DrivePersistenceRepository(
         }
     }
 
+    suspend fun replaceReceiptIndexEntries(
+        accessToken: String,
+        config: DriveAppConfig,
+        entries: List<ReceiptIndexEntry>
+    ): Boolean {
+        val validation = validateIndex(entries)
+        if (!validation.isValid) {
+            throw IllegalStateException(
+                "Bereinigter receipt-index.json ist ungültig: ${validation.errorMessage}"
+            )
+        }
+        val entriesArray = JSONArray()
+        entries.forEach { entry ->
+            entriesArray.put(JSONObject().apply {
+                put("internalId", entry.internalId)
+                put("displayId", entry.displayId ?: JSONObject.NULL)
+                put("metadataFileId", entry.metadataFileId)
+                put("mainDriveFileId", entry.mainDriveFileId)
+                put("aussteller", entry.aussteller ?: JSONObject.NULL)
+                put("rechnungsnummer", entry.rechnungsnummer ?: JSONObject.NULL)
+                put("datum", entry.datum ?: JSONObject.NULL)
+                put("bruttobetragCent", entry.bruttobetragCent ?: JSONObject.NULL)
+                put("hauptkategorie", entry.hauptkategorie ?: JSONObject.NULL)
+                put("unterkategorie", entry.unterkategorie ?: JSONObject.NULL)
+                put("wohneinheit", entry.wohneinheit ?: JSONObject.NULL)
+                put("massnahme", entry.massnahme ?: JSONObject.NULL)
+                put("pruefstatus", entry.pruefstatus ?: JSONObject.NULL)
+                put("freigabestatus", entry.freigabestatus ?: JSONObject.NULL)
+                put("exportstatus", entry.exportstatus ?: JSONObject.NULL)
+                put("syncStatus", entry.syncStatus)
+                put("updatedAt", entry.updatedAt)
+            })
+        }
+        val indexJson = JSONObject().apply {
+            put("version", 1)
+            put("entries", entriesArray)
+        }.toString(4)
+        return uploadOrUpdateJson(
+            accessToken,
+            config.systemFolderId,
+            "receiptIndex",
+            "receipt-index.json",
+            indexJson
+        ).success
+    }
+
     private fun calculateSha256Bytes(bytes: ByteArray): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         return digest.digest(bytes).joinToString("") { "%02x".format(it) }
