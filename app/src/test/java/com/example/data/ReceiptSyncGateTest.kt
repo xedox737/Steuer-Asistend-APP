@@ -33,4 +33,31 @@ class ReceiptSyncGateTest {
         assertEquals(1, createCount.get())
         assertEquals(listOf("drive-main-1"), results.distinct())
     }
+    @Test
+    fun retryAfterAbortReusesRemoteIdentityInsteadOfCreatingAgain() = runBlocking {
+        val gate = ReceiptSyncGate()
+        val createCount = AtomicInteger(0)
+        var remoteId: String? = null
+
+        runCatching {
+            gate.run {
+                if (remoteId == null) {
+                    createCount.incrementAndGet()
+                    remoteId = "drive-main-1"
+                }
+                error("simulated app interruption after remote create")
+            }
+        }
+
+        val retriedId = gate.run {
+            remoteId ?: "drive-main-2".also {
+                createCount.incrementAndGet()
+                remoteId = it
+            }
+        }
+
+        assertEquals("drive-main-1", retriedId)
+        assertEquals(1, createCount.get())
+    }
+
 }
