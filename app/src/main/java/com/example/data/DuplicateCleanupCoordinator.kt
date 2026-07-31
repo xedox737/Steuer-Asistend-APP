@@ -97,6 +97,11 @@ class RepositoryDuplicateCleanupGateway(
             val canonicalId = requireNotNull(journal.canonicalInternalId) {
                 "Kanonischer Datensatz fehlt."
             }
+            if (!usesRoomTargets) {
+                require(canonicalId !in journal.targetInternalIds) {
+                    "Der kanonische Datensatz darf nicht als Löschziel markiert sein."
+                }
+            }
             val canonical = current.singleOrNull {
                 it.internalId == canonicalId && it.id !in targetRoomIds
             } ?: error("Kanonischer Datensatz wurde nicht eindeutig gefunden.")
