@@ -19,16 +19,21 @@ object DuplicateCleanupPlanner {
             operationId = operationId,
             mainDriveFileId = preview.mainDriveFileId,
             canonicalInternalId = preview.canonical.internalId,
-            targetInternalIds = preview.duplicatesToRemove.map { it.internalId }.distinct(),
+            targetInternalIds = preview.duplicatesToRemove
+                .map { it.internalId }
+                .filterNot { it == preview.canonical.internalId }
+                .distinct(),
             metadataFileIds = preview.metadataPlan.orphanMetadataFileIds.toList().sorted(),
             tombstoneInternalIds = preview.duplicatesToRemove
                 .filter { it.tombstone != null }
                 .map { it.internalId }
+                .filterNot { it == preview.canonical.internalId }
                 .distinct(),
             removeWholeGroup = false,
             phase = DuplicateCleanupPhase.PREVIEWED,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            targetRoomIds = preview.duplicatesToRemove.map { it.roomId }.distinct()
         )
     }
 
@@ -53,7 +58,8 @@ object DuplicateCleanupPlanner {
             removeWholeGroup = true,
             phase = DuplicateCleanupPhase.PREVIEWED,
             createdAt = now,
-            updatedAt = now
+            updatedAt = now,
+            targetRoomIds = allRecords.map { it.roomId }.distinct()
         )
     }
 
