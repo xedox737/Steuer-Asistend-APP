@@ -40,6 +40,8 @@ class RepositoryDuplicateCleanupGateway(
     private val remoteActions: DuplicateRemoteCleanupActions
 ) : DuplicateCleanupGateway {
     override suspend fun removeNonCanonicalReferences(journal: DuplicateCleanupJournal) {
+        // Revalidate the confirmed preview immediately before the first remote mutation.
+        validateCurrentSnapshot(journal, receiptStore.getAllIncludingDeleted())
         remoteActions.removeCapturedReferences(journal)
     }
 
@@ -53,37 +55,63 @@ class RepositoryDuplicateCleanupGateway(
 
     override suspend fun purgeLocalRecords(journal: DuplicateCleanupJournal) {
         val current = receiptStore.getAllIncludingDeleted()
-        val targets = current.filter { it.internalId in journal.targetInternalIds }
+        val targets = validateCurrentSnapshot(journal, current)
+        targets.map { it.id }.distinct().forEach { receiptStore.deleteByRoomId(it) }
+    }
 
-        require(targets.map { it.internalId }.toSet() == journal.targetInternalIds.toSet()) {
-            "Lokale Zielbelege haben sich seit der Vorschau geändert; sichere Bereinigung abgebrochen."
+    private fun validateCurrentSnapshot(
+        journal: DuplicateCleanupJournal,
+        current: List<Receipt>
+    ): List<Receipt> {
+        val usesRoomTargets = journal.targetRoomIds.isNotEmpty()
+        val targets = if (usesRoomTargets) {
+            current.filter { it.id in journal.targetRoomIds }
+        } else {
+            // Backward-compatible recovery for journals created before Room IDs were captured.
+            current.filter { it.internalId in journal.targetInternalIds }
+        }
+
+        if (usesRoomTargets) {
+            require(targets.map { it.id }.toSet() == journal.targetRoomIds.toSet()) {
+                "Lokale Zielzeilen haben sich seit der Vorschau geändert; sichere Bereinigung abgebrochen."
+            }
+        } else {
+            require(targets.map { it.internalId }.toSet() == journal.targetInternalIds.toSet()) {
+                "Lokale Zielbelege haben sich seit der Vorschau geändert; sichere Bereinigung abgebrochen."
+            }
         }
         require(targets.all { it.driveFileId == journal.mainDriveFileId }) {
             "Mindestens ein Zielbeleg verweist inzwischen auf eine andere Hauptdatei."
+        }
+
+        val targetRoomIds = targets.map { it.id }.toSet()
+        val metadataStillReferenced = current.any { receipt ->
+            receipt.id !in targetRoomIds &&
+                receipt.driveMetadataFileId in journal.metadataFileIds
+        }
+        require(!metadataStillReferenced) {
+            "Mindestens eine geplante Metadatendatei wird inzwischen von einem anderen Beleg verwendet."
         }
 
         if (!journal.removeWholeGroup) {
             val canonicalId = requireNotNull(journal.canonicalInternalId) {
                 "Kanonischer Datensatz fehlt."
             }
-            require(canonicalId !in journal.targetInternalIds) {
-                "Der kanonische Datensatz darf nicht als Löschziel markiert sein."
-            }
-            val canonical = current.singleOrNull { it.internalId == canonicalId }
-                ?: error("Kanonischer Datensatz wurde nicht eindeutig gefunden.")
+            val canonical = current.singleOrNull {
+                it.internalId == canonicalId && it.id !in targetRoomIds
+            } ?: error("Kanonischer Datensatz wurde nicht eindeutig gefunden.")
             require(canonical.driveFileId == journal.mainDriveFileId) {
                 "Der kanonische Datensatz verweist nicht mehr auf die gemeinsame Hauptdatei."
             }
         } else {
             val remainingSameMain = current.filter {
-                it.driveFileId == journal.mainDriveFileId && it.internalId !in journal.targetInternalIds
+                it.driveFileId == journal.mainDriveFileId && it.id !in targetRoomIds
             }
             require(remainingSameMain.isEmpty()) {
                 "Die Hauptdatei wird noch von nicht bestätigten lokalen Belegen verwendet."
             }
         }
-
-        targets.map { it.id }.distinct().forEach { receiptStore.deleteByRoomId(it) }
+        return targets
     }
 }
 
