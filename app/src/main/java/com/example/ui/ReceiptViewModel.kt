@@ -2164,7 +2164,7 @@ data class AiSearchUiState(
             is com.example.data.DriveInitializationResult.SuccessCreatedNew -> init.config
             is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> init.config
             is com.example.data.DriveInitializationResult.Failure ->
-                error(init.message)
+                error(init.error)
         }
         val referenceMutator = com.example.data.DrivePersistenceDuplicateReferenceMutator(
             repository = drivePersistenceRepository,
