@@ -58,6 +58,52 @@ class DuplicateCleanupCoordinatorTest {
         )
     }
 
+
+    @Test
+    fun sameInternalIdDuplicatePurgesOnlyCapturedRoomRow() = runBlocking {
+        val canonical = receipt(1, "shared", "main")
+        val duplicate = receipt(2, "shared", "main", status = "DELETED")
+        val store = FakeReceiptStore(mutableListOf(canonical, duplicate))
+        val gateway = RepositoryDuplicateCleanupGateway(store, FakeRemoteActions())
+
+        gateway.purgeLocalRecords(
+            journal(
+                removeWholeGroup = false,
+                canonicalInternalId = "shared",
+                targets = emptyList(),
+                targetRoomIds = listOf(2)
+            )
+        )
+
+        assertEquals(listOf(2), store.deletedRoomIds)
+        assertEquals(listOf(1), store.rows.map { it.id })
+    }
+
+    @Test
+    fun preflightBlocksRemoteMutationWhenMetadataBecameReferenced() = runBlocking {
+        val canonical = receipt(1, "canonical", "main", metadataId = "meta-canonical")
+        val duplicate = receipt(2, "duplicate", "main", status = "DELETED", metadataId = "meta-duplicate")
+        val lateReference = receipt(3, "late", "other-main", metadataId = "meta-duplicate")
+        val remote = FakeRemoteActions()
+        val gateway = RepositoryDuplicateCleanupGateway(
+            FakeReceiptStore(mutableListOf(canonical, duplicate, lateReference)),
+            remote
+        )
+        val planned = journal(
+            removeWholeGroup = false,
+            canonicalInternalId = "canonical",
+            targets = listOf("duplicate"),
+            targetRoomIds = listOf(2)
+        ).copy(metadataFileIds = listOf("meta-duplicate"))
+
+        val failure = runCatching {
+            gateway.removeNonCanonicalReferences(planned)
+        }.exceptionOrNull()
+
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(remote.calls.isEmpty())
+    }
+
     @Test
     fun coordinatorPersistsPreviewBeforeAnyMutation() = runBlocking {
         val canonical = receipt(1, "canonical", "main")
@@ -109,7 +155,8 @@ class DuplicateCleanupCoordinatorTest {
     private fun journal(
         removeWholeGroup: Boolean,
         canonicalInternalId: String?,
-        targets: List<String>
+        targets: List<String>,
+        targetRoomIds: List<Int> = emptyList()
     ) = DuplicateCleanupJournal(
         operationId = "op",
         mainDriveFileId = "main",
@@ -120,14 +167,16 @@ class DuplicateCleanupCoordinatorTest {
         removeWholeGroup = removeWholeGroup,
         phase = DuplicateCleanupPhase.CONFIRMED,
         createdAt = "now",
-        updatedAt = "now"
+        updatedAt = "now",
+        targetRoomIds = targetRoomIds
     )
 
     private fun receipt(
         id: Int,
         internalId: String,
         mainId: String,
-        status: String = "ACTIVE"
+        status: String = "ACTIVE",
+        metadataId: String? = null
     ) = Receipt(
         id = id,
         aussteller = "Test",
@@ -141,6 +190,7 @@ class DuplicateCleanupCoordinatorTest {
         internalId = internalId,
         displayId = "BLG-$internalId",
         driveFileId = mainId,
+        driveMetadataFileId = metadataId,
         deletionStatus = status
     )
 
