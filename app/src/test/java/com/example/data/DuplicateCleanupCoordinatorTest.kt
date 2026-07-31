@@ -147,9 +147,20 @@ class DuplicateCleanupCoordinatorTest {
     private fun index(internalId: String, mainId: String) = ReceiptIndexEntry(
         internalId = internalId,
         displayId = "BLG-$internalId",
-        mainDriveFileId = mainId,
         metadataFileId = "meta-$internalId",
-        status = "ACTIVE",
+        mainDriveFileId = mainId,
+        aussteller = "Test",
+        rechnungsnummer = null,
+        datum = "2026-01-01",
+        bruttobetragCent = 100,
+        hauptkategorie = "Test",
+        unterkategorie = "Test",
+        wohneinheit = null,
+        massnahme = null,
+        pruefstatus = null,
+        freigabestatus = null,
+        exportstatus = null,
+        syncStatus = "SYNCED",
         updatedAt = "now"
     )
 
