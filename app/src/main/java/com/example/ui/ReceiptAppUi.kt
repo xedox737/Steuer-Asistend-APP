@@ -13975,6 +13975,10 @@ fun RecycleBinDialog(
     var receiptToPermanentlyDelete by remember { mutableStateOf<Receipt?>(null) }
     var permanentDeleteError by remember { mutableStateOf<String?>(null) }
     var showDeleteSuccess by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadPendingDuplicateCleanupOperations()
+    }
     
     when (val cleanupState = duplicateCleanupState) {
         is DuplicateCleanupUiState.MergeConfirmation -> AlertDialog(
@@ -14181,6 +14185,37 @@ fun RecycleBinDialog(
                             color = SlateGray,
                             modifier = Modifier.padding(bottom = 10.dp)
                         )
+                    }
+                    is DuplicateCleanupUiState.PendingOperations -> {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = WarmOrange.copy(alpha = 0.08f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    "Abgebrochene Bereinigung gefunden",
+                                    fontWeight = FontWeight.Bold,
+                                    color = WarmOrange
+                                )
+                                cleanupState.operationIds.sorted().forEach { operationId ->
+                                    Button(
+                                        onClick = {
+                                            viewModel.resumeDuplicateCleanupOperation(operationId)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Bereinigung fortsetzen")
+                                    }
+                                }
+                            }
+                        }
                     }
                     is DuplicateCleanupUiState.Ready -> {
                         if (cleanupState.groups.isEmpty()) {
