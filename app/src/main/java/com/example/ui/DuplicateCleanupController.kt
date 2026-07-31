@@ -26,7 +26,7 @@ interface DuplicateCleanupUseCase {
         firstConfirmation: Boolean,
         secondConfirmation: Boolean
     ): DuplicateCleanupReport
-    fun pendingOperationIds(): Set<String>
+    suspend fun pendingOperationIds(): Set<String>
     suspend fun resume(operationId: String): DuplicateCleanupReport
 }
 
@@ -63,7 +63,7 @@ class DuplicateCleanupFeatureUseCase(
         secondConfirmation
     )
 
-    override fun pendingOperationIds(): Set<String> = feature.pendingOperationIds()
+    override suspend fun pendingOperationIds(): Set<String> = feature.pendingOperationIds()
 
     override suspend fun resume(operationId: String): DuplicateCleanupReport =
         feature.resume(operationId)
@@ -94,7 +94,7 @@ class DuplicateCleanupController(
     var state: DuplicateCleanupUiState = DuplicateCleanupUiState.Idle
         private set
 
-    fun showPendingOperations() {
+    suspend fun showPendingOperations() {
         val pending = useCase.pendingOperationIds()
         state = if (pending.isEmpty()) {
             DuplicateCleanupUiState.Idle
