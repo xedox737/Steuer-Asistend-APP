@@ -26,6 +26,8 @@ interface DuplicateCleanupUseCase {
         firstConfirmation: Boolean,
         secondConfirmation: Boolean
     ): DuplicateCleanupReport
+    fun pendingOperationIds(): Set<String>
+    suspend fun resume(operationId: String): DuplicateCleanupReport
 }
 
 class DuplicateCleanupFeatureUseCase(
@@ -60,12 +62,18 @@ class DuplicateCleanupFeatureUseCase(
         firstConfirmation,
         secondConfirmation
     )
+
+    override fun pendingOperationIds(): Set<String> = feature.pendingOperationIds()
+
+    override suspend fun resume(operationId: String): DuplicateCleanupReport =
+        feature.resume(operationId)
 }
 
 sealed interface DuplicateCleanupUiState {
     data object Idle : DuplicateCleanupUiState
     data object Loading : DuplicateCleanupUiState
     data class Ready(val groups: List<DuplicateGroupPreview>) : DuplicateCleanupUiState
+    data class PendingOperations(val operationIds: Set<String>) : DuplicateCleanupUiState
     data class MergeConfirmation(
         val preview: DuplicateGroupPreview,
         val journal: DuplicateCleanupJournal
@@ -85,6 +93,19 @@ class DuplicateCleanupController(
 ) {
     var state: DuplicateCleanupUiState = DuplicateCleanupUiState.Idle
         private set
+
+    fun showPendingOperations() {
+        val pending = useCase.pendingOperationIds()
+        state = if (pending.isEmpty()) {
+            DuplicateCleanupUiState.Idle
+        } else {
+            DuplicateCleanupUiState.PendingOperations(pending)
+        }
+    }
+
+    suspend fun resume(operationId: String) {
+        state = execute { useCase.resume(operationId) }
+    }
 
     suspend fun load(
         indexEntries: List<ReceiptIndexEntry>,
