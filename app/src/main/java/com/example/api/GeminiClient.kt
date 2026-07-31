@@ -16,9 +16,11 @@ import retrofit2.HttpException
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.delay
 
 // --- Gemini Custom Exceptions ---
 sealed class GeminiAnalysisException(
@@ -269,8 +271,9 @@ data class BankStatementReconciliationResult(
 // --- Retrofit API Service ---
 
 interface GeminiApiService {
-    @POST("v1beta/models/gemini-3.5-flash:generateContent")
+    @POST("v1beta/models/{model}:generateContent")
     suspend fun generateContent(
+        @Path("model") model: String,
         @Query("key") apiKey: String,
         @Body request: GeminiRequest
     ): GeminiResponse
@@ -279,6 +282,12 @@ interface GeminiApiService {
 object GeminiClient {
     private const val TAG = "GeminiClient"
     private const val BASE_URL = "https://generativelanguage.googleapis.com/"
+    private const val MAX_RETRY_ATTEMPTS = 2
+    private const val INITIAL_RETRY_DELAY_MS = 500L
+    private const val MAX_RECEIPT_PAGES = 20
+    private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024
+    private val modelName: String =
+        BuildConfig.GEMINI_MODEL.trim().ifEmpty { "${modelName}" }
 
     private val moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
@@ -303,6 +312,23 @@ object GeminiClient {
 
     private val service: GeminiApiService = retrofit.create(GeminiApiService::class.java)
 
+    private suspend fun generateContentWithRetry(
+        apiKey: String,
+        request: GeminiRequest
+    ): GeminiResponse {
+        var attempt = 0
+        while (true) {
+            try {
+                return service.generateContent(modelName, apiKey, request)
+            } catch (e: HttpException) {
+                val retryable = e.code() == 429 || e.code() == 503
+                if (!retryable || attempt >= MAX_RETRY_ATTEMPTS) throw e
+                delay(INITIAL_RETRY_DELAY_MS * (1L shl attempt))
+                attempt++
+            }
+        }
+    }
+
     // Helper to convert Bitmap to Base64
     private fun Bitmap.toBase64(): String {
         val outputStream = ByteArrayOutputStream()
@@ -325,6 +351,17 @@ object GeminiClient {
         userLearnedRulesContext: String? = null
     ): ExtractedReceipt? {
         val startTime = System.currentTimeMillis()
+        val suppliedBitmaps = buildList {
+            bitmap?.let(::add)
+            bitmaps?.let(::addAll)
+        }
+        if (suppliedBitmaps.size > MAX_RECEIPT_PAGES ||
+            suppliedBitmaps.sumOf { it.byteCount } > MAX_IMAGE_BYTES
+        ) {
+            throw GeminiAnalysisException.RequestTooLarge(
+                "Maximal $MAX_RECEIPT_PAGES Seiten beziehungsweise 20 MB Bilddaten sind erlaubt."
+            )
+        }
         val mimeType = if (bitmap != null || bitmaps?.isNotEmpty() == true) "image/jpeg" else "text/plain"
         val dataSize = if (bitmap != null) {
             "Approx " + (bitmap.byteCount / 1024) + " KB"
@@ -338,8 +375,8 @@ object GeminiClient {
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val duration = System.currentTimeMillis() - startTime
             Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent")
-            Log.e(TAG, "Model: gemini-3.5-flash")
+            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+            Log.e(TAG, "Model: ${modelName}")
             Log.e(TAG, "File Type: $mimeType")
             Log.e(TAG, "File Size: $dataSize")
             Log.e(TAG, "Duration: ${duration}ms")
@@ -486,13 +523,13 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             val duration = System.currentTimeMillis() - startTime
             if (jsonText != null) {
                 Log.d(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-                Log.d(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent")
-                Log.d(TAG, "Model: gemini-3.5-flash")
+                Log.d(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+                Log.d(TAG, "Model: ${modelName}")
                 Log.d(TAG, "File Type: $mimeType")
                 Log.d(TAG, "File Size: $dataSize")
                 Log.d(TAG, "Duration: ${duration}ms")
@@ -514,8 +551,8 @@ object GeminiClient {
                 }
             } else {
                 Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-                Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent")
-                Log.e(TAG, "Model: gemini-3.5-flash")
+                Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+                Log.e(TAG, "Model: ${modelName}")
                 Log.e(TAG, "File Type: $mimeType")
                 Log.e(TAG, "File Size: $dataSize")
                 Log.e(TAG, "Duration: ${duration}ms")
@@ -528,8 +565,8 @@ object GeminiClient {
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - startTime
             Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent")
-            Log.e(TAG, "Model: gemini-3.5-flash")
+            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+            Log.e(TAG, "Model: ${modelName}")
             Log.e(TAG, "File Type: $mimeType")
             Log.e(TAG, "File Size: $dataSize")
             Log.e(TAG, "Duration: ${duration}ms")
@@ -648,7 +685,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleanedJson = jsonText.trim()
@@ -721,7 +758,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleanedJson = jsonText.trim()
@@ -791,7 +828,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleaned = jsonText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -859,7 +896,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleaned = jsonText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -917,7 +954,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleaned = jsonText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -971,7 +1008,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleaned = jsonText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -1029,7 +1066,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleaned = jsonText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
@@ -1114,7 +1151,7 @@ object GeminiClient {
         )
 
         return try {
-            val response = service.generateContent(apiKey, request)
+            val response = generateContentWithRetry(apiKey, request)
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             if (jsonText != null) {
                 val cleaned = jsonText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
