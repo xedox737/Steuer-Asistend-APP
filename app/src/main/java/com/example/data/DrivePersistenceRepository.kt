@@ -1884,9 +1884,7 @@ class DrivePersistenceRepository(
                     for (entry in entries) {
                         val entryIssues = mutableListOf<String>()
 
-                        eligibleIndexEntryCount++
-
-                    if (entry.internalId.isBlank()) {
+                        if (entry.internalId.isBlank()) {
                             entryIssues.add("Fehlende internalId")
                             duplicateCount++
                         } else if (!seenInternalIds.add(entry.internalId)) {
@@ -2501,6 +2499,8 @@ class DrivePersistenceRepository(
                         Log.i(TAG, "Beleg ${entry.internalId} (${entry.displayId}) ist gelöscht (Tombstone) und wird bei der Wiederherstellung übersprungen.")
                         continue
                     }
+
+                    eligibleIndexEntryCount++
 
                     if (entry.internalId.isBlank()) {
                         errors.add(RestoreError("BLANK_INTERNAL_ID", "Indexeintrag ohne internalId gefunden", isBlocking = true))
