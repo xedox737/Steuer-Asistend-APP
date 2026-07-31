@@ -188,6 +188,7 @@ class DrivePersistenceRepository(
         // Serializes the complete receipt transaction (document, metadata, index and folder).
         // This prevents automatic sync, manual retry and background work from creating in parallel.
         private val receiptSyncGate = ReceiptSyncGate()
+        private val receiptIndexMutex = kotlinx.coroutines.sync.Mutex()
         private val metadataMutexMap = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
         fun getMetadataMutex(internalId: String): kotlinx.coroutines.sync.Mutex {
             return metadataMutexMap.getOrPut(internalId) { kotlinx.coroutines.sync.Mutex() }
@@ -1233,7 +1234,7 @@ class DrivePersistenceRepository(
         accessToken: String,
         config: DriveAppConfig,
         newEntry: ReceiptIndexEntry
-    ): Boolean {
+    ): Boolean = receiptIndexMutex.withLock {
         try {
             val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex")
             var indexEntries = mutableListOf<ReceiptIndexEntry>()
@@ -1268,18 +1269,19 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error downloading/parsing existing index, starting fresh", e)
+                    Log.e(TAG, "Existing receipt index could not be read; refusing to overwrite it", e)
+                    return@withLock false
                 }
             }
 
-            // 1. Sanitize & clean up known duplicate test entries first
+            // 1. Run the read-only compatibility inspection
             indexEntries = sanitizeIndexEntries(indexEntries, accessToken).toMutableList()
 
             // 2. Validate index before upsert
             val preValidation = validateIndex(indexEntries)
             if (!preValidation.isValid) {
                 Log.e(TAG, "Index validation failed before upsert: ${preValidation.errorMessage}")
-                return false
+                return@withLock false
             }
 
             // 3. Upsert entry using strict uniqueness rules
@@ -1289,7 +1291,7 @@ class DrivePersistenceRepository(
             val postValidation = validateIndex(indexEntries)
             if (!postValidation.isValid) {
                 Log.e(TAG, "Index validation failed after upsert: ${postValidation.errorMessage}")
-                return false
+                return@withLock false
             }
 
             val entriesArray = JSONArray()
@@ -1322,10 +1324,10 @@ class DrivePersistenceRepository(
             val uploadRes = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "receiptIndex", "receipt-index.json", indexJson
             )
-            return uploadRes.success
+            uploadRes.success
         } catch (e: Exception) {
             Log.e(TAG, "Exception during index update", e)
-            return false
+            false
         }
     }
 
