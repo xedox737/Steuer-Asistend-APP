@@ -148,17 +148,22 @@ class DuplicateCleanupController(
         state = DuplicateCleanupUiState.Idle
     }
 
-    private suspend fun execute(block: suspend () -> DuplicateCleanupReport): DuplicateCleanupUiState =
-        runCatching(block).fold(
-            onSuccess = { report ->
-                if (report.completed) {
-                    DuplicateCleanupUiState.Completed(report)
-                } else {
-                    val message = report.failures.joinToString("; ") { it.message }
-                        .ifBlank { "Die Bereinigung wurde nicht abgeschlossen." }
-                    DuplicateCleanupUiState.Failed(message)
-                }
-            },
-            onFailure = { DuplicateCleanupUiState.Failed(it.message ?: "Bereinigung fehlgeschlagen.") }
-        )
+    private suspend fun execute(
+        block: suspend () -> DuplicateCleanupReport
+    ): DuplicateCleanupUiState {
+        return try {
+            val report = block()
+            if (report.completed) {
+                DuplicateCleanupUiState.Completed(report)
+            } else {
+                val message = report.failures.joinToString("; ") { failure -> failure.message }
+                    .ifBlank { "Die Bereinigung wurde nicht abgeschlossen." }
+                DuplicateCleanupUiState.Failed(message)
+            }
+        } catch (exception: Exception) {
+            DuplicateCleanupUiState.Failed(
+                exception.message ?: "Bereinigung fehlgeschlagen."
+            )
+        }
+    }
 }
