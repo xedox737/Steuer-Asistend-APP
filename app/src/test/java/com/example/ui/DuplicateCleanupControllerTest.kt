@@ -79,34 +79,6 @@ class DuplicateCleanupControllerTest {
         assertTrue(state.message.contains("Metadatendatei"))
     }
 
-    private fun preview(): DuplicateGroupPreview {
-        val canonical = record(1, "canonical")
-        return DuplicateGroupPreview(
-            mainDriveFileId = "main",
-            canonical = canonical,
-            duplicatesToRemove = listOf(record(2, "duplicate")),
-            metadataPlan = DuplicateMetadataPlan(
-                retainedMetadataFileIds = setOf("meta-canonical"),
-                orphanMetadataFileIds = setOf("meta-duplicate")
-            )
-        )
-    }
-
-    private fun record(roomId: Int, internalId: String) = DuplicateReceiptRecord(
-        roomId = roomId,
-        internalId = internalId,
-        displayId = "BLG-$internalId",
-        mainDriveFileId = "main",
-        metadataFileId = "meta-$internalId",
-        deletionStatus = "DELETED",
-        deletedAt = "2026-07-31T10:00:00Z",
-        createdAt = "2026-07-01T10:00:00Z",
-        indexReferenced = internalId == "canonical",
-        indexMetadataFileId = if (internalId == "canonical") "meta-canonical" else null,
-        tombstone = null,
-        completenessScore = 10
-    )
-
     private class FakeUseCase(
         private val mergeReport: DuplicateCleanupReport = completedReport()
     ) : DuplicateCleanupUseCase {
@@ -146,6 +118,34 @@ class DuplicateCleanupControllerTest {
     }
 
     companion object {
+    private fun preview(): DuplicateGroupPreview {
+        val canonical = record(1, "canonical")
+        return DuplicateGroupPreview(
+            mainDriveFileId = "main",
+            canonical = canonical,
+            duplicatesToRemove = listOf(record(2, "duplicate")),
+            metadataPlan = DuplicateMetadataPlan(
+                retainedMetadataFileIds = setOf("meta-canonical"),
+                orphanMetadataFileIds = setOf("meta-duplicate")
+            )
+        )
+    }
+
+    private fun record(roomId: Int, internalId: String) = DuplicateReceiptRecord(
+        roomId = roomId,
+        internalId = internalId,
+        displayId = "BLG-$internalId",
+        mainDriveFileId = "main",
+        metadataFileId = "meta-$internalId",
+        deletionStatus = "DELETED",
+        deletedAt = "2026-07-31T10:00:00Z",
+        createdAt = "2026-07-01T10:00:00Z",
+        indexReferenced = internalId == "canonical",
+        indexMetadataFileId = if (internalId == "canonical") "meta-canonical" else null,
+        tombstone = null,
+        completenessScore = 10
+    )
+
         private fun journal(removeWholeGroup: Boolean) = DuplicateCleanupJournal(
             operationId = "op",
             mainDriveFileId = "main",
