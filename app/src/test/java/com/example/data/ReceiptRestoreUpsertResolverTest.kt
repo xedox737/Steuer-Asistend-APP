@@ -42,6 +42,22 @@ class ReceiptRestoreUpsertResolverTest {
     }
 
     @Test
+    fun restoringSameSnapshotTwiceKeepsStableRowCount() {
+        val original = receipt(id = 5, internalId = "canonical", mainId = "shared")
+        val snapshotCopy = receipt(id = 0, internalId = "restored-copy", mainId = "shared")
+
+        val first = ReceiptRestoreUpsertResolver.resolve(snapshotCopy, listOf(original)).receipt
+        val afterFirstRestore = listOf(first)
+        val second = ReceiptRestoreUpsertResolver.resolve(snapshotCopy, afterFirstRestore).receipt
+        val afterSecondRestore = listOf(second)
+
+        assertEquals(1, afterFirstRestore.size)
+        assertEquals(1, afterSecondRestore.size)
+        assertEquals(original.id, second.id)
+        assertEquals(original.internalId, second.internalId)
+    }
+
+    @Test
     fun trulyNewReceiptIsPreparedForInsert() {
         val incoming = receipt(id = 99, internalId = "new", mainId = "new-main")
 
