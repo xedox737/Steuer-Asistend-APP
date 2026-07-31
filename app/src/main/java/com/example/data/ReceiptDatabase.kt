@@ -341,8 +341,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "receipt_database"
                 )
+                // Never erase user receipts when a migration is missing. Unsupported legacy
+                // schemas must fail visibly so they can be migrated explicitly.
                 .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
-                .fallbackToDestructiveMigration()
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
