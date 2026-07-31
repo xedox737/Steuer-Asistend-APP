@@ -3622,8 +3622,12 @@ class DrivePersistenceRepository(
         val allFiles = GoogleDriveClient.listAllReceiptMetadataFiles(accessToken, config.receiptsFolderId)
         val indexEntries = getReceiptIndexFromDrive(accessToken, config)
         
-        // Map of internalId -> metadataFileId from index
-        val indexMap = indexEntries.associate { it.internalId to it.metadataFileId }
+        // Keep every index reference. Legacy indexes may contain more than one metadata file for
+        // the same internalId; such groups are ambiguous and must remain read-only.
+        val indexReferencesByInternalId = indexEntries
+            .filter { it.internalId.isNotBlank() && it.metadataFileId.isNotBlank() }
+            .groupBy { it.internalId }
+            .mapValues { (_, entries) -> entries.map { it.metadataFileId }.toSet() }
         
         // Group all found files by their receiptInternalId
         val groupedFiles = allFiles.groupBy { it.receiptInternalId }
@@ -3635,7 +3639,9 @@ class DrivePersistenceRepository(
         for ((internalId, files) in groupedFiles) {
             if (internalId.isBlank()) continue
             
-            val referencedFileIdInIndex = indexMap[internalId]
+            val referencedMetadataFileIds =
+                indexReferencesByInternalId[internalId].orEmpty()
+            val referencedFileIdInIndex = referencedMetadataFileIds.singleOrNull()
             
             val details = files.map { file ->
                 MetadataFileDetails(
@@ -3643,7 +3649,7 @@ class DrivePersistenceRepository(
                     name = file.name,
                     createdTime = file.createdTime,
                     modifiedTime = file.modifiedTime,
-                    isReferencedInIndex = file.id == referencedFileIdInIndex
+                    isReferencedInIndex = file.id in referencedMetadataFileIds
                 )
             }
             
@@ -3658,7 +3664,8 @@ class DrivePersistenceRepository(
                 MetadataDuplicateGroup(
                     internalId = internalId,
                     files = details,
-                    referencedFileIdInIndex = referencedFileIdInIndex
+                    referencedFileIdInIndex = referencedFileIdInIndex,
+                    referencedMetadataFileIds = referencedMetadataFileIds
                 )
             )
         }
@@ -3682,7 +3689,9 @@ data class MetadataFileDetails(
 data class MetadataDuplicateGroup(
     val internalId: String,
     val files: List<MetadataFileDetails>,
-    val referencedFileIdInIndex: String?
+    val referencedFileIdInIndex: String?,
+    val referencedMetadataFileIds: Set<String> =
+        referencedFileIdInIndex?.let { setOf(it) } ?: emptySet()
 )
 
 data class MetadataDuplicateReport(
