@@ -1171,56 +1171,18 @@ class DrivePersistenceRepository(
         }
     }
 
+    /**
+     * Legacy compatibility hook. This method is intentionally read-only.
+     * Duplicate cleanup must only happen through the explicit preview and confirmation flow.
+     */
     suspend fun sanitizeIndexEntries(
         entries: List<ReceiptIndexEntry>,
         accessToken: String? = null
     ): List<ReceiptIndexEntry> {
-        val resultList = entries.toMutableList()
-
-        val obsoleteIdx = resultList.indexOfFirst {
-            it.internalId == "c4082e97-62a7-4111-834b-4364a53a2b97" &&
-            it.mainDriveFileId == "1fN2tpdm1S7SipCxmyXsnxgWJ7Htv9kfc"
+        if (!accessToken.isNullOrBlank()) {
+            Log.i(TAG, "Read-only index inspection: automatic cleanup is disabled (${entries.size} entries).")
         }
-
-        if (obsoleteIdx != -1) {
-            val obsoleteEntry = resultList[obsoleteIdx]
-            Log.i(TAG, "Removing obsolete test duplicate entry internalId=${obsoleteEntry.internalId}, metadataFileId=${obsoleteEntry.metadataFileId}")
-            resultList.removeAt(obsoleteIdx)
-
-            if (!accessToken.isNullOrBlank() && obsoleteEntry.metadataFileId == "1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K") {
-                val usedByOther = resultList.any { it.metadataFileId == "1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K" }
-                if (!usedByOther) {
-                    Log.i(TAG, "Deleting obsolete test metadata file from Drive: 1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K")
-                    GoogleDriveClient.deleteFile(accessToken, "1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K")
-                }
-            }
-        }
-
-        val testEntries = resultList.filter {
-            it.displayId?.startsWith("TEST-BLG-") == true ||
-            it.internalId == "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2" ||
-            it.internalId == "c4082e97-62a7-4111-834b-4364a53a2b97"
-        }
-
-        if (testEntries.size > 1) {
-            val canonical = testEntries.find { it.internalId == "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2" }
-                ?: testEntries.maxByOrNull { it.updatedAt }!!
-
-            for (te in testEntries) {
-                if (te.internalId != canonical.internalId) {
-                    Log.i(TAG, "Removing test duplicate: internalId=${te.internalId}, metadataFileId=${te.metadataFileId}")
-                    resultList.removeAll { it.internalId == te.internalId }
-                    if (!accessToken.isNullOrBlank() && te.metadataFileId.isNotBlank() && te.metadataFileId != canonical.metadataFileId) {
-                        val usedElsewhere = resultList.any { it.metadataFileId == te.metadataFileId }
-                        if (!usedElsewhere) {
-                            GoogleDriveClient.deleteFile(accessToken, te.metadataFileId)
-                        }
-                    }
-                }
-            }
-        }
-
-        return resultList
+        return entries.toList()
     }
 
     fun validateIndex(entries: List<ReceiptIndexEntry>): IndexValidationResult {
