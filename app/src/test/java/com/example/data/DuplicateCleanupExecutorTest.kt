@@ -52,6 +52,25 @@ class DuplicateCleanupExecutorTest {
     }
 
     @Test
+    fun retrySkipsMetadataFileThatWasAlreadyDeletedBeforeLaterFailure() = runBlocking {
+        val store = FakeStore(journal(removeWholeGroup = true))
+        val firstGateway = FakeGateway(failMetadataId = "m2")
+        val firstResult = DuplicateCleanupExecutor(store, firstGateway) { "first" }.execute("op")
+
+        assertFalse(firstResult.completed)
+        assertEquals(setOf("m1"), store.current.removedMetadataFileIds)
+        assertEquals(1, firstGateway.calls.count { it == "meta:m1" })
+
+        val retryGateway = FakeGateway()
+        val retryResult = DuplicateCleanupExecutor(store, retryGateway) { "retry" }.execute("op")
+
+        assertTrue(retryResult.completed)
+        assertFalse(retryGateway.calls.contains("meta:m1"))
+        assertEquals(1, retryGateway.calls.count { it == "meta:m2" })
+        assertEquals(setOf("m1", "m2"), store.current.removedMetadataFileIds)
+    }
+
+    @Test
     fun alreadyMissingDriveResourcesAreTreatedAsCompleted() = runBlocking {
         val store = FakeStore(journal(removeWholeGroup = true))
         val gateway = FakeGateway(missingMetadataId = "m1", mainAlreadyMissing = true)
@@ -59,6 +78,7 @@ class DuplicateCleanupExecutorTest {
 
         assertTrue(result.completed)
         assertEquals(DuplicateCleanupPhase.COMPLETED, store.current.phase)
+        assertEquals(setOf("m1", "m2"), store.current.removedMetadataFileIds)
         assertTrue(gateway.calls.contains("local"))
     }
 
