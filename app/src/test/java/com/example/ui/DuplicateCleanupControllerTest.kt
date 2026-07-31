@@ -55,6 +55,17 @@ class DuplicateCleanupControllerTest {
     }
 
     @Test
+    fun pendingJournalCanBeShownAndResumed() = runBlocking {
+        val controller = DuplicateCleanupController(FakeUseCase())
+
+        controller.showPendingOperations()
+        assertTrue(controller.state is DuplicateCleanupUiState.PendingOperations)
+
+        controller.resume("pending-op")
+        assertTrue(controller.state is DuplicateCleanupUiState.Completed)
+    }
+
+    @Test
     fun partialCleanupReportIsShownAsFailure() = runBlocking {
         val fake = FakeUseCase(
             mergeReport = DuplicateCleanupReport(
@@ -115,6 +126,11 @@ class DuplicateCleanupControllerTest {
             confirmWholeGroupCalls++
             return completedReport()
         }
+
+        override fun pendingOperationIds(): Set<String> = setOf("pending-op")
+
+        override suspend fun resume(operationId: String): DuplicateCleanupReport =
+            completedReport()
     }
 
     companion object {
