@@ -2621,7 +2621,7 @@ class DrivePersistenceRepository(
                         lastSyncedAt = nowStr,
                         isArchivedToDrive = true
                     )
-                    localRepository.insert(restoredReceipt)
+                    localRepository.upsertRestoredReceipt(restoredReceipt)
                     receiptsRestored++
 
                     if (!restoredReceipt.driveFileId.isNullOrBlank()) {
