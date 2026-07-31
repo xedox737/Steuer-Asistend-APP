@@ -21,6 +21,16 @@ class MetadataDuplicateCleanupTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
+    fun plannerRejectsAmbiguousIndexReferences() {
+        MetadataDuplicateCleanupPlanner.plan(
+            group().copy(
+                referencedFileIdInIndex = null,
+                referencedMetadataFileIds = setOf("active", "orphan-a")
+            )
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
     fun cleanupRequiresExplicitConfirmation() {
         runBlocking {
             MetadataDuplicateCleanupExecutor(MetadataDuplicateFileDeleter { true })
