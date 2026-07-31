@@ -84,7 +84,10 @@ class DuplicateCleanupFeature(
     suspend fun resume(operationId: String): DuplicateCleanupReport =
         coordinator.resume(operationId)
 
-    fun pendingOperationIds(): Set<String> = journalStore.listOperationIds()
+    suspend fun pendingOperationIds(): Set<String> = journalStore.listOperationIds()
+        .filterTo(mutableSetOf()) { operationId ->
+            journalStore.load(operationId)?.phase != DuplicateCleanupPhase.COMPLETED
+        }
 
     fun removeCompletedJournal(operationId: String) {
         journalStore.removeCompleted(operationId)
