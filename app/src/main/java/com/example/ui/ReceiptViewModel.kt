@@ -216,6 +216,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _driveTestState = MutableStateFlow<DriveTestState?>(null)
     val driveTestState: StateFlow<DriveTestState?> = _driveTestState.asStateFlow()
 
+    private val _duplicateCleanupState =
+        MutableStateFlow<DuplicateCleanupUiState>(DuplicateCleanupUiState.Idle)
+    val duplicateCleanupState: StateFlow<DuplicateCleanupUiState> =
+        _duplicateCleanupState.asStateFlow()
+    private var duplicateCleanupController: DuplicateCleanupController? = null
+    private var duplicateCleanupFeature: com.example.data.DuplicateCleanupFeature? = null
+
     // Google Drive Restore State
     private val _restorePreview = MutableStateFlow<com.example.data.DriveRestorePreviewResult?>(null)
     val restorePreview: StateFlow<com.example.data.DriveRestorePreviewResult?> = _restorePreview.asStateFlow()
@@ -2142,6 +2149,111 @@ data class AiSearchUiState(
                 onComplete(result)
             }
         }
+    }
+
+    private suspend fun createDuplicateCleanupController(): Triple<
+        DuplicateCleanupController,
+        List<com.example.data.ReceiptIndexEntry>,
+        Map<String, com.example.data.ReceiptTombstone>
+    > {
+        val email = _googleAccountEmail.value
+            ?: error("Google Drive ist nicht verbunden.")
+        check(_isDriveConnected.value) { "Google Drive ist nicht verbunden." }
+        val token = getValidToken(email)
+        val config = when (val init = drivePersistenceRepository.initializeDriveStorage(token)) {
+            is com.example.data.DriveInitializationResult.SuccessCreatedNew -> init.config
+            is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> init.config
+            is com.example.data.DriveInitializationResult.Failure ->
+                error(init.message)
+        }
+        val referenceMutator = com.example.data.DrivePersistenceDuplicateReferenceMutator(
+            repository = drivePersistenceRepository,
+            accessTokenProvider = { token },
+            configProvider = { config }
+        )
+        val feature = com.example.data.DuplicateCleanupFeature(
+            context = getApplication(),
+            receiptRepository = repository,
+            accessTokenProvider = { token },
+            referenceMutator = referenceMutator,
+            now = {
+                java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss",
+                    java.util.Locale.getDefault()
+                ).format(java.util.Date())
+            }
+        )
+        duplicateCleanupFeature = feature
+        val controller = DuplicateCleanupController(
+            DuplicateCleanupFeatureUseCase(feature)
+        )
+        duplicateCleanupController = controller
+        return Triple(
+            controller,
+            drivePersistenceRepository.getReceiptIndexFromDrive(token, config),
+            drivePersistenceRepository.getAllTombstonesFromDrive(token, config)
+        )
+    }
+
+    fun analyzeReceiptDuplicates() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
+            try {
+                val (controller, indexEntries, tombstones) =
+                    createDuplicateCleanupController()
+                controller.load(indexEntries, tombstones)
+                _duplicateCleanupState.value = controller.state
+            } catch (exception: Exception) {
+                _duplicateCleanupState.value = DuplicateCleanupUiState.Failed(
+                    exception.message ?: "Dubletten konnten nicht geprüft werden."
+                )
+            }
+        }
+    }
+
+    fun requestDuplicateMerge(preview: com.example.data.DuplicateGroupPreview) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.requestMerge(preview)
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun confirmDuplicateMerge() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.confirmMerge()
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun requestWholeDuplicateGroupDeletion(
+        preview: com.example.data.DuplicateGroupPreview
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.requestWholeGroupDeletion(preview)
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun setWholeDuplicateGroupConfirmations(first: Boolean, second: Boolean) {
+        val controller = duplicateCleanupController ?: return
+        controller.setWholeGroupConfirmations(first, second)
+        _duplicateCleanupState.value = controller.state
+    }
+
+    fun confirmWholeDuplicateGroupDeletion() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.confirmWholeGroupDeletion()
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun dismissDuplicateCleanupState() {
+        duplicateCleanupController?.cancel()
+        _duplicateCleanupState.value = DuplicateCleanupUiState.Idle
     }
 
     fun resetToDefaults() {
