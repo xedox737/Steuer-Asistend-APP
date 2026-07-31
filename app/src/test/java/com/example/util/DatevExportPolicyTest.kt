@@ -104,7 +104,7 @@ class DatevExportPolicyTest {
         )
 
         assertTrue(plan.exportable)
-        assertEquals(-10_000, plan.bookingLines.single().amountCent)
+        assertEquals(-10_000L, plan.bookingLines.single().amountCent)
     }
 
     private fun receipt(
