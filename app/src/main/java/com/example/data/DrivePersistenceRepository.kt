@@ -185,6 +185,9 @@ class DrivePersistenceRepository(
     private val TAG = "DrivePersistenceRepo"
 
     companion object {
+        // Serializes the complete receipt transaction (document, metadata, index and folder).
+        // This prevents automatic sync, manual retry and background work from creating in parallel.
+        private val receiptSyncMutex = kotlinx.coroutines.sync.Mutex()
         private val metadataMutexMap = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
         fun getMetadataMutex(internalId: String): kotlinx.coroutines.sync.Mutex {
             return metadataMutexMap.getOrPut(internalId) { kotlinx.coroutines.sync.Mutex() }
@@ -1345,7 +1348,7 @@ class DrivePersistenceRepository(
         accessToken: String,
         config: DriveAppConfig,
         receipt: Receipt
-    ): Boolean {
+    ): Boolean = receiptSyncMutex.withLock {
         try {
             Log.d(TAG, "Syncing receipt to Drive. ID: ${receipt.id}")
             
