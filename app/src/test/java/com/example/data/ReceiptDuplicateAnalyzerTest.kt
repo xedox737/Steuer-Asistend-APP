@@ -116,6 +116,43 @@ class ReceiptDuplicateAnalyzerTest {
     }
 
     @Test
+    fun restoredStatusIsExcludedFromDuplicateGroups() {
+        val main = "shared-main"
+        val result = ReceiptDuplicateAnalyzer.analyze(
+            receipts = listOf(
+                receipt(1, "active", "BLG-1", main, "meta-1", "ACTIVE"),
+                receipt(2, "restored", "BLG-2", main, "meta-2", "RESTORED")
+            ),
+            indexEntries = emptyList(),
+            tombstones = emptyMap()
+        )
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun tombstoneMetadataReferencePreventsOrphanDeletion() {
+        val main = "shared-main"
+        val tombstone = ReceiptTombstone(
+            internalId = "historical",
+            displayId = "BLG-HISTORICAL",
+            deletedAt = "2025-01-02T00:00:00",
+            previousMainDriveFileId = main,
+            previousMetadataFileId = "meta-2"
+        )
+        val result = ReceiptDuplicateAnalyzer.analyze(
+            receipts = listOf(
+                receipt(1, "canonical", "BLG-1", main, "meta-1"),
+                receipt(2, "duplicate", "BLG-2", main, "meta-2", "DELETED")
+            ),
+            indexEntries = listOf(index("canonical", main, "meta-1")),
+            tombstones = mapOf(tombstone.internalId to tombstone)
+        )
+
+        assertTrue(result.single().metadataPlan.orphanMetadataFileIds.isEmpty())
+    }
+
+    @Test
     fun completenessThenOldestCreatedAtBreakTies() {
         val main = "shared-main"
         val records = listOf(
