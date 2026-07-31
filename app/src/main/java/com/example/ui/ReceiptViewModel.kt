@@ -2195,6 +2195,37 @@ data class AiSearchUiState(
         )
     }
 
+    fun loadPendingDuplicateCleanupOperations() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val store = com.example.data.SharedPreferencesDuplicateCleanupJournalStore(
+                getApplication()
+            )
+            val pending = store.listOperationIds().filterTo(mutableSetOf()) { operationId ->
+                store.load(operationId)?.phase !=
+                    com.example.data.DuplicateCleanupPhase.COMPLETED
+            }
+            if (pending.isNotEmpty()) {
+                _duplicateCleanupState.value =
+                    DuplicateCleanupUiState.PendingOperations(pending)
+            }
+        }
+    }
+
+    fun resumeDuplicateCleanupOperation(operationId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
+            try {
+                val (controller, _, _) = createDuplicateCleanupController()
+                controller.resume(operationId)
+                _duplicateCleanupState.value = controller.state
+            } catch (exception: Exception) {
+                _duplicateCleanupState.value = DuplicateCleanupUiState.Failed(
+                    exception.message ?: "Bereinigung konnte nicht fortgesetzt werden."
+                )
+            }
+        }
+    }
+
     fun analyzeReceiptDuplicates() {
         viewModelScope.launch(Dispatchers.IO) {
             _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
