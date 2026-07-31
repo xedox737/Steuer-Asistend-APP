@@ -127,7 +127,7 @@ class DuplicateCleanupControllerTest {
             return completedReport()
         }
 
-        override fun pendingOperationIds(): Set<String> = setOf("pending-op")
+        override suspend fun pendingOperationIds(): Set<String> = setOf("pending-op")
 
         override suspend fun resume(operationId: String): DuplicateCleanupReport =
             completedReport()
