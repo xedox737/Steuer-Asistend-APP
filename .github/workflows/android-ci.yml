@@ -14,6 +14,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
 
     steps:
       - name: Check out repository
@@ -61,19 +66,17 @@ jobs:
         run: gradle assembleDebug --stacktrace --no-daemon
 
       - name: Prepare release keystore
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
-        env:
-          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        if: env.RELEASE_KEYSTORE_BASE64 != '' && env.RELEASE_STORE_PASSWORD != '' && env.RELEASE_KEY_PASSWORD != '' && env.RELEASE_KEY_ALIAS != ''
         run: echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
 
       - name: Build signed release APK
-        if: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        if: env.RELEASE_KEYSTORE_BASE64 != '' && env.RELEASE_STORE_PASSWORD != '' && env.RELEASE_KEY_PASSWORD != '' && env.RELEASE_KEY_ALIAS != ''
         timeout-minutes: 10
         env:
           KEYSTORE_PATH: ${{ runner.temp }}/release.jks
-          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          STORE_PASSWORD: ${{ env.RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ env.RELEASE_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ env.RELEASE_KEY_ALIAS }}
         run: gradle assembleRelease --stacktrace --no-daemon
 
       - name: Upload reports
@@ -95,7 +98,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload signed release APK
-        if: ${{ success() && secrets.RELEASE_KEYSTORE_BASE64 != '' }}
+        if: success() && env.RELEASE_KEYSTORE_BASE64 != '' && env.RELEASE_STORE_PASSWORD != '' && env.RELEASE_KEY_PASSWORD != '' && env.RELEASE_KEY_ALIAS != ''
         uses: actions/upload-artifact@v4
         with:
           name: app-release
