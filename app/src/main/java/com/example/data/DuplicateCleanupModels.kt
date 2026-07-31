@@ -82,7 +82,14 @@ object ReceiptDuplicateAnalyzer {
             .filter { it.mainDriveFileId.isNotBlank() }
             .groupBy { it.mainDriveFileId }
 
-        return receipts
+        val eligibleStatuses = setOf("ACTIVE", "DELETED", "DELETE_PENDING")
+        val eligibleReceipts = receipts.filter { it.deletionStatus in eligibleStatuses }
+        val tombstoneMetadataRefs = tombstones.values
+            .map { it.previousMetadataFileId }
+            .filter(String::isNotBlank)
+            .toSet()
+
+        return eligibleReceipts
             .filter { !it.driveFileId.isNullOrBlank() }
             .groupBy { it.driveFileId!! }
             .filterValues { it.size > 1 }
@@ -118,7 +125,9 @@ object ReceiptDuplicateAnalyzer {
                     val usedByOtherReceipt = receipts.any { other ->
                         other.id !in duplicates.map { it.roomId } && other.driveMetadataFileId == candidate
                     }
-                    !usedByOtherReceipt && candidate !in indexMetadataRefs
+                    !usedByOtherReceipt &&
+                        candidate !in indexMetadataRefs &&
+                        candidate !in tombstoneMetadataRefs
                 }
                 DuplicateGroupPreview(
                     mainDriveFileId = mainId,
