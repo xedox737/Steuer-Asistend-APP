@@ -287,7 +287,7 @@ object GeminiClient {
     private const val MAX_RECEIPT_PAGES = 20
     private const val MAX_IMAGE_BYTES = 20 * 1024 * 1024
     private val modelName: String =
-        BuildConfig.GEMINI_MODEL.trim().ifEmpty { "${modelName}" }
+        BuildConfig.GEMINI_MODEL.trim().ifEmpty { "gemini-3.5-flash" }
 
     private val moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
