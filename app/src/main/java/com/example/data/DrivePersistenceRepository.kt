@@ -2495,7 +2495,7 @@ class DrivePersistenceRepository(
 
                 for (entry in indexEntries) {
                     val tombstone = tombstones[entry.internalId]
-                    if (entry.syncStatus == "DELETED" || tombstone?.status == "DELETED") {
+                    if (!RestoreEligibilityPolicy.shouldRestore(entry.syncStatus, tombstone?.status)) {
                         Log.i(TAG, "Beleg ${entry.internalId} (${entry.displayId}) ist gelöscht (Tombstone) und wird bei der Wiederherstellung übersprungen.")
                         continue
                     }
