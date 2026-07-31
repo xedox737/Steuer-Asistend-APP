@@ -54,9 +54,17 @@ object ReceiptRestoreUpsertResolver {
  * instead of inserting another record. Existing production insert behaviour remains untouched.
  */
 suspend fun ReceiptRepository.upsertRestoredReceipt(receipt: Receipt): ReceiptUpsertResolution {
+    val byInternalId = receipt.internalId
+        .takeIf(String::isNotBlank)
+        ?.let { getReceiptByInternalId(it) }
+    val byMainDriveFileId = if (byInternalId == null) {
+        getReceiptByMainDriveFileId(receipt.driveFileId)
+    } else {
+        null
+    }
     val resolution = ReceiptRestoreUpsertResolver.resolve(
         incoming = receipt,
-        existing = getAllReceiptsIncludingDeletedList()
+        existing = listOfNotNull(byInternalId, byMainDriveFileId)
     )
     insert(resolution.receipt)
     return resolution
