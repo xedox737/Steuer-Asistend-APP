@@ -2593,6 +2593,98 @@ data class AiSearchUiState(
         _metadataDuplicateError.value = null
     }
 
+    private val _metadataCleanupPreview =
+        MutableStateFlow<com.example.data.MetadataDuplicateCleanupPlan?>(null)
+    val metadataCleanupPreview:
+        StateFlow<com.example.data.MetadataDuplicateCleanupPlan?> = _metadataCleanupPreview.asStateFlow()
+
+    private val _metadataCleanupResult =
+        MutableStateFlow<com.example.data.MetadataDuplicateCleanupResult?>(null)
+    val metadataCleanupResult:
+        StateFlow<com.example.data.MetadataDuplicateCleanupResult?> = _metadataCleanupResult.asStateFlow()
+
+    private val _isCleaningMetadataDuplicates = MutableStateFlow(false)
+    val isCleaningMetadataDuplicates: StateFlow<Boolean> =
+        _isCleaningMetadataDuplicates.asStateFlow()
+
+    fun prepareMetadataDuplicateCleanup(group: com.example.data.MetadataDuplicateGroup) {
+        try {
+            _metadataCleanupPreview.value =
+                com.example.data.MetadataDuplicateCleanupPlanner.plan(group)
+            _metadataDuplicateError.value = null
+        } catch (e: IllegalArgumentException) {
+            _metadataDuplicateError.value = e.message
+        }
+    }
+
+    fun cancelMetadataDuplicateCleanup() {
+        _metadataCleanupPreview.value = null
+    }
+
+    fun confirmMetadataDuplicateCleanup() {
+        val plan = _metadataCleanupPreview.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isCleaningMetadataDuplicates.value = true
+            _metadataDuplicateError.value = null
+            try {
+                val email = _googleAccountEmail.value
+                    ?: throw IllegalStateException("Bitte melde dich zuerst bei Google Drive an.")
+                val token = getValidToken(email)
+                val executor = com.example.data.MetadataDuplicateCleanupExecutor(
+                    deleter = com.example.data.MetadataDuplicateFileDeleter { fileId ->
+                        GoogleDriveClient.deleteFile(token, fileId)
+                    },
+                    audit = { result -> persistMetadataCleanupAudit(result) }
+                )
+                val result = executor.execute(plan, explicitlyConfirmed = true)
+                _metadataCleanupResult.value = result
+                _metadataCleanupPreview.value = null
+                if (result.completed) {
+                    val config = drivePersistenceRepository.getDriveAppConfig(token)
+                    if (config != null) {
+                        _metadataDuplicateReport.value =
+                            drivePersistenceRepository.generateMetadataDuplicateReport(token, config)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ReceiptViewModel", "Metadata duplicate cleanup failed", e)
+                _metadataDuplicateError.value =
+                    "Metadaten-Dubletten konnten nicht sicher bereinigt werden: ${e.message}"
+            } finally {
+                _isCleaningMetadataDuplicates.value = false
+            }
+        }
+    }
+
+    fun dismissMetadataCleanupResult() {
+        _metadataCleanupResult.value = null
+    }
+
+    private fun persistMetadataCleanupAudit(
+        result: com.example.data.MetadataDuplicateCleanupResult
+    ) {
+        val prefs = getApplication<Application>().getSharedPreferences(
+            "metadata_duplicate_cleanup_audit",
+            Context.MODE_PRIVATE
+        )
+        val entry = org.json.JSONObject().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("internalId", result.internalId)
+            put("activeMetadataFileId", result.activeMetadataFileId)
+            put("deletedMetadataFileIds", org.json.JSONArray(result.deletedMetadataFileIds))
+            put("failures", org.json.JSONArray(result.failures))
+            put("completed", result.completed)
+        }
+        val existing = prefs.getString("entries", "[]") ?: "[]"
+        val entries = try {
+            org.json.JSONArray(existing)
+        } catch (_: Exception) {
+            org.json.JSONArray()
+        }
+        entries.put(entry)
+        prefs.edit().putString("entries", entries.toString()).apply()
+    }
+
     fun correctReceiptMetadata(internalId: String, newMimeType: String, newFilename: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
