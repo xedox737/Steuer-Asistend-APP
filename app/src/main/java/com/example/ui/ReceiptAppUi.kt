@@ -8056,6 +8056,9 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     val isCheckingDuplicates by viewModel.isCheckingMetadataDuplicates.collectAsState()
     val duplicateReport by viewModel.metadataDuplicateReport.collectAsState()
     val duplicateError by viewModel.metadataDuplicateError.collectAsState()
+    val metadataCleanupPreview by viewModel.metadataCleanupPreview.collectAsState()
+    val metadataCleanupResult by viewModel.metadataCleanupResult.collectAsState()
+    val isCleaningMetadataDuplicates by viewModel.isCleaningMetadataDuplicates.collectAsState()
 
     var showManualInput by remember { mutableStateOf(false) }
     var manualEmail by remember { mutableStateOf("sergej.alc28@gmail.com") }
@@ -8633,7 +8636,64 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
             duplicateReport?.let { report ->
                 MetadataDuplicateReportDialog(
                     report = report,
-                    onDismiss = { viewModel.dismissMetadataDuplicateReport() }
+                    onDismiss = { viewModel.dismissMetadataDuplicateReport() },
+                    onPrepareCleanup = { viewModel.prepareMetadataDuplicateCleanup(it) }
+                )
+            }
+
+            metadataCleanupPreview?.let { plan ->
+                AlertDialog(
+                    onDismissRequest = { if (!isCleaningMetadataDuplicates) viewModel.cancelMetadataDuplicateCleanup() },
+                    title = { Text("Verwaiste Metadaten sicher löschen", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Beleg: ${plan.internalId}")
+                            Text("Bleibt erhalten: ${plan.activeMetadataFileId}", color = EmeraldGreen)
+                            Text("Nach Bestätigung werden nur diese verwaisten Dateien gelöscht:")
+                            plan.orphanMetadataFileIds.forEach { Text("• $it", fontSize = 11.sp) }
+                            Text(
+                                "Die aktive metadataFileId wird nicht gelöscht.",
+                                fontWeight = FontWeight.Bold,
+                                color = CrimsonRed
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { viewModel.confirmMetadataDuplicateCleanup() },
+                            enabled = !isCleaningMetadataDuplicates
+                        ) {
+                            Text(if (isCleaningMetadataDuplicates) "Bereinigung läuft…" else "Jetzt sicher löschen")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { viewModel.cancelMetadataDuplicateCleanup() },
+                            enabled = !isCleaningMetadataDuplicates
+                        ) { Text("Abbrechen") }
+                    }
+                )
+            }
+
+            metadataCleanupResult?.let { result ->
+                AlertDialog(
+                    onDismissRequest = { viewModel.dismissMetadataCleanupResult() },
+                    title = {
+                        Text(
+                            if (result.completed) "Bereinigung abgeschlossen" else "Bereinigung teilweise fehlgeschlagen",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Aktive Datei erhalten: ${result.activeMetadataFileId}")
+                            Text("Gelöscht: ${result.deletedMetadataFileIds.size}")
+                            result.failures.forEach { Text("• $it", color = CrimsonRed, fontSize = 11.sp) }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = { viewModel.dismissMetadataCleanupResult() }) { Text("OK") }
+                    }
                 )
             }
 
@@ -13819,7 +13879,8 @@ fun OriginalReceiptAuditDialog(
 @Composable
 fun MetadataDuplicateReportDialog(
     report: com.example.data.MetadataDuplicateReport,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPrepareCleanup: (com.example.data.MetadataDuplicateGroup) -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -13949,6 +14010,21 @@ fun MetadataDuplicateReportDialog(
                                     Spacer(modifier = Modifier.height(4.dp))
                                 }
                             }
+                        }
+                        if (group.referencedFileIdInIndex != null) {
+                            OutlinedButton(
+                                onClick = { onPrepareCleanup(group) },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = CrimsonRed)
+                            ) {
+                                Text("Verwaiste JSON-Dateien sicher bereinigen", fontSize = 11.sp)
+                            }
+                        } else {
+                            Text(
+                                "Keine Bereinigung möglich: receipt-index.json enthält keine aktive Referenz.",
+                                color = CrimsonRed,
+                                fontSize = 10.sp
+                            )
                         }
                     }
                 }
