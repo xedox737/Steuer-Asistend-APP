@@ -1060,8 +1060,8 @@ class DrivePersistenceRepository(
             
             internalId = internalId,
             displayId = displayId,
-            driveFileId = mainDoc?.driveFileId,
-            driveFolderId = mainDoc?.driveFolderId,
+            driveFileId = mainDoc?.driveFileId ?: driveFileId.takeIf(String::isNotBlank),
+            driveFolderId = mainDoc?.driveFolderId ?: driveFolderId,
             driveMetadataFileId = metadataFileId,
             storedFilename = mainDoc?.filename,
             originalMimeType = mainDoc?.mimeType,
@@ -1884,7 +1884,9 @@ class DrivePersistenceRepository(
                     for (entry in entries) {
                         val entryIssues = mutableListOf<String>()
 
-                        if (entry.internalId.isBlank()) {
+                        eligibleIndexEntryCount++
+
+                    if (entry.internalId.isBlank()) {
                             entryIssues.add("Fehlende internalId")
                             duplicateCount++
                         } else if (!seenInternalIds.add(entry.internalId)) {
@@ -2490,6 +2492,7 @@ class DrivePersistenceRepository(
 
                 val seenInternalIds = mutableSetOf<String>()
                 val seenMetadataFileIds = mutableSetOf<String>()
+                var eligibleIndexEntryCount = 0
                 val tombstones = getAllTombstonesFromDrive(accessToken, config)
 
                 for (entry in indexEntries) {
@@ -2526,14 +2529,25 @@ class DrivePersistenceRepository(
                             warnings.add(RestoreWarning("MISSING_MAIN_DOC", "Hauptdokument fehlt für Beleg '${persisted.displayId ?: persisted.internalId}'", targetId = persisted.internalId))
                         }
 
-                        receipts.add(persisted)
+                        receipts.add(
+                            persisted.copy(
+                                driveFileId = entry.mainDriveFileId,
+                                metadataFileId = entry.metadataFileId
+                            )
+                        )
                     } catch (e: Exception) {
                         errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Metadaten-JSON für Beleg '${entry.displayId ?: entry.internalId}' nicht lesbar: ${e.message}", targetId = entry.internalId, isBlocking = true))
                     }
                 }
 
-                if (indexEntries.size != receipts.size) {
-                    errors.add(RestoreError("INDEX_COUNT_MISMATCH", "Index enthält ${indexEntries.size} Einträge, aber nur ${receipts.size} Metadatendateien geladen", isBlocking = true))
+                if (eligibleIndexEntryCount != receipts.size) {
+                    errors.add(
+                        RestoreError(
+                            "INDEX_COUNT_MISMATCH",
+                            "Index enthält $eligibleIndexEntryCount wiederherstellbare Einträge, aber nur ${receipts.size} Metadatendateien wurden geladen",
+                            isBlocking = true
+                        )
+                    )
                 }
             } catch (e: Exception) {
                 errors.add(RestoreError("INDEX_READ_ERROR", "receipt-index.json unlesbar: ${e.message}", isBlocking = true))
@@ -2621,7 +2635,7 @@ class DrivePersistenceRepository(
                 }
 
                 for (persisted in snapshot.receipts) {
-                    val restoredReceipt = persisted.toLocalReceipt(persisted.documents.firstOrNull()?.driveFileId).copy(
+                    val restoredReceipt = persisted.toLocalReceipt(persisted.metadataFileId).copy(
                         syncStatus = "SYNCED",
                         lastSyncedAt = nowStr,
                         isArchivedToDrive = true
@@ -3721,6 +3735,7 @@ data class PersistedReceipt(
     val internalId: String,
     val displayId: String?,
     val documents: List<ReceiptDocumentReference> = emptyList(),
+    val metadataFileId: String = "",
     val driveFileId: String = "",
     val driveFolderId: String? = null,
     val filename: String = "",
