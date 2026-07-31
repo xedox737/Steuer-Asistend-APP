@@ -27,6 +27,9 @@ fun interface MetadataDuplicateFileDeleter {
 
 object MetadataDuplicateCleanupPlanner {
     fun plan(group: MetadataDuplicateGroup): MetadataDuplicateCleanupPlan {
+        require(group.referencedMetadataFileIds.size == 1) {
+            "Mehrdeutige Referenzen in receipt-index.json müssen zuerst manuell geprüft werden."
+        }
         val activeId = group.referencedFileIdInIndex?.takeIf(String::isNotBlank)
             ?: throw IllegalArgumentException(
                 "Ohne eindeutige Referenz aus receipt-index.json darf keine Metadatendatei gelöscht werden."
