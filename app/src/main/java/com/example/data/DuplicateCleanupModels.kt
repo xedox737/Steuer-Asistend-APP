@@ -55,7 +55,8 @@ data class DuplicateCleanupJournal(
     val createdAt: String,
     val updatedAt: String,
     val removedMetadataFileIds: Set<String> = emptySet(),
-    val errors: List<String> = emptyList()
+    val errors: List<String> = emptyList(),
+    val targetRoomIds: List<Int> = emptyList()
 )
 
 data class DuplicateCleanupFailure(
