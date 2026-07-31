@@ -13971,10 +13971,102 @@ fun RecycleBinDialog(
     onDismiss: () -> Unit
 ) {
     val deletedReceipts by viewModel.deletedReceipts.collectAsState()
+    val duplicateCleanupState by viewModel.duplicateCleanupState.collectAsState()
     var receiptToPermanentlyDelete by remember { mutableStateOf<Receipt?>(null) }
     var permanentDeleteError by remember { mutableStateOf<String?>(null) }
     var showDeleteSuccess by remember { mutableStateOf(false) }
     
+    when (val cleanupState = duplicateCleanupState) {
+        is DuplicateCleanupUiState.MergeConfirmation -> AlertDialog(
+            onDismissRequest = viewModel::dismissDuplicateCleanupState,
+            title = { Text("Dubletten sicher zusammenführen", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Erhalten bleibt: ${cleanupState.preview.canonical.displayId}")
+                    Text(
+                        "Entfernt werden: " +
+                            cleanupState.preview.duplicatesToRemove.joinToString { it.displayId }
+                    )
+                    Text(
+                        "Die gemeinsame Hauptdatei wird nicht gelöscht.",
+                        color = EmeraldGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (cleanupState.preview.metadataPlan.orphanMetadataFileIds.isNotEmpty()) {
+                        Text(
+                            "Verwaiste Metadatendateien nach Bestätigung: " +
+                                cleanupState.preview.metadataPlan.orphanMetadataFileIds.joinToString()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = viewModel::confirmDuplicateMerge) {
+                    Text("Zusammenführen")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = viewModel::dismissDuplicateCleanupState) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+
+        is DuplicateCleanupUiState.WholeGroupConfirmation -> AlertDialog(
+            onDismissRequest = viewModel::dismissDuplicateCleanupState,
+            title = { Text("Gesamte Dublettengruppe löschen", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Alle Belegdatensätze und Metadaten werden gelöscht. " +
+                            "Die gemeinsame Hauptdatei wird exakt einmal und zuletzt gelöscht.",
+                        color = CrimsonRed
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = cleanupState.firstConfirmation,
+                            onCheckedChange = {
+                                viewModel.setWholeDuplicateGroupConfirmations(
+                                    it,
+                                    cleanupState.secondConfirmation
+                                )
+                            }
+                        )
+                        Text("Ich habe die vollständige Gruppe geprüft.")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = cleanupState.secondConfirmation,
+                            onCheckedChange = {
+                                viewModel.setWholeDuplicateGroupConfirmations(
+                                    cleanupState.firstConfirmation,
+                                    it
+                                )
+                            }
+                        )
+                        Text("Ich bestätige die unwiderrufliche Löschung.")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::confirmWholeDuplicateGroupDeletion,
+                    enabled = cleanupState.firstConfirmation && cleanupState.secondConfirmation,
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)
+                ) {
+                    Text("Gruppe endgültig löschen")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = viewModel::dismissDuplicateCleanupState) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+
+        else -> Unit
+    }
+
     if (receiptToPermanentlyDelete != null) {
         AlertDialog(
             onDismissRequest = { receiptToPermanentlyDelete = null },
@@ -14069,6 +14161,114 @@ fun RecycleBinDialog(
                     color = SlateGray,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
+
+                Button(
+                    onClick = viewModel::analyzeReceiptDuplicates,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .testTag("analyze_receipt_duplicates_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = DarkNavy)
+                ) {
+                    Text("Dubletten prüfen")
+                }
+
+                when (val cleanupState = duplicateCleanupState) {
+                    DuplicateCleanupUiState.Loading -> {
+                        Text(
+                            "Dubletten werden rein lesend geprüft …",
+                            fontSize = 12.sp,
+                            color = SlateGray,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+                    is DuplicateCleanupUiState.Ready -> {
+                        if (cleanupState.groups.isEmpty()) {
+                            Text(
+                                "Keine Dublettengruppen gefunden.",
+                                color = EmeraldGreen,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(bottom = 10.dp)
+                            )
+                        } else {
+                            cleanupState.groups.forEach { group ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = WarmOrange.copy(alpha = 0.08f)
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            "Hauptdatei: ${group.mainDriveFileId}",
+                                            fontSize = 10.sp,
+                                            color = SlateGray
+                                        )
+                                        Text(
+                                            "Kanonisch: ${group.canonical.displayId}",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                        Text(
+                                            "${group.duplicatesToRemove.size} lokale Dublette(n)",
+                                            fontSize = 11.sp
+                                        )
+                                        Text(
+                                            "Hauptdatei wird nicht gelöscht",
+                                            color = EmeraldGreen,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Row {
+                                            TextButton(
+                                                onClick = {
+                                                    viewModel.requestDuplicateMerge(group)
+                                                },
+                                                modifier = Modifier.testTag(
+                                                    "safe_merge_duplicate_group_button"
+                                                )
+                                            ) {
+                                                Text("Dubletten sicher zusammenführen")
+                                            }
+                                            TextButton(
+                                                onClick = {
+                                                    viewModel.requestWholeDuplicateGroupDeletion(group)
+                                                }
+                                            ) {
+                                                Text(
+                                                    "Gesamte Gruppe löschen",
+                                                    color = CrimsonRed
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    is DuplicateCleanupUiState.Completed -> {
+                        Text(
+                            "Dublettenbereinigung abgeschlossen.",
+                            color = EmeraldGreen,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+                    is DuplicateCleanupUiState.Failed -> {
+                        Text(
+                            cleanupState.message,
+                            color = CrimsonRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+                    else -> Unit
+                }
 
                 permanentDeleteError?.let { err ->
                     Card(
