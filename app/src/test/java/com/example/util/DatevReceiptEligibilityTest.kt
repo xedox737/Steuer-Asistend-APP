@@ -44,6 +44,27 @@ class DatevReceiptEligibilityTest {
         assertTrue(DatevReceiptEligibility.issues(receipt).any { it.code == "MISSING_ACCOUNT" })
     }
 
+
+    @Test
+    fun alreadyExportedReceiptIsAlwaysBlocked() {
+        val issues = DatevReceiptEligibility.issues(
+            approvedReceipt().copy(exportStatus = "EXPORTIERT", exportlaufId = "old-export")
+        )
+
+        assertTrue(issues.any { it.code == "ALREADY_EXPORTED" })
+    }
+
+    @Test
+    fun duplicateStableIdentitiesAreDetected() {
+        val first = approvedReceipt()
+        val second = approvedReceipt().copy(id = 4)
+
+        assertEquals(
+            setOf("receipt-3"),
+            DatevReceiptEligibility.duplicateInternalIds(listOf(first, second))
+        )
+    }
+
     private fun receipt() = Receipt(
         id = 3,
         aussteller = "Test GmbH",
