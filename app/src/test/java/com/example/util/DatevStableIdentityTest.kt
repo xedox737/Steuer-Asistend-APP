@@ -21,6 +21,22 @@ class DatevStableIdentityTest {
     }
 
     @Test
+    fun legacyExporterGuidAlsoSurvivesRoomIdChange() {
+        val original = receipt(id = 7, internalId = "stable-receipt-id")
+        val restored = receipt(id = 91, internalId = "stable-receipt-id")
+
+        assertEquals(DatevExporter.getReceiptGuid(original), DatevExporter.getReceiptGuid(restored))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun legacyExporterBlocksDuplicateReceiptIdentity() {
+        val original = receipt(id = 7, internalId = "duplicate-id")
+        val duplicate = receipt(id = 91, internalId = "duplicate-id")
+
+        DatevExporter.generateDocumentXml(listOf(original, duplicate), DatevConfig())
+    }
+
+    @Test
     fun differentInternalIdsReceiveDifferentDatevReferences() {
         val profile = DatevProfile.createDefaultSkr03()
         val first = DatevMappingService.buildDatevBookingRows(
