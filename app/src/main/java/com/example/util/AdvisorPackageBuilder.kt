@@ -61,10 +61,11 @@ object AdvisorPackageBuilder {
             zos.closeEntry()
 
             // 2. 02_Belege/ (Attachments as PDFs or original images)
-            val processedReceiptIds = mutableSetOf<Int>()
+            val processedReceiptReferences = mutableSetOf<String>()
             records.forEach { record ->
-                if (!processedReceiptIds.contains(record.receiptId)) {
-                    processedReceiptIds.add(record.receiptId)
+                // belegfeld1 is derived from the stable receipt internalId. Several confirmed
+                // booking rows may reference one original document, which must enter the ZIP once.
+                if (processedReceiptReferences.add(record.belegfeld1)) {
 
                     val cleanVendor = record.zahlungspartner.replace(Regex("[^a-zA-Z0-9]"), "_").take(15)
                     val amtStr = String.format(Locale.GERMANY, "%.2f", record.bruttobetrag).replace(",", "-")
