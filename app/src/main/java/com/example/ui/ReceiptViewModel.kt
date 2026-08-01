@@ -1533,7 +1533,8 @@ data class AiSearchUiState(
         val report = com.example.util.BookingValidationService.validateRecords(
             records = bookingRecords,
             profile = profile,
-            allowUnverifiedExport = allowUnverified
+            // DATEV packages must never contain unverified accounting proposals.
+            allowUnverifiedExport = false
         )
 
         _wizardMappedRecords.value = bookingRecords
@@ -1547,6 +1548,10 @@ data class AiSearchUiState(
         val excluded = _wizardExcludedReceipts.value
         val profile = _activeDatevProfile.value
         val report = _wizardValidationReport.value ?: return null
+        if (!report.isValidForExport || records.isEmpty()) {
+            Log.w("ReceiptViewModel", "DATEV export blocked by validation policy")
+            return null
+        }
 
         val packageResult = com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
