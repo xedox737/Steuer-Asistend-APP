@@ -1534,6 +1534,11 @@ data class AiSearchUiState(
             if (receipt.internalId.trim() in duplicateInternalIds) {
                 reasons += "Stabile Beleg-ID kommt mehrfach vor; Export ist bis zur Dublettenbereinigung blockiert."
             }
+            if (_wizardTargetFormat.value == "FULL_ZIP" &&
+                com.example.util.DatevOriginalAttachmentPolicy.resolve(receipt) == null
+            ) {
+                reasons += "Originalbeleg ist lokal nicht verfügbar oder hat ein nicht unterstütztes Format."
+            }
 
             if (reasons.isEmpty()) {
                 included += receipt
@@ -1576,6 +1581,7 @@ data class AiSearchUiState(
         val packageResult = com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
             records = records,
+            includedReceipts = _wizardIncludedReceipts.value,
             excludedReceipts = excluded,
             profile = profile,
             validationReport = report,
