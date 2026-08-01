@@ -12458,16 +12458,18 @@ fun DatevExportDialog(
 
                                 HorizontalDivider()
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = excludeExported,
-                                        onCheckedChange = { viewModel.setWizardFilters(excludeExported = it) }
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = Color(0xFFFFF7ED)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Text(
-                                        "Bereits exportierte Belege ausschließen (Differenzexport)",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Medium
+                                        "Bereits exportierte Belege werden aus Sicherheitsgründen immer ausgeschlossen. Nach einer fachlichen Änderung muss die DATEV-Aufteilung erneut freigegeben werden.",
+                                        modifier = Modifier.padding(10.dp),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF9A3412)
                                     )
                                 }
 
