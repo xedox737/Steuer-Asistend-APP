@@ -1482,6 +1482,13 @@ data class AiSearchUiState(
     private val _wizardExcludedReceipts = MutableStateFlow<List<Receipt>>(emptyList())
     val wizardExcludedReceipts: StateFlow<List<Receipt>> = _wizardExcludedReceipts.asStateFlow()
 
+    private val _wizardExclusionReasons = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val wizardExclusionReasons: StateFlow<Map<String, List<String>>> =
+        _wizardExclusionReasons.asStateFlow()
+
+    private val _wizardIncludedReceipts = MutableStateFlow<List<Receipt>>(emptyList())
+    val wizardIncludedReceipts: StateFlow<List<Receipt>> = _wizardIncludedReceipts.asStateFlow()
+
     private val _wizardValidationReport = MutableStateFlow<com.example.util.ValidationReport?>(null)
     val wizardValidationReport: StateFlow<com.example.util.ValidationReport?> = _wizardValidationReport.asStateFlow()
 
@@ -1498,35 +1505,47 @@ data class AiSearchUiState(
 
         val included = mutableListOf<Receipt>()
         val excluded = mutableListOf<Receipt>()
+        val exclusionReasons = linkedMapOf<String, List<String>>()
 
-        allRecs.forEach { r ->
-            var keep = true
+        allRecs.forEach { receipt ->
+            val reasons = mutableListOf<String>()
 
-            if (unitFilter != "ALLE" && r.wohneinheit != unitFilter) {
-                keep = false
+            if (unitFilter != "ALLE" && receipt.wohneinheit != unitFilter) {
+                reasons += "Wohneinheit entspricht nicht dem gewählten Filter."
             }
-            if (yearFilter != "ALLE" && !r.datum.startsWith(yearFilter)) {
-                keep = false
+            if (yearFilter != "ALLE" && !receipt.datum.startsWith(yearFilter)) {
+                reasons += "Belegdatum liegt außerhalb des gewählten Jahres."
             }
-            if (typeFilter == "EINNAHMEN" && (!r.hauptkategorie.contains("Einnahmen", true) && !r.hauptkategorie.contains("Miete", true))) {
-                keep = false
+            if (typeFilter == "EINNAHMEN" &&
+                !receipt.hauptkategorie.contains("Einnahmen", true) &&
+                !receipt.hauptkategorie.contains("Miete", true)
+            ) {
+                reasons += "Beleg ist keine Einnahme."
             }
-            if (typeFilter == "AUSGABEN" && (r.hauptkategorie.contains("Einnahmen", true) || r.hauptkategorie.contains("Miete", true))) {
-                keep = false
+            if (typeFilter == "AUSGABEN" &&
+                (receipt.hauptkategorie.contains("Einnahmen", true) ||
+                    receipt.hauptkategorie.contains("Miete", true))
+            ) {
+                reasons += "Beleg ist keine Ausgabe."
             }
-            if (excludeExported && r.exportStatus == "EXPORTIERT") {
-                keep = false
+            if (excludeExported && receipt.exportStatus == "EXPORTIERT") {
+                reasons += "Beleg wurde bereits exportiert."
             }
 
-            if (keep) {
-                included.add(r)
+            reasons += com.example.util.DatevReceiptEligibility.issues(receipt)
+                .map { it.message }
+
+            if (reasons.isEmpty()) {
+                included += receipt
             } else {
-                excluded.add(r)
+                excluded += receipt
+                exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)] =
+                    reasons.distinct()
             }
         }
 
-        val bookingRecords = included.flatMap { r ->
-            com.example.util.DatevMappingService.mapReceiptToBookingRecords(r, profile)
+        val bookingRecords = included.flatMap { receipt ->
+            com.example.util.DatevMappingService.mapReceiptToBookingRecords(receipt, profile)
         }
 
         val report = com.example.util.BookingValidationService.validateRecords(
@@ -1536,8 +1555,10 @@ data class AiSearchUiState(
             allowUnverifiedExport = false
         )
 
+        _wizardIncludedReceipts.value = included
         _wizardMappedRecords.value = bookingRecords
         _wizardExcludedReceipts.value = excluded
+        _wizardExclusionReasons.value = exclusionReasons
         _wizardValidationReport.value = report
     }
 
