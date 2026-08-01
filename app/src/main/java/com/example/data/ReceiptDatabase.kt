@@ -91,6 +91,9 @@ data class Receipt(
     val mieter: String = "", // Mieter name
     val isArchivedToDrive: Boolean = false,
     val positionenJson: String = "", // Serialized JSON list of ReceiptItem
+    val allocationsJson: String = "", // User-confirmed accounting allocations
+    val bookingProposalsJson: String = "", // Confirmed DATEV account/counter-account proposals
+    val freigabestatus: String = "OFFEN", // OFFEN or FREIGEGEBEN
     val exportStatus: String = "EXPORTBEREIT", // ENTWURF, KI_VORSCHLAG, ZU_PRUEFEN, GEPRUEFT, EXPORTBEREIT, EXPORTIERT, AUSGESCHLOSSEN
     val pruefstatus: String = "GEPRUEFT",      // UNGEPRUEFT, GEPRUEFT, KORRIGIERT
     val exportlaufId: String = "",
@@ -321,7 +324,17 @@ val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 13, exportSchema = false)
+val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        // Preserve all existing receipts. Legacy rows start explicitly unapproved and must be
+        // reviewed before DATEV export; no allocation or account is invented during migration.
+        db.execSQL("ALTER TABLE receipts ADD COLUMN allocationsJson TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE receipts ADD COLUMN bookingProposalsJson TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE receipts ADD COLUMN freigabestatus TEXT NOT NULL DEFAULT 'OFFEN'")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 14, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -343,7 +356,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
