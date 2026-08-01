@@ -21,6 +21,49 @@ class DatevStableIdentityTest {
     }
 
     @Test
+    fun openReceiptIsExcludedFromProductiveDatevMapping() {
+        val rows = DatevMappingService.mapReceiptToBookingRecords(
+            receipt(id = 7, internalId = "open-receipt"),
+            DatevProfile.createDefaultSkr03()
+        )
+
+        assertEquals(0, rows.size)
+    }
+
+    @Test
+    fun explicitConfirmationPersistsAndExportsTheReviewedPreview() {
+        val profile = DatevProfile.createDefaultSkr03()
+        val openReceipt = receipt(id = 7, internalId = "confirmed-receipt")
+        val preview = DatevMappingService.buildDatevBookingRows(openReceipt, profile)
+        val confirmed = requireNotNull(DatevMappingService.confirmDatevPreview(openReceipt, preview))
+
+        val exported = DatevMappingService.mapReceiptToBookingRecords(confirmed, profile)
+
+        assertEquals("FREIGEGEBEN", confirmed.freigabestatus)
+        assertEquals(preview.size, exported.size)
+        assertEquals(10_000L, Math.round(exported.sumOf { it.bruttobetrag } * 100.0))
+    }
+
+    @Test
+    fun changedAmountInvalidatesPreviouslyConfirmedAllocation() {
+        val profile = DatevProfile.createDefaultSkr03()
+        val openReceipt = receipt(id = 7, internalId = "changed-receipt")
+        val confirmed = requireNotNull(
+            DatevMappingService.confirmDatevPreview(
+                openReceipt,
+                DatevMappingService.buildDatevBookingRows(openReceipt, profile)
+            )
+        )
+
+        val exported = DatevMappingService.mapReceiptToBookingRecords(
+            confirmed.copy(bruttobetrag = 120.0),
+            profile
+        )
+
+        assertEquals(0, exported.size)
+    }
+
+    @Test
     fun legacyExporterGuidAlsoSurvivesRoomIdChange() {
         val original = receipt(id = 7, internalId = "stable-receipt-id")
         val restored = receipt(id = 91, internalId = "stable-receipt-id")
