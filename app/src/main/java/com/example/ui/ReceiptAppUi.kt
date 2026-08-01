@@ -4254,6 +4254,45 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                             }
                         }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (receipt.freigabestatus == "FREIGEGEBEN") {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Diese DATEV-Aufteilung wurde ausdrücklich freigegeben.",
+                                modifier = Modifier.padding(12.dp),
+                                color = Color(0xFF166534),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                com.example.util.DatevMappingService
+                                    .confirmDatevPreview(receipt, datevRows)
+                                    ?.let { confirmedReceipt ->
+                                        viewModel.updateReceipt(confirmedReceipt)
+                                        onDismiss()
+                                    }
+                            },
+                            enabled = datevRows.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("DATEV-Aufteilung ausdrücklich freigeben", fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            "Erst nach dieser Bestätigung wird der Beleg in einen DATEV-Export aufgenommen.",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    }
+
                 }
             }
         },
