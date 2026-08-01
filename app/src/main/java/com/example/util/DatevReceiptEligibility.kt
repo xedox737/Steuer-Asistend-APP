@@ -15,6 +15,9 @@ object DatevReceiptEligibility {
         if (receipt.internalId.isBlank()) {
             issues += issue("MISSING_INTERNAL_ID", "Stabile Beleg-ID fehlt.")
         }
+        if (receipt.exportStatus == "EXPORTIERT") {
+            issues += issue("ALREADY_EXPORTED", "Beleg wurde bereits exportiert.")
+        }
         if (receipt.freigabestatus != "FREIGEGEBEN") {
             issues += issue("NOT_APPROVED", "DATEV-Aufteilung wurde noch nicht ausdrücklich freigegeben.")
             return issues
@@ -49,6 +52,15 @@ object DatevReceiptEligibility {
         }
         return issues.distinctBy { it.code to it.message }
     }
+
+    fun duplicateInternalIds(receipts: List<Receipt>): Set<String> =
+        receipts.asSequence()
+            .map { it.internalId.trim() }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
 
     fun key(receipt: Receipt): String =
         receipt.internalId.takeIf { it.isNotBlank() } ?: "room:" + receipt.id
