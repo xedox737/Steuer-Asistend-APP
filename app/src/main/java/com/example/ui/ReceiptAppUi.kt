@@ -12600,25 +12600,18 @@ fun DatevExportDialog(
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
                                                     Text("Vorprüfung mit ${report.errors.size} Blockern:", fontWeight = FontWeight.Bold, color = Color(0xFF991B1B), fontSize = 14.sp)
-                                                    Text("Bitte behebe die Fehler oder wähle die Übersteuerung.", fontSize = 12.sp, color = Color(0xFF991B1B))
+                                                    Text("Bitte prüfe und bestätige die betroffenen Belege vor dem Export.", fontSize = 12.sp, color = Color(0xFF991B1B))
                                                 }
                                             }
                                         }
                                     }
 
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = allowUnverified,
-                                            onCheckedChange = { viewModel.setWizardFilters(allowUnverified = it) }
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            "Unvollständige/ungeprüfte Belege ausdrücklich freigeben",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.error
-                                        )
-                                    }
+                                    Text(
+                                        "Ungeprüfte KI-Vorschläge können nicht als DATEV-Paket exportiert werden.",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
 
                                     Text("Prüfprotokoll Details:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
@@ -12776,7 +12769,7 @@ fun DatevExportDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(48.dp),
-                                    enabled = (validationReport?.isValidForExport == true || allowUnverified) && mappedRecords.isNotEmpty()
+                                    enabled = validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()
                                 ) {
                                     Icon(Icons.Default.Check, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
