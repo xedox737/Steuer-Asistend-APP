@@ -955,6 +955,41 @@ class DrivePersistenceRepository(
             )
         }
 
+        val allocationsList = mutableListOf<PersistedAllocation>()
+        val allocationsArr = json.optJSONArray("allocations") ?: JSONArray()
+        for (i in 0 until allocationsArr.length()) {
+            val allocation = allocationsArr.getJSONObject(i)
+            allocationsList.add(
+                PersistedAllocation(
+                    id = allocation.optString("id", ""),
+                    description = allocation.optString("description", ""),
+                    percent = allocation.optDouble("percent", 0.0),
+                    amountCent = allocation.optLong("amountCent", 0L)
+                )
+            )
+        }
+
+        val proposalsList = mutableListOf<PersistedBookingProposal>()
+        val proposalsArr = json.optJSONArray("bookingProposals") ?: JSONArray()
+        for (i in 0 until proposalsArr.length()) {
+            val proposal = proposalsArr.getJSONObject(i)
+            proposalsList.add(
+                PersistedBookingProposal(
+                    id = proposal.optString("id", ""),
+                    konto = proposal.optString("konto", ""),
+                    gegenkonto = proposal.optString("gegenkonto", ""),
+                    betragCent = proposal.optLong("betragCent", 0L),
+                    buSchluessel = proposal.optString("buSchluessel", "")
+                )
+            )
+        }
+
+        val exportIdsList = mutableListOf<String>()
+        val exportIdsArr = json.optJSONArray("exportIds") ?: JSONArray()
+        for (i in 0 until exportIdsArr.length()) {
+            exportIdsArr.optString(i, "").takeIf(String::isNotBlank)?.let(exportIdsList::add)
+        }
+
         val aiAnalysisObj = json.optJSONObject("aiAnalysis")
         val aiAnalysis = if (aiAnalysisObj != null) {
             val fieldsMap = mutableMapOf<String, PersistedAiField>()
@@ -988,6 +1023,7 @@ class DrivePersistenceRepository(
             internalId = json.getString("internalId"),
             displayId = if (json.isNull("displayId")) null else json.getString("displayId"),
             documents = docsList,
+            metadataFileId = json.optString("metadataFileId", ""),
             driveFileId = json.optString("driveFileId", ""),
             driveFolderId = if (json.isNull("driveFolderId")) null else json.optString("driveFolderId", null),
             filename = json.optString("filename", ""),
@@ -1007,11 +1043,16 @@ class DrivePersistenceRepository(
             wohneinheit = if (json.isNull("wohneinheit")) null else json.getString("wohneinheit"),
             massnahme = if (json.isNull("massnahme")) null else json.getString("massnahme"),
             positionen = posList,
+            allocations = allocationsList,
+            bookingProposals = proposalsList,
             zahlungsstatus = if (json.isNull("zahlungsstatus")) null else json.getString("zahlungsstatus"),
             zahlungsdatum = if (json.isNull("zahlungsdatum")) null else json.getString("zahlungsdatum"),
             zahlungsreferenz = if (json.isNull("zahlungsreferenz")) null else json.getString("zahlungsreferenz"),
+            notizSteuerberater = if (json.isNull("notizSteuerberater")) null else json.optString("notizSteuerberater"),
             pruefstatus = if (json.isNull("pruefstatus")) null else json.getString("pruefstatus"),
+            freigabestatus = if (json.isNull("freigabestatus")) null else json.optString("freigabestatus"),
             exportstatus = if (json.isNull("exportstatus")) null else json.getString("exportstatus"),
+            exportIds = exportIdsList,
             aiAnalysis = aiAnalysis,
             createdAt = json.getString("createdAt"),
             updatedAt = json.getString("updatedAt"),
