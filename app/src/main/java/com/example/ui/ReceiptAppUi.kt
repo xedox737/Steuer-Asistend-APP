@@ -12307,7 +12307,6 @@ fun DatevExportDialog(
     val unitFilter by viewModel.wizardUnitFilter.collectAsState()
     val yearFilter by viewModel.wizardYearFilter.collectAsState()
     val typeFilter by viewModel.wizardCategoryTypeFilter.collectAsState()
-    val excludeExported by viewModel.wizardExcludeAlreadyExported.collectAsState()
     val targetFormat by viewModel.wizardTargetFormat.collectAsState()
 
     var editableBeraterNr by remember(activeProfile) { mutableStateOf(activeProfile.beraterNummer) }
