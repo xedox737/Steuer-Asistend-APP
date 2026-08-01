@@ -22,7 +22,7 @@ object DatevOriginalAttachmentPolicy {
             .firstOrNull { it.isFile && it.canRead() && it.length() > 0L }
             ?: return null
 
-        val detected = detect(file, receipt.originalMimeType) ?: return null
+        val detected = detect(file) ?: return null
         return DatevOriginalAttachment(
             receiptInternalId = receipt.internalId,
             file = file,
@@ -37,7 +37,7 @@ object DatevOriginalAttachmentPolicy {
             .mapNotNull(::resolve)
             .toList()
 
-    private fun detect(file: File, declaredMimeType: String?): Pair<String, String>? {
+    private fun detect(file: File): Pair<String, String>? {
         val header = file.inputStream().use { input ->
             val bytes = ByteArray(12)
             val count = input.read(bytes)
@@ -61,8 +61,6 @@ object DatevOriginalAttachmentPolicy {
                 header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) &&
                 header.copyOfRange(8, 12).contentEquals("WEBP".toByteArray()) ->
                 "image/webp" to "webp"
-            declaredMimeType == "application/pdf" && file.extension.equals("pdf", true) ->
-                "application/pdf" to "pdf"
             else -> null
         }
     }
