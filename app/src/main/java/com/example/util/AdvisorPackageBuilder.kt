@@ -30,6 +30,7 @@ object AdvisorPackageBuilder {
         records: List<BookingRecord>,
         includedReceipts: List<Receipt>,
         excludedReceipts: List<Receipt>,
+        includeOriginals: Boolean,
         profile: DatevProfile,
         validationReport: ValidationReport,
         periodSummary: String = "2026"
@@ -60,7 +61,7 @@ object AdvisorPackageBuilder {
             // 2. 02_Belege/ (exactly one verified original per stable receipt identity)
             val includedByRoomId = includedReceipts.associateBy { it.id }
             val processedReceiptReferences = mutableSetOf<String>()
-            records.forEach { record ->
+            if (includeOriginals) records.forEach { record ->
                 if (processedReceiptReferences.add(record.belegfeld1)) {
                     val receipt = includedByRoomId[record.receiptId]
                         ?: throw IllegalStateException(
