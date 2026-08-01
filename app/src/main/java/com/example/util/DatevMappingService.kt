@@ -6,7 +6,6 @@ import com.example.data.Receipt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.util.Locale
-import java.util.UUID
 
 data class ReceiptAllocation(
     val receiptId: Int,
