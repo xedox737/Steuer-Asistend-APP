@@ -1583,6 +1583,7 @@ data class AiSearchUiState(
             records = records,
             includedReceipts = _wizardIncludedReceipts.value,
             excludedReceipts = excluded,
+            includeOriginals = _wizardTargetFormat.value == "FULL_ZIP",
             profile = profile,
             validationReport = report,
             periodSummary = _wizardYearFilter.value
