@@ -28,7 +28,6 @@ data class ReceiptAllocation(
 ) {
     fun createGroupKey(): String {
         return listOf(
-            receiptId,
             propertyId.ifBlank { "OBJEKT_ALLG" },
             unitId.ifBlank { "GESAMT" },
             projectId.ifBlank { "OHNE_MASSNAHME" },
@@ -200,9 +199,11 @@ object DatevMappingService {
         // Group by groupKey
         val groupedMap = exportableAllocations.groupBy { it.createGroupKey() }
 
-        val rawGuid = UUID.nameUUIDFromBytes("RECEIPT_${receipt.id}_${receipt.datum}".toByteArray(Charsets.UTF_8))
-            .toString().replace("-", "").uppercase(Locale.GERMANY)
-        val belegfeld1 = if (rawGuid.length >= 12) "BLG-${receipt.id}-${rawGuid.take(6)}" else "BLG-${receipt.id}"
+        val stableIdentity = receipt.internalId.trim().ifEmpty { "LEGACY_ROOM_${receipt.id}" }
+        val rawGuid = DatevExportPolicy.stableReceiptGuid(stableIdentity)
+            .replace("-", "")
+            .uppercase(Locale.GERMANY)
+        val belegfeld1 = "BLG-${rawGuid.take(18)}"
 
         val kost1 = when (profile.kost1Logic) {
             "OBJEKT" -> profile.profileName.take(15)
@@ -237,7 +238,7 @@ object DatevMappingService {
 
             records.add(
                 BookingRecord(
-                    bookingId = "GRP_${receipt.id}_${Math.abs(groupKey.hashCode())}",
+                    bookingId = "GRP_${rawGuid.take(12)}_${Math.abs(groupKey.hashCode())}",
                     receiptId = receipt.id,
                     originalFileId = receipt.imageUrl,
                     belegnummer = belegfeld1,
