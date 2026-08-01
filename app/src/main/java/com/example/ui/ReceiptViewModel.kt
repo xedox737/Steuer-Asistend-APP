@@ -1495,7 +1495,6 @@ data class AiSearchUiState(
         val yearFilter = _wizardYearFilter.value
         val typeFilter = _wizardCategoryTypeFilter.value
         val excludeExported = _wizardExcludeAlreadyExported.value
-        val allowUnverified = _wizardAllowUnverifiedOverride.value
 
         val included = mutableListOf<Receipt>()
         val excluded = mutableListOf<Receipt>()
