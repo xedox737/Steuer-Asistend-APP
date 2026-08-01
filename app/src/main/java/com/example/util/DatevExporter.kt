@@ -10,7 +10,6 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -29,13 +28,23 @@ object DatevExporter {
     private const val TAG = "DatevExporter"
 
     /**
-     * Generates a unique 36-char UUID string based on receipt.id for consistent BEDI link
+     * Generates a stable BEDI reference from the cross-device receipt identity.
+     * The local Room id is used only for legacy rows that have not received an internalId yet.
      */
-    fun getReceiptGuid(receipt: Receipt): String {
-        return try {
-            UUID.nameUUIDFromBytes(receipt.id.toString().toByteArray(Charsets.UTF_8)).toString()
-        } catch (e: Exception) {
-            UUID.randomUUID().toString()
+    fun getReceiptGuid(receipt: Receipt): String =
+        DatevExportPolicy.stableReceiptGuid(exportIdentity(receipt))
+
+    private fun exportIdentity(receipt: Receipt): String =
+        receipt.internalId.trim().ifEmpty { "LEGACY_ROOM_${receipt.id}" }
+
+    private fun requireUniqueReceiptIdentities(receipts: List<Receipt>) {
+        val duplicateIds = receipts
+            .groupingBy(::exportIdentity)
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
+        require(duplicateIds.isEmpty()) {
+            "DATEV-Export blockiert: doppelte Belegidentitäten: ${duplicateIds.joinToString()}"
         }
     }
 
@@ -51,6 +60,7 @@ object DatevExporter {
      * Generates EXTF Buchungsstapel CSV according to exact DATEV EXTF specification
      */
     fun generateBuchungsstapelCsv(receipts: List<Receipt>, config: DatevConfig): String {
+        requireUniqueReceiptIdentities(receipts)
         val timestamp = SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.GERMANY).format(Date())
         val startYearDate = "${config.wirtschaftsjahr}0101"
         val endYearDate = "${config.wirtschaftsjahr}1231"
@@ -140,6 +150,7 @@ object DatevExporter {
      * Generates DATEV Unternehmen Online BEDI XML (document.xml)
      */
     fun generateDocumentXml(receipts: List<Receipt>, config: DatevConfig): String {
+        requireUniqueReceiptIdentities(receipts)
         val nowIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.GERMANY).format(Date())
         val sb = StringBuilder()
 
@@ -205,6 +216,7 @@ object DatevExporter {
         receipts: List<Receipt>,
         config: DatevConfig
     ): File {
+        requireUniqueReceiptIdentities(receipts)
         val zipFile = File(context.cacheDir, "DATEV_Export_${config.wirtschaftsjahr}_${System.currentTimeMillis()}.zip")
 
         val buchungsstapelCsv = generateBuchungsstapelCsv(receipts, config)
