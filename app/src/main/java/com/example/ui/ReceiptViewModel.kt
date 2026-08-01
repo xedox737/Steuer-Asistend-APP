@@ -1501,7 +1501,8 @@ data class AiSearchUiState(
         val unitFilter = _wizardUnitFilter.value
         val yearFilter = _wizardYearFilter.value
         val typeFilter = _wizardCategoryTypeFilter.value
-        val excludeExported = _wizardExcludeAlreadyExported.value
+        val duplicateInternalIds =
+            com.example.util.DatevReceiptEligibility.duplicateInternalIds(allRecs)
 
         val included = mutableListOf<Receipt>()
         val excluded = mutableListOf<Receipt>()
@@ -1528,12 +1529,11 @@ data class AiSearchUiState(
             ) {
                 reasons += "Beleg ist keine Ausgabe."
             }
-            if (excludeExported && receipt.exportStatus == "EXPORTIERT") {
-                reasons += "Beleg wurde bereits exportiert."
-            }
-
             reasons += com.example.util.DatevReceiptEligibility.issues(receipt)
                 .map { it.message }
+            if (receipt.internalId.trim() in duplicateInternalIds) {
+                reasons += "Stabile Beleg-ID kommt mehrfach vor; Export ist bis zur Dublettenbereinigung blockiert."
+            }
 
             if (reasons.isEmpty()) {
                 included += receipt
@@ -1593,7 +1593,15 @@ data class AiSearchUiState(
                 periodStart = "${_wizardYearFilter.value}-01-01",
                 periodEnd = "${_wizardYearFilter.value}-12-31",
                 filterSummary = "Objekt: ${profile.profileName}, Wohneinheit: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
-                exportierteReceiptIdsJson = "[]",
+                exportierteReceiptIdsJson = org.json.JSONArray(
+                    records.map { it.receiptId }
+                        .distinct()
+                        .mapNotNull { receiptId ->
+                            receipts.value.firstOrNull { it.id == receiptId }
+                                ?.internalId
+                                ?.takeIf(String::isNotBlank)
+                        }
+                ).toString(),
                 kanzleiprofilNameVersion = "${profile.profileName} v${profile.version}",
                 zipFileName = packageResult.zipFile.name,
                 zipFileSizeBytes = packageResult.zipFile.length(),
