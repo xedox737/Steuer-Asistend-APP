@@ -1991,24 +1991,30 @@ data class AiSearchUiState(
     // Update an existing receipt in database
     fun updateReceipt(receipt: Receipt) {
         viewModelScope.launch {
-            // Learn rule automatically on user corrections
-            learnVendorRule(
-                receipt.aussteller,
-                receipt.hauptkategorie,
-                receipt.unterkategorie,
-                receipt.kontoNr,
-                receipt.wohneinheit
+            val persistedReceipt = repository.getReceiptById(receipt.id)
+            val receiptToSave = com.example.data.DatevApprovalInvalidationPolicy.apply(
+                persistedReceipt,
+                receipt
             )
 
-            repository.insert(receipt)
+            // Learn rule automatically on user corrections
+            learnVendorRule(
+                receiptToSave.aussteller,
+                receiptToSave.hauptkategorie,
+                receiptToSave.unterkategorie,
+                receiptToSave.kontoNr,
+                receiptToSave.wohneinheit
+            )
+
+            repository.insert(receiptToSave)
 
             if (FirestoreService.isCloudActive()) {
-                FirestoreService.saveReceipt(receipt)
+                FirestoreService.saveReceipt(receiptToSave)
             }
             
             // Auto drive backup if enabled
-            if (_isDriveConnected.value && _autoDriveBackup.value && !receipt.isArchivedToDrive) {
-                uploadReceiptToDriveInternal(receipt)
+            if (_isDriveConnected.value && _autoDriveBackup.value && !receiptToSave.isArchivedToDrive) {
+                uploadReceiptToDriveInternal(receiptToSave)
             }
         }
     }
