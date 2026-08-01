@@ -12299,6 +12299,7 @@ fun DatevExportDialog(
     val activeProfile by viewModel.activeDatevProfile.collectAsState()
     val mappedRecords by viewModel.wizardMappedRecords.collectAsState()
     val excludedReceipts by viewModel.wizardExcludedReceipts.collectAsState()
+    val exclusionReasons by viewModel.wizardExclusionReasons.collectAsState()
     val validationReport by viewModel.wizardValidationReport.collectAsState()
     val lastResult by viewModel.lastExportResult.collectAsState()
     val auditRuns by viewModel.allAuditRuns.collectAsState()
@@ -12485,6 +12486,30 @@ fun DatevExportDialog(
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
+                                        if (excludedReceipts.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Text(
+                                                "Warum Belege ausgeschlossen sind:",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            excludedReceipts.take(10).forEach { receipt ->
+                                                val key = com.example.util.DatevReceiptEligibility.key(receipt)
+                                                val reasons = exclusionReasons[key].orEmpty()
+                                                Text(
+                                                    "• ${receipt.getEffectiveDisplayId()}: ${reasons.joinToString(" ")}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.error
+                                                )
+                                            }
+                                            if (excludedReceipts.size > 10) {
+                                                Text(
+                                                    "Weitere ${excludedReceipts.size - 10} Belege sind ausgeschlossen.",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
