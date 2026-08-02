@@ -3113,11 +3113,29 @@ class DrivePersistenceRepository(
         }
 
         val localCountBefore = localRepository.getAllReceiptsList().size
-        Log.d(TAG, "Non-destructive dry-run snapshot test succeeded. Local count before: $localCountBefore, Snapshot receipts: ${snapshot.receipts.size}")
+        Log.d(TAG, "Non-destructive dry-run snapshot test succeeded. Local count: $localCountBefore, Snapshot receipts: ${snapshot.receipts.size}")
 
-        val report = executeFullDriveRestore(accessToken, config, requestedMode = RestoreMode.REPLACE_FULL)
-        Log.d(TAG, "E2E Restore completed. Restored receipts: ${report.receiptsRestored}, Errors: ${report.errorCount}")
-        return report
+        // A dry run must never import, replace, or otherwise mutate local data.
+        // Report the validated snapshot contents without invoking executeFullDriveRestore.
+        return DriveRestoreReport(
+            timestamp = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date()),
+            propertiesRestored = if (snapshot.propertyMetadata != null) 1 else 0,
+            unitsRestored = snapshot.units.size,
+            receiptsRestored = snapshot.receipts.size,
+            mainDocsLinked = snapshot.receipts.count { receipt ->
+                receipt.driveFileId.isNotBlank() || receipt.documents.isNotEmpty()
+            },
+            metadataFilesLoaded = snapshot.receipts.size,
+            itemsRestored = snapshot.receipts.sumOf { it.positionen.size },
+            splitsRestored = snapshot.receipts.sumOf { it.allocations.size },
+            proposalsRestored = snapshot.receipts.sumOf { it.bookingProposals.size },
+            exportsRestored = snapshot.exportRuns.size,
+            datevProfilesRestored = snapshot.datevProfiles.size,
+            learnedRulesRestored = snapshot.aiLearnedRules.size,
+            errorCount = 0,
+            errors = snapshot.warnings.map { "Warnung: ${it.message}" },
+            isSuccess = true
+        )
     }
 
     suspend fun restoreReceiptsFromDrive(accessToken: String, config: DriveAppConfig): Boolean {
