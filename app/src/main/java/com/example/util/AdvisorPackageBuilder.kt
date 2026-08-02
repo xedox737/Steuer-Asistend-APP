@@ -52,6 +52,11 @@ object AdvisorPackageBuilder {
 
             // 1. 01_DATEV/EXTF_Buchungsstapel_<Zeitraum>.csv
             val extfCsv = DatevCsvSerializer.serializeToCsvString(records, profile, periodSummary.take(4))
+            val formatValidation = DatevFormatValidator.validate(extfCsv)
+            require(formatValidation.isValid) {
+                "DATEV-Export wegen Formatfehlern blockiert: " +
+                    formatValidation.errors.joinToString(" | ")
+            }
             val extfBytes = extfCsv.toByteArray(Charsets.UTF_8)
             zos.putNextEntry(ZipEntry("01_DATEV/EXTF_Buchungsstapel_${periodSummary}.csv"))
             zos.write(bom)

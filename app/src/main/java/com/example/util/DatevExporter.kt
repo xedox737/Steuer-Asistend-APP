@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
 import android.util.Log
+import com.example.data.DatevProfile
 import com.example.data.Receipt
 import java.io.File
 import java.io.FileOutputStream
@@ -60,6 +61,48 @@ object DatevExporter {
      * Generates EXTF Buchungsstapel CSV according to exact DATEV EXTF specification
      */
     fun generateBuchungsstapelCsv(receipts: List<Receipt>, config: DatevConfig): String {
+        requireUniqueReceiptIdentities(receipts)
+        val eligibilityErrors = receipts.flatMap { receipt ->
+            DatevReceiptEligibility.issues(receipt).map { issue ->
+                "${DatevReceiptEligibility.key(receipt)}: ${issue.message}"
+            }
+        }
+        require(eligibilityErrors.isEmpty()) {
+            "DATEV-Export wegen fehlender Freigabe blockiert: " + eligibilityErrors.joinToString(" | ")
+        }
+        val baseProfile = if (config.chartType == "SKR04") {
+            DatevProfile.createDefaultSkr04()
+        } else {
+            DatevProfile.createDefaultSkr03()
+        }
+        val profile = baseProfile.copy(
+            profileName = config.propertyName.take(30),
+            beraterNummer = config.beraterNummer,
+            mandantenNummer = config.mandantenNummer,
+            mandantenName = config.mandantenName,
+            wirtschaftsjahrBeginn = "${config.wirtschaftsjahr}-01-01"
+        )
+        val records = receipts.flatMap { DatevMappingService.buildDatevBookingRows(it, profile) }
+        val validation = BookingValidationService.validateRecords(records, profile)
+        require(validation.isValidForExport) {
+            "DATEV-Export wegen Vorprüfungsfehlern blockiert: " +
+                validation.errors.joinToString(" | ") { it.message }
+        }
+        val csv = DatevCsvSerializer.serializeToCsvString(
+            records = records,
+            profile = profile,
+            year = config.wirtschaftsjahr.toString()
+        )
+        val formatValidation = DatevFormatValidator.validate(csv)
+        require(formatValidation.isValid) {
+            "DATEV-Export wegen Formatfehlern blockiert: " +
+                formatValidation.errors.joinToString(" | ")
+        }
+        return csv
+    }
+
+    @Suppress("unused")
+    private fun generateLegacyBuchungsstapelCsv(receipts: List<Receipt>, config: DatevConfig): String {
         requireUniqueReceiptIdentities(receipts)
         val timestamp = SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.GERMANY).format(Date())
         val startYearDate = "${config.wirtschaftsjahr}0101"
@@ -122,7 +165,8 @@ object DatevExporter {
     /**
      * Generates EXTF Debitoren/Kreditoren CSV
      */
-    fun generateKreditorenCsv(config: DatevConfig): String {
+    @Suppress("unused")
+    private fun generateLegacyKreditorenCsv(config: DatevConfig): String {
         val timestamp = SimpleDateFormat("yyyyMMddHHmmssSSS", Locale.GERMANY).format(Date())
         val startYearDate = "${config.wirtschaftsjahr}0101"
         val endYearDate = "${config.wirtschaftsjahr}1231"
@@ -207,7 +251,6 @@ object DatevExporter {
     /**
      * Creates a complete DATEV export ZIP package containing:
      * - EXTF_Buchungsstapel.csv
-     * - EXTF_Debitoren_Kreditoren.csv
      * - document.xml (DATEV BEDI XML)
      * - Attached receipt PDF files named <guid>.pdf
      */
@@ -220,7 +263,6 @@ object DatevExporter {
         val zipFile = File(context.cacheDir, "DATEV_Export_${config.wirtschaftsjahr}_${System.currentTimeMillis()}.zip")
 
         val buchungsstapelCsv = generateBuchungsstapelCsv(receipts, config)
-        val kreditorenCsv = generateKreditorenCsv(config)
         val documentXml = generateDocumentXml(receipts, config)
 
         // UTF-8 BOM for DATEV Windows compatibility
@@ -233,18 +275,12 @@ object DatevExporter {
             zos.write(buchungsstapelCsv.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 2. EXTF_Debitoren_Kreditoren.csv
-            zos.putNextEntry(ZipEntry("EXTF_Debitoren_Kreditoren.csv"))
-            zos.write(bom)
-            zos.write(kreditorenCsv.toByteArray(Charsets.UTF_8))
-            zos.closeEntry()
-
-            // 3. document.xml
+            // 2. document.xml
             zos.putNextEntry(ZipEntry("document.xml"))
             zos.write(documentXml.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 4. Receipt attachments converted to <guid>.pdf
+            // 3. Receipt attachments converted to <guid>.pdf
             receipts.forEach { receipt ->
                 val guid = getReceiptGuid(receipt)
                 val pdfBytes = createPdfForReceipt(context, receipt)

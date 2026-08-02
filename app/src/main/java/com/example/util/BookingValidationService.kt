@@ -190,6 +190,24 @@ object BookingValidationService {
             }
         }
 
+        if (records.isNotEmpty()) {
+            val exportYear = records.first().belegdatum.take(4)
+                .takeIf { it.matches(Regex("\\d{4}")) }
+                ?: profile.wirtschaftsjahrBeginn.take(4)
+            val serializedCsv = DatevCsvSerializer.serializeToCsvString(records, profile, exportYear)
+            DatevFormatValidator.validate(serializedCsv).errors.forEach { formatError ->
+                errors.add(
+                    ValidationIssue(
+                        isError = true,
+                        bookingId = "DATEV_FORMAT",
+                        receiptId = 0,
+                        field = "datevFormat",
+                        message = formatError
+                    )
+                )
+            }
+        }
+
         return ValidationReport(
             errors = errors,
             warnings = warnings,

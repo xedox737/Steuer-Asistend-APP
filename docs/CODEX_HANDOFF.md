@@ -105,6 +105,49 @@ PREVIEWED → CONFIRMED → REFERENCES_REMOVED → DRIVE_METADATA_REMOVED → MA
 - CI baut und testet die Debug-App.
 - Veraltete CI-Läufe desselben Branches werden automatisch abgebrochen, damit der neueste Stand priorisiert wird.
 
+## Lokaler DATEV-Arbeitsstand vom 02.08.2026 (noch nicht auf GitHub)
+
+- EXTF-Buchungsstapel auf Formatversion 13 mit exakt 125 Buchungsfeldern umgestellt.
+- EXTF-Kopfzeile umfasst exakt 31 Felder; Text- und Zahlenfelder werden passend serialisiert.
+- CSV-Ausgabe verwendet UTF-8 mit BOM im ZIP sowie ausschließlich CR/LF-Zeilenenden.
+- Buchungs-GUID steht in Feld 103; Feld 101 (Erlöskonto Anzahlungen) bleibt unbenutzt.
+- Ein strenger Formatprüfer blockiert fehlerhafte CSVs vor dem ZIP-Schreiben.
+- Der ältere öffentliche Exportweg verwendet jetzt ebenfalls Mapping, Freigabeprüfung, Vorprüfung, Serializer und Formatprüfer.
+- Ungeprüfte, nicht freigegebene, unvollständige oder bereits exportierte Belege werden blockiert.
+- Eine automatisch erzeugte, fachlich nicht belegte Debitoren-/Kreditoren-Datei wurde aus dem alten ZIP-Weg entfernt.
+- Direkter Kotlin-Compile-/Lauftest erfolgreich: Kopf 31, Spalten 125, Datensatz 125, CRLF, Ablehnung des alten Formats.
+- Anonymisierte Referenzdatei: `outputs/EXTF_Buchungsstapel_2026_KORRIGIERT_TEST.csv`.
+- Anonymisiertes Referenz-ZIP: `outputs/DATEV_Referenzexport_2026_KORRIGIERT_NUR_TESTDATEN.zip`.
+- SHA-256 der Referenz-CSV: `414F95DEAF1875ED2154797E7F553512DC77C22C1481B38BCF39A3CC7E2DF14E`.
+- Vollständiger Gradle-/Android-Build ist lokal noch nicht bestätigt, weil fehlende Maven-Abhängigkeiten in der eingeschränkten Umgebung nicht heruntergeladen werden konnten.
+- GitHub-Commit, Push, CI-APK und Emulator-Test stehen aus; Draft-PR #3 bleibt unverändert.
+
+## Lokaler OpenAI-Arbeitsstand vom 02.08.2026 (noch nicht auf GitHub)
+
+- In den Kontoeinstellungen gibt es ein eigenes Menü zur Auswahl von Gemini oder OpenAI für neue Beleganalysen.
+- Der OpenAI-Schlüssel wird vom Benutzer eingegeben, mit einem nicht exportierbaren Android-Keystore-Schlüssel per AES/GCM verschlüsselt und nie im UI-Zustand oder in Logs ausgegeben.
+- Der Schlüssel wird nicht in BuildConfig oder die APK eingebettet. Die lokale `.env` ist ignoriert und darf nicht committed werden.
+- OpenAI verwendet die Responses API mit Bildanalyse, strengem JSON-Schema und dem konfigurierbaren Standardmodell `gpt-5.6`.
+- Modellantworten werden vor der Formularübernahme semantisch geprüft: Aussteller, echtes Kalenderdatum, positiver Bruttobetrag, erlaubte Kategorie, Unterkategorie, Konto sowie Positionswerte und Positionszuordnungen.
+- Der direkte Schlüsselbetrieb ist in der UI ausdrücklich als privater Gerätemodus gekennzeichnet. Vor einer öffentlichen APK ist ein eigener Backend-Proxy erforderlich.
+- Separater Kotlin-Compile-/Lauftest der neuen Kernklassen erfolgreich (`OPENAI_KOTLIN_CHECK_OK`). Dabei wurde auch die Ablehnung eines unmöglichen Datums geprüft.
+- Ein vollständiger Gradle-Build scheitert in der lokalen eingeschränkten Umgebung weiterhin vor der eigentlichen Kotlin-Kompilierung an der Gradle-Laufzeit. Der vollständige CI-/APK-/Emulator-Test und ein echter OpenAI-Test mit anonymisiertem Beleg stehen deshalb noch aus.
+
+## Lokaler Design-Arbeitsstand vom 02.08.2026 (noch nicht auf GitHub)
+
+- Hauptnavigation von fünf kollidierenden Einträgen auf vier klare Bereiche reduziert: Start, Belege, Scannen und Finanzen.
+- Fahrtenbuch, Mieteingänge und Steuerschätzung bleiben über den Schnellzugriff auf Start erreichbar; Start bleibt bei diesen Unterseiten als übergeordneter Bereich markiert.
+- Scannen ist als visuell hervorgehobene Primäraktion in der unteren Navigation ausgeführt.
+- Kopfzeile zeigt jetzt den aktuellen Seitentitel statt auf jeder Seite denselben App-Namen.
+- Direkte, unbestätigte Datenrücksetzung wurde aus der globalen Kopfzeile entfernt.
+- Untere Navigation und Kopfzeile verwenden ruhige, helle Material-3-Flächen mit größeren Touch-Zielen und besserer Lesbarkeit auf schmalen Smartphones.
+- Dashboard-Warnung wurde kompakter und handlungsorientiert gestaltet; die anbieterspezifische Beschriftung wurde dort durch „KI-Assistenten“ ersetzt.
+- Einstellungen sind nun in KI & Automatisierung, Belege & Speicher, Adressen sowie Objekt & Personen gegliedert. Dekorative Emojis und konkurrierende Kartenfarben wurden entfernt.
+- App-weites Material-3-Farbsystem auf konsistente Blau-, Slate- und Grünwerte umgestellt; geräteabhängige Dynamic Colors sind für eindeutige Finanz- und Statusfarben standardmäßig deaktiviert.
+- Typografie um konsistente Titel-, Text- und Labelstufen ergänzt.
+- Kotlin-Syntaxprüfung der geänderten UI- und Theme-Dateien erfolgreich (`NO_KOTLIN_SYNTAX_ERRORS_DETECTED`).
+- Vollständiger Gradle-Lauf hing erneut vor der eigentlichen Kotlin-Kompilierung und wurde beendet. Neuer APK-/Emulator-Screenshot sowie Live-Prüfung von Touch-Zielen und Textskalierung stehen noch aus.
+
 ## Letzter bestätigter Prüfstand
 
 - Commit: `afc039534b9bb7bc32848e0392c317797d4657f6`
