@@ -545,12 +545,14 @@ class DrivePersistenceRepository(
                         return DriveInitializationResult.Failure("Inkompatible Datenbank-Schema-Version in Google Drive: ${config.schemaVersion}. Bitte aktualisieren Sie die App.")
                     }
 
-                    // Determine if the local state is empty to see if we should auto-restore
+                    // Only offer automatic metadata restore for a truly uninitialized local profile.
+                    // A user may deliberately reset receipts while keeping their property data.
                     val localReceipts = localRepository.allReceipts.first()
                     val isLocalEmpty = localReceipts.isEmpty()
+                    val hasLocalMetadata = localRepository.getPropertyMetadata() != null
 
                     var restored = false
-                    if (isLocalEmpty) {
+                    if (isLocalEmpty && !hasLocalMetadata) {
                         Log.d(TAG, "Local receipts database is empty. Triggering automatic restore of Stammdaten...")
                         restoreStammdatenFromDrive(accessToken, config)
                         restored = true
