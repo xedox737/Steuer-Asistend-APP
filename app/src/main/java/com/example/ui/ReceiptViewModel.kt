@@ -1,7 +1,3 @@
-Exit code: 0
-Wall time: 0.6 seconds
-Total output lines: 3001
-Output:
 package com.example.ui
 
 import android.app.Application
