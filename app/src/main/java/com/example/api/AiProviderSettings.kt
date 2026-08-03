@@ -1,3 +1,4 @@
+
 package com.example.api
 
 import android.content.Context
@@ -185,8 +186,10 @@ object AiProviderSettings {
     internal fun isPlausibleOpenAiKey(value: String): Boolean =
         value.startsWith("sk-") && value.length >= 24 && value.none(Char::isWhitespace)
 
+    // Google AI Studio now issues both legacy AIza keys and newer auth keys.
+    // Key prefixes are not a stable validation mechanism; reject only clearly malformed input.
     internal fun isPlausibleGeminiKey(value: String): Boolean =
-        value.startsWith("AIza") && value.length >= 24 && value.none(Char::isWhitespace)
+        value.length >= 16 && value.none(Char::isWhitespace)
 
     private fun hasStoredOpenAiKey(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -243,3 +246,4 @@ object AiProviderSettings {
         return keyStore.getKey(GEMINI_KEYSTORE_ALIAS, null) as? SecretKey
     }
 }
+
