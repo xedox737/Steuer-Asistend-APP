@@ -343,7 +343,8 @@ object GeminiClient {
         receiptText: String? = null,
         bitmap: Bitmap? = null,
         bitmaps: List<Bitmap>? = null,
-        userLearnedRulesContext: String? = null
+        userLearnedRulesContext: String? = null,
+        apiKeyOverride: CharArray? = null
     ): ExtractedReceipt? {
         val startTime = System.currentTimeMillis()
         val suppliedBitmaps = buildList {
@@ -368,7 +369,8 @@ object GeminiClient {
             "${receiptText?.length ?: 0} chars"
         }
 
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
+            .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val duration = System.currentTimeMillis() - startTime
             Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
@@ -645,11 +647,14 @@ object GeminiClient {
         startAddress: String,
         viaAddress: String,
         endAddress: String,
-        routeType: String
+        routeType: String,
+        apiKeyOverride: CharArray? = null
     ): Double? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
+            .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            apiKeyOverride?.fill('\u0000')
             return null
         }
 
@@ -700,6 +705,8 @@ object GeminiClient {
         } catch (e: Exception) {
             Log.e(TAG, "Error calculating route distance with Gemini: ", e)
             null
+        } finally {
+            apiKeyOverride?.fill('\u0000')
         }
     }
 
