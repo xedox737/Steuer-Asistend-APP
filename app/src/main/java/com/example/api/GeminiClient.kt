@@ -1,7 +1,3 @@
-Exit code: 0
-Wall time: 0.6 seconds
-Total output lines: 1170
-Output:
 package com.example.api
 
 import android.graphics.Bitmap
