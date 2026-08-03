@@ -457,7 +457,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 editor.putString("unit_label_${preset.name}", preset.label)
                 editor.putString("unit_mieter_${preset.name}", preset.mieter)
                 editor.putFloat("unit_rent_${preset.name}", preset.kaltmiete.toFloat())
-                editor.putFloat("unit_area_${preset.…25361 tokens truncated… fun analyzeDamagePhoto(bitmap: android.graphics.Bitmap, userDescription: String = "") {
+                editor.putFloat("unit_area_${preset.…25416 tokens truncated… fun analyzeDamagePhoto(bitmap: android.graphics.Bitmap, userDescription: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             _isAssessingDamage.value = true
             val result = com.example.api.GeminiClient.assessDamagePhoto(
