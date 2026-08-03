@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.example.BuildConfig
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -19,7 +20,8 @@ enum class ReceiptAnalysisProvider {
 data class AiProviderState(
     val provider: ReceiptAnalysisProvider = ReceiptAnalysisProvider.GEMINI,
     val openAiModel: String = DEFAULT_OPENAI_MODEL,
-    val hasOpenAiKey: Boolean = false
+    val hasOpenAiKey: Boolean = false,
+    val hasGeminiKey: Boolean = false
 ) {
     companion object {
         const val DEFAULT_OPENAI_MODEL = "gpt-5.6"
@@ -36,7 +38,10 @@ object AiProviderSettings {
     private const val KEY_MODEL = "openai_model"
     private const val KEY_CIPHERTEXT = "openai_key_ciphertext"
     private const val KEY_IV = "openai_key_iv"
+    private const val KEY_GEMINI_CIPHERTEXT = "gemini_key_ciphertext"
+    private const val KEY_GEMINI_IV = "gemini_key_iv"
     private const val KEYSTORE_ALIAS = "steuer_assistent_openai_key_v1"
+    private const val GEMINI_KEYSTORE_ALIAS = "steuer_assistent_gemini_key_v1"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     fun loadState(context: Context): AiProviderState {
@@ -55,7 +60,8 @@ object AiProviderSettings {
         return AiProviderState(
             provider = provider,
             openAiModel = model,
-            hasOpenAiKey = hasStoredOpenAiKey(context)
+            hasOpenAiKey = hasStoredOpenAiKey(context),
+            hasGeminiKey = hasStoredGeminiKey(context)
         )
     }
 
@@ -64,7 +70,10 @@ object AiProviderSettings {
         provider: ReceiptAnalysisProvider,
         model: String
     ): AiProviderState {
-        require(provider != ReceiptAnalysisProvider.OPENAI || hasStoredOpenAiKey(context)) {
+        require(
+            (provider != ReceiptAnalysisProvider.OPENAI || hasStoredOpenAiKey(context)) &&
+                (provider != ReceiptAnalysisProvider.GEMINI || hasStoredGeminiKey(context) || hasBuildConfigGeminiKey())
+        ) {
             "Für OpenAI muss zuerst ein API-Schlüssel gespeichert werden."
         }
         val normalizedModel = model.trim().ifBlank { AiProviderState.DEFAULT_OPENAI_MODEL }
@@ -117,6 +126,43 @@ object AiProviderSettings {
         }
     }
 
+    fun storeGeminiKey(context: Context, rawKey: CharArray) {
+        val key = rawKey.concatToString().trim()
+        try {
+            require(isPlausibleGeminiKey(key)) {
+                "Der Gemini-API-Schlüssel hat kein gültiges Format."
+            }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGeminiSecretKey())
+            val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_GEMINI_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                .putString(KEY_GEMINI_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                .apply()
+        } finally {
+            rawKey.fill('\u0000')
+        }
+    }
+
+    fun getGeminiKey(context: Context): CharArray? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ciphertext = prefs.getString(KEY_GEMINI_CIPHERTEXT, null) ?: return null
+        val iv = prefs.getString(KEY_GEMINI_IV, null) ?: return null
+        return runCatching {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                getGeminiSecretKey(),
+                GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))
+            )
+            String(cipher.doFinal(Base64.decode(ciphertext, Base64.NO_WRAP)), StandardCharsets.UTF_8).toCharArray()
+        }.getOrElse {
+            clearGeminiKey(context)
+            null
+        }
+    }
+
     fun clearOpenAiKey(context: Context): AiProviderState {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -127,13 +173,33 @@ object AiProviderSettings {
         return loadState(context)
     }
 
+    fun clearGeminiKey(context: Context): AiProviderState {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_GEMINI_CIPHERTEXT)
+            .remove(KEY_GEMINI_IV)
+            .apply()
+        return loadState(context)
+    }
+
     internal fun isPlausibleOpenAiKey(value: String): Boolean =
         value.startsWith("sk-") && value.length >= 24 && value.none(Char::isWhitespace)
+
+    internal fun isPlausibleGeminiKey(value: String): Boolean =
+        value.startsWith("AIza") && value.length >= 24 && value.none(Char::isWhitespace)
 
     private fun hasStoredOpenAiKey(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.contains(KEY_CIPHERTEXT) && prefs.contains(KEY_IV)
     }
+
+    private fun hasStoredGeminiKey(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.contains(KEY_GEMINI_CIPHERTEXT) && prefs.contains(KEY_GEMINI_IV)
+    }
+
+    private fun hasBuildConfigGeminiKey(): Boolean =
+        BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY"
 
     private fun getOrCreateSecretKey(): SecretKey =
         getSecretKey() ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
@@ -154,5 +220,26 @@ object AiProviderSettings {
     private fun getSecretKey(): SecretKey? {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         return keyStore.getKey(KEYSTORE_ALIAS, null) as? SecretKey
+    }
+
+    private fun getOrCreateGeminiSecretKey(): SecretKey =
+        getGeminiSecretKey() ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            .apply {
+                init(
+                    KeyGenParameterSpec.Builder(
+                        GEMINI_KEYSTORE_ALIAS,
+                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                    )
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setRandomizedEncryptionRequired(true)
+                        .build()
+                )
+            }
+            .generateKey()
+
+    private fun getGeminiSecretKey(): SecretKey? {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        return keyStore.getKey(GEMINI_KEYSTORE_ALIAS, null) as? SecretKey
     }
 }
