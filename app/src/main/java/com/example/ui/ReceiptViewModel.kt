@@ -10,6 +10,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.api.ExtractedReceipt
 import com.example.api.GeminiClient
 import com.example.api.GoogleDriveClient
+import com.example.api.AiProviderSettings
+import com.example.api.AiProviderState
+import com.example.api.OpenAiAnalysisException
+import com.example.api.OpenAiClient
+import com.example.api.ReceiptAnalysisProvider
 import com.example.data.AppDatabase
 import com.example.data.Receipt
 import com.example.data.ReceiptRepository
@@ -88,6 +93,48 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val drivePersistenceRepository = com.example.data.DrivePersistenceRepository(application, repository)
 
     private val sharedPrefs = application.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+    private val _aiProviderState = MutableStateFlow(AiProviderSettings.loadState(application))
+    val aiProviderState: StateFlow<AiProviderState> = _aiProviderState.asStateFlow()
+
+    fun saveAiProviderSettings(
+        provider: ReceiptAnalysisProvider,
+        model: String,
+        newOpenAiKey: String,
+        newGeminiKey: String
+    ): String? {
+        return try {
+            if (newOpenAiKey.isNotBlank()) {
+                AiProviderSettings.storeOpenAiKey(
+                    getApplication(),
+                    newOpenAiKey.toCharArray()
+                )
+            }
+            if (newGeminiKey.isNotBlank()) {
+                AiProviderSettings.storeGeminiKey(
+                    getApplication(),
+                    newGeminiKey.toCharArray()
+                )
+            }
+            _aiProviderState.value = AiProviderSettings.saveSelection(
+                context = getApplication(),
+                provider = provider,
+                model = model
+            )
+            null
+        } catch (e: IllegalArgumentException) {
+            e.message ?: "KI-Einstellungen konnten nicht gespeichert werden."
+        } catch (_: Exception) {
+            "Der API-Schlüssel konnte auf diesem Gerät nicht sicher gespeichert werden."
+        }
+    }
+
+    fun deleteOpenAiKey() {
+        _aiProviderState.value = AiProviderSettings.clearOpenAiKey(getApplication())
+    }
+
+    fun deleteGeminiKey() {
+        _aiProviderState.value = AiProviderSettings.clearGeminiKey(getApplication())
+    }
     private val learnedRulesPrefs = application.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
 
     // KI Adaptive Learning Rules State
@@ -126,67 +173,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _isAnalyzingContract = MutableStateFlow(false)
     val isAnalyzingContract = _isAnalyzingContract.asStateFlow()
 
-    private val _bankStatementResult = MutableStateFlow<com.example.api.BankStatementReconciliationResult?>(
-        com.example.api.BankStatementReconciliationResult(
-            period = "01.07.2025 - 31.07.2025",
-            totalIncoming = 1780.0,
-            totalOutgoing = 1496.30,
-            matchedCount = 3,
-            missingReceiptsCount = 2,
-            rentArrearsCount = 1,
-            items = listOf(
-                com.example.api.BankStatementMatchItem(
-                    date = "02.07.2025",
-                    counterparty = "Max Mustermann",
-                    amount = 750.0,
-                    isIncome = true,
-                    purpose = "Miete WE 01 Juli 2025",
-                    status = "MATCHED",
-                    notes = "Miete vollständig eingegangen"
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "05.07.2025",
-                    counterparty = "Stadtwerke München",
-                    amount = 280.50,
-                    isIncome = false,
-                    purpose = "Abschlag Strom & Gas",
-                    status = "MATCHED",
-                    notes = "Mit Versorgungs-Beleg aus Juli abgeglichen"
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "10.07.2025",
-                    counterparty = "Hornbach Baumarkt",
-                    amount = 145.80,
-                    isIncome = false,
-                    purpose = "Material Wandfarbe",
-                    status = "MISSING_RECEIPT",
-                    notes = "⚠️ Kein Beleg in der App vorhanden! Bitte Kassenzettel hochladen."
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "12.07.2025",
-                    counterparty = "Malermeister Müller",
-                    amount = 650.00,
-                    isIncome = false,
-                    purpose = "Re-Nr 2025-882 Renovierung",
-                    status = "MISSING_RECEIPT",
-                    notes = "⚠️ Abbuchung ohne Beleg! Rechnungsbeleg fehlt für Steuer."
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "28.07.2025",
-                    counterparty = "Thomas Weber",
-                    amount = 350.00,
-                    isIncome = true,
-                    purpose = "Teilzahlung Miete WE 05 (Soll: 700 €)",
-                    status = "RENT_ARREARS",
-                    notes = "🚨 Mietrückstand: 350,00 € fehlen für den Monat Juli!"
-                )
-            ),
-            summary = "Bankabgleich ergab 2 fehlende Abbuchungsbelege und 1 Mietrückstand. Handlungsbedarf vorliegend."
-        )
-    )
+    private val _bankStatementResult = MutableStateFlow<com.example.api.BankStatementReconciliationResult?>(null)
     val bankStatementResult = _bankStatementResult.asStateFlow()
     private val _isMatchingBankStatement = MutableStateFlow(false)
     val isMatchingBankStatement = _isMatchingBankStatement.asStateFlow()
+    private val _bankStatementResetVersion = MutableStateFlow(0)
+    val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
 
     // Google Drive Sync State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
@@ -1951,12 +1943,42 @@ data class AiSearchUiState(
                 }
 
                 val learnedContext = getUserLearnedRulesPromptContext()
-                val result = com.example.api.GeminiClient.analyzeReceipt(
-                    receiptText = text,
-                    bitmap = bitmap,
-                    bitmaps = bitmaps,
-                    userLearnedRulesContext = learnedContext
-                )
+                val providerState = _aiProviderState.value
+                val result = when (providerState.provider) {
+                    ReceiptAnalysisProvider.GEMINI -> {
+                        val key = AiProviderSettings.getGeminiKey(getApplication())
+                        try {
+                            GeminiClient.analyzeReceipt(
+                                receiptText = text,
+                                bitmap = bitmap,
+                                bitmaps = bitmaps,
+                                userLearnedRulesContext = learnedContext,
+                                apiKeyOverride = key
+                            )
+                        } finally {
+                            key?.fill('\u0000')
+                        }
+                    }
+                    ReceiptAnalysisProvider.OPENAI -> {
+                        val key = AiProviderSettings.getOpenAiKey(getApplication())
+                            ?: throw OpenAiAnalysisException(
+                                "Bitte in den KI-Anbieter-Einstellungen einen OpenAI-API-Schlüssel speichern.",
+                                "KEY_MISSING"
+                            )
+                        try {
+                            OpenAiClient.analyzeReceipt(
+                                apiKey = key,
+                                model = providerState.openAiModel,
+                                receiptText = text,
+                                bitmap = bitmap,
+                                bitmaps = bitmaps,
+                                userLearnedRulesContext = learnedContext
+                            )
+                        } finally {
+                            key.fill('\u0000')
+                        }
+                    }
+                }
                 if (result != null) {
                     _scanState.value = ScanUiState.Success(result, savedPaths)
                 } else {
@@ -1964,6 +1986,9 @@ data class AiSearchUiState(
                 }
             } catch (e: com.example.api.GeminiAnalysisException) {
                 Log.e("ReceiptViewModel", "Gemini analysis custom exception caught: category=${e.category}, code=${e.errorCode}", e)
+                _scanState.value = ScanUiState.Error(e.userMessage)
+            } catch (e: OpenAiAnalysisException) {
+                Log.e("ReceiptViewModel", "OpenAI receipt analysis failed: code=${e.errorCode}")
                 _scanState.value = ScanUiState.Error(e.userMessage)
             } catch (e: Exception) {
                 Log.e("ReceiptViewModel", "Unexpected exception during Gemini analysis", e)
@@ -2070,6 +2095,11 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) {
             repository.updatePropertyMetadata(metadata)
             _wohneinheitenStatus.value = getWohneinheitenFromPrefs(metadata.wohneinheiten)
+
+            // Keep the cloud backup current, but never use it to overwrite existing local metadata.
+            if (_isDriveConnected.value && _autoDriveBackup.value) {
+                syncAllToDrive()
+            }
         }
     }
 
@@ -2345,6 +2375,26 @@ data class AiSearchUiState(
         }
     }
 
+    /**
+     * Starts the receipt workflow over on this device without touching account,
+     * property, cloud connection, or AI provider settings.
+     */
+    fun resetLocalReceiptData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearAllData()
+
+            val editor = learnedRulesPrefs.edit()
+            learnedRulesPrefs.all.keys
+                .filter { it.startsWith("rule_") }
+                .forEach(editor::remove)
+            editor.apply()
+            _learnedRules.value = emptyList()
+            _bankStatementResult.value = null
+            _isMatchingBankStatement.value = false
+            _bankStatementResetVersion.value += 1
+        }
+    }
+
     fun syncWithCloud() {
         if (!FirestoreService.isCloudActive()) return
         if (FirestoreService.getCurrentUser() == null) {
@@ -2541,6 +2591,22 @@ data class AiSearchUiState(
             _bankStatementResult.value = result
             _isMatchingBankStatement.value = false
         }
+    }
+
+    suspend fun estimateLogbookRouteDistance(
+        startAddress: String,
+        viaAddress: String,
+        endAddress: String,
+        routeType: String
+    ): Double? {
+        val key = AiProviderSettings.getGeminiKey(getApplication())
+        return com.example.api.GeminiClient.estimateRouteDistance(
+            startAddress = startAddress,
+            viaAddress = viaAddress,
+            endAddress = endAddress,
+            routeType = routeType,
+            apiKeyOverride = key
+        )
     }
 
     // --- Document Repair & Manual Upload ---
