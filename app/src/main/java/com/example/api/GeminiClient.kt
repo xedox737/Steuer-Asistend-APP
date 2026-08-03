@@ -343,8 +343,7 @@ object GeminiClient {
         receiptText: String? = null,
         bitmap: Bitmap? = null,
         bitmaps: List<Bitmap>? = null,
-        userLearnedRulesContext: String? = null,
-        apiKeyOverride: CharArray? = null
+        userLearnedRulesContext: String? = null
     ): ExtractedReceipt? {
         val startTime = System.currentTimeMillis()
         val suppliedBitmaps = buildList {
@@ -369,8 +368,7 @@ object GeminiClient {
             "${receiptText?.length ?: 0} chars"
         }
 
-        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
-            .ifBlank { BuildConfig.GEMINI_API_KEY }
+        val apiKey = BuildConfig.GEMINI_API_KEY
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val duration = System.currentTimeMillis() - startTime
             Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
@@ -450,7 +448,285 @@ object GeminiClient {
             "Legionellenuntersuchung", "Maklerprovision", "Mietzuschlag", "Müllbeseitigung", 
             "Nachzahlung aus Betriebskostenabrechnung", "Notarkosten", "Nutzerwechselgebühren", 
             "Pauschalmiete", "Privateinlage", "Privatentnahme", "Rechtsberatungskosten", 
-            "Rechtsschutzversicherung", "Regelmäßige Dachrinnenrein…3734 tokens truncated… intelligenter Finanz- und Buchhaltungs-Assistent für Immobilienverwalter und Vermieter.
+            "Rechtsschutzversicherung", "Regelmäßige Dachrinnenreinigung & Fassadenreinigung", 
+            "Regelmäßige Ungezieferbekämpfung", "Reinigung Öltank", "Reinigungskosten", 
+            "Rückzahlung Kaution", "Sach- und Haftpflichtversicherung", "Sanitär", 
+            "Schadensbeseitigung", "Schornsteinreinigung", "Sondertilgung", "Sonstige", 
+            "Sonstige Betriebskosten", "Sonstige Einrichtungen", "Sonstige Versicherungen", 
+            "Sonstiges", "Sperrmüllentsorgung", "Stellplatz, Garage, Keller", "Steuerberatungskosten", 
+            "Straßenreinigung", "Streichen, Tapezieren", "Thermenwartung", "Umsatzsteuer bei Gewerbe", 
+            "Umsatzsteuer-Vorauszahlung", "Vermesser", "Vermietung", "Verwaltungskosten des Vermieters", 
+            "Verwaltungskosten für Sozialwohnungen", "Vorfälligkeitsentschädigung", "Wachdienst / Pförtner", 
+            "Warmmiete", "Warmwasserkosten", "Wartung Rauchmelder & Feuerlöscher", 
+            "Wartung der Heizungsanlage / Thermen", "Winterdienst", "Wärme- & Schalldämmung"
+
+            STRIKTE REGELN FÜR KONTO-NUMMERN (kontoNr):
+            - Rechnungen für Notar (Kaufvertrag!), Grunderwerbsteuer, Grundbuchamt und Makler -> "0050".
+            - Rechnungen für Kreditzinsen -> "2110".
+            - Rechnungen für Geldbeschaffungskosten (Notar Grundschuld!) -> "2120".
+            - Rechnungen für Kontoführungsgebühren -> "4970".
+            - Belege für Baumarkt-Materialien, Sanierung (Sanitär, Elektrik, Boden, Streichen etc.) -> "4830".
+            - Tankbelege oder sonstige Fahrtkostenbelege -> "4670".
+            - Andere Nebenkosten oder Gebühren -> "4970" (oder passend).
+
+            EXTRAKTIONS-VORGABEN:
+            - datum: Leistungs- oder Rechnungsdatum strikt im Format YYYY-MM-DD. Falls kein Datum erkennbar, nutze das heutige Datum (2026-07-14).
+            - aussteller: Firmenname und Markt-Standort/Adresse falls auf Beleg vorhanden (z. B. "OBI Baumarkt, Industriestr. 12, 12345 Musterstadt" oder "Hornbach").
+            - bruttobetrag: Finaler Zahlbetrag inklusive Mehrwertsteuer als reine positive Zahl (z. B. 145.50).
+            - uhrzeit: Lies die Uhrzeit (HH:MM) vom Beleg ab. WICHTIG für Baumarktquittungen! Falls keine Uhrzeit gefunden wird, setze einen leeren String "" ein.
+            - kontoNr: Die zugewiesene Konto-Nummer ("0050", "2110", "2120", "4970", "4830", "4670" oder passend).
+            - beschreibung: Kurze Zusammenfassung auf Deutsch, was gekauft wurde oder worum es geht (z. B. "Kauf von Wandfarbe und Malerzubehör").
+            - wohneinheit: Zugeordnete Wohneinheit (z. B. "WE 1", "WE 2" ... "WE 7"), falls auf dem Beleg genannt, sonst "Gesamtobjekt / Allgemein".
+            - mieter: Name des Mieters/Zahlers, falls auf dem Beleg oder der Überweisung genannt (z. B. "Erika Mustermann", "Hans Peter"), sonst leeres String "".
+            - isEigenleistungSanierung: true, falls es sich um einen Baumarkt-Materialbeleg handelt UND das Belegdatum zwischen 2025-10-01 and 2026-01-31 liegt. Sonst false.
+            - positionen: Extrahiere ALLE einzelnen Posten, Artikel oder Gebühren vom Beleg als Liste. Jede Position hat:
+              * bezeichnung: Name oder Artikelbeschreibung
+              * menge: Anzahl / Menge als Zahl (z. B. 1.0)
+              * einzelpreis: Preis pro Stück/Einheit in EUR als Zahl
+              * gesamtpreis: Gesamtpreis dieser Position in EUR als Zahl
+
+            ANTWORTE AUSSCHLIESSLICH IM GEFORDERTEN JSON-FORMAT. ERFINDE KEINE EIGENEN KATEGORIEN!
+            Verwende folgendes JSON-Format für die Antwort:
+            {
+              "aussteller": "Firmenname",
+              "datum": "JJJJ-MM-TT",
+              "uhrzeit": "HH:MM",
+              "bruttobetrag": 123.45,
+              "hauptkategorie": "Ausgewählte Hauptkategorie",
+              "unterkategorie": "Ausgewählte Unterkategorie",
+              "kontoNr": "Konto-Nr",
+              "beschreibung": "Kurzbeschreibung",
+              "wohneinheit": "WE 1",
+              "mieter": "Erika Mustermann",
+              "isEigenleistungSanierung": true/false,
+              "positionen": [
+                {
+                  "bezeichnung": "Wandfarbe Alpina 10L",
+                  "menge": 1.0,
+                  "einzelpreis": 49.99,
+                  "gesamtpreis": 49.99
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val request = GeminiRequest(
+            contents = listOf(Content(parts = parts)),
+            generationConfig = GenerationConfig(
+                responseMimeType = "application/json",
+                temperature = 0.1
+            ),
+            systemInstruction = Content(parts = listOf(Part(text = systemInstruction)))
+        )
+
+        return try {
+            val response = generateContentWithRetry(apiKey, request)
+            val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            val duration = System.currentTimeMillis() - startTime
+            if (jsonText != null) {
+                Log.d(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
+                Log.d(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+                Log.d(TAG, "Model: ${modelName}")
+                Log.d(TAG, "File Type: $mimeType")
+                Log.d(TAG, "File Size: $dataSize")
+                Log.d(TAG, "Duration: ${duration}ms")
+                Log.d(TAG, "HTTP Status: 200")
+                Log.d(TAG, "Status: SUCCESS")
+
+                // Sanitize potential markdown wrap
+                val cleanedJson = jsonText.trim()
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+                
+                try {
+                    val adapter = moshi.adapter(ExtractedReceipt::class.java)
+                    adapter.fromJson(cleanedJson) ?: throw Exception("Moshi returned null")
+                } catch (pe: Exception) {
+                    throw GeminiAnalysisException.InvalidResponse(pe.localizedMessage ?: "Moshi deserialization failed")
+                }
+            } else {
+                Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
+                Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+                Log.e(TAG, "Model: ${modelName}")
+                Log.e(TAG, "File Type: $mimeType")
+                Log.e(TAG, "File Size: $dataSize")
+                Log.e(TAG, "Duration: ${duration}ms")
+                Log.e(TAG, "HTTP Status: 200")
+                Log.e(TAG, "Error Category: PARSING")
+                Log.e(TAG, "Error Code: EMPTY_RESPONSE")
+                Log.e(TAG, "Cleaned Error Message: No text in candidate response (maybe blocked by safety filters)")
+                throw GeminiAnalysisException.InvalidResponse("Keine Antwort vom Modell erhalten (Sicherheitsfilter oder Blockierung).")
+            }
+        } catch (e: Exception) {
+            val duration = System.currentTimeMillis() - startTime
+            Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
+            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+            Log.e(TAG, "Model: ${modelName}")
+            Log.e(TAG, "File Type: $mimeType")
+            Log.e(TAG, "File Size: $dataSize")
+            Log.e(TAG, "Duration: ${duration}ms")
+
+            when (e) {
+                is GeminiAnalysisException -> throw e
+                is retrofit2.HttpException -> {
+                    val httpStatus = e.code()
+                    val requestId = e.response()?.headers()?.get("x-goog-ext-daemon-request-id") 
+                        ?: e.response()?.headers()?.get("x-goog-request-id") 
+                        ?: "unknown"
+                    val errorBody = e.response()?.errorBody()?.string() ?: ""
+                    val cleanedError = sanitizeErrorBody(errorBody)
+
+                    Log.e(TAG, "HTTP Status: $httpStatus")
+                    Log.e(TAG, "Request ID: $requestId")
+                    Log.e(TAG, "Error Code: HTTP_$httpStatus")
+                    Log.e(TAG, "Cleaned Error Message: $cleanedError")
+
+                    when (httpStatus) {
+                        401 -> {
+                            Log.e(TAG, "Error Category: AUTH")
+                            throw GeminiAnalysisException.KeyInvalid(cleanedError)
+                        }
+                        403 -> {
+                            Log.e(TAG, "Error Category: AUTH")
+                            throw GeminiAnalysisException.PermissionDenied(cleanedError)
+                        }
+                        429 -> {
+                            Log.e(TAG, "Error Category: QUOTA")
+                            throw GeminiAnalysisException.QuotaExceeded(cleanedError)
+                        }
+                        400 -> {
+                            Log.e(TAG, "Error Category: LIMIT")
+                            throw GeminiAnalysisException.RequestTooLarge(cleanedError)
+                        }
+                        else -> {
+                            Log.e(TAG, "Error Category: SERVER")
+                            throw GeminiAnalysisException.GenericError(
+                                errorCode = "HTTP_$httpStatus",
+                                userMessage = "Ein unerwarteter Serverfehler ist aufgetreten (HTTP $httpStatus).",
+                                httpStatus = httpStatus,
+                                cleanedMsg = cleanedError
+                            )
+                        }
+                    }
+                }
+                is java.net.SocketTimeoutException -> {
+                    Log.e(TAG, "Error Category: TIMEOUT")
+                    Log.e(TAG, "Error Code: TIMEOUT")
+                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    throw GeminiAnalysisException.TimeoutError(e)
+                }
+                is java.io.IOException -> {
+                    Log.e(TAG, "Error Category: NETWORK")
+                    Log.e(TAG, "Error Code: NETWORK_ERROR")
+                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    throw GeminiAnalysisException.NetworkError(e)
+                }
+                else -> {
+                    Log.e(TAG, "Error Category: GENERIC")
+                    Log.e(TAG, "Error Code: UNKNOWN")
+                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    throw GeminiAnalysisException.GenericError(
+                        errorCode = "UNKNOWN",
+                        userMessage = "Unerwarteter Fehler: ${e.localizedMessage}",
+                        cleanedMsg = e.localizedMessage
+                    )
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Estimates route distance between Start, Via (Store), and End (Property) addresses in Germany.
+     */
+    suspend fun estimateRouteDistance(
+        startAddress: String,
+        viaAddress: String,
+        endAddress: String,
+        routeType: String
+    ): Double? {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            return null
+        }
+
+        val prompt = """
+            Du bist ein präziser Routen- und Entfernungsrechner für Fahrtenbücher in Deutschland.
+            Berechne die realistisch gefahrene Straßen-Strecke mit dem Auto in Kilometern (nur eine Zahl als Double) für folgende Adressen und Routentyp:
+            - Startadresse (Meine Adresse / Wohnort): $startAddress
+            - Zwischenstation (Baumarkt / Händler aus Beleg): $viaAddress
+            - Zieladresse (Immobilien-Objekt): $endAddress
+            - Routentyp: $routeType
+
+            Routentyp Erklärung:
+            - "standard": Rundfahrt (Startadresse -> Zwischenstation -> Zieladresse -> Startadresse)
+            - "store_only": Fahrt zum Markt (Startadresse -> Zwischenstation -> Startadresse)
+            - "property_only": Fahrt zum Objekt (Startadresse -> Zieladresse -> Startadresse)
+
+            Schätze die echte Fahrtstrecke auf Straßen (keine Luftlinie).
+            Gib NUR ein gültiges JSON zurück mit folgendem Aufbau (kein Markdown, kein Freitext):
+            {
+              "distanceKm": 24.5
+            }
+        """.trimIndent()
+
+        val request = GeminiRequest(
+            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+            generationConfig = GenerationConfig(
+                responseMimeType = "application/json",
+                temperature = 0.2
+            )
+        )
+
+        return try {
+            val response = generateContentWithRetry(apiKey, request)
+            val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            if (jsonText != null) {
+                val cleanedJson = jsonText.trim()
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+                
+                val distanceRegex = """"distanceKm"\s*:\s*([0-9.]+)""".toRegex()
+                val match = distanceRegex.find(cleanedJson)
+                match?.groupValues?.get(1)?.toDoubleOrNull()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating route distance with Gemini: ", e)
+            null
+        }
+    }
+
+    /**
+     * Answers natural language search queries over the Room database receipts using Gemini 3.5 Flash.
+     */
+    suspend fun answerNaturalLanguageQuery(
+        userQuery: String,
+        receipts: List<com.example.data.Receipt>
+    ): AiSearchResult? {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            return null
+        }
+
+        // Build a concise summary of all receipts in Room
+        val receiptsSummary = if (receipts.isEmpty()) {
+            "Keine Belege in der Datenbank vorhanden."
+        } else {
+            receipts.joinToString(separator = "\n") { r ->
+                "- ID: ${r.id}, Datum: ${r.datum}, Aussteller: '${r.aussteller}', Betrag: ${r.bruttobetrag} EUR, Kat: '${r.hauptkategorie}' / '${r.unterkategorie}', Konto: ${r.kontoNr}, WE: '${r.wohneinheit}', Mieter: '${r.mieter}', Beschr: '${r.beschreibung}', Sanierung: ${r.isEigenleistungSanierung}"
+            }
+        }
+
+        val prompt = """
+            Du bist ein intelligenter Finanz- und Buchhaltungs-Assistent für Immobilienverwalter und Vermieter.
             Hier ist die vollständige Liste der aktuell in der Room-Datenbank gespeicherten Belege:
 
             $receiptsSummary
@@ -884,4 +1160,3 @@ object GeminiClient {
         }
     }
 }
-
