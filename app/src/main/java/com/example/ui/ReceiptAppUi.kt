@@ -126,6 +126,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
@@ -232,19 +233,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.api.ExtractedReceipt
+import com.example.api.ReceiptAnalysisProvider
 import com.example.data.Receipt
 import com.example.data.PropertyMetadata
 import java.text.DecimalFormat
 import java.util.Locale
 
 // Custom modern colors for the tax/accounting advisor theme
-val SlateGray = Color(0xFF2C3E50)
-val DarkNavy = Color(0xFF1A252F)
-val EmeraldGreen = Color(0xFF2ECC71)
-val AccentBlue = Color(0xFF3498DB)
-val WarmOrange = Color(0xFFE67E22)
-val CrimsonRed = Color(0xFFE74C3C)
-val SoftBackground = Color(0xFFF8F9FA)
+val SlateGray = Color(0xFF475569)
+val DarkNavy = Color(0xFF0F172A)
+val EmeraldGreen = Color(0xFF059669)
+val AccentBlue = Color(0xFF2563EB)
+val WarmOrange = Color(0xFFEA580C)
+val CrimsonRed = Color(0xFFDC2626)
+val SoftBackground = Color(0xFFF8FAFC)
 val BorderColor = Color(0xFFE2E8F0)
 
 val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
@@ -263,6 +265,15 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
     val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
+    val screenTitle = when (currentScreen) {
+        AppScreen.DASHBOARD -> "Übersicht"
+        AppScreen.RECEIPTS_LIST -> "Belege"
+        AppScreen.ADD_RECEIPT -> "Beleg erfassen"
+        AppScreen.LOGBOOK -> "Fahrtenbuch"
+        AppScreen.LEDGER -> "Finanzen"
+        AppScreen.RENT_OVERVIEW -> "Mieteingänge"
+        AppScreen.TAX_CALCULATOR -> "Steuerschätzung"
+    }
 
     var showAccountSettingsDialog by remember { mutableStateOf(false) }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
@@ -287,25 +298,19 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageName = Icons.Default.AccountBalance,
-                            contentDescription = "App Logo",
-                            tint = Color.White,
-                            modifier = Modifier.size(28.dp)
-                        )
                         Column {
                             Text(
-                                "Steuer-Assistent",
+                                screenTitle,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontSize = 18.sp
+                                color = DarkNavy,
+                                fontSize = 20.sp
                             )
                             Text(
-                                "7-Familienhaus • Anlage V",
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp
+                                if (currentScreen == AppScreen.DASHBOARD) "Steuer-Assistent • Anlage V" else "Steuer-Assistent",
+                                color = SlateGray,
+                                fontSize = 11.sp
                             )
                         }
                     }
@@ -316,7 +321,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             onClick = { showKiPowerCenterDialog = true },
                             modifier = Modifier.testTag("ki_power_center_button")
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "Gemini KI-Zentrale", tint = Color(0xFFF59E0B))
+                            Icon(Icons.Default.AutoAwesome, contentDescription = "KI-Assistenten", tint = Color(0xFF7C3AED))
                         }
                         if (totalBankAlerts > 0) {
                             Box(
@@ -341,48 +346,58 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                         onClick = { showAccountSettingsDialog = true },
                         modifier = Modifier.testTag("account_settings_button")
                     ) {
-                        Icon(Icons.Default.Person, contentDescription = "Einstellungen", tint = Color.White)
-                    }
-                    IconButton(
-                        onClick = { viewModel.resetToDefaults() },
-                        modifier = Modifier.testTag("reset_db_button")
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Daten zurücksetzen", tint = Color.White)
+                        Icon(Icons.Default.Settings, contentDescription = "Einstellungen", tint = DarkNavy)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkNavy
+                    containerColor = Color.White,
+                    scrolledContainerColor = Color.White
                 )
             )
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = DarkNavy,
-                modifier = Modifier.testTag("bottom_navigation")
-            ) {
-                val items = listOf(
-                    Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Übersicht"),
-                    Triple(AppScreen.RECEIPTS_LIST, Icons.Default.Receipt, "Belege"),
-                    Triple(AppScreen.ADD_RECEIPT, Icons.Default.AutoAwesome, "Scanner"),
-                    Triple(AppScreen.LOGBOOK, Icons.Default.DirectionsCar, "Fahrtenbuch"),
-                    Triple(AppScreen.LEDGER, Icons.Default.List, "Konten")
-                )
-
-                items.forEach { (screen, icon, label) ->
-                    NavigationBarItem(
-                        selected = currentScreen == screen,
-                        onClick = { viewModel.setScreen(screen) },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = EmeraldGreen,
-                            selectedTextColor = EmeraldGreen,
-                            unselectedIconColor = Color.White.copy(alpha = 0.6f),
-                            unselectedTextColor = Color.White.copy(alpha = 0.6f),
-                            indicatorColor = SlateGray
-                        ),
-                        modifier = Modifier.testTag("nav_item_${screen.name.lowercase()}")
+            Column {
+                HorizontalDivider(color = BorderColor)
+                NavigationBar(
+                    containerColor = Color.White,
+                    modifier = Modifier.testTag("bottom_navigation")
+                ) {
+                    val items = listOf(
+                        Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
+                        Triple(AppScreen.RECEIPTS_LIST, Icons.Default.Receipt, "Belege"),
+                        Triple(AppScreen.ADD_RECEIPT, Icons.Default.AddCircle, "Scannen"),
+                        Triple(AppScreen.LOGBOOK, Icons.Default.DirectionsCar, "Fahrtenbuch"),
+                        Triple(AppScreen.LEDGER, Icons.Default.AccountBalance, "Finanzen")
                     )
+
+                    items.forEach { (screen, icon, label) ->
+                        val isPrimaryAction = screen == AppScreen.ADD_RECEIPT
+                        val isSelected = currentScreen == screen ||
+                            (screen == AppScreen.DASHBOARD && currentScreen in setOf(
+                                AppScreen.RENT_OVERVIEW,
+                                AppScreen.TAX_CALCULATOR
+                            ))
+                        NavigationBarItem(
+                            selected = isSelected,
+                            onClick = { viewModel.setScreen(screen) },
+                            icon = {
+                                Icon(
+                                    icon,
+                                    contentDescription = label,
+                                    modifier = if (isPrimaryAction) Modifier.size(28.dp) else Modifier.size(24.dp)
+                                )
+                            },
+                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = if (isPrimaryAction) Color.White else AccentBlue,
+                                selectedTextColor = if (isPrimaryAction) AccentBlue else DarkNavy,
+                                unselectedIconColor = if (isPrimaryAction) AccentBlue else SlateGray,
+                                unselectedTextColor = SlateGray,
+                                indicatorColor = if (isPrimaryAction) AccentBlue else Color(0xFFDBEAFE)
+                            ),
+                            modifier = Modifier.testTag("nav_item_${screen.name.lowercase()}")
+                        )
+                    }
                 }
             }
         },
@@ -964,6 +979,140 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         )
     }
 
+    // Intentionally compact: configuration belongs in the app-wide settings dialog.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Guten Tag", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+            Text(
+                "Erfasse Belege und behalte dein Objekt im Blick.",
+                fontSize = 13.sp,
+                color = SlateGray
+            )
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = AccentBlue)
+        ) {
+            Row(
+                modifier = Modifier.padding(18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Beleg erfassen", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Foto aufnehmen oder Dokument auswählen", fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f))
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Beleg erfassen", tint = Color.White)
+            }
+        }
+
+        if (totalBankAlerts > 0) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showKiPowerCenterDialog = true },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                border = BorderStroke(1.dp, Color(0xFFFED7AA))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = WarmOrange)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("$totalBankAlerts Hinweis${if (totalBankAlerts == 1) "" else "e"} aus dem Bankabgleich", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                        Text("$missingReceiptsCount fehlende Belege · $rentArrearsCount Mietrückstände", fontSize = 11.sp, color = SlateGray)
+                    }
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = WarmOrange, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        Text("Überblick", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Erfasste Belege", fontSize = 12.sp, color = SlateGray)
+                    Text("${receipts.size}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+                }
+                HorizontalDivider(color = BorderColor)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Einnahmen", fontSize = 12.sp, color = SlateGray)
+                    Text(NumberFormatter.format(totalIncome), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Ausgaben", fontSize = 12.sp, color = SlateGray)
+                    Text(NumberFormatter.format(totalExpenses), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = CrimsonRed)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Saldo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text((if (netCashflow >= 0) "+" else "") + NumberFormatter.format(netCashflow), fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (netCashflow >= 0) EmeraldGreen else CrimsonRed)
+                }
+            }
+        }
+
+        Text("Schnellzugriff", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuickActionCard(
+                modifier = Modifier.weight(1f), title = "Belege", subtitle = "Archiv öffnen",
+                icon = Icons.Default.Receipt, containerColor = Color(0xFFEFF6FF), contentColor = AccentBlue,
+                onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }
+            )
+            QuickActionCard(
+                modifier = Modifier.weight(1f), title = "Finanzen", subtitle = "Auswertung",
+                icon = Icons.Default.AccountBalance, containerColor = Color(0xFFECFDF5), contentColor = EmeraldGreen,
+                onClick = { viewModel.setScreen(AppScreen.LEDGER) }
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuickActionCard(
+                modifier = Modifier.weight(1f), title = "Fahrtenbuch", subtitle = "Fahrten erfassen",
+                icon = Icons.Default.DirectionsCar, containerColor = Color(0xFFFFF7ED), contentColor = WarmOrange,
+                onClick = { viewModel.setScreen(AppScreen.LOGBOOK) }
+            )
+            QuickActionCard(
+                modifier = Modifier.weight(1f), title = "Steuerschätzung", subtitle = "Anlage V",
+                icon = Icons.Filled.Calculate, containerColor = Color(0xFFF5F3FF), contentColor = Color(0xFF7C3AED),
+                onClick = { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+            )
+        }
+
+        Text(
+            "Objekt, Drive, KI und weitere Einstellungen findest du oben rechts über das Zahnrad.",
+            fontSize = 11.sp,
+            color = SlateGray,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
+    return
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -974,64 +1123,67 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         // --- BANK STATEMENT MISSING RECEIPT ALERT BANNER ---
         if (totalBankAlerts > 0) {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showKiPowerCenterDialog = true },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF2F2)),
-                border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.4f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                border = BorderStroke(1.dp, Color(0xFFFED7AA))
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(CrimsonRed.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(Icons.Default.Warning, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(22.dp))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Achtung: Buchungen ohne Beleg!",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = CrimsonRed
-                            )
-                            Surface(color = CrimsonRed, shape = CircleShape) {
-                                Text(
-                                    text = "$totalBankAlerts MELDUNGEN",
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFFFEDD5)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = WarmOrange, modifier = Modifier.size(20.dp))
                         }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "$missingReceiptsCount Abbuchung(en) ohne Beleg & $rentArrearsCount Mietrückstände im Kontoauszug entdeckt.",
-                            fontSize = 11.sp,
-                            color = DarkNavy
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Belege prüfen", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                            Text(
+                                "$totalBankAlerts offene ${if (totalBankAlerts == 1) "Abweichung" else "Abweichungen"}",
+                                fontSize = 11.sp,
+                                color = SlateGray
+                            )
+                        }
+                        Surface(color = WarmOrange, shape = CircleShape) {
+                            Text(
+                                text = "$totalBankAlerts",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
                     }
-                    Surface(
-                        color = CrimsonRed,
-                        shape = RoundedCornerShape(8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Abgleichen",
-                            color = Color.White,
+                            text = "$missingReceiptsCount ohne Beleg • $rentArrearsCount Mietrückstände",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            color = SlateGray,
+                            modifier = Modifier.weight(1f)
                         )
+                        TextButton(onClick = { showKiPowerCenterDialog = true }) {
+                            Text("Jetzt prüfen", fontWeight = FontWeight.Bold, color = WarmOrange)
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = WarmOrange,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -1071,7 +1223,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
 
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Gemini KI-Zentrale", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
+                            Text("KI-Assistenten", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
                             Surface(
                                 color = Color(0xFFF59E0B).copy(alpha = 0.2f),
                                 shape = CircleShape
@@ -1087,7 +1239,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Steuerprüfer • Nebenkosten • Mietpreis • Mängel • Verträge",
+                            text = "Prüfen, abgleichen und Dokumente verstehen",
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -2504,6 +2656,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
     // Toggle for View Modes: "grid", "list", "table"
     var viewMode by remember { mutableStateOf("grid") }
     var receiptToDelete by remember { mutableStateOf<Receipt?>(null) }
+    var showRecycleBinFromBelege by remember { mutableStateOf(false) }
 
     // All processed receipts for overall category summaries
     val allReceipts by viewModel.receipts.collectAsState()
@@ -2517,6 +2670,10 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
 
     if (fullScreenPreviewBitmap != null) {
         FullScreenReceiptPreviewDialog(fullScreenPreviewBitmap!!) { fullScreenPreviewBitmap = null }
+    }
+
+    if (showRecycleBinFromBelege) {
+        RecycleBinDialog(viewModel = viewModel, onDismiss = { showRecycleBinFromBelege = false })
     }
 
     if (receiptToDelete != null) {
@@ -2568,14 +2725,14 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
                     Text(
@@ -2590,10 +2747,6 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                         color = SlateGray
                     )
                 }
-                var showRecycleBinFromBelege by remember { mutableStateOf(false) }
-                if (showRecycleBinFromBelege) {
-                    RecycleBinDialog(viewModel = viewModel, onDismiss = { showRecycleBinFromBelege = false })
-                }
                 IconButton(
                     onClick = { showRecycleBinFromBelege = true },
                     modifier = Modifier.size(36.dp).testTag("list_open_recycle_bin_button")
@@ -2607,9 +2760,10 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                 }
             }
             
-            // Modern View Mode Selector Segment ("grid", "list", "table")
+            // Separate row avoids squeezing title and selector on narrow screens.
             Row(
                 modifier = Modifier
+                    .align(Alignment.End)
                     .background(BorderColor.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .padding(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -2666,24 +2820,33 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
             border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
             shape = RoundedCornerShape(10.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Default.Receipt, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(16.dp))
-                    Text("${receipts.size} Belege", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(Icons.Default.Receipt, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(16.dp))
+                        Text("${receipts.size} Belege", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(14.dp))
+                        Text("${receipts.count { it.imageUrl.isNotEmpty() }} Scans", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                    }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Gesamt:", fontSize = 11.sp, color = SlateGray)
-                    Text(NumberFormatter.format(receipts.sumOf { it.bruttobetrag }), fontSize = 12.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(14.dp))
-                    Text("${receipts.count { it.imageUrl.isNotEmpty() }} Scans", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Gesamt: ", fontSize = 11.sp, color = SlateGray)
+                    Text(NumberFormatter.format(receipts.sumOf { it.bruttobetrag }), fontSize = 13.sp, fontWeight = FontWeight.Black, color = DarkNavy)
                 }
             }
         }
@@ -5523,6 +5686,8 @@ fun AiAnalysisLoadingContent(
 @Composable
 fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     val scanState by viewModel.scanState.collectAsState()
+    val aiProviderState by viewModel.aiProviderState.collectAsState()
+    val aiProviderLabel = if (aiProviderState.provider == ReceiptAnalysisProvider.OPENAI) "OpenAI" else "Gemini"
 
     var selectedFiles by remember { mutableStateOf<List<SelectedFile>>(emptyList()) }
     var previewingFile by remember { mutableStateOf<SelectedFile?>(null) }
@@ -5969,7 +6134,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             fontSize = 16.sp
                         )
                         Text(
-                            "Bereite deine Belege für die automatische Gemini-KI-Datenextraktion vor",
+                            "Scannen oder hochladen – die KI füllt die Buchungsdaten für dich aus.",
                             color = SlateGray,
                             fontSize = 11.sp
                         )
@@ -6034,7 +6199,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(
-                                                text = "Dokumenten-Scanner",
+                                                text = "Beleg scannen",
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White,
                                                 fontSize = 12.5.sp
@@ -6053,9 +6218,11 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                             }
                                         }
                                         Text(
-                                            text = "Automatische Ecken-Erkennung & Zuschnitt",
+                                            text = "Automatische Erkennung und Zuschnitt",
                                             color = Color.White.copy(alpha = 0.92f),
-                                            fontSize = 10.sp
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -6175,7 +6342,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                 color = DarkNavy
                             )
                             Text(
-                                "Tippe oben auf scannen oder hochladen, um Belege für die Analyse vorzubereiten.",
+                                "Scanne einen Beleg oder wähle eine Datei aus. Die Analyse startest du anschließend mit einem Tipp.",
                                 fontSize = 10.sp,
                                 color = SlateGray,
                                 textAlign = TextAlign.Center,
@@ -6191,7 +6358,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Vorbereitungsschlange (${selectedFiles.size} Dokumente):",
+                            text = "Bereit zur Analyse · ${selectedFiles.size} Dokumente",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = DarkNavy
@@ -6202,7 +6369,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                text = "Bereit für KI-Analyse",
+                                text = "$aiProviderLabel bereit",
                                 fontSize = 9.sp,
                                 color = EmeraldGreen,
                                 fontWeight = FontWeight.Bold
@@ -6318,17 +6485,23 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                 tint = Color.White,
                                 modifier = Modifier.size(22.dp)
                             )
-                            Column(horizontalAlignment = Alignment.Start) {
+                            Column(
+                                horizontalAlignment = Alignment.Start,
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 Text(
-                                    "Gemini-KI-Analyse starten",
+                                    "$aiProviderLabel-Analyse starten",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
                                 Text(
-                                    "Extrahiert Beträge, Aussteller, Datum & Kategorie vollautomatisch",
+                                    "Beträge, Aussteller, Datum und Kategorie werden automatisch erkannt.",
                                     fontSize = 9.sp,
-                                    color = Color.White.copy(alpha = 0.85f)
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    lineHeight = 12.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -6797,16 +6970,24 @@ fun SuggestedTripCard(
     var endAddress by remember(metadata.adresse) { mutableStateOf(metadata.adresse) }
 
     var manualDistance by remember { mutableStateOf<Double?>(null) }
+    var confirmedDistanceText by remember { mutableStateOf("") }
     var isCalculatingByKi by remember { mutableStateOf(false) }
     var showEditDetails by remember { mutableStateOf(false) }
     var isKiVerified by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isBooking by remember { mutableStateOf(false) }
 
     val calculatedDistance = remember(startAddress, viaAddress, endAddress, routeType) {
         calculateDeterministicDistance(startAddress, viaAddress, endAddress, routeType)
     }
 
-    val finalDistance = manualDistance ?: calculatedDistance
+    val confirmedDistance = confirmedDistanceText
+        .replace(',', '.')
+        .toDoubleOrNull()
+        ?.takeIf { it > 0.0 }
+    val finalDistance = confirmedDistance ?: manualDistance ?: calculatedDistance
+    val isRouteConfigured = startAddress.isNotBlank() && endAddress.isNotBlank() &&
+        (routeType != "standard" && routeType != "store_only" || viaAddress.isNotBlank())
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
 
     Card(
@@ -7077,11 +7258,13 @@ fun SuggestedTripCard(
                         
                         // Status badge for verification source
                         val sourceLabel = when {
+                            confirmedDistance != null -> "Route bestätigt"
                             manualDistance != null && isKiVerified -> "KI-verifiziert"
                             manualDistance != null -> "Manuell angepasst"
-                            else -> "Auto-PLZ (optimiert)"
+                            else -> "Nur Schätzung"
                         }
                         val sourceColor = when {
+                            confirmedDistance != null -> EmeraldGreen
                             manualDistance != null && isKiVerified -> EmeraldGreen
                             manualDistance != null -> AccentBlue
                             else -> SlateGray
@@ -7135,44 +7318,31 @@ fun SuggestedTripCard(
                 }
             }
 
-            // Quick adjuster slider
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
+            Spacer(modifier = Modifier.height(10.dp))
+            OutlinedTextField(
+                value = confirmedDistanceText,
+                onValueChange = { input ->
+                    confirmedDistanceText = input.filter { it.isDigit() || it == ',' || it == '.' }
+                    isKiVerified = false
+                },
+                label = { Text("Exakte Strecke laut Google Maps (km)", fontSize = 11.sp) },
+                supportingText = {
+                    Text(
+                        "Google Maps öffnen, die komplette Route prüfen und den Kilometerwert hier eintragen.",
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Anpassen:", fontSize = 10.sp, color = SlateGray, fontWeight = FontWeight.Bold)
-                androidx.compose.material3.Slider(
-                    value = finalDistance.toFloat(),
-                    onValueChange = {
-                        manualDistance = (it * 10).toInt() / 10.0
-                        isKiVerified = false
-                    },
-                    valueRange = 1f..100f,
-                    modifier = Modifier.weight(1f).height(24.dp),
-                    colors = androidx.compose.material3.SliderDefaults.colors(
-                        thumbColor = DarkNavy,
-                        activeTrackColor = DarkNavy,
-                        inactiveTrackColor = Color(0xFFE2E8F0)
-                    )
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EmeraldGreen,
+                    unfocusedBorderColor = BorderColor,
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
                 )
-                IconButton(
-                    onClick = {
-                        manualDistance = null
-                        isKiVerified = false
-                    },
-                    modifier = Modifier.size(24.dp),
-                    enabled = manualDistance != null
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Zurücksetzen",
-                        tint = if (manualDistance != null) AccentBlue else Color.LightGray,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
+            )
 
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -7201,7 +7371,7 @@ fun SuggestedTripCard(
                             isCalculatingByKi = true
                             errorMessage = null
                             coroutineScope.launch {
-                                val kiDistance = com.example.api.GeminiClient.estimateRouteDistance(
+                                val kiDistance = viewModel.estimateLogbookRouteDistance(
                                     startAddress = startAddress,
                                     viaAddress = viaAddress,
                                     endAddress = endAddress,
@@ -7211,8 +7381,9 @@ fun SuggestedTripCard(
                                 if (kiDistance != null) {
                                     manualDistance = kiDistance
                                     isKiVerified = true
+                                    confirmedDistanceText = ""
                                 } else {
-                                    errorMessage = "Verbindung fehlgeschlagen oder kein API-Key hinterlegt."
+                                    errorMessage = "Routenprüfung nicht möglich. Prüfe die Adressen und den Gemini-Schlüssel in den Einstellungen."
                                 }
                             }
                         },
@@ -7236,7 +7407,7 @@ fun SuggestedTripCard(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "KI-Distanz",
+                                    text = "KI-Schätzung",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = DarkNavy
@@ -7277,6 +7448,11 @@ fun SuggestedTripCard(
                 // Approve / Book Trip Button
                 Button(
                     onClick = {
+                        if (!isRouteConfigured) {
+                            errorMessage = "Bitte hinterlege Start- und Objektadresse; für diese Route auch den Händler."
+                            return@Button
+                        }
+                        isBooking = true
                         val pathText = when (routeType) {
                             "standard" -> "Wohnort ➔ ${viaAddress} ➔ Objekt ➔ Wohnort"
                             "store_only" -> "Wohnort ➔ ${viaAddress} ➔ Wohnort"
@@ -7290,7 +7466,8 @@ fun SuggestedTripCard(
                         .height(44.dp)
                         .testTag("book_trip_button_${receipt.id}"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = isRouteConfigured && confirmedDistance != null && !isBooking
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(
@@ -7300,7 +7477,7 @@ fun SuggestedTripCard(
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "Fahrt im Fahrtenbuch einbuchen",
+                            text = if (isBooking) "Wird eingebucht …" else "Fahrt im Fahrtenbuch einbuchen",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -7428,7 +7605,8 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
     val suggestedTrips = receipts.filter { receipt ->
         val name = receipt.aussteller.lowercase()
         val isHardwareStore = name.contains("obi") || name.contains("hornbach") || name.contains("bauhaus") || name.contains("ikea")
-        isHardwareStore && !receipt.beschreibung.contains("[Fahrt gebucht")
+        val hasValidDate = Regex("^\\d{4}-\\d{2}-\\d{2}$|^\\d{2}\\.\\d{2}\\.\\d{4}$").matches(receipt.datum.trim())
+        isHardwareStore && hasValidDate && !receipt.beschreibung.contains("[Fahrt gebucht")
     }
 
     val scrollState = rememberScrollState()
@@ -7454,10 +7632,9 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    "Das Finanzamt fordert für den Abzug von Fahrtkosten (§ 9 EStG) ein lückenloses Fahrtenbuch. " +
-                            "Hier weisen wir anhand des Einkaufsdatums und der Uhrzeit deiner Baumarktquittungen " +
-                            "die exakten Fahrten zum Objekt und Baumarkt betriebsprüfungssicher nach! " +
-                            "Wähle den passenden Routentyp, berechne Entfernungen automatisch per PLZ-Abgleich, KI oder Google Maps, und buche die Wege direkt ein.",
+                    "Erstelle nachvollziehbare Fahrtkosten-Aufzeichnungen zu deinen Materialkäufen. " +
+                            "Prüfe Datum, Anlass, Route und Entfernung vor dem Einbuchen; die vorgeschlagenen Distanzen sind nur eine Orientierung. " +
+                            "Für steuerliche Fragen und Nachweise gelten die Anforderungen deines konkreten Falls.",
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 12.sp,
                     lineHeight = 16.sp
@@ -10874,6 +11051,7 @@ fun KiPowerCenterDialog(
 
     val bankStatementResult by viewModel.bankStatementResult.collectAsState()
     val isMatchingBankStatement by viewModel.isMatchingBankStatement.collectAsState()
+    val bankStatementResetVersion by viewModel.bankStatementResetVersion.collectAsState()
 
     val utilityStatement by viewModel.tenantUtilityStatement.collectAsState()
     val isGeneratingUtility by viewModel.isGeneratingUtilityStatement.collectAsState()
@@ -10890,19 +11068,7 @@ fun KiPowerCenterDialog(
     val context = LocalContext.current
 
     // Inputs for Bankabgleich
-    var bankStatementText by remember {
-        mutableStateOf(
-            """
-            02.07.2025 | Max Mustermann | +750.00 EUR | Miete WE 01 Juli 2025
-            03.07.2025 | Anna Schmidt | +680.00 EUR | Miete WE 02 Juli 2025
-            05.07.2025 | Stadtwerke München | -280.50 EUR | Abschlag Strom & Gas
-            10.07.2025 | Hornbach Baumarkt | -145.80 EUR | Material Wandfarbe
-            12.07.2025 | Malermeister Müller | -650.00 EUR | Re-Nr 2025-882 Renovierung
-            15.07.2025 | Gebäudeversicherung Allianz | -420.00 EUR | Jahresbeitrag
-            28.07.2025 | Thomas Weber | +350.00 EUR | Teilzahlung Miete WE 05 (Soll: 700 €)
-            """.trimIndent()
-        )
-    }
+    var bankStatementText by remember(bankStatementResetVersion) { mutableStateOf("") }
 
     val bankCsvPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -11952,8 +12118,11 @@ fun AccountSettingsDialog(
     var showTenantDialog by remember { mutableStateOf(false) }
     var showPropertyMetadataDialog by remember { mutableStateOf(false) }
     var showKiLearnedRulesDialog by remember { mutableStateOf(false) }
+    var showAiProviderSettingsDialog by remember { mutableStateOf(false) }
     var showDocumentStatusOverviewDialog by remember { mutableStateOf(false) }
     var showRecycleBinDialog by remember { mutableStateOf(false) }
+    var showLocalDataResetDialog by remember { mutableStateOf(false) }
+    var showDriveSettingsDialog by remember { mutableStateOf(false) }
 
     val currentMetadata by viewModel.propertyMetadata.collectAsState()
     val metadata = currentMetadata ?: PropertyMetadata()
@@ -11974,12 +12143,38 @@ fun AccountSettingsDialog(
         KiLearnedRulesDialog(viewModel = viewModel, onDismiss = { showKiLearnedRulesDialog = false })
     }
 
+    if (showAiProviderSettingsDialog) {
+        AiProviderSettingsDialog(
+            viewModel = viewModel,
+            onDismiss = { showAiProviderSettingsDialog = false }
+        )
+    }
+
     if (showDocumentStatusOverviewDialog) {
         DocumentStatusOverviewDialog(viewModel = viewModel, onDismiss = { showDocumentStatusOverviewDialog = false })
     }
 
     if (showRecycleBinDialog) {
         RecycleBinDialog(viewModel = viewModel, onDismiss = { showRecycleBinDialog = false })
+    }
+
+    if (showLocalDataResetDialog) {
+        ResetLocalDataDialog(
+            onConfirm = {
+                viewModel.resetLocalReceiptData()
+                showLocalDataResetDialog = false
+            },
+            onDismiss = { showLocalDataResetDialog = false }
+        )
+    }
+
+    if (showDriveSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showDriveSettingsDialog = false },
+            title = { Text("Google Drive & Sicherung", fontWeight = FontWeight.Bold, color = DarkNavy) },
+            text = { GoogleDriveSyncCard(viewModel) },
+            confirmButton = { TextButton(onClick = { showDriveSettingsDialog = false }) { Text("Fertig") } }
+        )
     }
 
     AlertDialog(
@@ -11990,12 +12185,12 @@ fun AccountSettingsDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Person,
+                    imageVector = Icons.Default.Settings,
                     contentDescription = null,
                     tint = AccentBlue,
                     modifier = Modifier.size(24.dp)
                 )
-                Text("Kontoeinstellungen & Adressen", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = DarkNavy)
+                Text("Einstellungen", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = DarkNavy)
             }
         },
         text = {
@@ -12006,19 +12201,60 @@ fun AccountSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = "Hinterlege hier deine eigene Startadresse für das Fahrtenbuch sowie die Objektadresse der Immobilie.",
+                    text = "Verwalte KI, Belege, Objekt- und persönliche Einstellungen an einem Ort.",
                     fontSize = 12.sp,
                     color = SlateGray,
                     lineHeight = 16.sp
                 )
+
+                Text("KI & Automatisierung", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGray)
+
+                val aiProviderState by viewModel.aiProviderState.collectAsState()
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showAiProviderSettingsDialog = true }
+                        .testTag("ai_provider_settings_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("KI-Anbieter für Beleganalyse", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                Text(
+                                    if (aiProviderState.provider == ReceiptAnalysisProvider.OPENAI) {
+                                        "OpenAI • ${aiProviderState.openAiModel} • Schlüssel ${if (aiProviderState.hasOpenAiKey) "gespeichert" else "fehlt"}"
+                                    } else {
+                                        "Gemini • bisherige Konfiguration"
+                                    },
+                                    fontSize = 10.5.sp,
+                                    color = SlateGray
+                                )
+                            }
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
+                    }
+                }
 
                 // KI Adaptive Memory Card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { showKiLearnedRulesDialog = true },
-                    colors = CardDefaults.cardColors(containerColor = EmeraldGreen.copy(alpha = 0.08f)),
-                    border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.3f))
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, BorderColor)
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -12032,7 +12268,7 @@ fun AccountSettingsDialog(
                         ) {
                             Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(20.dp))
                             Column {
-                                Text("🧠 Gelerntes KI-Wissen ($learnedRulesCount Regeln)", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                Text("Gelerntes KI-Wissen ($learnedRulesCount Regeln)", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
                                 Text("Automatisch gelernte Händler-Zuordnungen verwalten", fontSize = 10.5.sp, color = SlateGray)
                             }
                         }
@@ -12040,13 +12276,46 @@ fun AccountSettingsDialog(
                     }
                 }
 
+                Text("Daten & Sicherung", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGray)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showDriveSettingsDialog = true }
+                        .testTag("drive_settings_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.Cloud, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("Google Drive & Sicherung", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                Text("Verbindung, automatische Sicherung und Wiederherstellung", fontSize = 10.5.sp, color = SlateGray)
+                            }
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text("Belege & Speicher", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGray)
+
                 // Document Status Overview Card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { showDocumentStatusOverviewDialog = true },
-                    colors = CardDefaults.cardColors(containerColor = AccentBlue.copy(alpha = 0.08f)),
-                    border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f))
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, BorderColor)
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -12060,7 +12329,7 @@ fun AccountSettingsDialog(
                         ) {
                             Icon(Icons.Default.Search, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
                             Column {
-                                Text("📄 Dokumenten-Status Übersicht & Reparatur", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                Text("Dokumentenstatus & Reparatur", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
                                 Text("Prüfe Originaldokumente aller Belege und ersetze fehlende Dateien", fontSize = 10.5.sp, color = SlateGray)
                             }
                         }
@@ -12074,8 +12343,9 @@ fun AccountSettingsDialog(
                         .fillMaxWidth()
                         .clickable { showRecycleBinDialog = true }
                         .testTag("recycle_bin_button"),
-                    colors = CardDefaults.cardColors(containerColor = CrimsonRed.copy(alpha = 0.08f)),
-                    border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.3f))
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, BorderColor)
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -12089,13 +12359,44 @@ fun AccountSettingsDialog(
                         ) {
                             Icon(Icons.Default.Delete, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(20.dp))
                             Column {
-                                Text("🗑️ Papierkorb", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                Text("Papierkorb", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
                                 Text("Gelöschte Belege ansehen, wiederherstellen oder endgültig löschen", fontSize = 10.5.sp, color = SlateGray)
                             }
                         }
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(18.dp))
                     }
                 }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showLocalDataResetDialog = true }
+                        .testTag("reset_local_receipt_data_button"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7F7)),
+                    border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.35f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.DeleteForever, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(20.dp))
+                            Column {
+                                Text("Lokale Belegdaten zurücksetzen", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                Text("Für einen Neustart mit leeren Belegen – APIs und Drive bleiben erhalten", fontSize = 10.5.sp, color = SlateGray)
+                            }
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Text("Adressen", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGray)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
@@ -12168,7 +12469,7 @@ fun AccountSettingsDialog(
                 }
 
                 // Section 2: Other settings
-                Text("Weitere Verwaltung", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("Objekt & Personen", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGray)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -12222,6 +12523,275 @@ fun AccountSettingsDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = DarkNavy)
             ) {
                 Text("Fertig")
+            }
+        }
+    )
+}
+
+@Composable
+fun ResetLocalDataDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = CrimsonRed) },
+        title = { Text("Lokale Belegdaten zurücksetzen", fontWeight = FontWeight.Bold, color = DarkNavy) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Alle lokal gespeicherten Belege, Dokumentverknüpfungen, Export-Historien, gelernten KI-Zuordnungen sowie der Bankabgleich werden entfernt.",
+                    color = SlateGray,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+                Text(
+                    "Erhalten bleiben: Objekt- und Mieterdaten, Drive-Verbindung und alle API-Schlüssel. Dateien in Google Drive werden nicht gelöscht.",
+                    color = EmeraldGreen,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Abbrechen") }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)
+            ) { Text("Jetzt zurücksetzen") }
+        }
+    )
+}
+
+@Composable
+fun AiProviderSettingsDialog(
+    viewModel: ReceiptViewModel,
+    onDismiss: () -> Unit
+) {
+    val savedState by viewModel.aiProviderState.collectAsState()
+    var selectedProvider by remember(savedState.provider) { mutableStateOf(savedState.provider) }
+    var model by remember(savedState.openAiModel) { mutableStateOf(savedState.openAiModel) }
+    var apiKeyInput by remember { mutableStateOf("") }
+    var geminiApiKeyInput by remember { mutableStateOf("") }
+    var privateDeviceConfirmed by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(22.dp))
+                Text("KI-Anbieter für Beleganalyse", fontWeight = FontWeight.Bold, color = DarkNavy)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Wähle, welcher Dienst ausschließlich neue Belege analysiert. DATEV-Freigaben bleiben immer manuell.",
+                    fontSize = 12.sp,
+                    color = SlateGray
+                )
+
+                listOf(
+                    ReceiptAnalysisProvider.GEMINI to "Gemini",
+                    ReceiptAnalysisProvider.OPENAI to "OpenAI"
+                ).forEach { (provider, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedProvider = provider }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedProvider == provider,
+                            onClick = { selectedProvider = provider }
+                        )
+                        Column {
+                            Text(label, fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text(
+                                if (provider == ReceiptAnalysisProvider.OPENAI) {
+                                    "Responses API mit Bildanalyse und strengem JSON-Schema"
+                                } else {
+                                    "Vorhandene Gemini-Anbindung"
+                                },
+                                fontSize = 10.5.sp,
+                                color = SlateGray
+                            )
+                        }
+                    }
+                }
+
+                if (selectedProvider == ReceiptAnalysisProvider.GEMINI) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Privater Gerätemodus", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF9A3412))
+                            Text(
+                                "Der Gemini-Schlüssel wird lokal mit Android Keystore verschlüsselt und nicht synchronisiert.",
+                                fontSize = 10.5.sp,
+                                color = Color(0xFF9A3412)
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = geminiApiKeyInput,
+                        onValueChange = { geminiApiKeyInput = it.trim() },
+                        label = {
+                            Text(if (savedState.hasGeminiKey) "Neuer Gemini-API-Schlüssel (leer = vorhandenen behalten)" else "Gemini-API-Schlüssel")
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("gemini_api_key_input")
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { privateDeviceConfirmed = !privateDeviceConfirmed },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = privateDeviceConfirmed,
+                            onCheckedChange = { privateDeviceConfirmed = it }
+                        )
+                        Text(
+                            "Ich verwende diese APK nur privat und veröffentliche den Schlüssel nicht.",
+                            fontSize = 11.sp,
+                            color = DarkNavy
+                        )
+                    }
+
+                    if (savedState.hasGeminiKey) {
+                        OutlinedButton(
+                            onClick = {
+                                geminiApiKeyInput = ""
+                                viewModel.deleteGeminiKey()
+                            },
+                            modifier = Modifier.testTag("delete_gemini_api_key_button")
+                        ) {
+                            Text("Gespeicherten Gemini-Schlüssel löschen", fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                if (selectedProvider == ReceiptAnalysisProvider.OPENAI) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Privater Gerätemodus", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF9A3412))
+                            Text(
+                                "Ein direkt in einer App verwendeter API-Schlüssel ist nicht für eine öffentliche APK geeignet. Der Schlüssel wird lokal mit Android Keystore verschlüsselt und nicht synchronisiert.",
+                                fontSize = 10.5.sp,
+                                color = Color(0xFF9A3412)
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = apiKeyInput,
+                        onValueChange = { apiKeyInput = it.trim() },
+                        label = {
+                            Text(
+                                if (savedState.hasOpenAiKey) "Neuer API-Schlüssel (leer = vorhandenen behalten)" else "OpenAI-API-Schlüssel"
+                            )
+                        },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("openai_api_key_input")
+                    )
+
+                    OutlinedTextField(
+                        value = model,
+                        onValueChange = { model = it.trim() },
+                        label = { Text("OpenAI-Modell") },
+                        supportingText = { Text("Empfohlen für den ersten Qualitätsvergleich: gpt-5.6") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("openai_model_input")
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { privateDeviceConfirmed = !privateDeviceConfirmed },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = privateDeviceConfirmed,
+                            onCheckedChange = { privateDeviceConfirmed = it }
+                        )
+                        Text(
+                            "Ich verwende diese APK nur privat und veröffentliche den Schlüssel nicht.",
+                            fontSize = 11.sp,
+                            color = DarkNavy
+                        )
+                    }
+
+                    if (savedState.hasOpenAiKey) {
+                        OutlinedButton(
+                            onClick = {
+                                apiKeyInput = ""
+                                viewModel.deleteOpenAiKey()
+                                selectedProvider = ReceiptAnalysisProvider.GEMINI
+                            },
+                            modifier = Modifier.testTag("delete_openai_api_key_button")
+                        ) {
+                            Text("Gespeicherten OpenAI-Schlüssel löschen", fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                errorMessage?.let {
+                    Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val error = viewModel.saveAiProviderSettings(
+                        provider = selectedProvider,
+                        model = model,
+                        newOpenAiKey = apiKeyInput,
+                        newGeminiKey = geminiApiKeyInput
+                    )
+                    if (error == null) {
+                        apiKeyInput = ""
+                        geminiApiKeyInput = ""
+                        onDismiss()
+                    } else {
+                        errorMessage = error
+                    }
+                },
+                enabled = when (selectedProvider) {
+                    ReceiptAnalysisProvider.OPENAI -> privateDeviceConfirmed && (savedState.hasOpenAiKey || apiKeyInput.isNotBlank())
+                    ReceiptAnalysisProvider.GEMINI -> privateDeviceConfirmed && (savedState.hasGeminiKey || geminiApiKeyInput.isNotBlank())
+                },
+                modifier = Modifier.testTag("save_ai_provider_settings_button")
+            ) {
+                Text("Speichern")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    apiKeyInput = ""
+                    geminiApiKeyInput = ""
+                    onDismiss()
+                }
+            ) {
+                Text("Abbrechen")
             }
         }
     )
@@ -12353,7 +12923,7 @@ fun DatevExportDialog(
                                 1 -> "Umfang & Filterung"
                                 2 -> "Kanzleiprofil & Mapping"
                                 3 -> "Vorprüfung & Plausibilität"
-                                4 -> "DATEV-Vorschau (116 Spalten)"
+                                4 -> "DATEV-Vorschau (125 Spalten)"
                                 5 -> "Paketerzeugung"
                                 else -> "Ergebnis & Exporthistorie"
                             },
@@ -12818,7 +13388,7 @@ fun DatevExportDialog(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Column {
                                                 Text("Reiner EXTF Buchungsstapel (.csv)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                Text("116 Spalten Formatversion 700 ohne digitale Belege.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("125 Spalten, DATEV-Formatversion 13, ohne digitale Belege.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                     }
