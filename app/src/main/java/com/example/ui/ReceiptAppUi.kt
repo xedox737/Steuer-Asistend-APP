@@ -12174,7 +12174,17 @@ fun AccountSettingsDialog(
         AlertDialog(
             onDismissRequest = { showDriveSettingsDialog = false },
             title = { Text("Google Drive & Sicherung", fontWeight = FontWeight.Bold, color = DarkNavy) },
-            text = { GoogleDriveSyncCard(viewModel) },
+                        text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState())
+                        .navigationBarsPadding()
+                ) {
+                    GoogleDriveSyncCard(viewModel)
+                }
+            },
             confirmButton = { TextButton(onClick = { showDriveSettingsDialog = false }) { Text("Fertig") } }
         )
     }
