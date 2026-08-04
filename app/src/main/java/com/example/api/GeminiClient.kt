@@ -33,52 +33,52 @@ sealed class GeminiAnalysisException(
     class KeyMissing : GeminiAnalysisException(
         category = "CONFIG",
         errorCode = "KEY_MISSING",
-        userMessage = "FÃ¼r die KI-Analyse ist noch kein Gemini-Zugang eingerichtet."
+        userMessage = "Für die KI-Analyse ist noch kein Gemini-Zugang eingerichtet."
     )
     class KeyInvalid(cleanedMsg: String? = null) : GeminiAnalysisException(
         category = "AUTH",
         errorCode = "KEY_INVALID",
-        userMessage = "Die Gemini-Anmeldung oder API-Berechtigung ist ungÃ¼ltig.",
+        userMessage = "Die Gemini-Anmeldung oder API-Berechtigung ist ungültig.",
         httpStatus = 401,
         cleanedMessage = cleanedMsg
     )
     class PermissionDenied(cleanedMsg: String? = null) : GeminiAnalysisException(
         category = "AUTH",
         errorCode = "PERMISSION_DENIED",
-        userMessage = "Die Gemini-Anmeldung oder API-Berechtigung ist ungÃ¼ltig.",
+        userMessage = "Die Gemini-Anmeldung oder API-Berechtigung ist ungültig.",
         httpStatus = 403,
         cleanedMessage = cleanedMsg
     )
     class QuotaExceeded(cleanedMsg: String? = null) : GeminiAnalysisException(
         category = "QUOTA",
         errorCode = "RESOURCE_EXHAUSTED",
-        userMessage = "Das Gemini-Kontingent ist momentan ausgeschÃ¶pft. Bitte spÃ¤ter erneut versuchen.",
+        userMessage = "Das Gemini-Kontingent ist momentan ausgeschöpft. Bitte später erneut versuchen.",
         httpStatus = 429,
         cleanedMessage = cleanedMsg
     )
     class RequestTooLarge(cleanedMsg: String? = null) : GeminiAnalysisException(
         category = "LIMIT",
         errorCode = "REQUEST_TOO_LARGE",
-        userMessage = "Anfrage zu groÃŸ. Bitte ein kleineres Dokument oder weniger Seiten wÃ¤hlen.",
+        userMessage = "Anfrage zu groß. Bitte ein kleineres Dokument oder weniger Seiten wählen.",
         httpStatus = 400,
         cleanedMessage = cleanedMsg
     )
     class NetworkError(cause: Throwable) : GeminiAnalysisException(
         category = "NETWORK",
         errorCode = "NETWORK_ERROR",
-        userMessage = "Netzwerkfehler: Bitte Ã¼berprÃ¼fe deine Internetverbindung.",
+        userMessage = "Netzwerkfehler: Bitte überprüfe deine Internetverbindung.",
         cleanedMessage = cause.localizedMessage
     )
     class TimeoutError(cause: Throwable) : GeminiAnalysisException(
         category = "NETWORK",
         errorCode = "TIMEOUT",
-        userMessage = "ZeitÃ¼berschreitung bei der Anfrage. Bitte versuche es noch einmal.",
+        userMessage = "Zeitüberschreitung bei der Anfrage. Bitte versuche es noch einmal.",
         cleanedMessage = cause.localizedMessage
     )
     class InvalidResponse(msg: String) : GeminiAnalysisException(
         category = "PARSING",
         errorCode = "INVALID_RESPONSE",
-        userMessage = "UngÃ¼ltige KI-Antwort erhalten. Bitte erneut analysieren.",
+        userMessage = "Ungültige KI-Antwort erhalten. Bitte erneut analysieren.",
         cleanedMessage = msg
     )
     class GenericError(errorCode: String, userMessage: String, httpStatus: Int? = null, cleanedMsg: String? = null) : GeminiAnalysisException(
@@ -399,7 +399,7 @@ object GeminiClient {
             )
         ) {
             throw GeminiAnalysisException.RequestTooLarge(
-                "Die komprimierten Belegseiten sind noch zu groÃŸ. Bitte weniger Seiten wÃ¤hlen."
+                "Die komprimierten Belegseiten sind noch zu groß. Bitte weniger Seiten wählen."
             )
         }
         val mimeType = if (bitmap != null || bitmaps?.isNotEmpty() == true) "image/jpeg" else "text/plain"
@@ -435,30 +435,30 @@ object GeminiClient {
             parts.add(Part(inlineData = InlineData(mimeType = "image/jpeg", data = image.base64)))
         }
 
-        parts.add(Part(text = "Bitte analysiere diesen Beleg / diese Rechnung und extrahiere die Kerndaten prÃ¤zise nach den Systemvorgaben. Falls mehrere Seiten vorliegen, fÃ¼hre alle Informationen zusammen."))
+        parts.add(Part(text = "Bitte analysiere diesen Beleg / diese Rechnung und extrahiere die Kerndaten präzise nach den Systemvorgaben. Falls mehrere Seiten vorliegen, führe alle Informationen zusammen."))
 
         val learnedRulesSection = if (!userLearnedRulesContext.isNullOrBlank()) {
             """
             
             GELERNTES BENUTZER-WISSEN (AUS BISHERIGEN BELEGEN UND INDIVIDUELLEN REGELN):
-            Der Benutzer hat fÃ¼r bestimmte HÃ¤ndler, MÃ¤rkte oder Kategorien individuelle Zuordnungen gelernt. WENN der Beleg zu einem dieser HÃ¤ndler passt, ORDNE IHN BEVORZUGT GEMÃ„SS DIESEN GELERNTE REGELN EIN:
+            Der Benutzer hat für bestimmte Händler, Märkte oder Kategorien individuelle Zuordnungen gelernt. WENN der Beleg zu einem dieser Händler passt, ORDNE IHN BEVORZUGT GEMÄSS DIESEN GELERNTE REGELN EIN:
             $userLearnedRulesContext
             """.trimIndent()
         } else ""
 
         val systemInstruction = """
-            Du bist ein hochprÃ¤ziser digitaler Steuer- und Buchhaltungsassistent fÃ¼r die Verwaltung eines deutschen 7-Familienhauses (Anlage V).
+            Du bist ein hochpräziser digitaler Steuer- und Buchhaltungsassistent für die Verwaltung eines deutschen 7-Familienhauses (Anlage V).
             Analysiere den Beleg, die Rechnung oder Quittung und extrahiere die Kerndaten fehlerfrei. Ordne die Ausgaben exakt in die vorgegebene Taxonomie ein.
 
             KONTEXT ZUM OBJEKT:
             - Notarieller Kaufvertrag: 01.10.2025.
-            - Ãœbergang von Nutzen und Lasten: 01.01.2026.
+            - Übergang von Nutzen und Lasten: 01.01.2026.
             - Sanierung: Eine Wohnung wurde ab 01.10.2025 bis 31.01.2026 in reiner Eigenleistung (nur Material, keine Handwerker) saniert.
             $learnedRulesSection
 
-            STRIKTE REGELN FÃœR DIE KATEGORISIERUNG:
+            STRIKTE REGELN FÜR DIE KATEGORISIERUNG:
             
-            Hauptkategorien (hauptkategorie) MÃœSSEN exakt einer dieser Werte sein:
+            Hauptkategorien (hauptkategorie) MÜSSEN exakt einer dieser Werte sein:
             1. "Anschaffungskosten"
             2. "Betriebs- / Nebenkosten"
             3. "Finanzierung, Kredite & Versicherungen"
@@ -467,26 +467,326 @@ object GeminiClient {
             6. "Sonstige Ausgaben"
             7. "Sonstige Einnahmen"
 
-            Unterkategorien (unterkategorie) MÃœSSEN exakt einer dieser Werte sein:
+            Unterkategorien (unterkategorie) MÜSSEN exakt einer dieser Werte sein:
             "Abbruchkosten", "Abwasser", "Allgemeinstrom", "Antenne/Kabelanschluss", 
             "Anwaltskosten", "Architekt", "Aufzug sowie Aufzugswartung", "Ausstattung", 
-            "AuÃŸenanlagen", "Bad", "Balkon & Terasse", "Baukosten", "Betriebskosten", 
-            "Dach & Fassade", "Einkommensteuer", "Einmalige UngezieferbekÃ¤mpfung", 
-            "Einnahmen aus MÃ¼nzwaschgerÃ¤ten", "Einrichtungen der WÃ¤schepflege", 
-            "Einzahlung Kaution", "Elektrik & Beleuchtung", "Entsorg…4178 tokens truncated…enbank gespeicherten Belege:
+            "Außenanlagen", "Bad", "Balkon & Terasse", "Baukosten", "Betriebskosten", 
+            "Dach & Fassade", "Einkommensteuer", "Einmalige Ungezieferbekämpfung", 
+            "Einnahmen aus Münzwaschgeräten", "Einrichtungen der Wäschepflege", 
+            "Einzahlung Kaution", "Elektrik & Beleuchtung", "Entsorgung Hausrat", 
+            "Entwässerung und Niederschlagswasser", "Erbpachtzins", "Erschließungskosten", 
+            "Fahrtkosten", "Fassadenreinigung", "Fenster, Tür & Boden", "Frischwasser", 
+            "Fußwegreinigung", "Garage & Stellplätze", "Gartenpflege", "Gebäudereinigung", 
+            "Gebäudeversicherung", "Gebühren", "Geldbeschaffungskosten", "Gerichtskosten", 
+            "Grundbuchgebühren", "Grunderwerbsteuer", "Grundsteuer", "Gutachter", 
+            "Guthabenzins", "Gutschrift aus Betriebskostenabrechnung", "Hausgeld und WEG Nebenkosten", 
+            "Hausverwaltungskosten", "Hauswart/Hausmeister", "Heiz- und Warmwasserkosten", 
+            "Heizkosten", "Heizung & Therme", "Innenbereich", "Inserate", 
+            "Instandhaltungsrücklage", "Kaltmiete", "Kapitalertragssteuer", "Kaufpreis Garagen", 
+            "Kaufpreis Objekt", "Kaufpreis Sonstiges", "Kaufpreis Stellplatz", "Kaution", 
+            "Kontoführungsgebühren", "Kosten für Brennstoffe", "Kostenaufwand für leerstehende Räumlichkeiten", 
+            "Kreditauszahlung", "Kreditrate", "Kredittilgung", "Kreditzinsen", 
+            "Legionellenuntersuchung", "Maklerprovision", "Mietzuschlag", "Müllbeseitigung", 
+            "Nachzahlung aus Betriebskostenabrechnung", "Notarkosten", "Nutzerwechselgebühren", 
+            "Pauschalmiete", "Privateinlage", "Privatentnahme", "Rechtsberatungskosten", 
+            "Rechtsschutzversicherung", "Regelmäßige Dachrinnenreinigung & Fassadenreinigung", 
+            "Regelmäßige Ungezieferbekämpfung", "Reinigung Öltank", "Reinigungskosten", 
+            "Rückzahlung Kaution", "Sach- und Haftpflichtversicherung", "Sanitär", 
+            "Schadensbeseitigung", "Schornsteinreinigung", "Sondertilgung", "Sonstige", 
+            "Sonstige Betriebskosten", "Sonstige Einrichtungen", "Sonstige Versicherungen", 
+            "Sonstiges", "Sperrmüllentsorgung", "Stellplatz, Garage, Keller", "Steuerberatungskosten", 
+            "Straßenreinigung", "Streichen, Tapezieren", "Thermenwartung", "Umsatzsteuer bei Gewerbe", 
+            "Umsatzsteuer-Vorauszahlung", "Vermesser", "Vermietung", "Verwaltungskosten des Vermieters", 
+            "Verwaltungskosten für Sozialwohnungen", "Vorfälligkeitsentschädigung", "Wachdienst / Pförtner", 
+            "Warmmiete", "Warmwasserkosten", "Wartung Rauchmelder & Feuerlöscher", 
+            "Wartung der Heizungsanlage / Thermen", "Winterdienst", "Wärme- & Schalldämmung"
+
+            STRIKTE REGELN FÜR KONTO-NUMMERN (kontoNr):
+            - Rechnungen für Notar (Kaufvertrag!), Grunderwerbsteuer, Grundbuchamt und Makler -> "0050".
+            - Rechnungen für Kreditzinsen -> "2110".
+            - Rechnungen für Geldbeschaffungskosten (Notar Grundschuld!) -> "2120".
+            - Rechnungen für Kontoführungsgebühren -> "4970".
+            - Belege für Baumarkt-Materialien, Sanierung (Sanitär, Elektrik, Boden, Streichen etc.) -> "4830".
+            - Tankbelege oder sonstige Fahrtkostenbelege -> "4670".
+            - Andere Nebenkosten oder Gebühren -> "4970" (oder passend).
+
+            EXTRAKTIONS-VORGABEN:
+            - datum: Leistungs- oder Rechnungsdatum strikt im Format YYYY-MM-DD. Falls kein Datum erkennbar, nutze das heutige Datum (2026-07-14).
+            - aussteller: Firmenname und Markt-Standort/Adresse falls auf Beleg vorhanden (z. B. "OBI Baumarkt, Industriestr. 12, 12345 Musterstadt" oder "Hornbach").
+            - bruttobetrag: Finaler Zahlbetrag inklusive Mehrwertsteuer als reine positive Zahl (z. B. 145.50).
+            - uhrzeit: Lies die Uhrzeit (HH:MM) vom Beleg ab. WICHTIG für Baumarktquittungen! Falls keine Uhrzeit gefunden wird, setze einen leeren String "" ein.
+            - kontoNr: Die zugewiesene Konto-Nummer ("0050", "2110", "2120", "4970", "4830", "4670" oder passend).
+            - beschreibung: Kurze Zusammenfassung auf Deutsch, was gekauft wurde oder worum es geht (z. B. "Kauf von Wandfarbe und Malerzubehör").
+            - wohneinheit: Zugeordnete Wohneinheit (z. B. "WE 1", "WE 2" ... "WE 7"), falls auf dem Beleg genannt, sonst "Gesamtobjekt / Allgemein".
+            - mieter: Name des Mieters/Zahlers, falls auf dem Beleg oder der Überweisung genannt (z. B. "Erika Mustermann", "Hans Peter"), sonst leeres String "".
+            - isEigenleistungSanierung: true, falls es sich um einen Baumarkt-Materialbeleg handelt UND das Belegdatum zwischen 2025-10-01 and 2026-01-31 liegt. Sonst false.
+            - positionen: Extrahiere ALLE einzelnen Posten, Artikel oder Gebühren vom Beleg als Liste. Jede Position hat:
+              * bezeichnung: Name oder Artikelbeschreibung
+              * menge: Anzahl / Menge als Zahl (z. B. 1.0)
+              * einzelpreis: Preis pro Stück/Einheit in EUR als Zahl
+              * gesamtpreis: Gesamtpreis dieser Position in EUR als Zahl
+
+            ANTWORTE AUSSCHLIESSLICH IM GEFORDERTEN JSON-FORMAT. ERFINDE KEINE EIGENEN KATEGORIEN!
+            Verwende folgendes JSON-Format für die Antwort:
+            {
+              "aussteller": "Firmenname",
+              "datum": "JJJJ-MM-TT",
+              "uhrzeit": "HH:MM",
+              "bruttobetrag": 123.45,
+              "hauptkategorie": "Ausgewählte Hauptkategorie",
+              "unterkategorie": "Ausgewählte Unterkategorie",
+              "kontoNr": "Konto-Nr",
+              "beschreibung": "Kurzbeschreibung",
+              "wohneinheit": "WE 1",
+              "mieter": "Erika Mustermann",
+              "isEigenleistungSanierung": true/false,
+              "positionen": [
+                {
+                  "bezeichnung": "Wandfarbe Alpina 10L",
+                  "menge": 1.0,
+                  "einzelpreis": 49.99,
+                  "gesamtpreis": 49.99
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val request = GeminiRequest(
+            contents = listOf(Content(parts = parts)),
+            generationConfig = GenerationConfig(
+                responseMimeType = "application/json",
+                temperature = 0.1
+            ),
+            systemInstruction = Content(parts = listOf(Part(text = systemInstruction)))
+        )
+
+        return try {
+            val response = generateContentWithRetry(apiKey, request)
+            val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            val duration = System.currentTimeMillis() - startTime
+            if (jsonText != null) {
+                Log.d(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
+                Log.d(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+                Log.d(TAG, "Model: ${modelName}")
+                Log.d(TAG, "File Type: $mimeType")
+                Log.d(TAG, "File Size: $dataSize")
+                Log.d(TAG, "Duration: ${duration}ms")
+                Log.d(TAG, "HTTP Status: 200")
+                Log.d(TAG, "Status: SUCCESS")
+
+                // Sanitize potential markdown wrap
+                val cleanedJson = jsonText.trim()
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+                
+                try {
+                    val adapter = moshi.adapter(ExtractedReceipt::class.java)
+                    adapter.fromJson(cleanedJson) ?: throw Exception("Moshi returned null")
+                } catch (pe: Exception) {
+                    throw GeminiAnalysisException.InvalidResponse(pe.localizedMessage ?: "Moshi deserialization failed")
+                }
+            } else {
+                Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
+                Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+                Log.e(TAG, "Model: ${modelName}")
+                Log.e(TAG, "File Type: $mimeType")
+                Log.e(TAG, "File Size: $dataSize")
+                Log.e(TAG, "Duration: ${duration}ms")
+                Log.e(TAG, "HTTP Status: 200")
+                Log.e(TAG, "Error Category: PARSING")
+                Log.e(TAG, "Error Code: EMPTY_RESPONSE")
+                Log.e(TAG, "Cleaned Error Message: No text in candidate response (maybe blocked by safety filters)")
+                throw GeminiAnalysisException.InvalidResponse("Keine Antwort vom Modell erhalten (Sicherheitsfilter oder Blockierung).")
+            }
+        } catch (e: Exception) {
+            val duration = System.currentTimeMillis() - startTime
+            Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
+            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
+            Log.e(TAG, "Model: ${modelName}")
+            Log.e(TAG, "File Type: $mimeType")
+            Log.e(TAG, "File Size: $dataSize")
+            Log.e(TAG, "Duration: ${duration}ms")
+
+            when (e) {
+                is GeminiAnalysisException -> throw e
+                is retrofit2.HttpException -> {
+                    val httpStatus = e.code()
+                    val requestId = e.response()?.headers()?.get("x-goog-ext-daemon-request-id") 
+                        ?: e.response()?.headers()?.get("x-goog-request-id") 
+                        ?: "unknown"
+                    val errorBody = e.response()?.errorBody()?.string() ?: ""
+                    val cleanedError = sanitizeErrorBody(errorBody)
+
+                    Log.e(TAG, "HTTP Status: $httpStatus")
+                    Log.e(TAG, "Request ID: $requestId")
+                    Log.e(TAG, "Error Code: HTTP_$httpStatus")
+                    Log.e(TAG, "Cleaned Error Message: $cleanedError")
+
+                    when (httpStatus) {
+                        401 -> {
+                            Log.e(TAG, "Error Category: AUTH")
+                            throw GeminiAnalysisException.KeyInvalid(cleanedError)
+                        }
+                        403 -> {
+                            Log.e(TAG, "Error Category: AUTH")
+                            throw GeminiAnalysisException.PermissionDenied(cleanedError)
+                        }
+                        429 -> {
+                            Log.e(TAG, "Error Category: QUOTA")
+                            throw GeminiAnalysisException.QuotaExceeded(cleanedError)
+                        }
+                        400 -> {
+                            Log.e(TAG, "Error Category: LIMIT")
+                            throw GeminiAnalysisException.RequestTooLarge(cleanedError)
+                        }
+                        else -> {
+                            Log.e(TAG, "Error Category: SERVER")
+                            throw GeminiAnalysisException.GenericError(
+                                errorCode = "HTTP_$httpStatus",
+                                userMessage = "Ein unerwarteter Serverfehler ist aufgetreten (HTTP $httpStatus).",
+                                httpStatus = httpStatus,
+                                cleanedMsg = cleanedError
+                            )
+                        }
+                    }
+                }
+                is java.net.SocketTimeoutException -> {
+                    Log.e(TAG, "Error Category: TIMEOUT")
+                    Log.e(TAG, "Error Code: TIMEOUT")
+                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    throw GeminiAnalysisException.TimeoutError(e)
+                }
+                is java.io.IOException -> {
+                    Log.e(TAG, "Error Category: NETWORK")
+                    Log.e(TAG, "Error Code: NETWORK_ERROR")
+                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    throw GeminiAnalysisException.NetworkError(e)
+                }
+                else -> {
+                    Log.e(TAG, "Error Category: GENERIC")
+                    Log.e(TAG, "Error Code: UNKNOWN")
+                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    throw GeminiAnalysisException.GenericError(
+                        errorCode = "UNKNOWN",
+                        userMessage = "Unerwarteter Fehler: ${e.localizedMessage}",
+                        cleanedMsg = e.localizedMessage
+                    )
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Estimates route distance between Start, Via (Store), and End (Property) addresses in Germany.
+     */
+    suspend fun estimateRouteDistance(
+        startAddress: String,
+        viaAddress: String,
+        endAddress: String,
+        routeType: String,
+        apiKeyOverride: CharArray? = null
+    ): Double? {
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
+            .ifBlank { BuildConfig.GEMINI_API_KEY }
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            apiKeyOverride?.fill('\u0000')
+            return null
+        }
+
+        val prompt = """
+            Du bist ein präziser Routen- und Entfernungsrechner für Fahrtenbücher in Deutschland.
+            Berechne die realistisch gefahrene Straßen-Strecke mit dem Auto in Kilometern (nur eine Zahl als Double) für folgende Adressen und Routentyp:
+            - Startadresse (Meine Adresse / Wohnort): $startAddress
+            - Zwischenstation (Baumarkt / Händler aus Beleg): $viaAddress
+            - Zieladresse (Immobilien-Objekt): $endAddress
+            - Routentyp: $routeType
+
+            Routentyp Erklärung:
+            - "standard": Rundfahrt (Startadresse -> Zwischenstation -> Zieladresse -> Startadresse)
+            - "store_only": Fahrt zum Markt (Startadresse -> Zwischenstation -> Startadresse)
+            - "property_only": Fahrt zum Objekt (Startadresse -> Zieladresse -> Startadresse)
+
+            Schätze die echte Fahrtstrecke auf Straßen (keine Luftlinie).
+            Gib NUR ein gültiges JSON zurück mit folgendem Aufbau (kein Markdown, kein Freitext):
+            {
+              "distanceKm": 24.5
+            }
+        """.trimIndent()
+
+        val request = GeminiRequest(
+            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+            generationConfig = GenerationConfig(
+                responseMimeType = "application/json",
+                temperature = 0.2
+            )
+        )
+
+        return try {
+            val response = generateContentWithRetry(apiKey, request)
+            val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            if (jsonText != null) {
+                val cleanedJson = jsonText.trim()
+                    .removePrefix("```json")
+                    .removePrefix("```")
+                    .removeSuffix("```")
+                    .trim()
+                
+                val distanceRegex = """"distanceKm"\s*:\s*([0-9.]+)""".toRegex()
+                val match = distanceRegex.find(cleanedJson)
+                match?.groupValues?.get(1)?.toDoubleOrNull()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error calculating route distance with Gemini: ", e)
+            null
+        } finally {
+            apiKeyOverride?.fill('\u0000')
+        }
+    }
+
+    /**
+     * Answers natural language search queries over the Room database receipts using Gemini 3.5 Flash.
+     */
+    suspend fun answerNaturalLanguageQuery(
+        userQuery: String,
+        receipts: List<com.example.data.Receipt>
+    ): AiSearchResult? {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            return null
+        }
+
+        // Build a concise summary of all receipts in Room
+        val receiptsSummary = if (receipts.isEmpty()) {
+            "Keine Belege in der Datenbank vorhanden."
+        } else {
+            receipts.joinToString(separator = "\n") { r ->
+                "- ID: ${r.id}, Datum: ${r.datum}, Aussteller: '${r.aussteller}', Betrag: ${r.bruttobetrag} EUR, Kat: '${r.hauptkategorie}' / '${r.unterkategorie}', Konto: ${r.kontoNr}, WE: '${r.wohneinheit}', Mieter: '${r.mieter}', Beschr: '${r.beschreibung}', Sanierung: ${r.isEigenleistungSanierung}"
+            }
+        }
+
+        val prompt = """
+            Du bist ein intelligenter Finanz- und Buchhaltungs-Assistent für Immobilienverwalter und Vermieter.
+            Hier ist die vollständige Liste der aktuell in der Room-Datenbank gespeicherten Belege:
 
             $receiptsSummary
 
             Frage des Nutzers: "$userQuery"
 
             Aufgabe:
-            1. Analysiere die Belege sorgfÃ¤ltig hinsichtlich Datum, Aussteller, Betrag, Kategorien, Beschreibung, Wohneinheit, Mieter und Sanierung.
-            2. Beantworte die Frage prÃ¤zise, verstÃ¤ndlich, freundlich und Ã¼bersichtlich auf Deutsch. (Beispiel: "Im Jahr 2026 hast du insgesamt 450,00 â‚¬ fÃ¼r Heizung ausgegeben.").
-            3. Falls die Frage nach einer Summe oder bestimmten Belegen fragt, berechne die Gesamtsumme exakt und gib die IDs der maÃŸgeblichen Belege in 'matchingReceiptIds' an.
+            1. Analysiere die Belege sorgfältig hinsichtlich Datum, Aussteller, Betrag, Kategorien, Beschreibung, Wohneinheit, Mieter und Sanierung.
+            2. Beantworte die Frage präzise, verständlich, freundlich und übersichtlich auf Deutsch. (Beispiel: "Im Jahr 2026 hast du insgesamt 450,00 € für Heizung ausgegeben.").
+            3. Falls die Frage nach einer Summe oder bestimmten Belegen fragt, berechne die Gesamtsumme exakt und gib die IDs der maßgeblichen Belege in 'matchingReceiptIds' an.
 
-            Gib ein gÃ¼ltiges JSON im folgenden Format zurÃ¼ck (kein Markdown-Format auÃŸerhalb):
+            Gib ein gültiges JSON im folgenden Format zurück (kein Markdown-Format außerhalb):
             {
-              "answer": "Deine verstÃ¤ndliche Antwort hier...",
+              "answer": "Deine verständliche Antwort hier...",
               "totalAmount": 450.00,
               "matchingReceiptIds": [1, 5]
             }
@@ -521,7 +821,7 @@ object GeminiClient {
         }
     }
 
-    // --- 1. KI STEUER- & PLAUSIBILITÃ„TSPRÃœFER ---
+    // --- 1. KI STEUER- & PLAUSIBILITÄTSPRÜFER ---
     suspend fun analyzeTaxPlausibility(
         receipts: List<com.example.data.Receipt>,
         buildingPurchaseValue: Double = 600000.0
@@ -530,22 +830,22 @@ object GeminiClient {
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val receiptSummary = receipts.joinToString("\n") { r ->
-            "- ID ${r.id}: ${r.datum}, ${r.aussteller}, ${r.bruttobetrag}â‚¬, Kat: ${r.hauptkategorie}/${r.unterkategorie}, Sanierung: ${r.isEigenleistungSanierung}, WE: ${r.wohneinheit}"
+            "- ID ${r.id}: ${r.datum}, ${r.aussteller}, ${r.bruttobetrag}€, Kat: ${r.hauptkategorie}/${r.unterkategorie}, Sanierung: ${r.isEigenleistungSanierung}, WE: ${r.wohneinheit}"
         }
 
         val prompt = """
-            Du bist ein Steuerberater-KI-Expertensystem fÃ¼r deutsche Immobilienvermietung (Anlage V, 15%-Grenze Â§ 6 Abs. 1 Nr. 1a EStG, Handwerkerleistungen Â§ 35a EStG).
-            GebÃ¤udeanschaffungswert (ohne Grund): $buildingPurchaseValue EUR. 15%-Grenze = ${buildingPurchaseValue * 0.15} EUR netto.
+            Du bist ein Steuerberater-KI-Expertensystem für deutsche Immobilienvermietung (Anlage V, 15%-Grenze § 6 Abs. 1 Nr. 1a EStG, Handwerkerleistungen § 35a EStG).
+            Gebäudeanschaffungswert (ohne Grund): $buildingPurchaseValue EUR. 15%-Grenze = ${buildingPurchaseValue * 0.15} EUR netto.
             
-            PrÃ¼fe die folgenden Belege auf:
-            1. 15%-Grenze fÃ¼r anschaffungsnahe Herstellungskosten (3 Jahre ab Kauf 01.10.2025). Berechne die bisherige Gesamtsumme der Instandsetzungs-/Sanierungskosten.
-            2. PlausibilitÃ¤t & Risiken (z.B. falsche Zuordnung von Material vs. Handwerkerleistungen, fehlende Rechnungsmerkmale, auÃŸergewÃ¶hnliche BetrÃ¤ge).
-            3. Handlungsempfehlungen zur Optimierung der SteuererklÃ¤rung.
+            Prüfe die folgenden Belege auf:
+            1. 15%-Grenze für anschaffungsnahe Herstellungskosten (3 Jahre ab Kauf 01.10.2025). Berechne die bisherige Gesamtsumme der Instandsetzungs-/Sanierungskosten.
+            2. Plausibilität & Risiken (z.B. falsche Zuordnung von Material vs. Handwerkerleistungen, fehlende Rechnungsmerkmale, außergewöhnliche Beträge).
+            3. Handlungsempfehlungen zur Optimierung der Steuererklärung.
 
             Belege:
             $receiptSummary
 
-            Gib das Ergebnis im exakten JSON-Format zurÃ¼ck:
+            Gib das Ergebnis im exakten JSON-Format zurück:
             {
               "overallStatus": "OK" oder "WARNUNG" oder "KRITISCH",
               "sanierungCostSum": 12500.00,
@@ -556,12 +856,12 @@ object GeminiClient {
                 {
                   "category": "15%-Grenze",
                   "title": "Achtung bei weiteren Sanierungen",
-                  "description": "Du hast bereits 13.8% des GebÃ¤udeanteils ausgeschÃ¶pft.",
+                  "description": "Du hast bereits 13.8% des Gebäudeanteils ausgeschöpft.",
                   "severity": "WARNUNG",
                   "actionRecommendation": "Instandhaltungen auf das 4. Jahr verschieben."
                 }
               ],
-              "summaryText": "Gesamtbewertung der SteuerkonformitÃ¤t..."
+              "summaryText": "Gesamtbewertung der Steuerkonformität..."
             }
         """.trimIndent()
 
@@ -603,13 +903,13 @@ object GeminiClient {
         }
 
         val prompt = """
-            Erstelle eine formell korrekte deutsche Betriebskostenabrechnung (Mietnebenkostenabrechnung) fÃ¼r das Jahr $year.
-            Mieter: $tenantName, Wohneinheit: $unitName ($sqm mÂ² von gesamt $totalBuildingSqm mÂ²).
+            Erstelle eine formell korrekte deutsche Betriebskostenabrechnung (Mietnebenkostenabrechnung) für das Jahr $year.
+            Mieter: $tenantName, Wohneinheit: $unitName ($sqm m² von gesamt $totalBuildingSqm m²).
             
-            UmlagefÃ¤hige Ausgaben im Haus:
+            Umlagefähige Ausgaben im Haus:
             $operatingReceipts
 
-            Berechne den Anteil fÃ¼r den Mieter nach WohnflÃ¤che ($sqm / $totalBuildingSqm) oder direkt zugeordneten Kosten.
+            Berechne den Anteil für den Mieter nach Wohnfläche ($sqm / $totalBuildingSqm) oder direkt zugeordneten Kosten.
             Ggf. angenommene Vorauszahlungen des Mieters: 1800.00 EUR.
 
             Erstelle ein exaktes JSON im Format:
@@ -623,13 +923,13 @@ object GeminiClient {
               "balanceAmount": 150.00,
               "costBreakdown": [
                 {
-                  "category": "Grundsteuer & GebÃ¤udeversicherung",
+                  "category": "Grundsteuer & Gebäudeversicherung",
                   "totalBuildingCost": 3200.00,
-                  "costKey": "WohnflÃ¤che ($sqm mÂ² / $totalBuildingSqm mÂ²)",
+                  "costKey": "Wohnfläche ($sqm m² / $totalBuildingSqm m²)",
                   "tenantShare": 492.30
                 }
               ],
-              "formalDraftText": "Sehr geehrte/r $tenantName,\n\nhiermit erhalten Sie Ihre Betriebskostenabrechnung fÃ¼r das Jahr $year..."
+              "formalDraftText": "Sehr geehrte/r $tenantName,\n\nhiermit erhalten Sie Ihre Betriebskostenabrechnung für das Jahr $year..."
             }
         """.trimIndent()
 
@@ -661,14 +961,14 @@ object GeminiClient {
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val prompt = """
-            Du bist ein Experte fÃ¼r deutsches Mietrecht (BGB Â§ 558, Â§ 559 Modernisierungsumlage, Indexmiete) und Immobilien-Renditeoptimierung.
+            Du bist ein Experte für deutsches Mietrecht (BGB § 558, § 559 Modernisierungsumlage, Indexmiete) und Immobilien-Renditeoptimierung.
             Standort des 7-Familienhauses: $propertyLocation.
             
-            Aktuelle Mieteinheiten-Ãœbersicht:
+            Aktuelle Mieteinheiten-Übersicht:
             $currentUnitsInfo
 
             Aufgabe:
-            1. Analysiere das Mietsteigerungs- und Renditepotenzial fÃ¼r jede Wohneinheit unter BerÃ¼cksichtigung von ortsÃ¼blicher Vergleichsmiete und Modernisierungen.
+            1. Analysiere das Mietsteigerungs- und Renditepotenzial für jede Wohneinheit unter Berücksichtigung von ortsüblicher Vergleichsmiete und Modernisierungen.
             2. Berechne die Ist- und Soll-Kaltmiete sowie die Brutto-Rendite.
             3. Gib konkrete gesetzlich fundierte Handlungsempfehlungen.
 
@@ -683,8 +983,8 @@ object GeminiClient {
                   "unitName": "WE 01 (OG Links)",
                   "currentRent": 650.00,
                   "suggestedRent": 740.00,
-                  "reasoning": "Modernisierung Bad & Bodenbelag durchgefÃ¼hrt.",
-                  "legalBasis": "Â§ 559 BGB (8% Modernisierungsumlage) bzw. Anpassung an Mietspiegel"
+                  "reasoning": "Modernisierung Bad & Bodenbelag durchgeführt.",
+                  "legalBasis": "§ 559 BGB (8% Modernisierungsumlage) bzw. Anpassung an Mietspiegel"
                 }
               ],
               "summaryText": "Strategie-Zusammenfassung zur Mietpreisoptimierung..."
@@ -709,7 +1009,7 @@ object GeminiClient {
         }
     }
 
-    // --- 4. KI-MÃ„NGEL- & SCHADENS-ASSISTENT MIT FOTO-ANALYSE ---
+    // --- 4. KI-MÄNGEL- & SCHADENS-ASSISTENT MIT FOTO-ANALYSE ---
     suspend fun assessDamagePhoto(
         bitmap: Bitmap,
         userDescription: String = ""
@@ -723,23 +1023,23 @@ object GeminiClient {
         
         val promptText = """
             Analysiere dieses Schadensbild aus einer Mietwohnung / Immobilie.
-            ZusÃ¤tzliche Nutzerbeschreibung: "$userDescription"
+            Zusätzliche Nutzerbeschreibung: "$userDescription"
 
             Aufgabe:
             1. Identifiziere die Schadensart (z.B. Schimmelbefall, Rohrbruch, Wasserschaden, Fliesenriss, Fensterschaden).
-            2. Schweregrad & Dringlichkeit einschÃ¤tzen.
-            3. Steuerliche Zuordnung (Sofort abzugsfÃ¤higer Erhaltungsaufwand vs. Herstellungskosten).
-            4. GeschÃ¤tzte Reparaturkosten.
+            2. Schweregrad & Dringlichkeit einschätzen.
+            3. Steuerliche Zuordnung (Sofort abzugsfähiger Erhaltungsaufwand vs. Herstellungskosten).
+            4. Geschätzte Reparaturkosten.
             5. Erstelle ein fertiges Handwerker-Angebotsanfrage-Schreiben oder eine Mieter-Information.
 
             Antworte im exakten JSON-Format:
             {
               "damageTitle": "Wasserschaden an Decke / Schimmelbildung",
               "severity": "Hoch",
-              "taxCategory": "Sofort abzugsfÃ¤higer Erhaltungsaufwand (Konto 4830)",
-              "estimatedRepairCostRange": "350 â‚¬ - 800 â‚¬",
+              "taxCategory": "Sofort abzugsfähiger Erhaltungsaufwand (Konto 4830)",
+              "estimatedRepairCostRange": "350 € - 800 €",
               "urgency": "Dringend (innerhalb 48h)",
-              "recommendedAction": "Maler & Leckortung beauftragen, TrocknungsgerÃ¤t aufstellen.",
+              "recommendedAction": "Maler & Leckortung beauftragen, Trocknungsgerät aufstellen.",
               "craftsmanDraftLetter": "Sehr geehrte Damen und Herren,\n\nin unserer Mietwohnung liegt folgender Schaden vor..."
             }
         """.trimIndent()
@@ -779,25 +1079,25 @@ object GeminiClient {
         
         val promptText = """
             Analysiere diesen Vertrag (z.B. Wohnraum-Mietvertrag, Versicherungsvertrag, Dienstleister- oder Handwerkervertrag).
-            ZusÃ¤tzlicher Text: "${textContent ?: ""}"
+            Zusätzlicher Text: "${textContent ?: ""}"
 
             Extrahiere die rechtlichen & finanziellen Eckpunkte:
             1. Vertragstyp & Vertragsparteien
-            2. Beginn, Laufzeit & KÃ¼ndigungsfristen
+            2. Beginn, Laufzeit & Kündigungsfristen
             3. Mietanpassungsklausel (Index, Staffelmiete, BGB)
             4. Kaution & Schonheitsreparaturen
-            5. Risikopunkte & rechtlich unzulÃ¤ssige Klauseln (z.B. Starre SchÃ¶nheitsreparaturklauseln)
+            5. Risikopunkte & rechtlich unzulässige Klauseln (z.B. Starre Schönheitsreparaturklauseln)
 
             Antworte im exakten JSON-Format:
             {
               "contractType": "Wohnraum-Mietvertrag",
-              "parties": "Vermieter: ImmoGmbH â€¢ Mieter: Max Mustermann",
+              "parties": "Vermieter: ImmoGmbH • Mieter: Max Mustermann",
               "startDate": "01.04.2024",
               "noticePeriod": "3 Monate zum Monatsende",
               "rentAdjustmentClause": "Indexmiete nach Verbraucherpreisindex",
-              "depositTerms": "3 Monatskaltmieten (1.950 â‚¬) auf Kautionskonto",
-              "importantClauses": ["Kleinreparaturklausel bis 100â‚¬/Einzelfall", "Tierhaltung nach Zustimmung"],
-              "riskFlags": ["Alte SchÃ¶nheitsreparaturklausel kÃ¶nnte laut BGH-Rechtsprechung unwirksam sein."],
+              "depositTerms": "3 Monatskaltmieten (1.950 €) auf Kautionskonto",
+              "importantClauses": ["Kleinreparaturklausel bis 100€/Einzelfall", "Tierhaltung nach Zustimmung"],
+              "riskFlags": ["Alte Schönheitsreparaturklausel könnte laut BGH-Rechtsprechung unwirksam sein."],
               "summary": "Standard-Mietvertrag mit wirksamer Indexmietklausel."
             }
         """.trimIndent()
@@ -831,11 +1131,11 @@ object GeminiClient {
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val receiptsSummary = receipts.joinToString("\n") { r ->
-            "Beleg ID ${r.id}: ${r.datum} | ${r.aussteller} | ${r.bruttobetrag} â‚¬ | Kat: ${r.hauptkategorie}/${r.unterkategorie} | WE: ${r.wohneinheit}"
+            "Beleg ID ${r.id}: ${r.datum} | ${r.aussteller} | ${r.bruttobetrag} € | Kat: ${r.hauptkategorie}/${r.unterkategorie} | WE: ${r.wohneinheit}"
         }
 
         val prompt = """
-            Du bist ein automatischer Buchhaltungs- & Bankabgleich-Assistent fÃ¼r Vermieter.
+            Du bist ein automatischer Buchhaltungs- & Bankabgleich-Assistent für Vermieter.
             Vergleiche die folgende Transaktionsliste / den Kontoauszug mit den gespeicherten Belegen und den Mieterdaten.
 
             Gespeicherte Belege in der App:
@@ -848,11 +1148,11 @@ object GeminiClient {
             $rawStatementText
 
             Aufgaben:
-            1. Ordne Ausgaben (negativ) Belegen zu. Wenn fÃ¼r eine Ausgabe KEIN Beleg existiert, markiere mit status="MISSING_RECEIPT".
+            1. Ordne Ausgaben (negativ) Belegen zu. Wenn für eine Ausgabe KEIN Beleg existiert, markiere mit status="MISSING_RECEIPT".
             2. Ordne Einnahmen (positiv) Mietern zu. Wenn eine Miete fehlt oder zu gering ist, markiere mit status="RENT_ARREARS".
             3. Bei erfolgreicher Zuordnung markiere status="MATCHED". Bei unklaren Transaktionen status="UNMATCHED".
 
-            Gib das Ergebnis im exakten JSON-Format zurÃ¼ck:
+            Gib das Ergebnis im exakten JSON-Format zurück:
             {
               "period": "01.07.2025 - 31.07.2025",
               "totalIncoming": 4250.00,
@@ -870,7 +1170,7 @@ object GeminiClient {
                   "matchedReceiptId": null,
                   "matchedTenantName": "Max Mustermann",
                   "status": "MATCHED",
-                  "notes": "Miete vollstÃ¤ndig eingegangen"
+                  "notes": "Miete vollständig eingegangen"
                 },
                 {
                   "date": "15.07.2025",
@@ -906,4 +1206,3 @@ object GeminiClient {
         }
     }
 }
-
