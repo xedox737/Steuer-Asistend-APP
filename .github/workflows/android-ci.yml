@@ -1,3 +1,4 @@
+
 name: Android CI
 
 on:
@@ -85,6 +86,7 @@ jobs:
 
       - name: Upload reports
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: android-reports
@@ -108,3 +110,4 @@ jobs:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
