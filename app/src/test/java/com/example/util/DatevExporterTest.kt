@@ -1,7 +1,10 @@
 package com.example.util
 
+import com.example.data.AccountingApprovalJson
 import com.example.data.BookingRecord
 import com.example.data.DatevProfile
+import com.example.data.PersistedAllocation
+import com.example.data.PersistedBookingProposal
 import com.example.data.Receipt
 import com.example.data.ReceiptItem
 import com.example.data.ReceiptItemConverter
@@ -18,13 +21,44 @@ class DatevExporterTest {
         val profile = DatevProfile.createDefaultSkr03()
         val header1 = DatevCsvSerializer.generateExtfHeader(profile, "2026")
 
-        assertTrue(header1.startsWith("EXTF;\"700\";\"21\";Buchungsstapel;\"13\""))
-        assertTrue(header1.contains("\"1111111\"")) // Beraternummer
-        assertTrue(header1.contains("\"11111\""))   // Mandantennummer
-        assertTrue(header1.contains("EUR"))
+        assertTrue(header1.startsWith("\"EXTF\";700;21;\"Buchungsstapel\";13;"))
+        assertTrue(header1.contains(";1111111;11111;"))
+        assertTrue(header1.contains(";\"EUR\";"))
+        assertEquals(31, header1.split(";").size)
 
-        val columns = DatevCsvSerializer.EXTF_HEADER_COLUMNS_116.split(";")
-        assertEquals(116, columns.size)
+        val columns = DatevCsvSerializer.EXTF_HEADER_COLUMNS_125.split(";")
+        assertEquals(125, columns.size)
+    }
+
+    @Test
+    fun legacyEntryPointBlocksReceiptWithoutApproval() {
+        val receipt = approvedReceipt().copy(
+            freigabestatus = "OFFEN",
+            allocationsJson = "",
+            bookingProposalsJson = ""
+        )
+
+        val failure = runCatching {
+            DatevExporter.generateBuchungsstapelCsv(
+                receipts = listOf(receipt),
+                config = DatevConfig(wirtschaftsjahr = 2026)
+            )
+        }.exceptionOrNull()
+
+        assertNotNull(failure)
+        assertTrue(failure is IllegalArgumentException)
+        assertTrue(failure?.message.orEmpty().contains("Freigabe"))
+    }
+
+    @Test
+    fun legacyEntryPointProducesStrictDatevFormatForApprovedReceipt() {
+        val csv = DatevExporter.generateBuchungsstapelCsv(
+            receipts = listOf(approvedReceipt()),
+            config = DatevConfig(wirtschaftsjahr = 2026, chartType = "SKR03")
+        )
+
+        val validation = DatevFormatValidator.validate(csv)
+        assertTrue(validation.errors.joinToString(" | "), validation.isValid)
     }
 
     // 1. Zehn Positionen mit identischer Zuordnung ergeben eine DATEV-Zeile.
@@ -360,4 +394,24 @@ class DatevExporterTest {
 
         assertTrue(report.warnings.any { it.field == "exportStatus" && it.message.contains("bereits früher exportiert") })
     }
+
+    private fun approvedReceipt() = Receipt(
+        id = 2001,
+        aussteller = "Test GmbH",
+        datum = "2026-08-01",
+        uhrzeit = "",
+        bruttobetrag = 100.0,
+        hauptkategorie = "Instandhaltung & Reparaturen",
+        unterkategorie = "Reparatur",
+        kontoNr = "4801",
+        beschreibung = "Anonymisierter Testbeleg",
+        internalId = "receipt-2001",
+        allocationsJson = AccountingApprovalJson.encodeAllocations(
+            listOf(PersistedAllocation("a", "Reparatur", 100.0, 10_000))
+        ),
+        bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(
+            listOf(PersistedBookingProposal("a", "4801", "70000", 10_000, ""))
+        ),
+        freigabestatus = "FREIGEGEBEN"
+    )
 }

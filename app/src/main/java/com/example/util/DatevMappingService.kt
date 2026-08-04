@@ -1,12 +1,15 @@
 package com.example.util
 
+import com.example.data.AccountingApprovalJson
 import com.example.data.BookingRecord
+import com.example.data.ConfirmedAllocationPolicy
 import com.example.data.DatevProfile
+import com.example.data.PersistedAllocation
+import com.example.data.PersistedBookingProposal
 import com.example.data.Receipt
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.util.Locale
-import java.util.UUID
 
 data class ReceiptAllocation(
     val receiptId: Int,
@@ -28,7 +31,6 @@ data class ReceiptAllocation(
 ) {
     fun createGroupKey(): String {
         return listOf(
-            receiptId,
             propertyId.ifBlank { "OBJEKT_ALLG" },
             unitId.ifBlank { "GESAMT" },
             projectId.ifBlank { "OHNE_MASSNAHME" },
@@ -200,9 +202,11 @@ object DatevMappingService {
         // Group by groupKey
         val groupedMap = exportableAllocations.groupBy { it.createGroupKey() }
 
-        val rawGuid = UUID.nameUUIDFromBytes("RECEIPT_${receipt.id}_${receipt.datum}".toByteArray(Charsets.UTF_8))
-            .toString().replace("-", "").uppercase(Locale.GERMANY)
-        val belegfeld1 = if (rawGuid.length >= 12) "BLG-${receipt.id}-${rawGuid.take(6)}" else "BLG-${receipt.id}"
+        val stableIdentity = receipt.internalId.trim().ifEmpty { "LEGACY_ROOM_${receipt.id}" }
+        val rawGuid = DatevExportPolicy.stableReceiptGuid(stableIdentity)
+            .replace("-", "")
+            .uppercase(Locale.GERMANY)
+        val belegfeld1 = "BLG-${rawGuid.take(18)}"
 
         val kost1 = when (profile.kost1Logic) {
             "OBJEKT" -> profile.profileName.take(15)
@@ -237,7 +241,7 @@ object DatevMappingService {
 
             records.add(
                 BookingRecord(
-                    bookingId = "GRP_${receipt.id}_${Math.abs(groupKey.hashCode())}",
+                    bookingId = "GRP_${rawGuid.take(12)}_${Math.abs(groupKey.hashCode())}",
                     receiptId = receipt.id,
                     originalFileId = receipt.imageUrl,
                     belegnummer = belegfeld1,
@@ -269,11 +273,140 @@ object DatevMappingService {
         return records
     }
 
+    /**
+     * Persists the currently visible proposal only after an explicit user action.
+     * Returning null leaves the receipt unchanged and therefore non-exportable.
+     */
+    fun confirmDatevPreview(receipt: Receipt, previewRows: List<BookingRecord>): Receipt? {
+        if (receipt.internalId.isBlank() || previewRows.isEmpty()) return null
+        if (previewRows.map { it.bookingId }.any(String::isBlank) ||
+            previewRows.map { it.bookingId }.distinct().size != previewRows.size
+        ) return null
+
+        val receiptAmountCent = Math.round(receipt.bruttobetrag * 100.0)
+        if (receiptAmountCent == 0L) return null
+        val absoluteRowCents = previewRows.map { Math.round(Math.abs(it.bruttobetrag) * 100.0) }
+        if (Math.abs(Math.abs(receiptAmountCent) - absoluteRowCents.sum()) > 1L) return null
+
+        var allocatedPercent = 0.0
+        val allocations = previewRows.mapIndexed { index, row ->
+            val percent = if (index == previewRows.lastIndex) {
+                100.0 - allocatedPercent
+            } else {
+                (absoluteRowCents[index].toDouble() / Math.abs(receiptAmountCent).toDouble()) * 100.0
+            }
+            allocatedPercent += percent
+            PersistedAllocation(
+                id = row.bookingId,
+                description = row.beschreibung,
+                percent = percent,
+                amountCent = if (receiptAmountCent < 0L) -absoluteRowCents[index] else absoluteRowCents[index]
+            )
+        }
+        val validation = ConfirmedAllocationPolicy.validate(receiptAmountCent, allocations)
+        if (!validation.valid) return null
+
+        val proposals = previewRows.mapIndexed { index, row ->
+            PersistedBookingProposal(
+                id = row.bookingId,
+                konto = row.sachkonto,
+                gegenkonto = row.gegenkonto,
+                betragCent = absoluteRowCents[index],
+                buSchluessel = row.buSchluessel
+            )
+        }
+        if (proposals.any { it.konto.isBlank() || it.gegenkonto.isBlank() }) return null
+
+        return receipt.copy(
+            allocationsJson = AccountingApprovalJson.encodeAllocations(allocations),
+            bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(proposals),
+            freigabestatus = "FREIGEGEBEN",
+            pruefstatus = "GEPRUEFT",
+            exportStatus = "EXPORTBEREIT"
+        )
+    }
+
+    /**
+     * Builds export rows exclusively from the user's persisted approval.
+     * OCR positions and automatically mapped preview rows are never exported through this path.
+     */
+    fun buildConfirmedDatevBookingRows(
+        receipt: Receipt,
+        profile: DatevProfile,
+        exportlaufId: String = ""
+    ): List<BookingRecord> {
+        if (receipt.freigabestatus != "FREIGEGEBEN" || receipt.internalId.isBlank()) return emptyList()
+
+        val allocations = AccountingApprovalJson.decodeAllocations(receipt.allocationsJson)
+        val proposals = AccountingApprovalJson.decodeBookingProposals(receipt.bookingProposalsJson)
+        val receiptAmountCent = Math.round(receipt.bruttobetrag * 100.0)
+        if (!ConfirmedAllocationPolicy.validate(receiptAmountCent, allocations).valid) return emptyList()
+        if (allocations.map { it.id }.toSet() != proposals.map { it.id }.toSet()) return emptyList()
+        if (proposals.any { it.konto.isBlank() || it.gegenkonto.isBlank() || it.betragCent <= 0L }) {
+            return emptyList()
+        }
+
+        val proposalById = proposals.associateBy { it.id }
+        val isIncome = receipt.hauptkategorie.contains("Einnahmen", ignoreCase = true) ||
+            receipt.hauptkategorie.contains("Miete", ignoreCase = true)
+        val isCredit = receiptAmountCent < 0L
+        val debitCredit = if (isIncome) {
+            if (isCredit) "S" else "H"
+        } else {
+            if (isCredit) "H" else "S"
+        }
+        val rawGuid = DatevExportPolicy.stableReceiptGuid(receipt.internalId)
+            .replace("-", "")
+            .uppercase(Locale.GERMANY)
+        val belegfeld1 = "BLG-${rawGuid.take(18)}"
+        val kost1 = when (profile.kost1Logic) {
+            "OBJEKT" -> profile.profileName.take(15)
+            "WOHNEINHEIT" -> receipt.wohneinheit.ifBlank { "ALLG" }
+            else -> ""
+        }
+        val kost2 = when (profile.kost2Logic) {
+            "WOHNEINHEIT" -> receipt.wohneinheit.ifBlank { "ALLG" }
+            else -> ""
+        }
+
+        return allocations.mapNotNull { allocation ->
+            val proposal = proposalById[allocation.id] ?: return@mapNotNull null
+            BookingRecord(
+                bookingId = "CONF_${rawGuid.take(12)}_${Math.abs(allocation.id.hashCode())}",
+                receiptId = receipt.id,
+                originalFileId = receipt.imageUrl,
+                belegnummer = belegfeld1,
+                belegdatum = receipt.datum,
+                buchungsdatum = receipt.datum,
+                zahlungspartner = receipt.aussteller,
+                beschreibung = allocation.description.take(60),
+                bruttobetrag = Math.abs(allocation.amountCent) / 100.0,
+                sollHaben = debitCredit,
+                waehrung = profile.waehrung,
+                sachkonto = proposal.konto,
+                gegenkonto = proposal.gegenkonto,
+                buSchluessel = proposal.buSchluessel,
+                belegfeld1 = belegfeld1,
+                kost1 = kost1,
+                kost2 = kost2,
+                wohneinheitId = receipt.wohneinheit,
+                hauptkategorie = receipt.hauptkategorie,
+                unterkategorie = receipt.unterkategorie,
+                steuerlichesJahr = receipt.datum.take(4).toIntOrNull()
+                    ?: profile.wirtschaftsjahrBeginn.take(4).toInt(),
+                exportStatus = receipt.exportStatus,
+                pruefstatus = receipt.pruefstatus,
+                exportlaufId = exportlaufId,
+                kanzleiprofilVersion = profile.version
+            )
+        }
+    }
+
     fun mapReceiptToBookingRecords(
         receipt: Receipt,
         profile: DatevProfile,
         exportlaufId: String = ""
     ): List<BookingRecord> {
-        return buildDatevBookingRows(receipt, profile, exportlaufId)
+        return buildConfirmedDatevBookingRows(receipt, profile, exportlaufId)
     }
 }

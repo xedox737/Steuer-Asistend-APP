@@ -7,8 +7,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: android-ci-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -81,6 +85,7 @@ jobs:
 
       - name: Upload reports
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: android-reports
@@ -91,6 +96,7 @@ jobs:
 
       - name: Upload debug APK
         if: success()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
@@ -104,3 +110,14 @@ jobs:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Publish current debug APK
+        if: success() && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: Steuer-Assistent - aktuelle Testversion
+          prerelease: true
+          make_latest: false
+          files: app/build/outputs/apk/debug/*.apk
+

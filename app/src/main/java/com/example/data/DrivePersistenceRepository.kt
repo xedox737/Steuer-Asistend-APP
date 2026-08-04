@@ -185,6 +185,10 @@ class DrivePersistenceRepository(
     private val TAG = "DrivePersistenceRepo"
 
     companion object {
+        // Serializes the complete receipt transaction (document, metadata, index and folder).
+        // This prevents automatic sync, manual retry and background work from creating in parallel.
+        private val receiptSyncGate = ReceiptSyncGate()
+        private val receiptIndexMutex = kotlinx.coroutines.sync.Mutex()
         private val metadataMutexMap = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
         fun getMetadataMutex(internalId: String): kotlinx.coroutines.sync.Mutex {
             return metadataMutexMap.getOrPut(internalId) { kotlinx.coroutines.sync.Mutex() }
@@ -541,12 +545,14 @@ class DrivePersistenceRepository(
                         return DriveInitializationResult.Failure("Inkompatible Datenbank-Schema-Version in Google Drive: ${config.schemaVersion}. Bitte aktualisieren Sie die App.")
                     }
 
-                    // Determine if the local state is empty to see if we should auto-restore
+                    // Only offer automatic metadata restore for a truly uninitialized local profile.
+                    // A user may deliberately reset receipts while keeping their property data.
                     val localReceipts = localRepository.allReceipts.first()
                     val isLocalEmpty = localReceipts.isEmpty()
+                    val hasLocalMetadata = localRepository.getPropertyMetadata() != null
 
                     var restored = false
-                    if (isLocalEmpty) {
+                    if (isLocalEmpty && !hasLocalMetadata) {
                         Log.d(TAG, "Local receipts database is empty. Triggering automatic restore of Stammdaten...")
                         restoreStammdatenFromDrive(accessToken, config)
                         restored = true
@@ -951,6 +957,41 @@ class DrivePersistenceRepository(
             )
         }
 
+        val allocationsList = mutableListOf<PersistedAllocation>()
+        val allocationsArr = json.optJSONArray("allocations") ?: JSONArray()
+        for (i in 0 until allocationsArr.length()) {
+            val allocation = allocationsArr.getJSONObject(i)
+            allocationsList.add(
+                PersistedAllocation(
+                    id = allocation.optString("id", ""),
+                    description = allocation.optString("description", ""),
+                    percent = allocation.optDouble("percent", 0.0),
+                    amountCent = allocation.optLong("amountCent", 0L)
+                )
+            )
+        }
+
+        val proposalsList = mutableListOf<PersistedBookingProposal>()
+        val proposalsArr = json.optJSONArray("bookingProposals") ?: JSONArray()
+        for (i in 0 until proposalsArr.length()) {
+            val proposal = proposalsArr.getJSONObject(i)
+            proposalsList.add(
+                PersistedBookingProposal(
+                    id = proposal.optString("id", ""),
+                    konto = proposal.optString("konto", ""),
+                    gegenkonto = proposal.optString("gegenkonto", ""),
+                    betragCent = proposal.optLong("betragCent", 0L),
+                    buSchluessel = proposal.optString("buSchluessel", "")
+                )
+            )
+        }
+
+        val exportIdsList = mutableListOf<String>()
+        val exportIdsArr = json.optJSONArray("exportIds") ?: JSONArray()
+        for (i in 0 until exportIdsArr.length()) {
+            exportIdsArr.optString(i, "").takeIf(String::isNotBlank)?.let(exportIdsList::add)
+        }
+
         val aiAnalysisObj = json.optJSONObject("aiAnalysis")
         val aiAnalysis = if (aiAnalysisObj != null) {
             val fieldsMap = mutableMapOf<String, PersistedAiField>()
@@ -984,6 +1025,7 @@ class DrivePersistenceRepository(
             internalId = json.getString("internalId"),
             displayId = if (json.isNull("displayId")) null else json.getString("displayId"),
             documents = docsList,
+            metadataFileId = json.optString("metadataFileId", ""),
             driveFileId = json.optString("driveFileId", ""),
             driveFolderId = if (json.isNull("driveFolderId")) null else json.optString("driveFolderId", null),
             filename = json.optString("filename", ""),
@@ -1003,11 +1045,16 @@ class DrivePersistenceRepository(
             wohneinheit = if (json.isNull("wohneinheit")) null else json.getString("wohneinheit"),
             massnahme = if (json.isNull("massnahme")) null else json.getString("massnahme"),
             positionen = posList,
+            allocations = allocationsList,
+            bookingProposals = proposalsList,
             zahlungsstatus = if (json.isNull("zahlungsstatus")) null else json.getString("zahlungsstatus"),
             zahlungsdatum = if (json.isNull("zahlungsdatum")) null else json.getString("zahlungsdatum"),
             zahlungsreferenz = if (json.isNull("zahlungsreferenz")) null else json.getString("zahlungsreferenz"),
+            notizSteuerberater = if (json.isNull("notizSteuerberater")) null else json.optString("notizSteuerberater"),
             pruefstatus = if (json.isNull("pruefstatus")) null else json.getString("pruefstatus"),
+            freigabestatus = if (json.isNull("freigabestatus")) null else json.optString("freigabestatus"),
             exportstatus = if (json.isNull("exportstatus")) null else json.getString("exportstatus"),
+            exportIds = exportIdsList,
             aiAnalysis = aiAnalysis,
             createdAt = json.getString("createdAt"),
             updatedAt = json.getString("updatedAt"),
@@ -1050,14 +1097,17 @@ class DrivePersistenceRepository(
             mieter = "",
             isArchivedToDrive = true,
             positionenJson = posJsonStr,
+            allocationsJson = AccountingApprovalJson.encodeAllocations(allocations),
+            bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(bookingProposals),
+            freigabestatus = freigabestatus ?: "OFFEN",
             exportStatus = exportstatus ?: "EXPORTBEREIT",
             pruefstatus = pruefstatus ?: "GEPRUEFT",
             exportlaufId = "",
             
             internalId = internalId,
             displayId = displayId,
-            driveFileId = mainDoc?.driveFileId,
-            driveFolderId = mainDoc?.driveFolderId,
+            driveFileId = mainDoc?.driveFileId ?: driveFileId.takeIf(String::isNotBlank),
+            driveFolderId = mainDoc?.driveFolderId ?: driveFolderId,
             driveMetadataFileId = metadataFileId,
             storedFilename = mainDoc?.filename,
             originalMimeType = mainDoc?.mimeType,
@@ -1171,56 +1221,18 @@ class DrivePersistenceRepository(
         }
     }
 
+    /**
+     * Legacy compatibility hook. This method is intentionally read-only.
+     * Duplicate cleanup must only happen through the explicit preview and confirmation flow.
+     */
     suspend fun sanitizeIndexEntries(
         entries: List<ReceiptIndexEntry>,
         accessToken: String? = null
     ): List<ReceiptIndexEntry> {
-        val resultList = entries.toMutableList()
-
-        val obsoleteIdx = resultList.indexOfFirst {
-            it.internalId == "c4082e97-62a7-4111-834b-4364a53a2b97" &&
-            it.mainDriveFileId == "1fN2tpdm1S7SipCxmyXsnxgWJ7Htv9kfc"
+        if (!accessToken.isNullOrBlank()) {
+            Log.i(TAG, "Read-only index inspection: automatic cleanup is disabled (${entries.size} entries).")
         }
-
-        if (obsoleteIdx != -1) {
-            val obsoleteEntry = resultList[obsoleteIdx]
-            Log.i(TAG, "Removing obsolete test duplicate entry internalId=${obsoleteEntry.internalId}, metadataFileId=${obsoleteEntry.metadataFileId}")
-            resultList.removeAt(obsoleteIdx)
-
-            if (!accessToken.isNullOrBlank() && obsoleteEntry.metadataFileId == "1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K") {
-                val usedByOther = resultList.any { it.metadataFileId == "1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K" }
-                if (!usedByOther) {
-                    Log.i(TAG, "Deleting obsolete test metadata file from Drive: 1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K")
-                    GoogleDriveClient.deleteFile(accessToken, "1vmkwAsNqtea_N4PZTquRyssN0yblyZ7K")
-                }
-            }
-        }
-
-        val testEntries = resultList.filter {
-            it.displayId?.startsWith("TEST-BLG-") == true ||
-            it.internalId == "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2" ||
-            it.internalId == "c4082e97-62a7-4111-834b-4364a53a2b97"
-        }
-
-        if (testEntries.size > 1) {
-            val canonical = testEntries.find { it.internalId == "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2" }
-                ?: testEntries.maxByOrNull { it.updatedAt }!!
-
-            for (te in testEntries) {
-                if (te.internalId != canonical.internalId) {
-                    Log.i(TAG, "Removing test duplicate: internalId=${te.internalId}, metadataFileId=${te.metadataFileId}")
-                    resultList.removeAll { it.internalId == te.internalId }
-                    if (!accessToken.isNullOrBlank() && te.metadataFileId.isNotBlank() && te.metadataFileId != canonical.metadataFileId) {
-                        val usedElsewhere = resultList.any { it.metadataFileId == te.metadataFileId }
-                        if (!usedElsewhere) {
-                            GoogleDriveClient.deleteFile(accessToken, te.metadataFileId)
-                        }
-                    }
-                }
-            }
-        }
-
-        return resultList
+        return entries.toList()
     }
 
     fun validateIndex(entries: List<ReceiptIndexEntry>): IndexValidationResult {
@@ -1268,7 +1280,7 @@ class DrivePersistenceRepository(
         accessToken: String,
         config: DriveAppConfig,
         newEntry: ReceiptIndexEntry
-    ): Boolean {
+    ): Boolean = receiptIndexMutex.withLock {
         try {
             val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex")
             var indexEntries = mutableListOf<ReceiptIndexEntry>()
@@ -1303,18 +1315,19 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error downloading/parsing existing index, starting fresh", e)
+                    Log.e(TAG, "Existing receipt index could not be read; refusing to overwrite it", e)
+                    return@withLock false
                 }
             }
 
-            // 1. Sanitize & clean up known duplicate test entries first
+            // 1. Run the read-only compatibility inspection
             indexEntries = sanitizeIndexEntries(indexEntries, accessToken).toMutableList()
 
             // 2. Validate index before upsert
             val preValidation = validateIndex(indexEntries)
             if (!preValidation.isValid) {
                 Log.e(TAG, "Index validation failed before upsert: ${preValidation.errorMessage}")
-                return false
+                return@withLock false
             }
 
             // 3. Upsert entry using strict uniqueness rules
@@ -1324,7 +1337,7 @@ class DrivePersistenceRepository(
             val postValidation = validateIndex(indexEntries)
             if (!postValidation.isValid) {
                 Log.e(TAG, "Index validation failed after upsert: ${postValidation.errorMessage}")
-                return false
+                return@withLock false
             }
 
             val entriesArray = JSONArray()
@@ -1357,10 +1370,10 @@ class DrivePersistenceRepository(
             val uploadRes = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "receiptIndex", "receipt-index.json", indexJson
             )
-            return uploadRes.success
+            uploadRes.success
         } catch (e: Exception) {
             Log.e(TAG, "Exception during index update", e)
-            return false
+            false
         }
     }
 
@@ -1383,7 +1396,7 @@ class DrivePersistenceRepository(
         accessToken: String,
         config: DriveAppConfig,
         receipt: Receipt
-    ): Boolean {
+    ): Boolean = receiptSyncGate.run {
         try {
             Log.d(TAG, "Syncing receipt to Drive. ID: ${receipt.id}")
             
@@ -1666,7 +1679,7 @@ class DrivePersistenceRepository(
                                 syncError = "Die hochgeladene Datei ist fehlerhaft oder leer."
                             )
                             localRepository.insert(updatedReceipt)
-                            return false
+                            return@run false
                         }
                         driveFileId = uploadedId
                         
@@ -1685,7 +1698,7 @@ class DrivePersistenceRepository(
                             syncError = "Fehler beim Hochladen der Belegdatei."
                         )
                         localRepository.insert(updatedReceipt)
-                        return false
+                        return@run false
                     }
                 } else {
                     // "Nach CREATE die neue Drive-ID sofort lokal sichern, bevor weitere Netzwerkaktionen erfolgen."
@@ -1704,7 +1717,7 @@ class DrivePersistenceRepository(
                     syncError = "Keine lokale Quelldatei gefunden oder Datei ist leer."
                 )
                 localRepository.insert(updatedReceipt)
-                return false
+                return@run false
             }
 
             val existingDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
@@ -1739,10 +1752,13 @@ class DrivePersistenceRepository(
                 wohneinheit = currentReceipt.wohneinheit,
                 massnahme = "",
                 positionen = currentReceipt.getPositionenList().toPersistedItems(),
+                allocations = AccountingApprovalJson.decodeAllocations(currentReceipt.allocationsJson),
+                bookingProposals = AccountingApprovalJson.decodeBookingProposals(currentReceipt.bookingProposalsJson),
                 zahlungsstatus = "BEZAHLT",
                 zahlungsdatum = currentReceipt.datum,
                 zahlungsreferenz = "",
                 pruefstatus = currentReceipt.pruefstatus,
+                freigabestatus = currentReceipt.freigabestatus,
                 exportstatus = currentReceipt.exportStatus,
                 createdAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
                 updatedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
@@ -1758,7 +1774,7 @@ class DrivePersistenceRepository(
                     syncError = "Fehler beim Hochladen der Belegmetadaten."
                 )
                 localRepository.insert(updatedReceipt)
-                return false
+                return@run false
             }
 
             val indexEntry = ReceiptIndexEntry(
@@ -1801,14 +1817,14 @@ class DrivePersistenceRepository(
                 )
                 localRepository.insert(finalReceipt)
                 Log.d(TAG, "Receipt fully synced and saved locally. ID: ${finalReceipt.id}")
-                return true
+                return@run true
             } else {
                 val updatedReceipt = currentReceipt.copy(
                     syncStatus = "ERROR",
                     syncError = "Index-Eintrag konnte nicht aktualisiert werden."
                 )
                 localRepository.insert(updatedReceipt)
-                return false
+                return@run false
             }
 
         } catch (e: Exception) {
@@ -1818,7 +1834,7 @@ class DrivePersistenceRepository(
                 syncError = e.message ?: e.toString()
             )
             localRepository.insert(updatedReceipt)
-            return false
+            return@run false
         }
     }
 
@@ -2523,14 +2539,17 @@ class DrivePersistenceRepository(
 
                 val seenInternalIds = mutableSetOf<String>()
                 val seenMetadataFileIds = mutableSetOf<String>()
+                var eligibleIndexEntryCount = 0
                 val tombstones = getAllTombstonesFromDrive(accessToken, config)
 
                 for (entry in indexEntries) {
                     val tombstone = tombstones[entry.internalId]
-                    if (entry.syncStatus == "DELETED" || tombstone?.status == "DELETED") {
+                    if (!RestoreEligibilityPolicy.shouldRestore(entry.syncStatus, tombstone?.status)) {
                         Log.i(TAG, "Beleg ${entry.internalId} (${entry.displayId}) ist gelöscht (Tombstone) und wird bei der Wiederherstellung übersprungen.")
                         continue
                     }
+
+                    eligibleIndexEntryCount++
 
                     if (entry.internalId.isBlank()) {
                         errors.add(RestoreError("BLANK_INTERNAL_ID", "Indexeintrag ohne internalId gefunden", isBlocking = true))
@@ -2559,14 +2578,25 @@ class DrivePersistenceRepository(
                             warnings.add(RestoreWarning("MISSING_MAIN_DOC", "Hauptdokument fehlt für Beleg '${persisted.displayId ?: persisted.internalId}'", targetId = persisted.internalId))
                         }
 
-                        receipts.add(persisted)
+                        receipts.add(
+                            persisted.copy(
+                                driveFileId = entry.mainDriveFileId,
+                                metadataFileId = entry.metadataFileId
+                            )
+                        )
                     } catch (e: Exception) {
                         errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Metadaten-JSON für Beleg '${entry.displayId ?: entry.internalId}' nicht lesbar: ${e.message}", targetId = entry.internalId, isBlocking = true))
                     }
                 }
 
-                if (indexEntries.size != receipts.size) {
-                    errors.add(RestoreError("INDEX_COUNT_MISMATCH", "Index enthält ${indexEntries.size} Einträge, aber nur ${receipts.size} Metadatendateien geladen", isBlocking = true))
+                if (eligibleIndexEntryCount != receipts.size) {
+                    errors.add(
+                        RestoreError(
+                            "INDEX_COUNT_MISMATCH",
+                            "Index enthält $eligibleIndexEntryCount wiederherstellbare Einträge, aber nur ${receipts.size} Metadatendateien wurden geladen",
+                            isBlocking = true
+                        )
+                    )
                 }
             } catch (e: Exception) {
                 errors.add(RestoreError("INDEX_READ_ERROR", "receipt-index.json unlesbar: ${e.message}", isBlocking = true))
@@ -2654,12 +2684,12 @@ class DrivePersistenceRepository(
                 }
 
                 for (persisted in snapshot.receipts) {
-                    val restoredReceipt = persisted.toLocalReceipt(persisted.documents.firstOrNull()?.driveFileId).copy(
+                    val restoredReceipt = persisted.toLocalReceipt(persisted.metadataFileId).copy(
                         syncStatus = "SYNCED",
                         lastSyncedAt = nowStr,
                         isArchivedToDrive = true
                     )
-                    localRepository.insert(restoredReceipt)
+                    localRepository.upsertRestoredReceipt(restoredReceipt)
                     receiptsRestored++
 
                     if (!restoredReceipt.driveFileId.isNullOrBlank()) {
@@ -3085,11 +3115,29 @@ class DrivePersistenceRepository(
         }
 
         val localCountBefore = localRepository.getAllReceiptsList().size
-        Log.d(TAG, "Non-destructive dry-run snapshot test succeeded. Local count before: $localCountBefore, Snapshot receipts: ${snapshot.receipts.size}")
+        Log.d(TAG, "Non-destructive dry-run snapshot test succeeded. Local count: $localCountBefore, Snapshot receipts: ${snapshot.receipts.size}")
 
-        val report = executeFullDriveRestore(accessToken, config, requestedMode = RestoreMode.REPLACE_FULL)
-        Log.d(TAG, "E2E Restore completed. Restored receipts: ${report.receiptsRestored}, Errors: ${report.errorCount}")
-        return report
+        // A dry run must never import, replace, or otherwise mutate local data.
+        // Report the validated snapshot contents without invoking executeFullDriveRestore.
+        return DriveRestoreReport(
+            timestamp = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date()),
+            propertiesRestored = if (snapshot.propertyMetadata != null) 1 else 0,
+            unitsRestored = snapshot.units.size,
+            receiptsRestored = snapshot.receipts.size,
+            mainDocsLinked = snapshot.receipts.count { receipt ->
+                receipt.driveFileId.isNotBlank() || receipt.documents.isNotEmpty()
+            },
+            metadataFilesLoaded = snapshot.receipts.size,
+            itemsRestored = snapshot.receipts.sumOf { it.positionen.size },
+            splitsRestored = snapshot.receipts.sumOf { it.allocations.size },
+            proposalsRestored = snapshot.receipts.sumOf { it.bookingProposals.size },
+            exportsRestored = snapshot.exportRuns.size,
+            datevProfilesRestored = snapshot.datevProfiles.size,
+            learnedRulesRestored = snapshot.aiLearnedRules.size,
+            errorCount = 0,
+            errors = snapshot.warnings.map { "Warnung: ${it.message}" },
+            isSuccess = true
+        )
     }
 
     suspend fun restoreReceiptsFromDrive(accessToken: String, config: DriveAppConfig): Boolean {
@@ -3316,10 +3364,13 @@ class DrivePersistenceRepository(
                     wohneinheit = currentReceipt.wohneinheit,
                     massnahme = "",
                     positionen = currentReceipt.getPositionenList().toPersistedItems(),
+                    allocations = AccountingApprovalJson.decodeAllocations(currentReceipt.allocationsJson),
+                    bookingProposals = AccountingApprovalJson.decodeBookingProposals(currentReceipt.bookingProposalsJson),
                     zahlungsstatus = "BEZAHLT",
                     zahlungsdatum = currentReceipt.datum,
                     zahlungsreferenz = "",
                     pruefstatus = currentReceipt.pruefstatus,
+                    freigabestatus = currentReceipt.freigabestatus,
                     exportstatus = currentReceipt.exportStatus,
                     createdAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
                     updatedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date()),
@@ -3563,6 +3614,52 @@ class DrivePersistenceRepository(
         }
     }
 
+    suspend fun replaceReceiptIndexEntries(
+        accessToken: String,
+        config: DriveAppConfig,
+        entries: List<ReceiptIndexEntry>
+    ): Boolean {
+        val validation = validateIndex(entries)
+        if (!validation.isValid) {
+            throw IllegalStateException(
+                "Bereinigter receipt-index.json ist ungültig: ${validation.errorMessage}"
+            )
+        }
+        val entriesArray = JSONArray()
+        entries.forEach { entry ->
+            entriesArray.put(JSONObject().apply {
+                put("internalId", entry.internalId)
+                put("displayId", entry.displayId ?: JSONObject.NULL)
+                put("metadataFileId", entry.metadataFileId)
+                put("mainDriveFileId", entry.mainDriveFileId)
+                put("aussteller", entry.aussteller ?: JSONObject.NULL)
+                put("rechnungsnummer", entry.rechnungsnummer ?: JSONObject.NULL)
+                put("datum", entry.datum ?: JSONObject.NULL)
+                put("bruttobetragCent", entry.bruttobetragCent ?: JSONObject.NULL)
+                put("hauptkategorie", entry.hauptkategorie ?: JSONObject.NULL)
+                put("unterkategorie", entry.unterkategorie ?: JSONObject.NULL)
+                put("wohneinheit", entry.wohneinheit ?: JSONObject.NULL)
+                put("massnahme", entry.massnahme ?: JSONObject.NULL)
+                put("pruefstatus", entry.pruefstatus ?: JSONObject.NULL)
+                put("freigabestatus", entry.freigabestatus ?: JSONObject.NULL)
+                put("exportstatus", entry.exportstatus ?: JSONObject.NULL)
+                put("syncStatus", entry.syncStatus)
+                put("updatedAt", entry.updatedAt)
+            })
+        }
+        val indexJson = JSONObject().apply {
+            put("version", 1)
+            put("entries", entriesArray)
+        }.toString(4)
+        return uploadOrUpdateJson(
+            accessToken,
+            config.systemFolderId,
+            "receiptIndex",
+            "receipt-index.json",
+            indexJson
+        ).success
+    }
+
     private fun calculateSha256Bytes(bytes: ByteArray): String {
         val digest = java.security.MessageDigest.getInstance("SHA-256")
         return digest.digest(bytes).joinToString("") { "%02x".format(it) }
@@ -3614,8 +3711,12 @@ class DrivePersistenceRepository(
         val allFiles = GoogleDriveClient.listAllReceiptMetadataFiles(accessToken, config.receiptsFolderId)
         val indexEntries = getReceiptIndexFromDrive(accessToken, config)
         
-        // Map of internalId -> metadataFileId from index
-        val indexMap = indexEntries.associate { it.internalId to it.metadataFileId }
+        // Keep every index reference. Legacy indexes may contain more than one metadata file for
+        // the same internalId; such groups are ambiguous and must remain read-only.
+        val indexReferencesByInternalId = indexEntries
+            .filter { it.internalId.isNotBlank() && it.metadataFileId.isNotBlank() }
+            .groupBy { it.internalId }
+            .mapValues { (_, entries) -> entries.map { it.metadataFileId }.toSet() }
         
         // Group all found files by their receiptInternalId
         val groupedFiles = allFiles.groupBy { it.receiptInternalId }
@@ -3627,7 +3728,9 @@ class DrivePersistenceRepository(
         for ((internalId, files) in groupedFiles) {
             if (internalId.isBlank()) continue
             
-            val referencedFileIdInIndex = indexMap[internalId]
+            val referencedMetadataFileIds =
+                indexReferencesByInternalId[internalId].orEmpty()
+            val referencedFileIdInIndex = referencedMetadataFileIds.singleOrNull()
             
             val details = files.map { file ->
                 MetadataFileDetails(
@@ -3635,7 +3738,7 @@ class DrivePersistenceRepository(
                     name = file.name,
                     createdTime = file.createdTime,
                     modifiedTime = file.modifiedTime,
-                    isReferencedInIndex = file.id == referencedFileIdInIndex
+                    isReferencedInIndex = file.id in referencedMetadataFileIds
                 )
             }
             
@@ -3650,7 +3753,8 @@ class DrivePersistenceRepository(
                 MetadataDuplicateGroup(
                     internalId = internalId,
                     files = details,
-                    referencedFileIdInIndex = referencedFileIdInIndex
+                    referencedFileIdInIndex = referencedFileIdInIndex,
+                    referencedMetadataFileIds = referencedMetadataFileIds
                 )
             )
         }
@@ -3674,7 +3778,9 @@ data class MetadataFileDetails(
 data class MetadataDuplicateGroup(
     val internalId: String,
     val files: List<MetadataFileDetails>,
-    val referencedFileIdInIndex: String?
+    val referencedFileIdInIndex: String?,
+    val referencedMetadataFileIds: Set<String> =
+        referencedFileIdInIndex?.let { setOf(it) } ?: emptySet()
 )
 
 data class MetadataDuplicateReport(
@@ -3699,6 +3805,7 @@ data class PersistedReceipt(
     val internalId: String,
     val displayId: String?,
     val documents: List<ReceiptDocumentReference> = emptyList(),
+    val metadataFileId: String = "",
     val driveFileId: String = "",
     val driveFolderId: String? = null,
     val filename: String = "",

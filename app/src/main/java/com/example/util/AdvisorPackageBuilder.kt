@@ -1,13 +1,9 @@
 package com.example.util
 
 import android.content.Context
-import android.graphics.BitmapFactory
-import android.graphics.pdf.PdfDocument
-import android.util.Log
 import com.example.data.BookingRecord
 import com.example.data.DatevProfile
 import com.example.data.Receipt
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -32,7 +28,9 @@ object AdvisorPackageBuilder {
     fun buildPackage(
         context: Context,
         records: List<BookingRecord>,
+        includedReceipts: List<Receipt>,
         excludedReceipts: List<Receipt>,
+        includeOriginals: Boolean,
         profile: DatevProfile,
         validationReport: ValidationReport,
         periodSummary: String = "2026"
@@ -54,42 +52,53 @@ object AdvisorPackageBuilder {
 
             // 1. 01_DATEV/EXTF_Buchungsstapel_<Zeitraum>.csv
             val extfCsv = DatevCsvSerializer.serializeToCsvString(records, profile, periodSummary.take(4))
+            val formatValidation = DatevFormatValidator.validate(extfCsv)
+            require(formatValidation.isValid) {
+                "DATEV-Export wegen Formatfehlern blockiert: " +
+                    formatValidation.errors.joinToString(" | ")
+            }
             val extfBytes = extfCsv.toByteArray(Charsets.UTF_8)
             zos.putNextEntry(ZipEntry("01_DATEV/EXTF_Buchungsstapel_${periodSummary}.csv"))
             zos.write(bom)
             zos.write(extfBytes)
             zos.closeEntry()
 
-            // 2. 02_Belege/ (Attachments as PDFs or original images)
-            val processedReceiptIds = mutableSetOf<Int>()
-            records.forEach { record ->
-                if (!processedReceiptIds.contains(record.receiptId)) {
-                    processedReceiptIds.add(record.receiptId)
-
-                    val cleanVendor = record.zahlungspartner.replace(Regex("[^a-zA-Z0-9]"), "_").take(15)
-                    val amtStr = String.format(Locale.GERMANY, "%.2f", record.bruttobetrag).replace(",", "-")
-                    val belegFileName = "${record.belegdatum}_${record.belegfeld1}_${cleanVendor}_${amtStr}_EUR.pdf"
-
-                    val pdfBytes = createPdfDocumentForRecord(context, record)
-                    if (pdfBytes.isNotEmpty()) {
-                        zos.putNextEntry(ZipEntry("02_Belege/$belegFileName"))
-                        zos.write(pdfBytes)
-                        zos.closeEntry()
-
-                        val hash = ReceiptManifestService.calculateSha256Bytes(pdfBytes)
-                        fileItems.add(
-                            ManifestFileItem(
-                                filename = "02_Belege/$belegFileName",
-                                receiptId = record.receiptId,
-                                mimeType = "application/pdf",
-                                fileSizeBytes = pdfBytes.size.toLong(),
-                                sha256Hash = hash,
-                                belegnummer = record.belegfeld1,
-                                belegdatum = record.belegdatum,
-                                betragEur = record.bruttobetrag
-                            )
+            // 2. 02_Belege/ (exactly one verified original per stable receipt identity)
+            val includedByRoomId = includedReceipts.associateBy { it.id }
+            val processedReceiptReferences = mutableSetOf<String>()
+            if (includeOriginals) records.forEach { record ->
+                if (processedReceiptReferences.add(record.belegfeld1)) {
+                    val receipt = includedByRoomId[record.receiptId]
+                        ?: throw IllegalStateException(
+                            "Exportierter Buchungssatz hat keinen zugehörigen Beleg."
                         )
-                    }
+                    val attachment = DatevOriginalAttachmentPolicy.resolve(receipt)
+                        ?: throw IllegalStateException(
+                            "Originalbeleg für " + receipt.getEffectiveDisplayId() +
+                                " ist nicht lokal verfügbar oder nicht lesbar."
+                        )
+                    val belegFileName =
+                        record.belegdatum + "_" + record.belegfeld1 + "_Original." +
+                            attachment.extension
+                    val entryName = "02_Belege/" + belegFileName
+                    val originalBytes = attachment.file.readBytes()
+
+                    zos.putNextEntry(ZipEntry(entryName))
+                    zos.write(originalBytes)
+                    zos.closeEntry()
+
+                    fileItems.add(
+                        ManifestFileItem(
+                            filename = entryName,
+                            receiptId = receipt.id,
+                            mimeType = attachment.mimeType,
+                            fileSizeBytes = originalBytes.size.toLong(),
+                            sha256Hash = ReceiptManifestService.calculateSha256Bytes(originalBytes),
+                            belegnummer = record.belegfeld1,
+                            belegdatum = record.belegdatum,
+                            betragEur = receipt.bruttobetrag
+                        )
+                    )
                 }
             }
 
@@ -206,81 +215,4 @@ object AdvisorPackageBuilder {
         )
     }
 
-    private fun createPdfDocumentForRecord(context: Context, record: BookingRecord): ByteArray {
-        return try {
-            val document = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-            val page = document.startPage(pageInfo)
-            val canvas = page.canvas
-
-            val titlePaint = android.graphics.Paint().apply {
-                color = 0xFF0F172A.toInt()
-                textSize = 16f
-                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
-                isAntiAlias = true
-            }
-            val labelPaint = android.graphics.Paint().apply {
-                color = 0xFF475569.toInt()
-                textSize = 10f
-                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.BOLD)
-                isAntiAlias = true
-            }
-            val valuePaint = android.graphics.Paint().apply {
-                color = 0xFF0F172A.toInt()
-                textSize = 11f
-                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.NORMAL)
-                isAntiAlias = true
-            }
-
-            canvas.drawText("DATEV BELEGDOKUMENT / BUCHUNGSBELEG", 40f, 45f, titlePaint)
-
-            canvas.drawText("BELEGNUMMER (FIELD 1):", 40f, 75f, labelPaint)
-            canvas.drawText(record.belegfeld1, 200f, 75f, valuePaint)
-
-            canvas.drawText("DATUM:", 40f, 95f, labelPaint)
-            canvas.drawText(record.belegdatum, 200f, 95f, valuePaint)
-
-            canvas.drawText("ZAHLUNGSPARTNER:", 40f, 115f, labelPaint)
-            canvas.drawText(record.zahlungspartner, 200f, 115f, valuePaint)
-
-            canvas.drawText("BRUTTOBETRAG:", 40f, 135f, labelPaint)
-            canvas.drawText("${String.format(Locale.GERMANY, "%.2f", record.bruttobetrag)} EUR (${record.sollHaben})", 200f, 135f, valuePaint)
-
-            canvas.drawText("SACHKONTO / GEGENKONTO:", 40f, 155f, labelPaint)
-            canvas.drawText("${record.sachkonto} / ${record.gegenkonto}", 200f, 155f, valuePaint)
-
-            canvas.drawText("KOST1 (OBJEKT) / KOST2:", 40f, 175f, labelPaint)
-            canvas.drawText("${record.kost1} / ${record.kost2.ifBlank { "ALLG" }}", 200f, 175f, valuePaint)
-
-            canvas.drawText("BUCHUNGSTEXT:", 40f, 195f, labelPaint)
-            canvas.drawText(record.beschreibung, 200f, 195f, valuePaint)
-
-            // If local image file exists, draw preview
-            if (record.originalFileId.isNotBlank()) {
-                val file = File(record.originalFileId)
-                if (file.exists()) {
-                    val bmp = BitmapFactory.decodeFile(file.absolutePath)
-                    if (bmp != null) {
-                        val maxW = 515f
-                        val maxH = 550f
-                        val scale = Math.min(maxW / bmp.width, maxH / bmp.height)
-                        val drawW = (bmp.width * scale).toInt()
-                        val drawH = (bmp.height * scale).toInt()
-                        val destRect = android.graphics.Rect(40, 220, 40 + drawW, 220 + drawH)
-                        canvas.drawBitmap(bmp, null, destRect, null)
-                        bmp.recycle()
-                    }
-                }
-            }
-
-            document.finishPage(page)
-            val outputStream = ByteArrayOutputStream()
-            document.writeTo(outputStream)
-            document.close()
-            outputStream.toByteArray()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error building PDF for record ${record.bookingId}", e)
-            ByteArray(0)
-        }
-    }
 }

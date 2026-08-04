@@ -10,6 +10,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.api.ExtractedReceipt
 import com.example.api.GeminiClient
 import com.example.api.GoogleDriveClient
+import com.example.api.AiProviderSettings
+import com.example.api.AiProviderState
+import com.example.api.OpenAiAnalysisException
+import com.example.api.OpenAiClient
+import com.example.api.ReceiptAnalysisProvider
 import com.example.data.AppDatabase
 import com.example.data.Receipt
 import com.example.data.ReceiptRepository
@@ -88,6 +93,48 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val drivePersistenceRepository = com.example.data.DrivePersistenceRepository(application, repository)
 
     private val sharedPrefs = application.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+    private val _aiProviderState = MutableStateFlow(AiProviderSettings.loadState(application))
+    val aiProviderState: StateFlow<AiProviderState> = _aiProviderState.asStateFlow()
+
+    fun saveAiProviderSettings(
+        provider: ReceiptAnalysisProvider,
+        model: String,
+        newOpenAiKey: String,
+        newGeminiKey: String
+    ): String? {
+        return try {
+            if (newOpenAiKey.isNotBlank()) {
+                AiProviderSettings.storeOpenAiKey(
+                    getApplication(),
+                    newOpenAiKey.toCharArray()
+                )
+            }
+            if (newGeminiKey.isNotBlank()) {
+                AiProviderSettings.storeGeminiKey(
+                    getApplication(),
+                    newGeminiKey.toCharArray()
+                )
+            }
+            _aiProviderState.value = AiProviderSettings.saveSelection(
+                context = getApplication(),
+                provider = provider,
+                model = model
+            )
+            null
+        } catch (e: IllegalArgumentException) {
+            e.message ?: "KI-Einstellungen konnten nicht gespeichert werden."
+        } catch (_: Exception) {
+            "Der API-Schlüssel konnte auf diesem Gerät nicht sicher gespeichert werden."
+        }
+    }
+
+    fun deleteOpenAiKey() {
+        _aiProviderState.value = AiProviderSettings.clearOpenAiKey(getApplication())
+    }
+
+    fun deleteGeminiKey() {
+        _aiProviderState.value = AiProviderSettings.clearGeminiKey(getApplication())
+    }
     private val learnedRulesPrefs = application.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
 
     // KI Adaptive Learning Rules State
@@ -126,67 +173,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _isAnalyzingContract = MutableStateFlow(false)
     val isAnalyzingContract = _isAnalyzingContract.asStateFlow()
 
-    private val _bankStatementResult = MutableStateFlow<com.example.api.BankStatementReconciliationResult?>(
-        com.example.api.BankStatementReconciliationResult(
-            period = "01.07.2025 - 31.07.2025",
-            totalIncoming = 1780.0,
-            totalOutgoing = 1496.30,
-            matchedCount = 3,
-            missingReceiptsCount = 2,
-            rentArrearsCount = 1,
-            items = listOf(
-                com.example.api.BankStatementMatchItem(
-                    date = "02.07.2025",
-                    counterparty = "Max Mustermann",
-                    amount = 750.0,
-                    isIncome = true,
-                    purpose = "Miete WE 01 Juli 2025",
-                    status = "MATCHED",
-                    notes = "Miete vollständig eingegangen"
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "05.07.2025",
-                    counterparty = "Stadtwerke München",
-                    amount = 280.50,
-                    isIncome = false,
-                    purpose = "Abschlag Strom & Gas",
-                    status = "MATCHED",
-                    notes = "Mit Versorgungs-Beleg aus Juli abgeglichen"
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "10.07.2025",
-                    counterparty = "Hornbach Baumarkt",
-                    amount = 145.80,
-                    isIncome = false,
-                    purpose = "Material Wandfarbe",
-                    status = "MISSING_RECEIPT",
-                    notes = "⚠️ Kein Beleg in der App vorhanden! Bitte Kassenzettel hochladen."
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "12.07.2025",
-                    counterparty = "Malermeister Müller",
-                    amount = 650.00,
-                    isIncome = false,
-                    purpose = "Re-Nr 2025-882 Renovierung",
-                    status = "MISSING_RECEIPT",
-                    notes = "⚠️ Abbuchung ohne Beleg! Rechnungsbeleg fehlt für Steuer."
-                ),
-                com.example.api.BankStatementMatchItem(
-                    date = "28.07.2025",
-                    counterparty = "Thomas Weber",
-                    amount = 350.00,
-                    isIncome = true,
-                    purpose = "Teilzahlung Miete WE 05 (Soll: 700 €)",
-                    status = "RENT_ARREARS",
-                    notes = "🚨 Mietrückstand: 350,00 € fehlen für den Monat Juli!"
-                )
-            ),
-            summary = "Bankabgleich ergab 2 fehlende Abbuchungsbelege und 1 Mietrückstand. Handlungsbedarf vorliegend."
-        )
-    )
+    private val _bankStatementResult = MutableStateFlow<com.example.api.BankStatementReconciliationResult?>(null)
     val bankStatementResult = _bankStatementResult.asStateFlow()
     private val _isMatchingBankStatement = MutableStateFlow(false)
     val isMatchingBankStatement = _isMatchingBankStatement.asStateFlow()
+    private val _bankStatementResetVersion = MutableStateFlow(0)
+    val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
 
     // Google Drive Sync State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
@@ -215,6 +207,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     private val _driveTestState = MutableStateFlow<DriveTestState?>(null)
     val driveTestState: StateFlow<DriveTestState?> = _driveTestState.asStateFlow()
+
+    private val _duplicateCleanupState =
+        MutableStateFlow<DuplicateCleanupUiState>(DuplicateCleanupUiState.Idle)
+    val duplicateCleanupState: StateFlow<DuplicateCleanupUiState> =
+        _duplicateCleanupState.asStateFlow()
+    private var duplicateCleanupController: DuplicateCleanupController? = null
+    private var duplicateCleanupFeature: com.example.data.DuplicateCleanupFeature? = null
 
     // Google Drive Restore State
     private val _restorePreview = MutableStateFlow<com.example.data.DriveRestorePreviewResult?>(null)
@@ -1475,6 +1474,13 @@ data class AiSearchUiState(
     private val _wizardExcludedReceipts = MutableStateFlow<List<Receipt>>(emptyList())
     val wizardExcludedReceipts: StateFlow<List<Receipt>> = _wizardExcludedReceipts.asStateFlow()
 
+    private val _wizardExclusionReasons = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val wizardExclusionReasons: StateFlow<Map<String, List<String>>> =
+        _wizardExclusionReasons.asStateFlow()
+
+    private val _wizardIncludedReceipts = MutableStateFlow<List<Receipt>>(emptyList())
+    val wizardIncludedReceipts: StateFlow<List<Receipt>> = _wizardIncludedReceipts.asStateFlow()
+
     private val _wizardValidationReport = MutableStateFlow<com.example.util.ValidationReport?>(null)
     val wizardValidationReport: StateFlow<com.example.util.ValidationReport?> = _wizardValidationReport.asStateFlow()
 
@@ -1487,50 +1493,69 @@ data class AiSearchUiState(
         val unitFilter = _wizardUnitFilter.value
         val yearFilter = _wizardYearFilter.value
         val typeFilter = _wizardCategoryTypeFilter.value
-        val excludeExported = _wizardExcludeAlreadyExported.value
-        val allowUnverified = _wizardAllowUnverifiedOverride.value
+        val duplicateInternalIds =
+            com.example.util.DatevReceiptEligibility.duplicateInternalIds(allRecs)
 
         val included = mutableListOf<Receipt>()
         val excluded = mutableListOf<Receipt>()
+        val exclusionReasons = linkedMapOf<String, List<String>>()
 
-        allRecs.forEach { r ->
-            var keep = true
+        allRecs.forEach { receipt ->
+            val reasons = mutableListOf<String>()
 
-            if (unitFilter != "ALLE" && r.wohneinheit != unitFilter) {
-                keep = false
+            if (unitFilter != "ALLE" && receipt.wohneinheit != unitFilter) {
+                reasons += "Wohneinheit entspricht nicht dem gewählten Filter."
             }
-            if (yearFilter != "ALLE" && !r.datum.startsWith(yearFilter)) {
-                keep = false
+            if (yearFilter != "ALLE" && !receipt.datum.startsWith(yearFilter)) {
+                reasons += "Belegdatum liegt außerhalb des gewählten Jahres."
             }
-            if (typeFilter == "EINNAHMEN" && (!r.hauptkategorie.contains("Einnahmen", true) && !r.hauptkategorie.contains("Miete", true))) {
-                keep = false
+            if (typeFilter == "EINNAHMEN" &&
+                !receipt.hauptkategorie.contains("Einnahmen", true) &&
+                !receipt.hauptkategorie.contains("Miete", true)
+            ) {
+                reasons += "Beleg ist keine Einnahme."
             }
-            if (typeFilter == "AUSGABEN" && (r.hauptkategorie.contains("Einnahmen", true) || r.hauptkategorie.contains("Miete", true))) {
-                keep = false
+            if (typeFilter == "AUSGABEN" &&
+                (receipt.hauptkategorie.contains("Einnahmen", true) ||
+                    receipt.hauptkategorie.contains("Miete", true))
+            ) {
+                reasons += "Beleg ist keine Ausgabe."
             }
-            if (excludeExported && r.exportStatus == "EXPORTIERT") {
-                keep = false
+            reasons += com.example.util.DatevReceiptEligibility.issues(receipt)
+                .map { it.message }
+            if (receipt.internalId.trim() in duplicateInternalIds) {
+                reasons += "Stabile Beleg-ID kommt mehrfach vor; Export ist bis zur Dublettenbereinigung blockiert."
+            }
+            if (_wizardTargetFormat.value == "FULL_ZIP" &&
+                com.example.util.DatevOriginalAttachmentPolicy.resolve(receipt) == null
+            ) {
+                reasons += "Originalbeleg ist lokal nicht verfügbar oder hat ein nicht unterstütztes Format."
             }
 
-            if (keep) {
-                included.add(r)
+            if (reasons.isEmpty()) {
+                included += receipt
             } else {
-                excluded.add(r)
+                excluded += receipt
+                exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)] =
+                    reasons.distinct()
             }
         }
 
-        val bookingRecords = included.flatMap { r ->
-            com.example.util.DatevMappingService.mapReceiptToBookingRecords(r, profile)
+        val bookingRecords = included.flatMap { receipt ->
+            com.example.util.DatevMappingService.mapReceiptToBookingRecords(receipt, profile)
         }
 
         val report = com.example.util.BookingValidationService.validateRecords(
             records = bookingRecords,
             profile = profile,
-            allowUnverifiedExport = allowUnverified
+            // DATEV packages must never contain unverified accounting proposals.
+            allowUnverifiedExport = false
         )
 
+        _wizardIncludedReceipts.value = included
         _wizardMappedRecords.value = bookingRecords
         _wizardExcludedReceipts.value = excluded
+        _wizardExclusionReasons.value = exclusionReasons
         _wizardValidationReport.value = report
     }
 
@@ -1540,11 +1565,17 @@ data class AiSearchUiState(
         val excluded = _wizardExcludedReceipts.value
         val profile = _activeDatevProfile.value
         val report = _wizardValidationReport.value ?: return null
+        if (!report.isValidForExport || records.isEmpty()) {
+            Log.w("ReceiptViewModel", "DATEV export blocked by validation policy")
+            return null
+        }
 
         val packageResult = com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
             records = records,
+            includedReceipts = _wizardIncludedReceipts.value,
             excludedReceipts = excluded,
+            includeOriginals = _wizardTargetFormat.value == "FULL_ZIP",
             profile = profile,
             validationReport = report,
             periodSummary = _wizardYearFilter.value
@@ -1561,7 +1592,15 @@ data class AiSearchUiState(
                 periodStart = "${_wizardYearFilter.value}-01-01",
                 periodEnd = "${_wizardYearFilter.value}-12-31",
                 filterSummary = "Objekt: ${profile.profileName}, Wohneinheit: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
-                exportierteReceiptIdsJson = "[]",
+                exportierteReceiptIdsJson = org.json.JSONArray(
+                    records.map { it.receiptId }
+                        .distinct()
+                        .mapNotNull { receiptId ->
+                            receipts.value.firstOrNull { it.id == receiptId }
+                                ?.internalId
+                                ?.takeIf(String::isNotBlank)
+                        }
+                ).toString(),
                 kanzleiprofilNameVersion = "${profile.profileName} v${profile.version}",
                 zipFileName = packageResult.zipFile.name,
                 zipFileSizeBytes = packageResult.zipFile.length(),
@@ -1904,12 +1943,42 @@ data class AiSearchUiState(
                 }
 
                 val learnedContext = getUserLearnedRulesPromptContext()
-                val result = com.example.api.GeminiClient.analyzeReceipt(
-                    receiptText = text,
-                    bitmap = bitmap,
-                    bitmaps = bitmaps,
-                    userLearnedRulesContext = learnedContext
-                )
+                val providerState = _aiProviderState.value
+                val result = when (providerState.provider) {
+                    ReceiptAnalysisProvider.GEMINI -> {
+                        val key = AiProviderSettings.getGeminiKey(getApplication())
+                        try {
+                            GeminiClient.analyzeReceipt(
+                                receiptText = text,
+                                bitmap = bitmap,
+                                bitmaps = bitmaps,
+                                userLearnedRulesContext = learnedContext,
+                                apiKeyOverride = key
+                            )
+                        } finally {
+                            key?.fill('\u0000')
+                        }
+                    }
+                    ReceiptAnalysisProvider.OPENAI -> {
+                        val key = AiProviderSettings.getOpenAiKey(getApplication())
+                            ?: throw OpenAiAnalysisException(
+                                "Bitte in den KI-Anbieter-Einstellungen einen OpenAI-API-Schlüssel speichern.",
+                                "KEY_MISSING"
+                            )
+                        try {
+                            OpenAiClient.analyzeReceipt(
+                                apiKey = key,
+                                model = providerState.openAiModel,
+                                receiptText = text,
+                                bitmap = bitmap,
+                                bitmaps = bitmaps,
+                                userLearnedRulesContext = learnedContext
+                            )
+                        } finally {
+                            key.fill('\u0000')
+                        }
+                    }
+                }
                 if (result != null) {
                     _scanState.value = ScanUiState.Success(result, savedPaths)
                 } else {
@@ -1917,6 +1986,9 @@ data class AiSearchUiState(
                 }
             } catch (e: com.example.api.GeminiAnalysisException) {
                 Log.e("ReceiptViewModel", "Gemini analysis custom exception caught: category=${e.category}, code=${e.errorCode}", e)
+                _scanState.value = ScanUiState.Error(e.userMessage)
+            } catch (e: OpenAiAnalysisException) {
+                Log.e("ReceiptViewModel", "OpenAI receipt analysis failed: code=${e.errorCode}")
                 _scanState.value = ScanUiState.Error(e.userMessage)
             } catch (e: Exception) {
                 Log.e("ReceiptViewModel", "Unexpected exception during Gemini analysis", e)
@@ -1980,24 +2052,30 @@ data class AiSearchUiState(
     // Update an existing receipt in database
     fun updateReceipt(receipt: Receipt) {
         viewModelScope.launch {
-            // Learn rule automatically on user corrections
-            learnVendorRule(
-                receipt.aussteller,
-                receipt.hauptkategorie,
-                receipt.unterkategorie,
-                receipt.kontoNr,
-                receipt.wohneinheit
+            val persistedReceipt = repository.getReceiptById(receipt.id)
+            val receiptToSave = com.example.data.DatevApprovalInvalidationPolicy.apply(
+                persistedReceipt,
+                receipt
             )
 
-            repository.insert(receipt)
+            // Learn rule automatically on user corrections
+            learnVendorRule(
+                receiptToSave.aussteller,
+                receiptToSave.hauptkategorie,
+                receiptToSave.unterkategorie,
+                receiptToSave.kontoNr,
+                receiptToSave.wohneinheit
+            )
+
+            repository.insert(receiptToSave)
 
             if (FirestoreService.isCloudActive()) {
-                FirestoreService.saveReceipt(receipt)
+                FirestoreService.saveReceipt(receiptToSave)
             }
             
             // Auto drive backup if enabled
-            if (_isDriveConnected.value && _autoDriveBackup.value && !receipt.isArchivedToDrive) {
-                uploadReceiptToDriveInternal(receipt)
+            if (_isDriveConnected.value && _autoDriveBackup.value && !receiptToSave.isArchivedToDrive) {
+                uploadReceiptToDriveInternal(receiptToSave)
             }
         }
     }
@@ -2017,6 +2095,11 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) {
             repository.updatePropertyMetadata(metadata)
             _wohneinheitenStatus.value = getWohneinheitenFromPrefs(metadata.wohneinheiten)
+
+            // Keep the cloud backup current, but never use it to overwrite existing local metadata.
+            if (_isDriveConnected.value && _autoDriveBackup.value) {
+                syncAllToDrive()
+            }
         }
     }
 
@@ -2144,6 +2227,142 @@ data class AiSearchUiState(
         }
     }
 
+    private suspend fun createDuplicateCleanupController(): Triple<
+        DuplicateCleanupController,
+        List<com.example.data.ReceiptIndexEntry>,
+        Map<String, com.example.data.ReceiptTombstone>
+    > {
+        val email = _googleAccountEmail.value
+            ?: error("Google Drive ist nicht verbunden.")
+        check(_isDriveConnected.value) { "Google Drive ist nicht verbunden." }
+        val token = getValidToken(email)
+        val config = when (val init = drivePersistenceRepository.initializeDriveStorage(token)) {
+            is com.example.data.DriveInitializationResult.SuccessCreatedNew -> init.config
+            is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> init.config
+            is com.example.data.DriveInitializationResult.Failure ->
+                error(init.error)
+        }
+        val referenceMutator = com.example.data.DrivePersistenceDuplicateReferenceMutator(
+            repository = drivePersistenceRepository,
+            accessTokenProvider = { token },
+            configProvider = { config }
+        )
+        val feature = com.example.data.DuplicateCleanupFeature(
+            context = getApplication(),
+            receiptRepository = repository,
+            accessTokenProvider = { token },
+            referenceMutator = referenceMutator,
+            now = {
+                java.text.SimpleDateFormat(
+                    "yyyy-MM-dd'T'HH:mm:ss",
+                    java.util.Locale.getDefault()
+                ).format(java.util.Date())
+            }
+        )
+        duplicateCleanupFeature = feature
+        val controller = DuplicateCleanupController(
+            DuplicateCleanupFeatureUseCase(feature)
+        )
+        duplicateCleanupController = controller
+        return Triple(
+            controller,
+            drivePersistenceRepository.getReceiptIndexFromDrive(token, config),
+            drivePersistenceRepository.getAllTombstonesFromDrive(token, config)
+        )
+    }
+
+    fun loadPendingDuplicateCleanupOperations() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val store = com.example.data.SharedPreferencesDuplicateCleanupJournalStore(
+                getApplication()
+            )
+            val pending = store.listOperationIds().filterTo(mutableSetOf()) { operationId ->
+                store.load(operationId)?.phase !=
+                    com.example.data.DuplicateCleanupPhase.COMPLETED
+            }
+            if (pending.isNotEmpty()) {
+                _duplicateCleanupState.value =
+                    DuplicateCleanupUiState.PendingOperations(pending)
+            }
+        }
+    }
+
+    fun resumeDuplicateCleanupOperation(operationId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
+            try {
+                val (controller, _, _) = createDuplicateCleanupController()
+                controller.resume(operationId)
+                _duplicateCleanupState.value = controller.state
+            } catch (exception: Exception) {
+                _duplicateCleanupState.value = DuplicateCleanupUiState.Failed(
+                    exception.message ?: "Bereinigung konnte nicht fortgesetzt werden."
+                )
+            }
+        }
+    }
+
+    fun analyzeReceiptDuplicates() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
+            try {
+                val (controller, indexEntries, tombstones) =
+                    createDuplicateCleanupController()
+                controller.load(indexEntries, tombstones)
+                _duplicateCleanupState.value = controller.state
+            } catch (exception: Exception) {
+                _duplicateCleanupState.value = DuplicateCleanupUiState.Failed(
+                    exception.message ?: "Dubletten konnten nicht geprüft werden."
+                )
+            }
+        }
+    }
+
+    fun requestDuplicateMerge(preview: com.example.data.DuplicateGroupPreview) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.requestMerge(preview)
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun confirmDuplicateMerge() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.confirmMerge()
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun requestWholeDuplicateGroupDeletion(
+        preview: com.example.data.DuplicateGroupPreview
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.requestWholeGroupDeletion(preview)
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun setWholeDuplicateGroupConfirmations(first: Boolean, second: Boolean) {
+        val controller = duplicateCleanupController ?: return
+        controller.setWholeGroupConfirmations(first, second)
+        _duplicateCleanupState.value = controller.state
+    }
+
+    fun confirmWholeDuplicateGroupDeletion() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val controller = duplicateCleanupController ?: return@launch
+            controller.confirmWholeGroupDeletion()
+            _duplicateCleanupState.value = controller.state
+        }
+    }
+
+    fun dismissDuplicateCleanupState() {
+        duplicateCleanupController?.cancel()
+        _duplicateCleanupState.value = DuplicateCleanupUiState.Idle
+    }
+
     fun resetToDefaults() {
         viewModelScope.launch {
             repository.resetDefaults()
@@ -2153,6 +2372,26 @@ data class AiSearchUiState(
     fun clearAll() {
         viewModelScope.launch {
             database.receiptDao().deleteAll()
+        }
+    }
+
+    /**
+     * Starts the receipt workflow over on this device without touching account,
+     * property, cloud connection, or AI provider settings.
+     */
+    fun resetLocalReceiptData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearAllData()
+
+            val editor = learnedRulesPrefs.edit()
+            learnedRulesPrefs.all.keys
+                .filter { it.startsWith("rule_") }
+                .forEach(editor::remove)
+            editor.apply()
+            _learnedRules.value = emptyList()
+            _bankStatementResult.value = null
+            _isMatchingBankStatement.value = false
+            _bankStatementResetVersion.value += 1
         }
     }
 
@@ -2354,6 +2593,22 @@ data class AiSearchUiState(
         }
     }
 
+    suspend fun estimateLogbookRouteDistance(
+        startAddress: String,
+        viaAddress: String,
+        endAddress: String,
+        routeType: String
+    ): Double? {
+        val key = AiProviderSettings.getGeminiKey(getApplication())
+        return com.example.api.GeminiClient.estimateRouteDistance(
+            startAddress = startAddress,
+            viaAddress = viaAddress,
+            endAddress = endAddress,
+            routeType = routeType,
+            apiKeyOverride = key
+        )
+    }
+
     // --- Document Repair & Manual Upload ---
     private val _repairUiState = MutableStateFlow<RepairUiState>(RepairUiState.Idle)
     val repairUiState: StateFlow<RepairUiState> = _repairUiState.asStateFlow()
@@ -2448,6 +2703,98 @@ data class AiSearchUiState(
     fun dismissMetadataDuplicateReport() {
         _metadataDuplicateReport.value = null
         _metadataDuplicateError.value = null
+    }
+
+    private val _metadataCleanupPreview =
+        MutableStateFlow<com.example.data.MetadataDuplicateCleanupPlan?>(null)
+    val metadataCleanupPreview:
+        StateFlow<com.example.data.MetadataDuplicateCleanupPlan?> = _metadataCleanupPreview.asStateFlow()
+
+    private val _metadataCleanupResult =
+        MutableStateFlow<com.example.data.MetadataDuplicateCleanupResult?>(null)
+    val metadataCleanupResult:
+        StateFlow<com.example.data.MetadataDuplicateCleanupResult?> = _metadataCleanupResult.asStateFlow()
+
+    private val _isCleaningMetadataDuplicates = MutableStateFlow(false)
+    val isCleaningMetadataDuplicates: StateFlow<Boolean> =
+        _isCleaningMetadataDuplicates.asStateFlow()
+
+    fun prepareMetadataDuplicateCleanup(group: com.example.data.MetadataDuplicateGroup) {
+        try {
+            _metadataCleanupPreview.value =
+                com.example.data.MetadataDuplicateCleanupPlanner.plan(group)
+            _metadataDuplicateError.value = null
+        } catch (e: IllegalArgumentException) {
+            _metadataDuplicateError.value = e.message
+        }
+    }
+
+    fun cancelMetadataDuplicateCleanup() {
+        _metadataCleanupPreview.value = null
+    }
+
+    fun confirmMetadataDuplicateCleanup() {
+        val plan = _metadataCleanupPreview.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _isCleaningMetadataDuplicates.value = true
+            _metadataDuplicateError.value = null
+            try {
+                val email = _googleAccountEmail.value
+                    ?: throw IllegalStateException("Bitte melde dich zuerst bei Google Drive an.")
+                val token = getValidToken(email)
+                val executor = com.example.data.MetadataDuplicateCleanupExecutor(
+                    deleter = com.example.data.MetadataDuplicateFileDeleter { fileId ->
+                        GoogleDriveClient.deleteFile(token, fileId)
+                    },
+                    audit = { result -> persistMetadataCleanupAudit(result) }
+                )
+                val result = executor.execute(plan, explicitlyConfirmed = true)
+                _metadataCleanupResult.value = result
+                _metadataCleanupPreview.value = null
+                if (result.completed) {
+                    val config = drivePersistenceRepository.getDriveAppConfig(token)
+                    if (config != null) {
+                        _metadataDuplicateReport.value =
+                            drivePersistenceRepository.generateMetadataDuplicateReport(token, config)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ReceiptViewModel", "Metadata duplicate cleanup failed", e)
+                _metadataDuplicateError.value =
+                    "Metadaten-Dubletten konnten nicht sicher bereinigt werden: ${e.message}"
+            } finally {
+                _isCleaningMetadataDuplicates.value = false
+            }
+        }
+    }
+
+    fun dismissMetadataCleanupResult() {
+        _metadataCleanupResult.value = null
+    }
+
+    private fun persistMetadataCleanupAudit(
+        result: com.example.data.MetadataDuplicateCleanupResult
+    ) {
+        val prefs = getApplication<Application>().getSharedPreferences(
+            "metadata_duplicate_cleanup_audit",
+            Context.MODE_PRIVATE
+        )
+        val entry = org.json.JSONObject().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("internalId", result.internalId)
+            put("activeMetadataFileId", result.activeMetadataFileId)
+            put("deletedMetadataFileIds", org.json.JSONArray(result.deletedMetadataFileIds))
+            put("failures", org.json.JSONArray(result.failures))
+            put("completed", result.completed)
+        }
+        val existing = prefs.getString("entries", "[]") ?: "[]"
+        val entries = try {
+            org.json.JSONArray(existing)
+        } catch (_: Exception) {
+            org.json.JSONArray()
+        }
+        entries.put(entry)
+        prefs.edit().putString("entries", entries.toString()).apply()
     }
 
     fun correctReceiptMetadata(internalId: String, newMimeType: String, newFilename: String) {
