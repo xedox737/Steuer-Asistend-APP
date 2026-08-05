@@ -410,7 +410,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         ) {
             when (currentScreen) {
                 AppScreen.DASHBOARD -> DashboardScreen(viewModel)
-                AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)
+                AppScreen.RECEIPTS_LIST -> (viewModel)
                 AppScreen.ADD_RECEIPT -> AddReceiptScreen(viewModel)
                 AppScreen.LOGBOOK -> LogbookScreen(viewModel)
                 AppScreen.LEDGER -> LedgerScreen(viewModel)
@@ -2646,7 +2646,7 @@ fun ReceiptGridCard(
 }
 
 @Composable
-fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
+fun (viewModel: ReceiptViewModel) {
     val query by viewModel.searchQuery.collectAsState()
     val filter by viewModel.selectedCategoryFilter.collectAsState()
     val receipts by viewModel.filteredReceipts.collectAsState()
@@ -2654,7 +2654,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
     var fullScreenPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     // Toggle for View Modes: "grid", "list", "table"
-    var viewMode by remember { mutableStateOf("grid") }
+        var viewMode by remember { mutableStateOf("list") }
     var receiptToDelete by remember { mutableStateOf<Receipt?>(null) }
     var showRecycleBinFromBelege by remember { mutableStateOf(false) }
 
