@@ -2646,7 +2646,7 @@ fun ReceiptGridCard(
 }
 
 @Composable
-fun (viewModel: ReceiptViewModel) {
+fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
     val query by viewModel.searchQuery.collectAsState()
     val filter by viewModel.selectedCategoryFilter.collectAsState()
     val receipts by viewModel.filteredReceipts.collectAsState()
