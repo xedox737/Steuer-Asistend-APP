@@ -410,7 +410,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         ) {
             when (currentScreen) {
                 AppScreen.DASHBOARD -> DashboardScreen(viewModel)
-                AppScreen.RECEIPTS_LIST -> (viewModel)
+                AppScreen.RECEIPTS_LIST -> ReceiptListScreen(viewModel)
                 AppScreen.ADD_RECEIPT -> AddReceiptScreen(viewModel)
                 AppScreen.LOGBOOK -> LogbookScreen(viewModel)
                 AppScreen.LEDGER -> LedgerScreen(viewModel)
