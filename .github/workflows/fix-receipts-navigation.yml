@@ -38,3 +38,5 @@ jobs:
           git diff --cached --check
           git commit -m "Fix: Belege-Seite wieder anzeigen"
           git push origin HEAD:main
+
+# retrigger: 2026-08-08
