@@ -111,13 +111,32 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
+      - name: Prepare traceable debug release
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${SHORT_SHA}.apk"
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "short_commit=${SHORT_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_number=${GITHUB_RUN_NUMBER}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > build-info.txt
+
       - name: Publish current debug APK
-        if: success() && github.event_name == 'push'
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: debug-latest
-          name: Steuer-Assistent - aktuelle Testversion
+          tag_name: debug-${{ github.sha }}
+          target_commitish: ${{ github.sha }}
+          name: Steuer-Assistent Testversion ${{ github.run_number }}
+          body: |
+            Automatisch erzeugte Testversion aus Commit `${{ github.sha }}`.
+            GitHub-Actions-Lauf: `${{ github.run_id }}`.
           prerelease: true
           make_latest: false
-          files: app/build/outputs/apk/debug/*.apk
-
+          files: |
+            Steuer-Assistent-debug-*.apk
+            build-info.txt
+          fail_on_unmatched_files: true
