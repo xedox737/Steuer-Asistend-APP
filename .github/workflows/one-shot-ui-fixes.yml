@@ -1,0 +1,117 @@
+name: One-shot screenshot UI fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/one-shot-ui-fixes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Apply screenshot-only layout fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
+          s = p.read_text(encoding='utf-8')
+          original = s
+
+          # 1) DATEV filter area: stack year/type sections vertically on narrow screens.
+          old = '''                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
+          new = '''                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
+          if s.count(old) != 1:
+              raise SystemExit(f'DATEV year layout anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
+
+          old = '''                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
+          new = '''                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
+          if s.count(old) != 1:
+              raise SystemExit(f'DATEV type layout anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
+
+          # 2) Bottom navigation: keep Fahrtenbuch on one line using only a smaller label size there.
+          old = '''                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },'''
+          new = '''                            label = {
+                                Text(
+                                    label,
+                                    fontSize = if (screen == AppScreen.LOGBOOK) 9.sp else 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                            },'''
+          if s.count(old) != 1:
+              raise SystemExit(f'bottom-nav label anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
+
+          # 3) Distance summary: reserve flexible space for the left column so text/badge cannot overlap costs.
+          old = '''            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Entfernung:",'''
+          new = '''            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Entfernung:",'''
+          count = s.count(old)
+          if count < 1:
+              raise SystemExit(f'distance layout anchor count={count}')
+          s = s.replace(old, new, 1)
+
+          # Add a little horizontal breathing room before the right-side cost column in this card only.
+          old = '''                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "Werbungskosten (0,30 €/km):",'''
+          new = '''                Spacer(modifier = Modifier.width(12.dp))
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.widthIn(min = 118.dp)
+                ) {
+                    Text(
+                        text = "Werbungskosten (0,30 €/km):",'''
+          if s.count(old) < 1:
+              raise SystemExit(f'cost layout anchor count={s.count(old)}')
+          s = s.replace(old, new, 1)
+
+          if s == original:
+              raise SystemExit('No UI changes applied')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Commit screenshot UI fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git commit -m "UI: Darstellungsfehler aus Screenshots korrigieren"
+          git push origin HEAD:main
