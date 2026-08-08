@@ -80,6 +80,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -413,8 +414,14 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(innerPadding),
+            contentAlignment = Alignment.TopCenter
         ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 900.dp)
+                    .fillMaxSize()
+            ) {
             when (currentScreen) {
                 AppScreen.DASHBOARD -> DashboardScreen(viewModel)
                 AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)
@@ -423,6 +430,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.LEDGER -> LedgerScreen(viewModel)
                 AppScreen.RENT_OVERVIEW -> RentOverviewScreen(viewModel)
                 AppScreen.TAX_CALCULATOR -> TaxCalculatorScreen(viewModel)
+            }
             }
         }
     }
@@ -894,22 +902,41 @@ fun WohneinheitenStatusSection(
                         modifier = Modifier.fillMaxWidth().testTag("edit_unit_mieter")
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = editRentStr,
-                            onValueChange = { editRentStr = it },
-                            label = { Text("Kaltmiete (€)") },
-                            modifier = Modifier.weight(1f).testTag("edit_unit_rent")
-                        )
-                        OutlinedTextField(
-                            value = editAreaStr,
-                            onValueChange = { editAreaStr = it },
-                            label = { Text("Fläche (m²)") },
-                            modifier = Modifier.weight(1f).testTag("edit_unit_area")
-                        )
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        if (maxWidth < 360.dp) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = editRentStr,
+                                    onValueChange = { editRentStr = it },
+                                    label = { Text("Kaltmiete (€)") },
+                                    modifier = Modifier.fillMaxWidth().testTag("edit_unit_rent")
+                                )
+                                OutlinedTextField(
+                                    value = editAreaStr,
+                                    onValueChange = { editAreaStr = it },
+                                    label = { Text("Fläche (m²)") },
+                                    modifier = Modifier.fillMaxWidth().testTag("edit_unit_area")
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = editRentStr,
+                                    onValueChange = { editRentStr = it },
+                                    label = { Text("Kaltmiete (€)") },
+                                    modifier = Modifier.weight(1f).testTag("edit_unit_rent")
+                                )
+                                OutlinedTextField(
+                                    value = editAreaStr,
+                                    onValueChange = { editAreaStr = it },
+                                    label = { Text("Fläche (m²)") },
+                                    modifier = Modifier.weight(1f).testTag("edit_unit_area")
+                                )
+                            }
+                        }
                     }
                 }
             },
@@ -2027,42 +2054,96 @@ fun QuickActionCard(
     onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier.clickable { onClick() },
+        modifier = modifier
+            .heightIn(min = 104.dp)
+            .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, contentColor.copy(alpha = 0.2f))
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(contentColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = contentColor,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Column {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = DarkNavy
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    color = Color.Gray
-                )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val compactCard = maxWidth < 175.dp
+            if (compactCard) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(contentColor.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = title,
+                            tint = contentColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Text(
+                        text = title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp,
+                        color = DarkNavy,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = subtitle,
+                        fontSize = 10.sp,
+                        lineHeight = 13.sp,
+                        color = Color.Gray,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(contentColor.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = title,
+                            tint = contentColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            lineHeight = 16.sp,
+                            color = DarkNavy,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = subtitle,
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                            color = Color.Gray,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }
@@ -2553,6 +2634,7 @@ fun ReceiptGridCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
+                        modifier = Modifier.weight(1f, fill = false),
                         shape = RoundedCornerShape(4.dp),
                         color = categoryColor.copy(alpha = 0.12f)
                     ) {
@@ -2567,6 +2649,7 @@ fun ReceiptGridCard(
                         )
                     }
 
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = receipt.datum,
                         fontSize = 9.5.sp,
