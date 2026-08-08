@@ -2,6 +2,10 @@ name: One-shot screenshot UI fixes
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/one-shot-ui-fixes.yml"
 
 permissions:
   contents: write
@@ -62,14 +66,12 @@ jobs:
               s = s.replace(old, new)
               print(f'{label}: replaced {count} occurrence(s)')
 
-          # Build regression only: restore the exact existing Belege screen function name.
           replace_all(
               'Belege screen function name',
               'AppScreen.RECEIPTS_LIST -> ReceiptListScreen(viewModel)',
               'AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)'
           )
 
-          # DATEV: stack year/type blocks vertically so chips are not squeezed on narrow phones.
           replace_all(
               'DATEV year layout',
               '''                                Row(
@@ -94,7 +96,6 @@ jobs:
                                         Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
           )
 
-          # Bottom navigation: keep Fahrtenbuch on one line; behavior stays untouched.
           replace_all(
               'bottom nav label',
               '''                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },''',
@@ -108,7 +109,6 @@ jobs:
                             },'''
           )
 
-          # Fahrtenbuch distance summary: prevent overlap between distance badge and costs.
           replace_all(
               'distance summary left column',
               '''            ) {
