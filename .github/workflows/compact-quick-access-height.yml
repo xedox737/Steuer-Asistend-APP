@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   polish-accounting-dialog:
@@ -159,7 +158,39 @@ jobs:
           git commit -m "UI: Beleg-Kontierung auf kleinen Displays optimieren"
           git push origin HEAD:main
 
-      - name: Trigger single Android CI release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run android-ci.yml --ref main
+      - name: Prepare direct test release
+        id: release_meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${SOURCE_SHA::7}"
+          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${SHORT_SHA}.apk"
+          {
+            echo "sha=${SOURCE_SHA}"
+            echo "short_sha=${SHORT_SHA}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "commit=${SOURCE_SHA}"
+            echo "short_commit=${SHORT_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_number=${GITHUB_RUN_NUMBER}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > build-info.txt
+
+      - name: Publish single verified test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-${{ steps.release_meta.outputs.sha }}
+          target_commitish: ${{ steps.release_meta.outputs.sha }}
+          name: Steuer-Assistent Testversion ${{ github.run_number }}
+          body: |
+            Direkt aus dem bereits geprüften UI-Build veröffentlicht.
+            Commit `${{ steps.release_meta.outputs.sha }}`.
+            GitHub-Actions-Lauf `${{ github.run_id }}`.
+          prerelease: true
+          make_latest: false
+          files: |
+            Steuer-Assistent-debug-*.apk
+            build-info.txt
+          fail_on_unmatched_files: true
