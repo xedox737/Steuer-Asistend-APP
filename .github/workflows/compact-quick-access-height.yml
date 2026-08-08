@@ -64,93 +64,86 @@ jobs:
               raise SystemExit('ReceiptDetailDialog section not found')
           section = s[start:end]
 
-          # 1) Keep the accounting dialog compact. Find the scroll modifier semantically,
-          #    independent of whitespace/indentation.
+          # 1) Compact dialog content height.
           scroll_anchor = '.verticalScroll(scrollState)'
           scroll_idx = section.find(scroll_anchor)
           if scroll_idx < 0:
               raise SystemExit('dialog scroll anchor not found')
-          height_line = '.heightIn(max = if (isEditing) 620.dp else 560.dp)\n                    '
-          if height_line.strip() not in section[max(0, scroll_idx - 180):scroll_idx]:
-              section = section[:scroll_idx] + height_line + section[scroll_idx:]
+          height_expr = '.heightIn(max = if (isEditing) 620.dp else 560.dp)'
+          if height_expr not in section[max(0, scroll_idx - 240):scroll_idx]:
+              section = section[:scroll_idx] + height_expr + '\n                    ' + section[scroll_idx:]
               print('dialog height cap: applied')
           else:
               print('dialog height cap: already applied')
 
-          # 2) Give all three DATEV transformation metrics equal width so labels cannot be squeezed.
-          summary_old = '''                    // Pipeline Summary Badge Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
-                            .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.SpaceAround,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${if (positionenList.isEmpty()) 1 else positionenList.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("OCR-Positionen", fontSize = 10.sp, color = SlateGray)
-                        }
-                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${allocations.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("Aufteilungen", fontSize = 10.sp, color = SlateGray)
-                        }
-                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${datevRows.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = EmeraldGreen)
-                            Text("DATEV-Zeilen", fontSize = 10.sp, color = EmeraldGreen)
-                        }
-                    }'''
-          summary_new = '''                    // Pipeline Summary Badge Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
-                            .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("${if (positionenList.isEmpty()) 1 else positionenList.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("OCR-Positionen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)
-                        }
-                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("${allocations.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("Aufteilungen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)
-                        }
-                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("${datevRows.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = EmeraldGreen)
-                            Text("DATEV-Zeilen", fontSize = 10.sp, lineHeight = 12.sp, color = EmeraldGreen, textAlign = TextAlign.Center, maxLines = 2)
-                        }
-                    }'''
-          if summary_old in section:
-              section = section.replace(summary_old, summary_new, 1)
-              print('DATEV summary widths: applied')
-          elif summary_new in section:
-              print('DATEV summary widths: already applied')
-          else:
-              raise SystemExit('DATEV summary block not found')
+          # 2) Make the DATEV transformation summary distribute width evenly.
+          summary_start = section.find('// Pipeline Summary Badge Bar')
+          summary_end = section.find('if (positionenList.isNotEmpty())', summary_start)
+          if summary_start < 0 or summary_end < 0:
+              raise SystemExit('DATEV summary range not found')
+          summary = section[summary_start:summary_end]
 
-          # 3) Cost type and cost center are stacked instead of competing for the same row width.
-          cost_old = '''                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Kostenart: ${row.hauptkategorie}", fontSize = 10.sp, color = SlateGray)
-                                        Text("Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}", fontSize = 10.sp, color = SlateGray)
-                                    }'''
-          cost_new = '''                                    Column(
+          if 'horizontalArrangement = Arrangement.SpaceAround' in summary:
+              summary = summary.replace(
+                  'horizontalArrangement = Arrangement.SpaceAround',
+                  'horizontalArrangement = Arrangement.spacedBy(4.dp)',
+                  1
+              )
+
+          plain_col = 'Column(horizontalAlignment = Alignment.CenterHorizontally) {'
+          weighted_col = 'Column(\n                            modifier = Modifier.weight(1f),\n                            horizontalAlignment = Alignment.CenterHorizontally\n                        ) {'
+          col_count = summary.count(plain_col)
+          if col_count:
+              if col_count != 3:
+                  raise SystemExit(f'Unexpected summary column count: {col_count}')
+              summary = summary.replace(plain_col, weighted_col)
+
+          arrow_old = 'Text("→", color = SlateGray, fontWeight = FontWeight.Bold)'
+          arrow_new = 'Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)'
+          arrow_count = summary.count(arrow_old)
+          if arrow_count:
+              if arrow_count != 2:
+                  raise SystemExit(f'Unexpected arrow count: {arrow_count}')
+              summary = summary.replace(arrow_old, arrow_new)
+
+          labels = [
+              ('Text("OCR-Positionen", fontSize = 10.sp, color = SlateGray)',
+               'Text("OCR-Positionen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)'),
+              ('Text("Aufteilungen", fontSize = 10.sp, color = SlateGray)',
+               'Text("Aufteilungen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)'),
+              ('Text("DATEV-Zeilen", fontSize = 10.sp, color = EmeraldGreen)',
+               'Text("DATEV-Zeilen", fontSize = 10.sp, lineHeight = 12.sp, color = EmeraldGreen, textAlign = TextAlign.Center, maxLines = 2)')
+          ]
+          for old, new in labels:
+              if old in summary:
+                  summary = summary.replace(old, new, 1)
+
+          required = ['Modifier.weight(1f)', 'DATEV-Zeilen', 'textAlign = TextAlign.Center']
+          if not all(x in summary for x in required):
+              raise SystemExit('DATEV summary was not transformed as expected')
+          section = section[:summary_start] + summary + section[summary_end:]
+          print('DATEV summary widths: applied/verified')
+
+          # 3) Stack cost type and cost center vertically.
+          cost_row_start = section.find('Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {', section.find('datevRows.forEachIndexed'))
+          while cost_row_start >= 0:
+              next_chunk = section[cost_row_start:cost_row_start + 700]
+              if 'Kostenart: ${row.hauptkategorie}' in next_chunk and 'Kostenstelle: ${row.wohneinheitId.ifBlank' in next_chunk:
+                  break
+              cost_row_start = section.find('Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {', cost_row_start + 1)
+          if cost_row_start < 0:
+              if 'verticalArrangement = Arrangement.spacedBy(2.dp)' in section and 'Kostenart: ${row.hauptkategorie}' in section:
+                  print('cost type / cost center stacking: already applied')
+              else:
+                  raise SystemExit('cost type/cost center row not found')
+          else:
+              first_text = section.find('Text("Kostenart: ${row.hauptkategorie}"', cost_row_start)
+              second_text = section.find('Text("Kostenstelle: ${row.wohneinheitId.ifBlank', first_text)
+              row_end = section.find('\n                                    }', second_text)
+              if first_text < 0 or second_text < 0 or row_end < 0:
+                  raise SystemExit('cost type/cost center boundaries not found')
+              row_end += len('\n                                    }')
+              replacement = '''Column(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
@@ -171,13 +164,8 @@ jobs:
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }'''
-          if cost_old in section:
-              section = section.replace(cost_old, cost_new, 1)
+              section = section[:cost_row_start] + replacement + section[row_end:]
               print('cost type / cost center stacking: applied')
-          elif cost_new in section:
-              print('cost type / cost center stacking: already applied')
-          else:
-              raise SystemExit('cost type/cost center block not found')
 
           s = s[:start] + section + s[end:]
           if s == original:
