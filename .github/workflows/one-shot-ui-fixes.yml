@@ -115,3 +115,5 @@ jobs:
           git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
           git commit -m "UI: Darstellungsfehler aus Screenshots korrigieren"
           git push origin HEAD:main
+
+# retrigger 2026-08-08
