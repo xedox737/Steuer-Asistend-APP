@@ -1,4 +1,4 @@
-name: Fix logbook estimate badge
+name: Fix compact UI details
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  fix-logbook-badge:
+  fix-compact-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -47,7 +47,7 @@ jobs:
               -validity 10000
           fi
 
-      - name: Apply UI-only logbook badge fix
+      - name: Apply UI-only compact fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -58,27 +58,60 @@ jobs:
           s = p.read_text(encoding='utf-8')
           original = s
 
+          # 1) QuickActionCard: keep icon left + text right on normal phones.
+          # Vertical layout is reserved for truly tiny cards only.
+          if 'val compactCard = maxWidth < 175.dp' in s:
+              s = s.replace('val compactCard = maxWidth < 175.dp', 'val compactCard = maxWidth < 125.dp', 1)
+              print('QuickActionCard compact threshold: 175 -> 125 dp')
+          elif 'val compactCard = maxWidth < 125.dp' in s:
+              print('QuickActionCard compact threshold already fixed')
+          else:
+              raise SystemExit('QuickActionCard compact threshold anchor not found')
+
+          # Give long German labels enough room in horizontal cards without changing the design.
+          old_horizontal_title = '''                            text = title,\n                            fontWeight = FontWeight.Bold,\n                            fontSize = 13.sp,\n                            lineHeight = 16.sp,\n                            color = DarkNavy,\n                            maxLines = 2,\n                            overflow = TextOverflow.Ellipsis'''
+          new_horizontal_title = '''                            text = title,\n                            fontWeight = FontWeight.Bold,\n                            fontSize = if (title.length > 12) 11.sp else 13.sp,\n                            lineHeight = 16.sp,\n                            color = DarkNavy,\n                            maxLines = 2,\n                            overflow = TextOverflow.Ellipsis'''
+          # There are two title blocks (vertical + horizontal). Replace the last occurrence only.
+          idx = s.rfind(old_horizontal_title)
+          if idx >= 0:
+              s = s[:idx] + new_horizontal_title + s[idx + len(old_horizontal_title):]
+              print('QuickActionCard long-title sizing: applied')
+          elif new_horizontal_title in s:
+              print('QuickActionCard long-title sizing already fixed')
+          else:
+              raise SystemExit('QuickActionCard horizontal title anchor not found')
+
+          # 2) Fahrtenbuch: stack label + source badge instead of squeezing badge beside label.
           marker = 'text = "Entfernung:",'
           pos = s.find(marker)
           if pos < 0:
               raise SystemExit('Entfernung marker not found')
 
           row = 'Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {'
+          column = 'Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {'
           row_pos = s.rfind(row, 0, pos)
-          if row_pos < 0 or pos - row_pos > 500:
-              raise SystemExit('Distance status row not found near Entfernung')
-          s = s[:row_pos] + 'Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {' + s[row_pos + len(row):]
+          col_pos = s.rfind(column, 0, pos)
+          if row_pos >= 0 and pos - row_pos <= 500:
+              s = s[:row_pos] + column + s[row_pos + len(row):]
+              print('Logbook source badge layout: Row -> Column')
+          elif col_pos >= 0 and pos - col_pos <= 500:
+              print('Logbook source badge layout already fixed')
+          else:
+              raise SystemExit('Distance source layout not found near Entfernung')
 
           badge_text = '''                            Text(\n                                text = sourceLabel,\n                                fontSize = 8.sp,\n                                color = sourceColor,\n                                fontWeight = FontWeight.Bold\n                            )'''
           badge_text_new = '''                            Text(\n                                text = sourceLabel,\n                                fontSize = 8.sp,\n                                color = sourceColor,\n                                fontWeight = FontWeight.Bold,\n                                maxLines = 1,\n                                softWrap = false\n                            )'''
-          count = s.count(badge_text)
-          if count != 1:
-              raise SystemExit(f'sourceLabel text count={count}, expected=1')
-          s = s.replace(badge_text, badge_text_new, 1)
+          if badge_text in s:
+              s = s.replace(badge_text, badge_text_new, 1)
+              print('Logbook source badge single-line: applied')
+          elif badge_text_new in s:
+              print('Logbook source badge single-line already fixed')
+          else:
+              raise SystemExit('sourceLabel text anchor not found')
 
-          p.write_text(s, encoding='utf-8')
           if s == original:
-              raise SystemExit('No changes applied')
+              raise SystemExit('No changes required')
+          p.write_text(s, encoding='utf-8')
           PY
 
           git diff --check
@@ -96,36 +129,36 @@ jobs:
         timeout-minutes: 10
         run: gradle assembleDebug --stacktrace --no-daemon
 
-      - name: Commit verified UI fix
+      - name: Commit verified UI fixes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
-          git commit -m "UI: Fahrtenbuch Status-Badge auf kleinen Displays korrigieren"
+          git commit -m "UI: Startkarten und Fahrtenbuch auf kleinen Displays optimieren"
           git push origin HEAD:main
 
       - name: Prepare direct release files
         shell: bash
         run: |
           SHORT_SHA="$(git rev-parse --short=7 HEAD)"
-          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-logbook-ui-${SHORT_SHA}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-compact-ui-${SHORT_SHA}.apk"
           {
             echo "commit=$(git rev-parse HEAD)"
             echo "workflow_run=${GITHUB_RUN_ID}"
-            echo "scope=UI-only logbook estimate badge"
+            echo "scope=UI-only quick-action cards and logbook status badge"
             echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > build-info.txt
 
       - name: Publish test APK directly
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: logbook-ui-${{ github.run_id }}
-          name: Steuer-Assistent Fahrtenbuch UI-Fix
+          tag_name: compact-ui-${{ github.run_id }}
+          name: Steuer-Assistent Kompakt-UI Testversion
           prerelease: true
           make_latest: false
           files: |
-            Steuer-Assistent-logbook-ui-*.apk
+            Steuer-Assistent-compact-ui-*.apk
             build-info.txt
           fail_on_unmatched_files: true
