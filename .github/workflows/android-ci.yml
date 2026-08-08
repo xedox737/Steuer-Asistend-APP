@@ -61,9 +61,13 @@ jobs:
               -validity 10000
           fi
 
-      - name: Run lint and unit tests
-        timeout-minutes: 14
-        run: gradle lintDebug testDebugUnitTest --stacktrace --no-daemon
+      - name: Run lint
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: Run unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
 
       - name: Build debug APK
         timeout-minutes: 10
