@@ -58,48 +58,69 @@ jobs:
           s = p.read_text(encoding='utf-8')
           original = s
 
-          def replace_all(label: str, old: str, new: str):
+          def replace_exact_once(label: str, old: str, new: str):
               global s
               count = s.count(old)
-              if count < 1:
-                  raise SystemExit(f'{label} anchor count={count}')
-              s = s.replace(old, new)
-              print(f'{label}: replaced {count} occurrence(s)')
+              if count != 1:
+                  raise SystemExit(f'{label} count={count}, expected=1')
+              s = s.replace(old, new, 1)
+              print(f'{label}: ok')
 
-          replace_all(
+          def replace_at(label: str, start: int, old: str, new: str):
+              global s
+              if start < 0 or s[start:start + len(old)] != old:
+                  raise SystemExit(f'{label}: anchor mismatch')
+              s = s[:start] + new + s[start + len(old):]
+              print(f'{label}: ok')
+
+          # 1) Belege-Seite: only restore the already existing composable name.
+          replace_exact_once(
               'Belege screen function name',
               'AppScreen.RECEIPTS_LIST -> ReceiptListScreen(viewModel)',
               'AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)'
           )
 
-          replace_all(
-              'DATEV year layout',
-              '''                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)''',
-              '''                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
-          )
+          # 2) DATEV mobile layout. Locate the exact filter section by its visible labels,
+          #    then change only Row/Column layout primitives; filter logic remains untouched.
+          year_label = 'Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'
+          year_idx = s.find(year_label)
+          if year_idx < 0:
+              raise SystemExit('DATEV year label missing')
 
-          replace_all(
-              'DATEV type layout',
-              '''                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)''',
-              '''                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
-          )
+          year_inner_old = 'Column(modifier = Modifier.weight(1f)) {'
+          year_inner_idx = s.rfind(year_inner_old, 0, year_idx)
+          if year_inner_idx < 0 or year_idx - year_inner_idx > 220:
+              raise SystemExit('DATEV year inner column not found nearby')
+          replace_at('DATEV year inner column', year_inner_idx, year_inner_old, 'Column(modifier = Modifier.fillMaxWidth()) {')
 
-          replace_all(
+          # Recalculate label position after replacement.
+          year_idx = s.find(year_label)
+          outer_row_idx = s.rfind('Row(', 0, year_inner_idx)
+          if outer_row_idx < 0 or year_inner_idx - outer_row_idx > 220:
+              raise SystemExit('DATEV outer row not found nearby')
+          replace_at('DATEV outer Row to Column', outer_row_idx, 'Row(', 'Column(')
+
+          arrangement_old = 'horizontalArrangement = Arrangement.spacedBy(8.dp)'
+          arrangement_idx = s.find(arrangement_old, outer_row_idx, year_inner_idx + 120)
+          if arrangement_idx < 0:
+              raise SystemExit('DATEV outer arrangement not found')
+          replace_at('DATEV outer arrangement', arrangement_idx, arrangement_old, 'verticalArrangement = Arrangement.spacedBy(8.dp)')
+
+          type_label = 'Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'
+          type_idx = s.find(type_label, year_idx)
+          if type_idx < 0:
+              raise SystemExit('DATEV type label missing')
+          type_inner_old = 'Column(modifier = Modifier.weight(1f)) {'
+          type_inner_idx = s.rfind(type_inner_old, 0, type_idx)
+          if type_inner_idx < 0 or type_idx - type_inner_idx > 220:
+              raise SystemExit('DATEV type inner column not found nearby')
+          replace_at('DATEV type inner column', type_inner_idx, type_inner_old, 'Column(modifier = Modifier.fillMaxWidth()) {')
+
+          # 3) Bottom navigation: keep Fahrtenbuch on one line, behavior unchanged.
+          replace_exact_once(
               'bottom nav label',
-              '''                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },''',
-              '''                            label = {
+              'label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },',
+              '''label = {
                                 Text(
                                     label,
                                     fontSize = if (screen == AppScreen.LOGBOOK) 9.sp else 11.sp,
@@ -109,36 +130,39 @@ jobs:
                             },'''
           )
 
-          replace_all(
-              'distance summary left column',
-              '''            ) {
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Entfernung:",''',
-              '''            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = "Entfernung:",'''
-          )
+          # 4) Fahrtenbuch summary: give left area flexible space and reserve room for costs.
+          distance_label = 'text = "Entfernung:"'
+          distance_idx = s.find(distance_label)
+          if distance_idx < 0:
+              raise SystemExit('distance label missing')
+          left_old = 'Column {'
+          left_idx = s.rfind(left_old, 0, distance_idx)
+          if left_idx < 0 or distance_idx - left_idx > 300:
+              raise SystemExit('distance left column not found nearby')
+          replace_at('distance left column', left_idx, left_old, 'Column(modifier = Modifier.weight(1f)) {')
 
-          replace_all(
-              'distance summary costs',
-              '''                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "Werbungskosten (0,30 €/km):",''',
-              '''                Spacer(modifier = Modifier.width(12.dp))
+          costs_label = 'text = "Werbungskosten (0,30 €/km):"'
+          costs_idx = s.find(costs_label, distance_idx)
+          if costs_idx < 0:
+              raise SystemExit('costs label missing')
+          costs_old = 'Column(horizontalAlignment = Alignment.End) {'
+          costs_idx_col = s.rfind(costs_old, 0, costs_idx)
+          if costs_idx_col < 0 or costs_idx - costs_idx_col > 260:
+              raise SystemExit('costs column not found nearby')
+          costs_new = '''Spacer(modifier = Modifier.width(12.dp))
                 Column(
                     horizontalAlignment = Alignment.End,
                     modifier = Modifier.widthIn(min = 118.dp)
-                ) {
-                    Text(
-                        text = "Werbungskosten (0,30 €/km):",'''
-          )
+                ) {'''
+          replace_at('distance costs column', costs_idx_col, costs_old, costs_new)
 
+          # Guardrails: only expected visual/navigation-name changes are allowed in this file.
           if s == original:
               raise SystemExit('No source changes applied')
+          if 'AppScreen.RECEIPTS_LIST -> ReceiptListScreen(viewModel)' in s:
+              raise SystemExit('old Belege function call still present')
+          if 'AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)' not in s:
+              raise SystemExit('correct Belege function call missing')
 
           p.write_text(s, encoding='utf-8')
           PY
