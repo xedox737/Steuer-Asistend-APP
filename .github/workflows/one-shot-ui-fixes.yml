@@ -21,38 +21,49 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
           s = p.read_text(encoding='utf-8')
           original = s
 
-          # 1) DATEV filter area: stack year/type sections vertically on narrow screens.
-          old = '''                                Row(
+          def replace_all(label: str, old: str, new: str):
+              global s
+              count = s.count(old)
+              if count < 1:
+                  raise SystemExit(f'{label} anchor count={count}')
+              s = s.replace(old, new)
+              print(f'{label}: replaced {count} occurrence(s)')
+
+          # 1) DATEV: year/type blocks are stacked vertically so chips keep enough width.
+          replace_all(
+              'DATEV year layout',
+              '''                                Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
-          new = '''                                Column(
+                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)''',
+              '''                                Column(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Column(modifier = Modifier.fillMaxWidth()) {
                                         Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
-          if s.count(old) != 1:
-              raise SystemExit(f'DATEV year layout anchor count={s.count(old)}')
-          s = s.replace(old, new, 1)
+          )
 
-          old = '''                                    Column(modifier = Modifier.weight(1f)) {
+          replace_all(
+              'DATEV type layout',
+              '''                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)''',
+              '''                                    Column(modifier = Modifier.fillMaxWidth()) {
                                         Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
-          new = '''                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
-          if s.count(old) != 1:
-              raise SystemExit(f'DATEV type layout anchor count={s.count(old)}')
-          s = s.replace(old, new, 1)
+          )
 
-          # 2) Bottom navigation: keep Fahrtenbuch on one line using only a smaller label size there.
-          old = '''                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },'''
-          new = '''                            label = {
+          # 2) Bottom navigation: only label layout is changed; navigation behavior stays untouched.
+          replace_all(
+              'bottom nav label',
+              '''                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },''',
+              '''                            label = {
                                 Text(
                                     label,
                                     fontSize = if (screen == AppScreen.LOGBOOK) 9.sp else 11.sp,
@@ -60,42 +71,40 @@ jobs:
                                     maxLines = 1
                                 )
                             },'''
-          if s.count(old) != 1:
-              raise SystemExit(f'bottom-nav label anchor count={s.count(old)}')
-          s = s.replace(old, new, 1)
+          )
 
-          # 3) Distance summary: reserve flexible space for the left column so text/badge cannot overlap costs.
-          old = '''            ) {
+          # 3) Fahrtenbuch distance summary: prevent overlap between distance badge and costs.
+          replace_all(
+              'distance summary left column',
+              '''            ) {
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
-                            text = "Entfernung:",'''
-          new = '''            ) {
+                            text = "Entfernung:",''',
+              '''            ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "Entfernung:",'''
-          count = s.count(old)
-          if count < 1:
-              raise SystemExit(f'distance layout anchor count={count}')
-          s = s.replace(old, new, 1)
+          )
 
-          old = '''                Column(horizontalAlignment = Alignment.End) {
+          replace_all(
+              'distance summary costs',
+              '''                Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Werbungskosten (0,30 €/km):",'''
-          new = '''                Spacer(modifier = Modifier.width(12.dp))
+                        text = "Werbungskosten (0,30 €/km):",''',
+              '''                Spacer(modifier = Modifier.width(12.dp))
                 Column(
                     horizontalAlignment = Alignment.End,
                     modifier = Modifier.widthIn(min = 118.dp)
                 ) {
                     Text(
                         text = "Werbungskosten (0,30 €/km):",'''
-          if s.count(old) < 1:
-              raise SystemExit(f'cost layout anchor count={s.count(old)}')
-          s = s.replace(old, new, 1)
+          )
 
           if s == original:
               raise SystemExit('No UI changes applied')
+
           p.write_text(s, encoding='utf-8')
           PY
 
