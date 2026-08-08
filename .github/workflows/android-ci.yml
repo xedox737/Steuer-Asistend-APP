@@ -118,7 +118,7 @@ jobs:
           if-no-files-found: error
 
       - name: Prepare traceable debug release
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${SHORT_SHA}.apk"
@@ -131,7 +131,7 @@ jobs:
           } > build-info.txt
 
       - name: Publish current debug APK
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-${{ github.sha }}
