@@ -387,7 +387,14 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                                     modifier = if (isPrimaryAction) Modifier.size(28.dp) else Modifier.size(24.dp)
                                 )
                             },
-                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                            label = {
+                      Text(
+                          label,
+                          fontSize = if (screen == AppScreen.LOGBOOK) 9.sp else 11.sp,
+                          fontWeight = FontWeight.SemiBold,
+                          maxLines = 1
+                      )
+                  },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = if (isPrimaryAction) Color.White else AccentBlue,
                                 selectedTextColor = if (isPrimaryAction) AccentBlue else DarkNavy,
@@ -410,7 +417,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         ) {
             when (currentScreen) {
                 AppScreen.DASHBOARD -> DashboardScreen(viewModel)
-                AppScreen.RECEIPTS_LIST -> ReceiptListScreen(viewModel)
+                AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)
                 AppScreen.ADD_RECEIPT -> AddReceiptScreen(viewModel)
                 AppScreen.LOGBOOK -> LogbookScreen(viewModel)
                 AppScreen.LEDGER -> LedgerScreen(viewModel)
@@ -7249,7 +7256,7 @@ fun SuggestedTripCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "Entfernung:",
@@ -7303,7 +7310,11 @@ fun SuggestedTripCard(
                     }
                 }
 
-                Column(horizontalAlignment = Alignment.End) {
+                Spacer(modifier = Modifier.width(12.dp))
+      Column(
+          horizontalAlignment = Alignment.End,
+          modifier = Modifier.widthIn(min = 118.dp)
+      ) {
                     Text(
                         text = "Werbungskosten (0,30 €/km):",
                         fontSize = 11.sp,
@@ -12990,11 +13001,11 @@ fun DatevExportDialog(
                             ) {
                                 Text("Select property filter & period scope:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
 
-                                Row(
+                                Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
                                         Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             listOf("2026", "2025", "ALLE").forEach { yr ->
@@ -13007,7 +13018,7 @@ fun DatevExportDialog(
                                         }
                                     }
 
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
                                         Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             listOf("ALLE", "AUSGABEN", "EINNAHMEN").forEach { tp ->
