@@ -93,15 +93,16 @@ jobs:
               raise SystemExit('DATEV year inner column not found nearby')
           replace_at('DATEV year inner column', year_inner_idx, year_inner_old, 'Column(modifier = Modifier.fillMaxWidth()) {')
 
-          # Recalculate label position after replacement.
+          # Recalculate positions after replacement and search a wider, still local DATEV window.
           year_idx = s.find(year_label)
-          outer_row_idx = s.rfind('Row(', 0, year_inner_idx)
-          if outer_row_idx < 0 or year_inner_idx - outer_row_idx > 220:
+          year_inner_idx = s.rfind('Column(modifier = Modifier.fillMaxWidth()) {', 0, year_idx)
+          outer_row_idx = s.rfind('Row(', max(0, year_inner_idx - 1200), year_inner_idx)
+          if outer_row_idx < 0:
               raise SystemExit('DATEV outer row not found nearby')
           replace_at('DATEV outer Row to Column', outer_row_idx, 'Row(', 'Column(')
 
           arrangement_old = 'horizontalArrangement = Arrangement.spacedBy(8.dp)'
-          arrangement_idx = s.find(arrangement_old, outer_row_idx, year_inner_idx + 120)
+          arrangement_idx = s.find(arrangement_old, outer_row_idx, year_inner_idx + 500)
           if arrangement_idx < 0:
               raise SystemExit('DATEV outer arrangement not found')
           replace_at('DATEV outer arrangement', arrangement_idx, arrangement_old, 'verticalArrangement = Arrangement.spacedBy(8.dp)')
