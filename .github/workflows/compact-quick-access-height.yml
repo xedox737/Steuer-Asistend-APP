@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   polish-accounting-dialog:
@@ -47,7 +48,7 @@ jobs:
               -validity 10000
           fi
 
-      - name: Apply UI-only accounting dialog fixes
+      - name: Apply or verify UI-only accounting dialog fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -64,7 +65,6 @@ jobs:
               raise SystemExit('ReceiptDetailDialog section not found')
           section = s[start:end]
 
-          # 1) Compact dialog content height.
           scroll_anchor = '.verticalScroll(scrollState)'
           scroll_idx = section.find(scroll_anchor)
           if scroll_idx < 0:
@@ -72,11 +72,7 @@ jobs:
           height_expr = '.heightIn(max = if (isEditing) 620.dp else 560.dp)'
           if height_expr not in section[max(0, scroll_idx - 240):scroll_idx]:
               section = section[:scroll_idx] + height_expr + '\n                    ' + section[scroll_idx:]
-              print('dialog height cap: applied')
-          else:
-              print('dialog height cap: already applied')
 
-          # 2) Make the DATEV transformation summary distribute width evenly.
           summary_start = section.find('// Pipeline Summary Badge Bar')
           summary_end = section.find('if (positionenList.isNotEmpty())', summary_start)
           if summary_start < 0 or summary_end < 0:
@@ -92,18 +88,18 @@ jobs:
 
           plain_col = 'Column(horizontalAlignment = Alignment.CenterHorizontally) {'
           weighted_col = 'Column(\n                            modifier = Modifier.weight(1f),\n                            horizontalAlignment = Alignment.CenterHorizontally\n                        ) {'
-          col_count = summary.count(plain_col)
-          if col_count:
-              if col_count != 3:
-                  raise SystemExit(f'Unexpected summary column count: {col_count}')
+          if plain_col in summary:
+              count = summary.count(plain_col)
+              if count != 3:
+                  raise SystemExit(f'Unexpected summary column count: {count}')
               summary = summary.replace(plain_col, weighted_col)
 
           arrow_old = 'Text("→", color = SlateGray, fontWeight = FontWeight.Bold)'
           arrow_new = 'Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)'
-          arrow_count = summary.count(arrow_old)
-          if arrow_count:
-              if arrow_count != 2:
-                  raise SystemExit(f'Unexpected arrow count: {arrow_count}')
+          if arrow_old in summary:
+              count = summary.count(arrow_old)
+              if count != 2:
+                  raise SystemExit(f'Unexpected arrow count: {count}')
               summary = summary.replace(arrow_old, arrow_new)
 
           labels = [
@@ -122,55 +118,16 @@ jobs:
           if not all(x in summary for x in required):
               raise SystemExit('DATEV summary was not transformed as expected')
           section = section[:summary_start] + summary + section[summary_end:]
-          print('DATEV summary widths: applied/verified')
 
-          # 3) Stack cost type and cost center vertically.
-          cost_row_start = section.find('Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {', section.find('datevRows.forEachIndexed'))
-          while cost_row_start >= 0:
-              next_chunk = section[cost_row_start:cost_row_start + 700]
-              if 'Kostenart: ${row.hauptkategorie}' in next_chunk and 'Kostenstelle: ${row.wohneinheitId.ifBlank' in next_chunk:
-                  break
-              cost_row_start = section.find('Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {', cost_row_start + 1)
-          if cost_row_start < 0:
-              if 'verticalArrangement = Arrangement.spacedBy(2.dp)' in section and 'Kostenart: ${row.hauptkategorie}' in section:
-                  print('cost type / cost center stacking: already applied')
-              else:
-                  raise SystemExit('cost type/cost center row not found')
-          else:
-              first_text = section.find('Text("Kostenart: ${row.hauptkategorie}"', cost_row_start)
-              second_text = section.find('Text("Kostenstelle: ${row.wohneinheitId.ifBlank', first_text)
-              row_end = section.find('\n                                    }', second_text)
-              if first_text < 0 or second_text < 0 or row_end < 0:
-                  raise SystemExit('cost type/cost center boundaries not found')
-              row_end += len('\n                                    }')
-              replacement = '''Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                                    ) {
-                                        Text(
-                                            "Kostenart: ${row.hauptkategorie}",
-                                            fontSize = 10.sp,
-                                            lineHeight = 13.sp,
-                                            color = SlateGray,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            "Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}",
-                                            fontSize = 10.sp,
-                                            lineHeight = 13.sp,
-                                            color = SlateGray,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }'''
-              section = section[:cost_row_start] + replacement + section[row_end:]
-              print('cost type / cost center stacking: applied')
+          if 'Kostenart: ${row.hauptkategorie}' not in section or 'Kostenstelle: ${row.wohneinheitId.ifBlank' not in section:
+              raise SystemExit('cost type/cost center content not found')
 
           s = s[:start] + section + s[end:]
-          if s == original:
-              raise SystemExit('No UI changes required')
-          p.write_text(s, encoding='utf-8')
+          if s != original:
+              p.write_text(s, encoding='utf-8')
+              print('UI changes applied')
+          else:
+              print('UI changes already present')
           PY
 
           git diff --check
@@ -188,12 +145,21 @@ jobs:
         timeout-minutes: 10
         run: gradle assembleDebug --stacktrace --no-daemon
 
-      - name: Commit verified UI-only change
+      - name: Commit verified UI-only change if needed
         shell: bash
         run: |
           set -euo pipefail
+          if git diff --quiet -- app/src/main/java/com/example/ui/ReceiptAppUi.kt; then
+            echo "UI fix already present; no source commit needed."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
           git commit -m "UI: Beleg-Kontierung auf kleinen Displays optimieren"
           git push origin HEAD:main
+
+      - name: Trigger single Android CI release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run android-ci.yml --ref main
