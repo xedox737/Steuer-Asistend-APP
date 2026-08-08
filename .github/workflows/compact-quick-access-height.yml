@@ -64,22 +64,18 @@ jobs:
               raise SystemExit('ReceiptDetailDialog section not found')
           section = s[start:end]
 
-          # 1) Keep the accounting dialog compact. It can scroll when content exceeds the cap,
-          #    but does not need to occupy almost the whole phone height.
-          height_old = '''                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(scrollState)'''
-          height_new = '''                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = if (isEditing) 620.dp else 560.dp)
-                    .verticalScroll(scrollState)'''
-          if height_old in section:
-              section = section.replace(height_old, height_new, 1)
+          # 1) Keep the accounting dialog compact. Find the scroll modifier semantically,
+          #    independent of whitespace/indentation.
+          scroll_anchor = '.verticalScroll(scrollState)'
+          scroll_idx = section.find(scroll_anchor)
+          if scroll_idx < 0:
+              raise SystemExit('dialog scroll anchor not found')
+          height_line = '.heightIn(max = if (isEditing) 620.dp else 560.dp)\n                    '
+          if height_line.strip() not in section[max(0, scroll_idx - 180):scroll_idx]:
+              section = section[:scroll_idx] + height_line + section[scroll_idx:]
               print('dialog height cap: applied')
-          elif height_new in section:
-              print('dialog height cap: already applied')
           else:
-              raise SystemExit('dialog height anchor not found')
+              print('dialog height cap: already applied')
 
           # 2) Give all three DATEV transformation metrics equal width so labels cannot be squeezed.
           summary_old = '''                    // Pipeline Summary Badge Bar
@@ -149,8 +145,7 @@ jobs:
           else:
               raise SystemExit('DATEV summary block not found')
 
-          # 3) Cost type and cost center are stacked on narrow phone dialogs instead of competing
-          #    for the same row width.
+          # 3) Cost type and cost center are stacked instead of competing for the same row width.
           cost_old = '''                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Kostenart: ${row.hauptkategorie}", fontSize = 10.sp, color = SlateGray)
                                         Text("Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}", fontSize = 10.sp, color = SlateGray)
