@@ -1,15 +1,13 @@
 name: One-shot screenshot UI fixes
 
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   fix-ui:
-    if: github.event.issue.title == '[internal] apply screenshot ui fixes'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
