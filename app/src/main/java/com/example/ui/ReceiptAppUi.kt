@@ -4036,6 +4036,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = if (isEditing) 620.dp else 560.dp)
                     .verticalScroll(scrollState)
             ) {
                 if (isEditing) {
@@ -4386,22 +4387,31 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                             .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
                             .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
                             .padding(10.dp),
-                        horizontalArrangement = Arrangement.SpaceAround,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text("${if (positionenList.isEmpty()) 1 else positionenList.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("OCR-Positionen", fontSize = 10.sp, color = SlateGray)
+                            Text("OCR-Positionen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)
                         }
-                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text("${allocations.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("Aufteilungen", fontSize = 10.sp, color = SlateGray)
+                            Text("Aufteilungen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)
                         }
-                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                             Text("${datevRows.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = EmeraldGreen)
-                            Text("DATEV-Zeilen", fontSize = 10.sp, color = EmeraldGreen)
+                            Text("DATEV-Zeilen", fontSize = 10.sp, lineHeight = 12.sp, color = EmeraldGreen, textAlign = TextAlign.Center, maxLines = 2)
                         }
                     }
 
@@ -4495,14 +4505,27 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                                         )
                                     }
                                     HorizontalDivider(color = categoryColor.copy(alpha = 0.2f), modifier = Modifier.padding(vertical = 2.dp))
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Soll-Konto: ${row.sachkonto}", fontSize = 11.sp, color = DarkNavy)
-                                        Text("Haben-Konto: ${row.gegenkonto}", fontSize = 11.sp, color = DarkNavy)
-                                    }
-                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Kostenart: ${row.hauptkategorie}", fontSize = 10.sp, color = SlateGray)
-                                        Text("Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}", fontSize = 10.sp, color = SlateGray)
-                                    }
+                                    Column(
+                              modifier = Modifier.fillMaxWidth(),
+                              verticalArrangement = Arrangement.spacedBy(2.dp)
+                          ) {
+                              Text(
+                                  "Kostenart: ${row.hauptkategorie}",
+                                  fontSize = 10.sp,
+                                  lineHeight = 13.sp,
+                                  color = SlateGray,
+                                  maxLines = 2,
+                                  overflow = TextOverflow.Ellipsis
+                              )
+                              Text(
+                                  "Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}",
+                                  fontSize = 10.sp,
+                                  lineHeight = 13.sp,
+                                  color = SlateGray,
+                                  maxLines = 2,
+                                  overflow = TextOverflow.Ellipsis
+                              )
+                          }
                                 }
                             }
                         }
