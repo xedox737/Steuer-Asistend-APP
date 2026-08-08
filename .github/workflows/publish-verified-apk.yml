@@ -1,0 +1,75 @@
+name: Publish verified APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-verified-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out verified app commit
+        uses: actions/checkout@v4
+        with:
+          ref: 98d0bb47467defef6837b24aaaa4ce20688626f5
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create local debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+
+      - name: Build verified debug APK
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Prepare release files
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Steuer-Assistent-debug-98d0bb4.apk
+          {
+            echo "verified_commit=98d0bb47467defef6837b24aaaa4ce20688626f5"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "note=UI fixes verified earlier by lint, unit tests and assembleDebug"
+          } > build-info.txt
+
+      - name: Publish GitHub release directly
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ui-fix-98d0bb4
+          name: Steuer-Assistent UI-Fix 98d0bb4
+          prerelease: true
+          make_latest: false
+          target_commitish: 98d0bb47467defef6837b24aaaa4ce20688626f5
+          files: |
+            Steuer-Assistent-debug-98d0bb4.apk
+            build-info.txt
+          fail_on_unmatched_files: true
