@@ -2062,7 +2062,7 @@ fun QuickActionCard(
         border = BorderStroke(1.dp, contentColor.copy(alpha = 0.2f))
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val compactCard = maxWidth < 175.dp
+            val compactCard = maxWidth < 125.dp
             if (compactCard) {
                 Column(
                     modifier = Modifier
@@ -2128,7 +2128,7 @@ fun QuickActionCard(
                         Text(
                             text = title,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
+                            fontSize = if (title.length > 12) 11.sp else 13.sp,
                             lineHeight = 16.sp,
                             color = DarkNavy,
                             maxLines = 2,
@@ -7340,7 +7340,7 @@ fun SuggestedTripCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "Entfernung:",
                             fontSize = 11.sp,
@@ -7370,7 +7370,9 @@ fun SuggestedTripCard(
                                 text = sourceLabel,
                                 fontSize = 8.sp,
                                 color = sourceColor,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
