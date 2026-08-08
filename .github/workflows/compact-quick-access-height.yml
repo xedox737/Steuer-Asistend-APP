@@ -1,4 +1,4 @@
-name: Compact quick access cards
+name: Polish receipt accounting dialog
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  compact-cards:
+  polish-accounting-dialog:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -47,7 +47,7 @@ jobs:
               -validity 10000
           fi
 
-      - name: Reduce only quick access card minimum height
+      - name: Apply UI-only accounting dialog fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -56,14 +56,140 @@ jobs:
 
           p = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
           s = p.read_text(encoding='utf-8')
-          old = '.heightIn(min = 104.dp)'
-          new = '.heightIn(min = 80.dp)'
-          count = s.count(old)
-          if count != 1:
-              raise SystemExit(f'Expected exactly one QuickActionCard height anchor, found {count}')
-          s = s.replace(old, new, 1)
+          original = s
+
+          start = s.find('fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {')
+          end = s.find('@Composable\nfun ReceiptPreviewSection', start)
+          if start < 0 or end < 0:
+              raise SystemExit('ReceiptDetailDialog section not found')
+          section = s[start:end]
+
+          # 1) Keep the accounting dialog compact. It can scroll when content exceeds the cap,
+          #    but does not need to occupy almost the whole phone height.
+          height_old = '''                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState)'''
+          height_new = '''                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = if (isEditing) 620.dp else 560.dp)
+                    .verticalScroll(scrollState)'''
+          if height_old in section:
+              section = section.replace(height_old, height_new, 1)
+              print('dialog height cap: applied')
+          elif height_new in section:
+              print('dialog height cap: already applied')
+          else:
+              raise SystemExit('dialog height anchor not found')
+
+          # 2) Give all three DATEV transformation metrics equal width so labels cannot be squeezed.
+          summary_old = '''                    // Pipeline Summary Badge Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                            .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceAround,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${if (positionenList.isEmpty()) 1 else positionenList.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                            Text("OCR-Positionen", fontSize = 10.sp, color = SlateGray)
+                        }
+                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${allocations.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                            Text("Aufteilungen", fontSize = 10.sp, color = SlateGray)
+                        }
+                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("${datevRows.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = EmeraldGreen)
+                            Text("DATEV-Zeilen", fontSize = 10.sp, color = EmeraldGreen)
+                        }
+                    }'''
+          summary_new = '''                    // Pipeline Summary Badge Bar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
+                            .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("${if (positionenList.isEmpty()) 1 else positionenList.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                            Text("OCR-Positionen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)
+                        }
+                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("${allocations.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                            Text("Aufteilungen", fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, textAlign = TextAlign.Center, maxLines = 2)
+                        }
+                        Text("→", color = SlateGray, fontWeight = FontWeight.Bold, modifier = Modifier.width(12.dp), textAlign = TextAlign.Center)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("${datevRows.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = EmeraldGreen)
+                            Text("DATEV-Zeilen", fontSize = 10.sp, lineHeight = 12.sp, color = EmeraldGreen, textAlign = TextAlign.Center, maxLines = 2)
+                        }
+                    }'''
+          if summary_old in section:
+              section = section.replace(summary_old, summary_new, 1)
+              print('DATEV summary widths: applied')
+          elif summary_new in section:
+              print('DATEV summary widths: already applied')
+          else:
+              raise SystemExit('DATEV summary block not found')
+
+          # 3) Cost type and cost center are stacked on narrow phone dialogs instead of competing
+          #    for the same row width.
+          cost_old = '''                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Kostenart: ${row.hauptkategorie}", fontSize = 10.sp, color = SlateGray)
+                                        Text("Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}", fontSize = 10.sp, color = SlateGray)
+                                    }'''
+          cost_new = '''                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            "Kostenart: ${row.hauptkategorie}",
+                                            fontSize = 10.sp,
+                                            lineHeight = 13.sp,
+                                            color = SlateGray,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            "Kostenstelle: ${row.wohneinheitId.ifBlank { "Gesamt" }}",
+                                            fontSize = 10.sp,
+                                            lineHeight = 13.sp,
+                                            color = SlateGray,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }'''
+          if cost_old in section:
+              section = section.replace(cost_old, cost_new, 1)
+              print('cost type / cost center stacking: applied')
+          elif cost_new in section:
+              print('cost type / cost center stacking: already applied')
+          else:
+              raise SystemExit('cost type/cost center block not found')
+
+          s = s[:start] + section + s[end:]
+          if s == original:
+              raise SystemExit('No UI changes required')
           p.write_text(s, encoding='utf-8')
           PY
+
           git diff --check
           git diff -- app/src/main/java/com/example/ui/ReceiptAppUi.kt
 
@@ -86,5 +212,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
-          git commit -m "UI: Schnellzugriff-Karten in der Höhe kompakter"
+          git commit -m "UI: Beleg-Kontierung auf kleinen Displays optimieren"
           git push origin HEAD:main
