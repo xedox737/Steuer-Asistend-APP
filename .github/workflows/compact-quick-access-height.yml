@@ -1,0 +1,90 @@
+name: Compact quick access cards
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/compact-quick-access-height.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  compact-cards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create local debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+
+      - name: Reduce only quick access card minimum height
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
+          s = p.read_text(encoding='utf-8')
+          old = '.heightIn(min = 104.dp)'
+          new = '.heightIn(min = 80.dp)'
+          count = s.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one QuickActionCard height anchor, found {count}')
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Verify lint
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: Verify unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified UI-only change
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git commit -m "UI: Schnellzugriff-Karten in der Höhe kompakter"
+          git push origin HEAD:main
