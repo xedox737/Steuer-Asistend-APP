@@ -2055,7 +2055,7 @@ fun QuickActionCard(
 ) {
     Card(
         modifier = modifier
-            .heightIn(min = 104.dp)
+            .heightIn(min = 80.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = containerColor),
         shape = RoundedCornerShape(14.dp),
