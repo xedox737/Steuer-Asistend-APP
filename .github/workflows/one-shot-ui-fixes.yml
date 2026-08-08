@@ -9,13 +9,41 @@ permissions:
 jobs:
   fix-ui:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Apply screenshot-only layout fixes
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create local debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+
+      - name: Apply Belege and screenshot-only UI fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -34,7 +62,14 @@ jobs:
               s = s.replace(old, new)
               print(f'{label}: replaced {count} occurrence(s)')
 
-          # 1) DATEV: year/type blocks are stacked vertically so chips keep enough width.
+          # Build regression only: restore the exact existing Belege screen function name.
+          replace_all(
+              'Belege screen function name',
+              'AppScreen.RECEIPTS_LIST -> ReceiptListScreen(viewModel)',
+              'AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)'
+          )
+
+          # DATEV: stack year/type blocks vertically so chips are not squeezed on narrow phones.
           replace_all(
               'DATEV year layout',
               '''                                Row(
@@ -59,7 +94,7 @@ jobs:
                                         Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)'''
           )
 
-          # 2) Bottom navigation: only label layout is changed; navigation behavior stays untouched.
+          # Bottom navigation: keep Fahrtenbuch on one line; behavior stays untouched.
           replace_all(
               'bottom nav label',
               '''                            label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },''',
@@ -73,7 +108,7 @@ jobs:
                             },'''
           )
 
-          # 3) Fahrtenbuch distance summary: prevent overlap between distance badge and costs.
+          # Fahrtenbuch distance summary: prevent overlap between distance badge and costs.
           replace_all(
               'distance summary left column',
               '''            ) {
@@ -103,7 +138,7 @@ jobs:
           )
 
           if s == original:
-              raise SystemExit('No UI changes applied')
+              raise SystemExit('No source changes applied')
 
           p.write_text(s, encoding='utf-8')
           PY
@@ -111,12 +146,56 @@ jobs:
           git diff --check
           git diff -- app/src/main/java/com/example/ui/ReceiptAppUi.kt
 
-      - name: Commit screenshot UI fixes
+      - name: Verify lint
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: Verify unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified fixes
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
-          git commit -m "UI: Darstellungsfehler aus Screenshots korrigieren"
+          git commit -m "Fix: Belege-Seite und mobile Darstellung korrigieren"
           git push origin HEAD:main
+
+      - name: Prepare traceable APK
+        shell: bash
+        run: |
+          FULL_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="$(git rev-parse --short=7 HEAD)"
+          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${SHORT_SHA}.apk"
+          {
+            echo "commit=${FULL_SHA}"
+            echo "short_commit=${SHORT_SHA}"
+            echo "workflow_run=${GITHUB_RUN_ID}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > build-info.txt
+
+      - name: Upload verified debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-verified
+          path: Steuer-Assistent-debug-*.apk
+          if-no-files-found: error
+
+      - name: Publish verified test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-${{ github.run_id }}
+          name: Steuer-Assistent korrigierte Testversion
+          prerelease: true
+          make_latest: false
+          files: |
+            Steuer-Assistent-debug-*.apk
+            build-info.txt
+          fail_on_unmatched_files: true
