@@ -1,0 +1,215 @@
+name: Fix Finanzamt PDF crash
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-finanzamt-pdf-crash.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix-finanzamt-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create local debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+
+      - name: Apply Finanzamt PDF crash fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1) PdfExporter: never keep drawing on the canvas of a finished page.
+          p = Path('app/src/main/java/com/example/util/PdfExporter.kt')
+          s = p.read_text(encoding='utf-8')
+          start = s.find('    fun exportReceiptsToPdf(')
+          end = s.find('\n    /**\n     * Triggers the Android Share Sheet', start)
+          if start < 0 or end < 0:
+              raise SystemExit('PdfExporter export method not found')
+          section = s[start:end]
+
+          marker = '        // Begin Page 1\n        startNewPage()\n        val cv = canvas!!\n\n        // Report Primary Header'
+          replacement = '        // Begin Page 1\n        startNewPage()\n        fun activeCanvas(): Canvas = requireNotNull(canvas) { "PDF canvas is not available" }\n\n        // Report Primary Header'
+          if marker in section:
+              section = section.replace(marker, replacement, 1)
+          elif 'fun activeCanvas(): Canvas' not in section:
+              raise SystemExit('PDF page canvas anchor not found')
+
+          report_start = section.find('        // Report Primary Header')
+          close_start = section.find('        // Close Document', report_start)
+          if report_start < 0 or close_start < 0:
+              raise SystemExit('PDF report drawing range not found')
+          drawing = section[report_start:close_start]
+          drawing = drawing.replace('cv.', 'activeCanvas().')
+          section = section[:report_start] + drawing + section[close_start:]
+          s = s[:start] + section + s[end:]
+          p.write_text(s, encoding='utf-8')
+
+          # 2) ViewModel: convert any runtime PDF exception into a normal failed export.
+          p = Path('app/src/main/java/com/example/ui/ReceiptViewModel.kt')
+          s = p.read_text(encoding='utf-8')
+          old = '''    fun exportToPdf(context: Context, taxYear: Int, includeTaxAdvisorSummary: Boolean = false): File? {
+        val currentReceipts = receipts.value
+        val currentMeta = propertyMetadata.value
+        return PdfExporter.exportReceiptsToPdf(context, taxYear, currentReceipts, currentMeta, includeTaxAdvisorSummary)
+    }'''
+          new = '''    fun exportToPdf(context: Context, taxYear: Int, includeTaxAdvisorSummary: Boolean = false): File? {
+        val currentReceipts = receipts.value
+        val currentMeta = propertyMetadata.value
+        return try {
+            PdfExporter.exportReceiptsToPdf(context, taxYear, currentReceipts, currentMeta, includeTaxAdvisorSummary)
+        } catch (e: Exception) {
+            Log.e("ReceiptViewModel", "Finanzamt PDF export failed", e)
+            null
+        }
+    }'''
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif 'Finanzamt PDF export failed' not in s:
+              raise SystemExit('ReceiptViewModel exportToPdf anchor not found')
+          p.write_text(s, encoding='utf-8')
+
+          # 3) UI: do not close silently on failure; show an error instead.
+          p = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
+          s = p.read_text(encoding='utf-8')
+          old = '''                    onClick = {
+                        val pdfFile = viewModel.exportToPdf(context, selectedYear, includeAdvisorSummary)
+                        if (pdfFile != null) {
+                            com.example.util.PdfExporter.sharePdf(context, pdfFile)
+                        }
+                        showTaxYearDialog = false
+                    },'''
+          new = '''                    onClick = {
+                        val pdfFile = viewModel.exportToPdf(context, selectedYear, includeAdvisorSummary)
+                        if (pdfFile != null) {
+                            com.example.util.PdfExporter.sharePdf(context, pdfFile)
+                            showTaxYearDialog = false
+                        } else {
+                            android.widget.Toast.makeText(
+                                context,
+                                "PDF konnte nicht erstellt werden. Bitte erneut versuchen.",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    },'''
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif 'PDF konnte nicht erstellt werden. Bitte erneut versuchen.' not in s:
+              raise SystemExit('Finanzamt PDF export button anchor not found')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- app/src/main/java/com/example/util/PdfExporter.kt app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Verify PDF canvas safety
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('app/src/main/java/com/example/util/PdfExporter.kt').read_text(encoding='utf-8')
+          start = s.index('    fun exportReceiptsToPdf(')
+          end = s.index('\n    /**\n     * Triggers the Android Share Sheet', start)
+          section = s[start:end]
+          report_start = section.index('// Report Primary Header')
+          close_start = section.index('// Close Document', report_start)
+          drawing = section[report_start:close_start]
+          if 'val cv = canvas!!' in section:
+              raise SystemExit('stale PDF canvas reference still present')
+          if 'cv.' in drawing:
+              raise SystemExit('report still draws through stale cv reference')
+          if 'activeCanvas().' not in drawing:
+              raise SystemExit('active PDF canvas helper not used')
+          print('PDF page-break canvas handling verified')
+          PY
+
+      - name: Verify lint
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: Verify unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified crash fix
+        id: commit_fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/util/PdfExporter.kt app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          if git diff --cached --quiet; then
+            echo "No source changes required"
+          else
+            git commit -m "Fix: Finanzamt PDF-Export darf App nicht mehr abstürzen"
+            git push origin HEAD:main
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare single test release
+        shell: bash
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${{ steps.commit_fix.outputs.short_sha }}.apk"
+          {
+            echo "commit=${{ steps.commit_fix.outputs.sha }}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > build-info.txt
+
+      - name: Publish fixed APK once
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pdf-crash-fix-${{ steps.commit_fix.outputs.sha }}
+          target_commitish: ${{ steps.commit_fix.outputs.sha }}
+          name: Steuer-Assistent PDF-Crashfix
+          body: |
+            Testversion mit repariertem Finanzamt-PDF-Export.
+            Verhindert Absturz bei Seitenumbrüchen und fängt PDF-Laufzeitfehler ab.
+          prerelease: true
+          make_latest: false
+          files: |
+            Steuer-Assistent-debug-*.apk
+            build-info.txt
+          fail_on_unmatched_files: true
