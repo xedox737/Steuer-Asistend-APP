@@ -843,6 +843,9 @@ class DrivePersistenceRepository(
             put("zahlungsstatus", zahlungsstatus ?: JSONObject.NULL)
             put("zahlungsdatum", zahlungsdatum ?: JSONObject.NULL)
             put("zahlungsreferenz", zahlungsreferenz ?: JSONObject.NULL)
+            put("zahlungsart", zahlungsart)
+            put("zahlungsartQuelle", zahlungsartQuelle)
+            put("zahlungsartConfidence", zahlungsartConfidence)
             
             put("notizSteuerberater", notizSteuerberater ?: JSONObject.NULL)
             put("pruefstatus", pruefstatus ?: JSONObject.NULL)
@@ -1050,6 +1053,9 @@ class DrivePersistenceRepository(
             zahlungsstatus = if (json.isNull("zahlungsstatus")) null else json.getString("zahlungsstatus"),
             zahlungsdatum = if (json.isNull("zahlungsdatum")) null else json.getString("zahlungsdatum"),
             zahlungsreferenz = if (json.isNull("zahlungsreferenz")) null else json.getString("zahlungsreferenz"),
+            zahlungsart = json.optString("zahlungsart", "Unbekannt"),
+            zahlungsartQuelle = json.optString("zahlungsartQuelle", "UNBEKANNT"),
+            zahlungsartConfidence = json.optDouble("zahlungsartConfidence", 0.0),
             notizSteuerberater = if (json.isNull("notizSteuerberater")) null else json.optString("notizSteuerberater"),
             pruefstatus = if (json.isNull("pruefstatus")) null else json.getString("pruefstatus"),
             freigabestatus = if (json.isNull("freigabestatus")) null else json.optString("freigabestatus"),
@@ -1095,6 +1101,9 @@ class DrivePersistenceRepository(
             imageUrl = mainDoc?.filename ?: "",
             wohneinheit = wohneinheit ?: "",
             mieter = "",
+            zahlungsart = zahlungsart,
+            zahlungsartQuelle = zahlungsartQuelle,
+            zahlungsartConfidence = zahlungsartConfidence,
             isArchivedToDrive = true,
             positionenJson = posJsonStr,
             allocationsJson = AccountingApprovalJson.encodeAllocations(allocations),
@@ -1757,6 +1766,9 @@ class DrivePersistenceRepository(
                 zahlungsstatus = "BEZAHLT",
                 zahlungsdatum = currentReceipt.datum,
                 zahlungsreferenz = "",
+                zahlungsart = currentReceipt.zahlungsart,
+                zahlungsartQuelle = currentReceipt.zahlungsartQuelle,
+                zahlungsartConfidence = currentReceipt.zahlungsartConfidence,
                 pruefstatus = currentReceipt.pruefstatus,
                 freigabestatus = currentReceipt.freigabestatus,
                 exportstatus = currentReceipt.exportStatus,
@@ -3830,6 +3842,9 @@ data class PersistedReceipt(
     val zahlungsstatus: String?,
     val zahlungsdatum: String?,
     val zahlungsreferenz: String? = null,
+    val zahlungsart: String = "Unbekannt",
+    val zahlungsartQuelle: String = "UNBEKANNT",
+    val zahlungsartConfidence: Double = 0.0,
     val notizSteuerberater: String? = null,
     val pruefstatus: String?,
     val freigabestatus: String? = "OFFEN",

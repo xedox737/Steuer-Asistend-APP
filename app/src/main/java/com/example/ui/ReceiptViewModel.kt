@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -2023,10 +2025,36 @@ data class AiSearchUiState(
 
         val paths = receipt.imageUrl.split(',').map { it.trim() }.filter { it.isNotBlank() }
         val bitmaps = kotlinx.coroutines.withContext(Dispatchers.IO) {
-            paths.mapNotNull { path -> runCatching {
-                val file = File(path)
-                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
-            }.getOrNull() }
+            paths.flatMap { path ->
+                runCatching {
+                    val file = File(path)
+                    if (!file.exists() || !file.isFile) return@runCatching emptyList<Bitmap>()
+                    if (file.extension.equals("pdf", ignoreCase = true)) {
+                        val rendered = mutableListOf<Bitmap>()
+                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                            PdfRenderer(descriptor).use { renderer ->
+                                val pagesToRead = minOf(renderer.pageCount, 3)
+                                for (index in 0 until pagesToRead) {
+                                    renderer.openPage(index).use { page ->
+                                        val scale = minOf(2.0f, 1600.0f / page.width.coerceAtLeast(1))
+                                        val width = (page.width * scale).toInt().coerceAtLeast(1)
+                                        val height = (page.height * scale).toInt().coerceAtLeast(1)
+                                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                        rendered.add(bitmap)
+                                    }
+                                }
+                            }
+                        }
+                        rendered
+                    } else {
+                        listOfNotNull(BitmapFactory.decodeFile(file.absolutePath))
+                    }
+                }.getOrElse {
+                    Log.w("ReceiptViewModel", "Original für Zahlungsart konnte nicht gerendert werden: $path", it)
+                    emptyList()
+                }
+            }
         }
         if (bitmaps.isEmpty()) return null
         return try {
@@ -2111,8 +2139,8 @@ data class AiSearchUiState(
                 wohneinheit = wohneinheit,
                 mieter = mieter,
                 zahlungsart = normalizePaymentMethod(zahlungsart),
-                zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "KI_SCAN",
-                zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else 0.95,
+                zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "NUTZER_BESTAETIGT",
+                zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else 1.0,
                 positionenJson = positionenJson
             )
             val newId = repository.insert(newReceipt)
