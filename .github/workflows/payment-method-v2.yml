@@ -1,0 +1,461 @@
+name: Zahlungsart v2 implementieren
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/payment-method-v2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Implement payment method v2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          # ---------- 1. Room model + safe migration ----------
+          path = 'app/src/main/java/com/example/data/ReceiptDatabase.kt'
+          s = Path(path).read_text(encoding='utf-8')
+          if 'val zahlungsart: String = "Unbekannt"' not in s:
+              s, n = re.subn(
+                  r'(\s+val mieter: String = "", // Mieter name\n)',
+                  r'\1    val zahlungsart: String = "Unbekannt", // Bar, Girocard/EC, Kreditkarte, Überweisung, Lastschrift, PayPal, Unbekannt\n    val zahlungsartQuelle: String = "UNBEKANNT",\n    val zahlungsartConfidence: Double = 0.0,\n',
+                  s,
+                  count=1
+              )
+              if n != 1: raise SystemExit('Receipt payment fields insertion failed')
+          if 'val MIGRATION_14_15' not in s:
+              marker = '@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 14, exportSchema = false)'
+              if marker not in s: raise SystemExit('Database v14 declaration not found')
+              migration = '''val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE receipts ADD COLUMN zahlungsart TEXT NOT NULL DEFAULT 'Unbekannt'")
+        db.execSQL("ALTER TABLE receipts ADD COLUMN zahlungsartQuelle TEXT NOT NULL DEFAULT 'UNBEKANNT'")
+        db.execSQL("ALTER TABLE receipts ADD COLUMN zahlungsartConfidence REAL NOT NULL DEFAULT 0.0")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 15, exportSchema = false)'''
+              s = s.replace(marker, migration, 1)
+              mig_old = '.addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)'
+              mig_new = '.addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)'
+              if mig_old not in s: raise SystemExit('Migration registration not found')
+              s = s.replace(mig_old, mig_new, 1)
+          write(path, s)
+
+          # ---------- 2. Shared AI result model + Gemini prompt ----------
+          path = 'app/src/main/java/com/example/api/GeminiClient.kt'
+          s = Path(path).read_text(encoding='utf-8')
+          if '@Json(name = "zahlungsart")' not in s:
+              s, n = re.subn(
+                  r'(\s+@Json\(name = "mieter"\) val mieter: String = "",\n)',
+                  r'\1    @Json(name = "zahlungsart") val zahlungsart: String = "Unbekannt",\n',
+                  s,
+                  count=1
+              )
+              if n != 1: raise SystemExit('ExtractedReceipt payment field insertion failed')
+          if 'Nur eindeutig erkennbare Zahlungsangaben' not in s:
+              prompt_anchor = '            - isEigenleistungSanierung: true, falls es sich um einen Baumarkt-Materialbeleg handelt UND das Belegdatum zwischen 2025-10-01 and 2026-01-31 liegt. Sonst false.\n'
+              prompt_line = '            - zahlungsart: Nur eindeutig erkennbare Zahlungsangaben verwenden. Erlaubt sind exakt "Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal", "Unbekannt". BAR/BARGELD = Bar; EC/Girocard/Maestro = Girocard/EC; Visa/Mastercard/Kreditkarte = Kreditkarte. Wenn nicht eindeutig, immer Unbekannt.\n'
+              if prompt_anchor in s:
+                  s = s.replace(prompt_anchor, prompt_anchor + prompt_line, 1)
+              json_anchor = '              "mieter": "Erika Mustermann",\n'
+              if json_anchor in s:
+                  s = s.replace(json_anchor, json_anchor + '              "zahlungsart": "Girocard/EC",\n', 1)
+          write(path, s)
+
+          # ---------- 3. OpenAI strict schema ----------
+          path = 'app/src/main/java/com/example/api/OpenAiClient.kt'
+          s = Path(path).read_text(encoding='utf-8')
+          schema_start = s.find('private fun receiptSchema()')
+          schema_end = s.find('private data class EncodedImage', schema_start)
+          if schema_start < 0 or schema_end < 0: raise SystemExit('OpenAI receipt schema section not found')
+          schema = s[schema_start:schema_end]
+          if '.put("zahlungsart"' not in schema:
+              schema = schema.replace(
+                  '            .put("mieter", stringSchema())\n',
+                  '            .put("mieter", stringSchema())\n            .put("zahlungsart", stringSchema().put("enum", JSONArray(listOf("Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal", "Unbekannt"))))\n',
+                  1
+              )
+              schema = schema.replace(
+                  '                        "wohneinheit", "mieter", "positionen"',
+                  '                        "wohneinheit", "mieter", "zahlungsart", "positionen"',
+                  1
+              )
+              s = s[:schema_start] + schema + s[schema_end:]
+          instruction = '        zahlungsart darf nur "Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal" oder "Unbekannt" sein. Nur eindeutig sichtbare Angaben verwenden, sonst "Unbekannt".\n'
+          if instruction.strip() not in s:
+              anchor = '        kontoNr enthält nur die vorgeschlagene Sachkontonummer. Keine steuerliche Freigabe erteilen.\n'
+              if anchor in s:
+                  s = s.replace(anchor, anchor + instruction, 1)
+          write(path, s)
+
+          # ---------- 4. ViewModel save + safe backfill ----------
+          path = 'app/src/main/java/com/example/ui/ReceiptViewModel.kt'
+          s = Path(path).read_text(encoding='utf-8')
+          save_marker = '    // Save extracted receipt to database\n'
+          if save_marker not in s: raise SystemExit('ViewModel save marker not found')
+          if 'val isBackfillingPaymentMethods = _isBackfillingPaymentMethods.asStateFlow()' not in s:
+              block = '''    private val _isBackfillingPaymentMethods = MutableStateFlow(false)
+    val isBackfillingPaymentMethods = _isBackfillingPaymentMethods.asStateFlow()
+    private val _paymentBackfillStatus = MutableStateFlow<String?>(null)
+    val paymentBackfillStatus = _paymentBackfillStatus.asStateFlow()
+
+    private fun normalizePaymentMethod(raw: String?): String {
+        val value = raw.orEmpty().trim().lowercase(Locale.GERMANY)
+        return when {
+            value.isBlank() || value == "unbekannt" -> "Unbekannt"
+            value.contains("paypal") -> "PayPal"
+            value.contains("lastschrift") || value.contains("sepa debit") -> "Lastschrift"
+            value.contains("überweisung") || value.contains("ueberweisung") || value.contains("sepa transfer") -> "Überweisung"
+            value.contains("mastercard") || value.contains("visa") || value.contains("kreditkarte") || value.contains("credit card") -> "Kreditkarte"
+            value.contains("girocard") || value.contains("maestro") || Regex("(^|[^a-z])ec([^a-z]|$)").containsMatchIn(value) -> "Girocard/EC"
+            value.contains("bargeld") || Regex("(^|[^a-z])bar([^a-z]|$)").containsMatchIn(value) -> "Bar"
+            else -> "Unbekannt"
+        }
+    }
+
+    private fun inferPaymentMethodFromReceiptText(receipt: Receipt): Pair<String, Double>? {
+        val text = listOf(receipt.aussteller, receipt.beschreibung, receipt.positionenJson).joinToString(" ")
+        val method = normalizePaymentMethod(text)
+        return method.takeIf { it != "Unbekannt" }?.let { it to 0.78 }
+    }
+
+    private suspend fun analyzeExistingPaymentMethodWithAi(receipt: Receipt): String? {
+        val paths = receipt.imageUrl.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        val bitmaps = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            paths.mapNotNull { path ->
+                runCatching {
+                    val file = File(path)
+                    if (file.exists() && file.isFile) BitmapFactory.decodeFile(file.absolutePath) else null
+                }.getOrNull()
+            }
+        }
+        if (bitmaps.isEmpty()) return null
+        val learnedContext = getUserLearnedRulesPromptContext()
+        return try {
+            val result = when (_aiProviderState.value.provider) {
+                ReceiptAnalysisProvider.GEMINI -> {
+                    val key = AiProviderSettings.getGeminiKey(getApplication())
+                    try {
+                        GeminiClient.analyzeReceipt(
+                            receiptText = "Bestimme insbesondere die Zahlungsart. Wenn sie nicht eindeutig erkennbar ist, setze Unbekannt.",
+                            bitmaps = bitmaps,
+                            userLearnedRulesContext = learnedContext,
+                            apiKeyOverride = key
+                        )
+                    } finally { key?.fill('\\u0000') }
+                }
+                ReceiptAnalysisProvider.OPENAI -> {
+                    val key = AiProviderSettings.getOpenAiKey(getApplication()) ?: return null
+                    try {
+                        OpenAiClient.analyzeReceipt(
+                            apiKey = key,
+                            model = _aiProviderState.value.openAiModel,
+                            receiptText = "Bestimme insbesondere die Zahlungsart. Wenn sie nicht eindeutig erkennbar ist, setze Unbekannt.",
+                            bitmaps = bitmaps,
+                            userLearnedRulesContext = learnedContext
+                        )
+                    } finally { key.fill('\\u0000') }
+                }
+            }
+            normalizePaymentMethod(result?.zahlungsart)
+        } catch (e: Exception) {
+            Log.w("ReceiptViewModel", "Zahlungsart-Nacherkennung für Beleg ${receipt.id} fehlgeschlagen", e)
+            null
+        } finally {
+            bitmaps.forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    fun backfillPaymentMethods() {
+        if (_isBackfillingPaymentMethods.value) return
+        viewModelScope.launch {
+            _isBackfillingPaymentMethods.value = true
+            try {
+                val candidates = receipts.value.filter { normalizePaymentMethod(it.zahlungsart) == "Unbekannt" }
+                var updated = 0
+                candidates.forEachIndexed { index, receipt ->
+                    _paymentBackfillStatus.value = "Prüfe Beleg ${index + 1} von ${candidates.size} …"
+                    var detected = inferPaymentMethodFromReceiptText(receipt)
+                    var source = "TEXT_HEURISTIK"
+                    if (detected == null) {
+                        val aiMethod = analyzeExistingPaymentMethodWithAi(receipt)
+                        if (aiMethod != null && aiMethod != "Unbekannt") {
+                            detected = aiMethod to 0.92
+                            source = "KI_NACHERKANNT"
+                        }
+                    }
+                    if (detected != null) {
+                        repository.insert(receipt.copy(
+                            zahlungsart = detected.first,
+                            zahlungsartQuelle = source,
+                            zahlungsartConfidence = detected.second,
+                            syncStatus = if (receipt.syncStatus == "SYNCED") "PENDING" else receipt.syncStatus
+                        ))
+                        updated++
+                    }
+                }
+                _paymentBackfillStatus.value = "Fertig: $updated von ${candidates.size} Belegen mit Zahlungsart ergänzt."
+            } catch (e: Exception) {
+                Log.e("ReceiptViewModel", "Zahlungsart-Nacherkennung fehlgeschlagen", e)
+                _paymentBackfillStatus.value = "Nacherkennung fehlgeschlagen: ${e.localizedMessage}"
+            } finally {
+                _isBackfillingPaymentMethods.value = false
+            }
+        }
+    }
+
+'''
+              s = s.replace(save_marker, block + save_marker, 1)
+
+          save_start = s.find('    fun saveReceipt(')
+          save_end = s.find('    // Update an existing receipt', save_start)
+          if save_start < 0 or save_end < 0: raise SystemExit('saveReceipt section not found')
+          save = s[save_start:save_end]
+          if 'zahlungsart: String = "Unbekannt"' not in save:
+              save, n = re.subn(
+                  r'(\s+mieter: String = "",\n)(\s+positionenJson: String = "")',
+                  r'\1        zahlungsart: String = "Unbekannt",\n        zahlungsartQuelle: String = "NUTZER_BESTAETIGT",\n        zahlungsartConfidence: Double = 1.0,\n\2',
+                  save,
+                  count=1
+              )
+              if n != 1: raise SystemExit('saveReceipt parameters insertion failed')
+              save, n = re.subn(
+                  r'(\s+mieter = mieter,\n)(\s+positionenJson = positionenJson)',
+                  r'\1                zahlungsart = normalizePaymentMethod(zahlungsart),\n                zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else zahlungsartQuelle,\n                zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else zahlungsartConfidence.coerceIn(0.0, 1.0),\n\2',
+                  save,
+                  count=1
+              )
+              if n != 1: raise SystemExit('Receipt constructor payment insertion failed')
+              s = s[:save_start] + save + s[save_end:]
+          write(path, s)
+
+          # ---------- 5. UI scan/edit + backfill action ----------
+          path = 'app/src/main/java/com/example/ui/ReceiptAppUi.kt'
+          s = Path(path).read_text(encoding='utf-8')
+
+          # Scan state
+          scan_start = s.find('// Form Fields for Manual review / Edit after extraction')
+          if scan_start < 0: raise SystemExit('Scan form section not found')
+          if 'var editZahlungsart by remember { mutableStateOf("Unbekannt") }' not in s[scan_start:scan_start+5000]:
+              pos = s.find('    var editMieter by remember { mutableStateOf("") }', scan_start)
+              if pos < 0: raise SystemExit('Scan editMieter state not found')
+              line_end = s.find('\n', pos) + 1
+              s = s[:line_end] + '    var editZahlungsart by remember { mutableStateOf("Unbekannt") }\n' + s[line_end:]
+
+          # AI result into scan form
+          launch_pos = s.find('// Auto-populate when Gemini analysis completes successfully', scan_start)
+          if launch_pos < 0: raise SystemExit('Scan auto-populate section not found')
+          launch_end = s.find('    if (scanState is ScanUiState.Loading)', launch_pos)
+          launch = s[launch_pos:launch_end]
+          if 'editZahlungsart = extracted.zahlungsart' not in launch:
+              anchor = '            editIsEigenleistung = extracted.isEigenleistungSanierung\n'
+              if anchor not in launch: raise SystemExit('Scan AI result anchor not found')
+              launch = launch.replace(anchor, anchor + '            editZahlungsart = extracted.zahlungsart.ifBlank { "Unbekannt" }\n', 1)
+              s = s[:launch_pos] + launch + s[launch_end:]
+
+          # Scan payment field before positions
+          scan_start = s.find('// Form Fields for Manual review / Edit after extraction')
+          marker_pos = s.find('            // Positionen Editor Section', scan_start)
+          if marker_pos < 0: raise SystemExit('Scan position editor marker not found')
+          nearby = s[max(scan_start, marker_pos-2500):marker_pos]
+          if 'label = { Text("Zahlungsart") }' not in nearby:
+              field = '''            OutlinedTextField(
+                value = editZahlungsart,
+                onValueChange = { editZahlungsart = it },
+                label = { Text("Zahlungsart") },
+                supportingText = { Text("Bar, Girocard/EC, Kreditkarte, Überweisung, Lastschrift, PayPal oder Unbekannt") },
+                modifier = Modifier.fillMaxWidth().testTag("scan_payment_method")
+            )
+
+'''
+              s = s[:marker_pos] + field + s[marker_pos:]
+
+          # Reset and save scan
+          if 'editZahlungsart = "Unbekannt"' not in s[s.find('// Reset Form / Reset selection', scan_start):s.find('viewModel.setScreen', s.find('// Reset Form / Reset selection', scan_start))+100]:
+              anchor = '                        editMieter = ""\n'
+              reset_pos = s.find('// Reset Form / Reset selection', scan_start)
+              idx = s.find(anchor, reset_pos)
+              if idx >= 0:
+                  s = s[:idx] + s[idx:].replace(anchor, anchor + '                        editZahlungsart = "Unbekannt"\n', 1)
+
+          save_call = s.find('                        viewModel.saveReceipt(', scan_start)
+          save_call_end = s.find('                        )', save_call)
+          if save_call < 0 or save_call_end < 0: raise SystemExit('Scan saveReceipt call not found')
+          call = s[save_call:save_call_end]
+          if 'zahlungsart = editZahlungsart' not in call:
+              anchor = '                            mieter = editMieter,\n'
+              if anchor not in call: raise SystemExit('Scan save mieter anchor not found')
+              call = call.replace(anchor, anchor + '                            zahlungsart = editZahlungsart,\n                            zahlungsartQuelle = "NUTZER_BESTAETIGT",\n                            zahlungsartConfidence = if (editZahlungsart == "Unbekannt") 0.0 else 1.0,\n', 1)
+              s = s[:save_call] + call + s[save_call_end:]
+
+          # Detail edit state
+          detail_start = s.find('fun ReceiptDetailDialog(')
+          if detail_start < 0: raise SystemExit('ReceiptDetailDialog not found')
+          if 'var editZahlungsart by remember(receipt)' not in s[detail_start:detail_start+4000]:
+              pos = s.find('    var editMieter by remember(receipt)', detail_start)
+              if pos < 0: raise SystemExit('Detail editMieter state not found')
+              line_end = s.find('\n', pos) + 1
+              s = s[:line_end] + '    var editZahlungsart by remember(receipt) { mutableStateOf(receipt.zahlungsart) }\n' + s[line_end:]
+
+          # Detail payment field after mieter field, before wohneinheit dropdown
+          detail_start = s.find('fun ReceiptDetailDialog(')
+          wohn_pos = s.find('                    ExposedDropdownMenuBox(', s.find('label = { Text("Mieter / Zahler (optional)") }', detail_start))
+          if wohn_pos < 0: raise SystemExit('Detail wohneinheit dropdown anchor not found')
+          if 'testTag("edit_receipt_payment_method")' not in s[detail_start:wohn_pos]:
+              field = '''                    OutlinedTextField(
+                        value = editZahlungsart,
+                        onValueChange = { editZahlungsart = it },
+                        label = { Text("Zahlungsart") },
+                        supportingText = { Text("Bar, Girocard/EC, Kreditkarte, Überweisung, Lastschrift, PayPal oder Unbekannt") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_receipt_payment_method")
+                    )
+
+'''
+              s = s[:wohn_pos] + field + s[wohn_pos:]
+
+          # Detail save copy
+          detail_start = s.find('fun ReceiptDetailDialog(')
+          save_copy_pos = s.find('                            val updatedReceipt = receipt.copy(', detail_start)
+          save_copy_end = s.find('                            )', save_copy_pos)
+          if save_copy_pos < 0 or save_copy_end < 0: raise SystemExit('Detail receipt.copy save not found')
+          copy = s[save_copy_pos:save_copy_end]
+          if 'zahlungsart = editZahlungsart' not in copy:
+              anchor = '                                mieter = editMieter,\n'
+              if anchor not in copy: raise SystemExit('Detail save mieter anchor not found')
+              copy = copy.replace(anchor, anchor + '                                zahlungsart = editZahlungsart,\n                                zahlungsartQuelle = "MANUELL",\n                                zahlungsartConfidence = if (editZahlungsart == "Unbekannt") 0.0 else 1.0,\n', 1)
+              s = s[:save_copy_pos] + copy + s[save_copy_end:]
+
+          # Ledger backfill action
+          ledger_start = s.find('fun LedgerScreen(viewModel: ReceiptViewModel)')
+          if ledger_start < 0: raise SystemExit('LedgerScreen not found')
+          context_line = '    val context = LocalContext.current\n'
+          context_pos = s.find(context_line, ledger_start)
+          if context_pos < 0: raise SystemExit('Ledger context line not found')
+          if 'isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsState()' not in s[ledger_start:ledger_start+1500]:
+              insert_pos = context_pos + len(context_line)
+              s = s[:insert_pos] + '    val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsState()\n    val paymentBackfillStatus by viewModel.paymentBackfillStatus.collectAsState()\n' + s[insert_pos:]
+
+          ledger_start = s.find('fun LedgerScreen(viewModel: ReceiptViewModel)')
+          datev_marker = '        // DATEV Export Card\n'
+          datev_pos = s.find(datev_marker, ledger_start)
+          if datev_pos < 0: raise SystemExit('Ledger DATEV card marker not found')
+          if 'existing_payment_backfill_button' not in s[ledger_start:datev_pos]:
+              card = '''        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Zahlungsarten bestehender Belege", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("Erkennt fehlende Zahlungsarten aus vorhandenen Belegdaten und – falls das Original lokal vorhanden ist – per KI neu.", fontSize = 11.sp, color = SlateGray)
+                Button(
+                    onClick = { viewModel.backfillPaymentMethods() },
+                    enabled = !isPaymentBackfillRunning,
+                    modifier = Modifier.fillMaxWidth().testTag("existing_payment_backfill_button")
+                ) {
+                    Text(if (isPaymentBackfillRunning) "Nacherkennung läuft …" else "Zahlungsarten nacherkennen")
+                }
+                paymentBackfillStatus?.let { Text(it, fontSize = 11.sp, color = SlateGray) }
+            }
+        }
+
+'''
+              s = s[:datev_pos] + card + s[datev_pos:]
+
+          write(path, s)
+
+          # ---------- Structural verification ----------
+          checks = {
+              'app/src/main/java/com/example/data/ReceiptDatabase.kt': ['version = 15', 'MIGRATION_14_15', 'val zahlungsart: String = "Unbekannt"'],
+              'app/src/main/java/com/example/api/GeminiClient.kt': ['@Json(name = "zahlungsart")'],
+              'app/src/main/java/com/example/api/OpenAiClient.kt': ['.put("zahlungsart"'],
+              'app/src/main/java/com/example/ui/ReceiptViewModel.kt': ['fun backfillPaymentMethods()', 'zahlungsart = normalizePaymentMethod(zahlungsart)'],
+              'app/src/main/java/com/example/ui/ReceiptAppUi.kt': ['existing_payment_backfill_button', 'scan_payment_method', 'edit_receipt_payment_method']
+          }
+          for file, needles in checks.items():
+              text = Path(file).read_text(encoding='utf-8')
+              for needle in needles:
+                  if needle not in text: raise SystemExit(f'Missing {needle} in {file}')
+          PY
+
+          git diff --check
+          git diff --stat
+
+      - name: Verify lint
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: Verify unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified feature
+        id: commit_feature
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/ReceiptDatabase.kt app/src/main/java/com/example/api/GeminiClient.kt app/src/main/java/com/example/api/OpenAiClient.kt app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git commit -m "Feature: Zahlungsart bei Belegen erfassen und nacherkennen"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare release
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-Zahlungsart-${{ steps.commit_feature.outputs.short_sha }}.apk"
+
+      - name: Publish single test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: payment-method-${{ steps.commit_feature.outputs.sha }}
+          target_commitish: ${{ steps.commit_feature.outputs.sha }}
+          name: Steuer-Assistent Zahlungsart
+          body: |
+            Testversion mit Zahlungsart-Erkennung für neue und bestehende Belege.
+            Enthält die sichere Room-Migration 14 auf 15.
+          prerelease: true
+          make_latest: false
+          files: Steuer-Assistent-Zahlungsart-*.apk
+          fail_on_unmatched_files: true
