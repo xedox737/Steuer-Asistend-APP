@@ -1,0 +1,93 @@
+name: Zahlungsart v3 implementieren
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/payment_method_v3.py"
+      - ".github/workflows/payment-method-v3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Apply payment method source changes
+        run: python3 .github/scripts/payment_method_v3.py
+
+      - name: Verify source diff
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'version = 15' app/src/main/java/com/example/data/ReceiptDatabase.kt
+          grep -q 'val zahlungsart: String = "Unbekannt"' app/src/main/java/com/example/data/ReceiptDatabase.kt
+          grep -q '@Json(name = "zahlungsart")' app/src/main/java/com/example/api/GeminiClient.kt
+          grep -q 'fun backfillPaymentMethods()' app/src/main/java/com/example/ui/ReceiptViewModel.kt
+          grep -q 'existing_payment_backfill_button' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Compile Kotlin
+        timeout-minutes: 10
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified source changes
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/ReceiptDatabase.kt \
+                  app/src/main/java/com/example/api/GeminiClient.kt \
+                  app/src/main/java/com/example/api/OpenAiClient.kt \
+                  app/src/main/java/com/example/ui/ReceiptViewModel.kt \
+                  app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git commit -m "Feature: Zahlungsart für neue und bestehende Belege"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-Zahlungsart-${{ steps.commit.outputs.short }}.apk"
+
+      - name: Publish one test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: payment-method-${{ steps.commit.outputs.sha }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          name: Steuer-Assistent Zahlungsart
+          prerelease: true
+          make_latest: false
+          files: Steuer-Assistent-Zahlungsart-*.apk
