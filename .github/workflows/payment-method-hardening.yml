@@ -1,0 +1,271 @@
+name: Zahlungsart Hardening
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/payment-method-hardening.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Apply three payment method fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              if new in s:
+                  return
+              if old not in s:
+                  raise SystemExit(f'{label}: anchor not found in {path}')
+              p.write_text(s.replace(old, new, 1), encoding='utf-8')
+
+          drive = 'app/src/main/java/com/example/data/DrivePersistenceRepository.kt'
+          p = Path(drive); s = p.read_text(encoding='utf-8')
+
+          # Persisted model
+          if 'val zahlungsart: String = "Unbekannt"' not in s[s.find('data class PersistedReceipt('):]:
+              old = '''    val zahlungsstatus: String?,
+    val zahlungsdatum: String?,
+    val zahlungsreferenz: String? = null,
+    val notizSteuerberater: String? = null,'''
+              new = '''    val zahlungsstatus: String?,
+    val zahlungsdatum: String?,
+    val zahlungsreferenz: String? = null,
+    val zahlungsart: String = "Unbekannt",
+    val zahlungsartQuelle: String = "UNBEKANNT",
+    val zahlungsartConfidence: Double = 0.0,
+    val notizSteuerberater: String? = null,'''
+              if old not in s: raise SystemExit('PersistedReceipt payment fields anchor not found')
+              s = s.replace(old, new, 1)
+
+          # JSON write
+          old = '''            put("zahlungsstatus", zahlungsstatus ?: JSONObject.NULL)
+            put("zahlungsdatum", zahlungsdatum ?: JSONObject.NULL)
+            put("zahlungsreferenz", zahlungsreferenz ?: JSONObject.NULL)
+            
+            put("notizSteuerberater", notizSteuerberater ?: JSONObject.NULL)'''
+          new = '''            put("zahlungsstatus", zahlungsstatus ?: JSONObject.NULL)
+            put("zahlungsdatum", zahlungsdatum ?: JSONObject.NULL)
+            put("zahlungsreferenz", zahlungsreferenz ?: JSONObject.NULL)
+            put("zahlungsart", zahlungsart)
+            put("zahlungsartQuelle", zahlungsartQuelle)
+            put("zahlungsartConfidence", zahlungsartConfidence)
+            
+            put("notizSteuerberater", notizSteuerberater ?: JSONObject.NULL)'''
+          if 'put("zahlungsart", zahlungsart)' not in s:
+              if old not in s: raise SystemExit('Drive payment JSON write anchor not found')
+              s = s.replace(old, new, 1)
+
+          # JSON parse
+          old = '''            zahlungsstatus = if (json.isNull("zahlungsstatus")) null else json.getString("zahlungsstatus"),
+            zahlungsdatum = if (json.isNull("zahlungsdatum")) null else json.getString("zahlungsdatum"),
+            zahlungsreferenz = if (json.isNull("zahlungsreferenz")) null else json.getString("zahlungsreferenz"),
+            notizSteuerberater = if (json.isNull("notizSteuerberater")) null else json.optString("notizSteuerberater"),'''
+          new = '''            zahlungsstatus = if (json.isNull("zahlungsstatus")) null else json.getString("zahlungsstatus"),
+            zahlungsdatum = if (json.isNull("zahlungsdatum")) null else json.getString("zahlungsdatum"),
+            zahlungsreferenz = if (json.isNull("zahlungsreferenz")) null else json.getString("zahlungsreferenz"),
+            zahlungsart = json.optString("zahlungsart", "Unbekannt"),
+            zahlungsartQuelle = json.optString("zahlungsartQuelle", "UNBEKANNT"),
+            zahlungsartConfidence = json.optDouble("zahlungsartConfidence", 0.0),
+            notizSteuerberater = if (json.isNull("notizSteuerberater")) null else json.optString("notizSteuerberater"),'''
+          if 'zahlungsart = json.optString("zahlungsart"' not in s:
+              if old not in s: raise SystemExit('Drive payment JSON parse anchor not found')
+              s = s.replace(old, new, 1)
+
+          # Restore to local Receipt
+          old = '''            wohneinheit = wohneinheit ?: "",
+            mieter = "",
+            isArchivedToDrive = true,'''
+          new = '''            wohneinheit = wohneinheit ?: "",
+            mieter = "",
+            zahlungsart = zahlungsart,
+            zahlungsartQuelle = zahlungsartQuelle,
+            zahlungsartConfidence = zahlungsartConfidence,
+            isArchivedToDrive = true,'''
+          if 'zahlungsart = zahlungsart,' not in s[s.find('fun PersistedReceipt.toLocalReceipt'):s.find('fun normalizePathSegment')]:
+              if old not in s: raise SystemExit('Drive restore payment anchor not found')
+              s = s.replace(old, new, 1)
+
+          # Both PersistedReceipt creation paths
+          ctor_old = '''                zahlungsstatus = "BEZAHLT",
+                zahlungsdatum = currentReceipt.datum,
+                zahlungsreferenz = "",
+                pruefstatus = currentReceipt.pruefstatus,'''
+          ctor_new = '''                zahlungsstatus = "BEZAHLT",
+                zahlungsdatum = currentReceipt.datum,
+                zahlungsreferenz = "",
+                zahlungsart = currentReceipt.zahlungsart,
+                zahlungsartQuelle = currentReceipt.zahlungsartQuelle,
+                zahlungsartConfidence = currentReceipt.zahlungsartConfidence,
+                pruefstatus = currentReceipt.pruefstatus,'''
+          if ctor_old in s:
+              s = s.replace(ctor_old, ctor_new)
+          elif 'zahlungsart = currentReceipt.zahlungsart' not in s:
+              raise SystemExit('Drive persisted receipt constructors anchor not found')
+          p.write_text(s, encoding='utf-8')
+
+          # ---------- PDF backfill + confirmed source ----------
+          vm = 'app/src/main/java/com/example/ui/ReceiptViewModel.kt'
+          p = Path(vm); s = p.read_text(encoding='utf-8')
+          if 'import android.graphics.pdf.PdfRenderer' not in s:
+              s = s.replace('import android.graphics.BitmapFactory\n', 'import android.graphics.BitmapFactory\nimport android.graphics.pdf.PdfRenderer\nimport android.os.ParcelFileDescriptor\n', 1)
+
+          old = '''        val bitmaps = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            paths.mapNotNull { path -> runCatching {
+                val file = File(path)
+                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+            }.getOrNull() }
+        }'''
+          new = '''        val bitmaps = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            paths.flatMap { path ->
+                runCatching {
+                    val file = File(path)
+                    if (!file.exists() || !file.isFile) return@runCatching emptyList<Bitmap>()
+                    if (file.extension.equals("pdf", ignoreCase = true)) {
+                        val rendered = mutableListOf<Bitmap>()
+                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+                            PdfRenderer(descriptor).use { renderer ->
+                                val pagesToRead = minOf(renderer.pageCount, 3)
+                                for (index in 0 until pagesToRead) {
+                                    renderer.openPage(index).use { page ->
+                                        val scale = minOf(2.0f, 1600.0f / page.width.coerceAtLeast(1))
+                                        val width = (page.width * scale).toInt().coerceAtLeast(1)
+                                        val height = (page.height * scale).toInt().coerceAtLeast(1)
+                                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                        rendered.add(bitmap)
+                                    }
+                                }
+                            }
+                        }
+                        rendered
+                    } else {
+                        listOfNotNull(BitmapFactory.decodeFile(file.absolutePath))
+                    }
+                }.getOrElse {
+                    Log.w("ReceiptViewModel", "Original für Zahlungsart konnte nicht gerendert werden: $path", it)
+                    emptyList()
+                }
+            }
+        }'''
+          if 'PdfRenderer(descriptor).use' not in s:
+              if old not in s: raise SystemExit('Existing receipt bitmap decode anchor not found')
+              s = s.replace(old, new, 1)
+
+          # Saved scan is user-confirmed after review.
+          s = s.replace(
+              'zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "KI_SCAN",',
+              'zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "NUTZER_BESTAETIGT",',
+              1
+          )
+          s = s.replace(
+              'zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else 0.95,',
+              'zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else 1.0,',
+              1
+          )
+          p.write_text(s, encoding='utf-8')
+
+          # ---------- Manual edit source ----------
+          ui = 'app/src/main/java/com/example/ui/ReceiptAppUi.kt'
+          p = Path(ui); s = p.read_text(encoding='utf-8')
+          old = '''                                mieter = editMieter,
+                                zahlungsart = editZahlungsart,
+                                positionenJson ='''
+          new = '''                                mieter = editMieter,
+                                zahlungsart = editZahlungsart,
+                                zahlungsartQuelle = if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartQuelle else if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) "UNBEKANNT" else "MANUELL",
+                                zahlungsartConfidence = if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) 0.0 else if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartConfidence else 1.0,
+                                positionenJson ='''
+          if 'else "MANUELL"' not in s[s.find('fun ReceiptDetailDialog'):s.find('fun ReceiptPositionenEditor')]:
+              if old not in s: raise SystemExit('Manual payment edit anchor not found')
+              s = s.replace(old, new, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- app/src/main/java/com/example/data/DrivePersistenceRepository.kt app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Verify payment hardening markers
+        shell: bash
+        run: |
+          grep -q 'put("zahlungsart", zahlungsart)' app/src/main/java/com/example/data/DrivePersistenceRepository.kt
+          grep -q 'zahlungsart = json.optString("zahlungsart", "Unbekannt")' app/src/main/java/com/example/data/DrivePersistenceRepository.kt
+          grep -q 'PdfRenderer(descriptor).use' app/src/main/java/com/example/ui/ReceiptViewModel.kt
+          grep -q 'NUTZER_BESTAETIGT' app/src/main/java/com/example/ui/ReceiptViewModel.kt
+          grep -q '"MANUELL"' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Compile Kotlin
+        timeout-minutes: 10
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified source and self-clean workflow
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/DrivePersistenceRepository.kt \
+                  app/src/main/java/com/example/ui/ReceiptViewModel.kt \
+                  app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git rm .github/workflows/payment-method-hardening.yml
+          git commit -m "Fix: Zahlungsart vollständig sichern und nacherkennen"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-Zahlungsart-Fix-${{ steps.commit.outputs.short }}.apk"
+
+      - name: Publish one test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: payment-method-fix-${{ steps.commit.outputs.sha }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          name: Steuer-Assistent Zahlungsart Fix
+          body: |
+            Zahlungsart-Hardening: Drive-Persistenz, PDF-Nacherkennung und korrekte Quellenkennzeichnung.
+          prerelease: true
+          make_latest: false
+          files: Steuer-Assistent-Zahlungsart-Fix-*.apk
