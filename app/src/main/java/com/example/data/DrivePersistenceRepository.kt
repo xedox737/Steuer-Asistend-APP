@@ -780,6 +780,7 @@ class DrivePersistenceRepository(
             
             put("aussteller", aussteller ?: JSONObject.NULL)
             put("rechnungsnummer", rechnungsnummer ?: JSONObject.NULL)
+            put("beschreibung", beschreibung ?: JSONObject.NULL)
             put("datum", datum ?: JSONObject.NULL)
             put("leistungsdatum", leistungsdatum ?: JSONObject.NULL)
             put("leistungszeitraumVon", leistungszeitraumVon ?: JSONObject.NULL)
@@ -1035,6 +1036,7 @@ class DrivePersistenceRepository(
             mimeType = json.optString("mimeType", ""),
             aussteller = if (json.isNull("aussteller")) null else json.getString("aussteller"),
             rechnungsnummer = if (json.isNull("rechnungsnummer")) null else json.getString("rechnungsnummer"),
+            beschreibung = if (!json.has("beschreibung") || json.isNull("beschreibung")) null else json.optString("beschreibung"),
             datum = if (json.isNull("datum")) null else json.getString("datum"),
             leistungsdatum = if (json.isNull("leistungsdatum")) null else json.getString("leistungsdatum"),
             leistungszeitraumVon = if (json.isNull("leistungszeitraumVon")) null else json.getString("leistungszeitraumVon"),
@@ -1096,7 +1098,7 @@ class DrivePersistenceRepository(
             hauptkategorie = hauptkategorie ?: "",
             unterkategorie = unterkategorie ?: "",
             kontoNr = positionen.firstOrNull()?.konto ?: "",
-            beschreibung = aussteller ?: "",
+            beschreibung = beschreibung ?: "",
             isEigenleistungSanierung = false,
             imageUrl = mainDoc?.filename ?: "",
             wohneinheit = wohneinheit ?: "",
@@ -1752,6 +1754,7 @@ class DrivePersistenceRepository(
                 documents = allDocs,
                 aussteller = currentReceipt.aussteller,
                 rechnungsnummer = "",
+                beschreibung = currentReceipt.beschreibung,
                 datum = currentReceipt.datum,
                 nettobetragCent = (currentReceipt.bruttobetrag * 100.0).toLong() - ((currentReceipt.bruttobetrag * 100.0) * 0.19).toLong(),
                 steuerbetragCent = ((currentReceipt.bruttobetrag * 100.0) * 0.19).toLong(),
@@ -3260,8 +3263,9 @@ class DrivePersistenceRepository(
             val internalIdMatch = downloadedPersisted.internalId == updatedLocal.internalId
             val displayIdMatch = downloadedPersisted.displayId == (updatedLocal.displayId ?: testDisplayId)
             val amountMatch = downloadedPersisted.bruttobetragCent == 11900L
+            val descriptionMatch = downloadedPersisted.beschreibung == updatedLocal.beschreibung
 
-            if (internalIdMatch && displayIdMatch && amountMatch) {
+            if (internalIdMatch && displayIdMatch && amountMatch && descriptionMatch) {
                 DriveReceiptTestResult(
                     success = true,
                     testInternalId = updatedLocal.internalId,
@@ -3824,6 +3828,7 @@ data class PersistedReceipt(
     val mimeType: String = "",
     val aussteller: String?,
     val rechnungsnummer: String?,
+    val beschreibung: String? = null,
     val datum: String?,
     val leistungsdatum: String? = null,
     val leistungszeitraumVon: String? = null,
