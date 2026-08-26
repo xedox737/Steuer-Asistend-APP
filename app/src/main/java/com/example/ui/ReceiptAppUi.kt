@@ -3971,6 +3971,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     var editIsEigenleistung by remember(receipt) { mutableStateOf(receipt.isEigenleistungSanierung) }
     var editWohneinheit by remember(receipt) { mutableStateOf(if (receipt.wohneinheit.isEmpty()) "Gesamtobjekt / Allgemein" else receipt.wohneinheit) }
     var editMieter by remember(receipt) { mutableStateOf(receipt.mieter) }
+    var editZahlungsart by remember(receipt) { mutableStateOf(receipt.zahlungsart) }
     var editPositionen by remember(receipt) { mutableStateOf(receipt.getPositionenList()) }
 
     var mainCategoryExpanded by remember { mutableStateOf(false) }
@@ -4154,6 +4155,13 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                         onValueChange = { editMieter = it },
                         label = { Text("Mieter / Zahler (optional)") },
                         modifier = Modifier.fillMaxWidth().testTag("edit_receipt_mieter_field")
+                    )
+
+                    OutlinedTextField(
+                        value = editZahlungsart,
+                        onValueChange = { editZahlungsart = it },
+                        label = { Text("Zahlungsart") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_receipt_payment_method")
                     )
 
                     ExposedDropdownMenuBox(
@@ -4600,6 +4608,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                                 isEigenleistungSanierung = editIsEigenleistung,
                                 wohneinheit = editWohneinheit,
                                 mieter = editMieter,
+                                zahlungsart = editZahlungsart,
                                 positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
                             )
                             viewModel.updateReceipt(updatedReceipt)
@@ -6039,6 +6048,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var editIsEigenleistung by remember { mutableStateOf(false) }
     var editWohneinheit by remember { mutableStateOf("Gesamtobjekt / Allgemein") }
     var editMieter by remember { mutableStateOf("") }
+    var editZahlungsart by remember { mutableStateOf("Unbekannt") }
     var editPositionen by remember { mutableStateOf<List<com.example.data.ReceiptItem>>(emptyList()) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
     var localImagePaths by remember { mutableStateOf("") }
@@ -6146,6 +6156,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             editKontoNr = extracted.kontoNr
             editBeschreibung = extracted.beschreibung
             editIsEigenleistung = extracted.isEigenleistungSanierung
+            editZahlungsart = extracted.zahlungsart
             if (extracted.mieter.isNotEmpty()) {
                 editMieter = extracted.mieter
             }
@@ -6964,6 +6975,14 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 }
             }
 
+            OutlinedTextField(
+                value = editZahlungsart,
+                onValueChange = { editZahlungsart = it },
+                label = { Text("Zahlungsart") },
+                supportingText = { Text("Bar, Girocard/EC, Kreditkarte, Überweisung, Lastschrift, PayPal oder Unbekannt") },
+                modifier = Modifier.fillMaxWidth().testTag("scan_payment_method")
+            )
+
             // Positionen Editor Section
             ReceiptPositionenEditor(
                 positionen = editPositionen,
@@ -7015,6 +7034,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             imageUrl = localImagePaths,
                             wohneinheit = editWohneinheit,
                             mieter = editMieter,
+                            zahlungsart = editZahlungsart,
                             positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
                         )
                     },
@@ -7910,6 +7930,8 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
 fun LedgerScreen(viewModel: ReceiptViewModel) {
     val receipts by viewModel.receipts.collectAsState()
     val context = LocalContext.current
+    val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsState()
+    val paymentBackfillStatus by viewModel.paymentBackfillStatus.collectAsState()
 
     // Calculate totals per DATEV Konto
     val kontoMap = receipts.groupBy { it.kontoNr }
@@ -8128,6 +8150,24 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Zahlungsarten bestehender Belege", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(paymentBackfillStatus ?: "Unbekannte Zahlungsarten können aus Belegtext und vorhandenen Originalbildern nacherkannt werden.", fontSize = 11.sp, color = SlateGray)
+                Button(
+                    onClick = { viewModel.backfillPaymentMethods() },
+                    enabled = !isPaymentBackfillRunning,
+                    modifier = Modifier.fillMaxWidth().testTag("existing_payment_backfill_button")
+                ) {
+                    Text(if (isPaymentBackfillRunning) "Nacherkennung läuft …" else "Zahlungsarten nacherkennen")
+                }
+            }
+        }
+
         var showDatevExportDialog by remember { mutableStateOf(false) }
         if (showDatevExportDialog) {
             DatevExportDialog(

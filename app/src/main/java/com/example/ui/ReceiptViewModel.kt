@@ -1997,6 +1997,85 @@ data class AiSearchUiState(
         }
     }
 
+    private val _isBackfillingPaymentMethods = MutableStateFlow(false)
+    val isBackfillingPaymentMethods = _isBackfillingPaymentMethods.asStateFlow()
+    private val _paymentBackfillStatus = MutableStateFlow<String?>(null)
+    val paymentBackfillStatus = _paymentBackfillStatus.asStateFlow()
+
+    private fun normalizePaymentMethod(raw: String?): String {
+        val value = raw.orEmpty().trim().lowercase(Locale.GERMANY)
+        return when {
+            value.isBlank() || value == "unbekannt" -> "Unbekannt"
+            value.contains("paypal") -> "PayPal"
+            value.contains("lastschrift") -> "Lastschrift"
+            value.contains("überweisung") || value.contains("ueberweisung") -> "Überweisung"
+            value.contains("mastercard") || value.contains("visa") || value.contains("kreditkarte") -> "Kreditkarte"
+            value.contains("girocard") || value.contains("maestro") || Regex("(^|[^a-z])ec([^a-z]|$)").containsMatchIn(value) -> "Girocard/EC"
+            value.contains("bargeld") || Regex("(^|[^a-z])bar([^a-z]|$)").containsMatchIn(value) -> "Bar"
+            else -> "Unbekannt"
+        }
+    }
+
+    private suspend fun detectExistingPaymentMethod(receipt: Receipt): Pair<String, String>? {
+        val text = listOf(receipt.aussteller, receipt.beschreibung, receipt.positionenJson).joinToString(" ")
+        val fromText = normalizePaymentMethod(text)
+        if (fromText != "Unbekannt") return fromText to "TEXT_HEURISTIK"
+
+        val paths = receipt.imageUrl.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        val bitmaps = kotlinx.coroutines.withContext(Dispatchers.IO) {
+            paths.mapNotNull { path -> runCatching {
+                val file = File(path)
+                if (file.exists()) BitmapFactory.decodeFile(file.absolutePath) else null
+            }.getOrNull() }
+        }
+        if (bitmaps.isEmpty()) return null
+        return try {
+            val learned = getUserLearnedRulesPromptContext()
+            val extracted = when (_aiProviderState.value.provider) {
+                ReceiptAnalysisProvider.GEMINI -> {
+                    val key = AiProviderSettings.getGeminiKey(getApplication())
+                    try { GeminiClient.analyzeReceipt(receiptText = "Bestimme insbesondere die Zahlungsart. Bei Unsicherheit Unbekannt.", bitmaps = bitmaps, userLearnedRulesContext = learned, apiKeyOverride = key) }
+                    finally { key?.fill('\u0000') }
+                }
+                ReceiptAnalysisProvider.OPENAI -> {
+                    val key = AiProviderSettings.getOpenAiKey(getApplication()) ?: return null
+                    try { OpenAiClient.analyzeReceipt(apiKey = key, model = _aiProviderState.value.openAiModel, receiptText = "Bestimme insbesondere die Zahlungsart. Bei Unsicherheit Unbekannt.", bitmaps = bitmaps, userLearnedRulesContext = learned) }
+                    finally { key.fill('\u0000') }
+                }
+            }
+            val method = normalizePaymentMethod(extracted?.zahlungsart)
+            if (method == "Unbekannt") null else method to "KI_NACHERKANNT"
+        } finally {
+            bitmaps.forEach { if (!it.isRecycled) it.recycle() }
+        }
+    }
+
+    fun backfillPaymentMethods() {
+        if (_isBackfillingPaymentMethods.value) return
+        viewModelScope.launch {
+            _isBackfillingPaymentMethods.value = true
+            try {
+                val candidates = receipts.value.filter { normalizePaymentMethod(it.zahlungsart) == "Unbekannt" }
+                var updated = 0
+                candidates.forEachIndexed { index, receipt ->
+                    _paymentBackfillStatus.value = "Prüfe Beleg ${index + 1} von ${candidates.size} …"
+                    val detected = runCatching { detectExistingPaymentMethod(receipt) }.getOrNull()
+                    if (detected != null) {
+                        repository.insert(receipt.copy(
+                            zahlungsart = detected.first,
+                            zahlungsartQuelle = detected.second,
+                            zahlungsartConfidence = if (detected.second == "KI_NACHERKANNT") 0.92 else 0.78
+                        ))
+                        updated++
+                    }
+                }
+                _paymentBackfillStatus.value = "Fertig: $updated von ${candidates.size} Belegen ergänzt."
+            } finally {
+                _isBackfillingPaymentMethods.value = false
+            }
+        }
+    }
+
     // Save extracted receipt to database
     fun saveReceipt(
         aussteller: String,
@@ -2011,6 +2090,7 @@ data class AiSearchUiState(
         imageUrl: String = "",
         wohneinheit: String = "",
         mieter: String = "",
+        zahlungsart: String = "Unbekannt",
         positionenJson: String = ""
     ) {
         viewModelScope.launch {
@@ -2030,6 +2110,9 @@ data class AiSearchUiState(
                 imageUrl = imageUrl,
                 wohneinheit = wohneinheit,
                 mieter = mieter,
+                zahlungsart = normalizePaymentMethod(zahlungsart),
+                zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "KI_SCAN",
+                zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else 0.95,
                 positionenJson = positionenJson
             )
             val newId = repository.insert(newReceipt)

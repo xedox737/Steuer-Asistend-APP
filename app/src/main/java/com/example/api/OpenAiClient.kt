@@ -267,6 +267,7 @@ object OpenAiClient {
         Hauptkategorie muss exakt einer der im Schema erlaubten Kategorien entsprechen.
         datum verwendet JJJJ-MM-TT oder bleibt leer. uhrzeit verwendet HH:MM oder bleibt leer.
         kontoNr enthält nur die vorgeschlagene Sachkontonummer. Keine steuerliche Freigabe erteilen.
+        zahlungsart darf nur "Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal" oder "Unbekannt" sein. Nur eindeutig sichtbare Angaben verwenden; sonst "Unbekannt".
         Gib ausschließlich die durch das Schema definierte strukturierte Antwort zurück.
     """.trimIndent()
 
@@ -302,6 +303,7 @@ object OpenAiClient {
             .put("isEigenleistungSanierung", JSONObject().put("type", "boolean"))
             .put("wohneinheit", stringSchema())
             .put("mieter", stringSchema())
+            .put("zahlungsart", stringSchema().put("enum", JSONArray(listOf("Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal", "Unbekannt"))))
             .put("positionen", JSONObject().put("type", "array").put("items", itemSchema))
 
         return JSONObject()
@@ -314,7 +316,7 @@ object OpenAiClient {
                     listOf(
                         "aussteller", "datum", "uhrzeit", "bruttobetrag", "hauptkategorie",
                         "unterkategorie", "kontoNr", "beschreibung", "isEigenleistungSanierung",
-                        "wohneinheit", "mieter", "positionen"
+                        "wohneinheit", "mieter", "zahlungsart", "positionen"
                     )
                 )
             )

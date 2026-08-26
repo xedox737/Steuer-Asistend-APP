@@ -147,6 +147,7 @@ data class ExtractedReceipt(
     @Json(name = "isEigenleistungSanierung") val isEigenleistungSanierung: Boolean = false,
     @Json(name = "wohneinheit") val wohneinheit: String = "",
     @Json(name = "mieter") val mieter: String = "",
+    @Json(name = "zahlungsart") val zahlungsart: String = "Unbekannt",
     @Json(name = "positionen") val positionen: List<com.example.data.ReceiptItem> = emptyList()
 )
 
@@ -519,6 +520,7 @@ object GeminiClient {
             - beschreibung: Kurze Zusammenfassung auf Deutsch, was gekauft wurde oder worum es geht (z. B. "Kauf von Wandfarbe und Malerzubehör").
             - wohneinheit: Zugeordnete Wohneinheit (z. B. "WE 1", "WE 2" ... "WE 7"), falls auf dem Beleg genannt, sonst "Gesamtobjekt / Allgemein".
             - mieter: Name des Mieters/Zahlers, falls auf dem Beleg oder der Überweisung genannt (z. B. "Erika Mustermann", "Hans Peter"), sonst leeres String "".
+            - zahlungsart: Nur eindeutig erkennbare Zahlungsangaben verwenden. Erlaubt sind exakt "Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal" oder "Unbekannt". Bei Unsicherheit immer "Unbekannt".
             - isEigenleistungSanierung: true, falls es sich um einen Baumarkt-Materialbeleg handelt UND das Belegdatum zwischen 2025-10-01 and 2026-01-31 liegt. Sonst false.
             - positionen: Extrahiere ALLE einzelnen Posten, Artikel oder Gebühren vom Beleg als Liste. Jede Position hat:
               * bezeichnung: Name oder Artikelbeschreibung
@@ -539,6 +541,7 @@ object GeminiClient {
               "beschreibung": "Kurzbeschreibung",
               "wohneinheit": "WE 1",
               "mieter": "Erika Mustermann",
+              "zahlungsart": "Girocard/EC",
               "isEigenleistungSanierung": true/false,
               "positionen": [
                 {

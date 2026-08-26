@@ -89,6 +89,9 @@ data class Receipt(
     val imageUrl: String = "", // Optional simulation reference
     val wohneinheit: String = "", // Associated housing unit
     val mieter: String = "", // Mieter name
+    val zahlungsart: String = "Unbekannt",
+    val zahlungsartQuelle: String = "UNBEKANNT",
+    val zahlungsartConfidence: Double = 0.0,
     val isArchivedToDrive: Boolean = false,
     val positionenJson: String = "", // Serialized JSON list of ReceiptItem
     val allocationsJson: String = "", // User-confirmed accounting allocations
@@ -334,7 +337,15 @@ val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 14, exportSchema = false)
+val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE receipts ADD COLUMN zahlungsart TEXT NOT NULL DEFAULT 'Unbekannt'")
+        db.execSQL("ALTER TABLE receipts ADD COLUMN zahlungsartQuelle TEXT NOT NULL DEFAULT 'UNBEKANNT'")
+        db.execSQL("ALTER TABLE receipts ADD COLUMN zahlungsartConfidence REAL NOT NULL DEFAULT 0.0")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 15, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -356,7 +367,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
