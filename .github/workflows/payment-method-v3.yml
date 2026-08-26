@@ -91,3 +91,5 @@ jobs:
           prerelease: true
           make_latest: false
           files: Steuer-Assistent-Zahlungsart-*.apk
+
+# trigger: 2026-08-26T18:46+02:00
