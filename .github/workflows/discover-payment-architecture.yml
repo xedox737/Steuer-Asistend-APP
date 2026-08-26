@@ -1,0 +1,56 @@
+name: Discover payment architecture
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/discover-payment-architecture.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Inspect source architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=.github/payment-discovery.txt
+          : > "$OUT"
+          echo '=== RECEIPT / ENTITY FILES ===' >> "$OUT"
+          grep -RIlE 'data class (Receipt|ReceiptEntity)|@Entity' app/src/main/java 2>/dev/null | sort >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== DATABASE FILES ===' >> "$OUT"
+          grep -RIlE '@Database|RoomDatabase|Migration\(' app/src/main/java 2>/dev/null | sort >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== AI MODEL FILES ===' >> "$OUT"
+          grep -RIlE 'data class ExtractedReceipt|ExtractedReceipt\(' app/src/main/java 2>/dev/null | sort >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== RECEIPT DEFINITIONS ===' >> "$OUT"
+          grep -RInE -A45 -B5 'data class (Receipt|ReceiptEntity)|class ReceiptEntity' app/src/main/java 2>/dev/null >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== DATABASE DEFINITIONS ===' >> "$OUT"
+          grep -RInE -A60 -B10 '@Database|Migration\(' app/src/main/java 2>/dev/null >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== EXTRACTED RECEIPT DEFINITIONS ===' >> "$OUT"
+          grep -RInE -A50 -B5 'data class ExtractedReceipt' app/src/main/java 2>/dev/null >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== SCAN / MAPPING ===' >> "$OUT"
+          grep -RInE -A25 -B10 'analyzeReceipt|ExtractedReceipt|scanState|bruttobetrag.*receipt|Receipt\(' app/src/main/java/com/example 2>/dev/null | head -n 1200 >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== AI PROMPT / JSON ===' >> "$OUT"
+          grep -RInE -A30 -B10 'JSON|json|aussteller|bruttobetrag|hauptkategorie|kontoNr' app/src/main/java/com/example/api 2>/dev/null | head -n 1000 >> "$OUT" || true
+          echo >> "$OUT"
+          echo '=== DOCUMENT / OCR FIELDS ===' >> "$OUT"
+          grep -RInE -A20 -B10 'original.*Path|local.*Path|ocr|OCR|mainDriveFileId|originalMimeType' app/src/main/java/com/example 2>/dev/null | head -n 1000 >> "$OUT" || true
+          git add "$OUT"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'CI: Zahlungsart-Architektur dokumentieren'
+          git push origin HEAD:main
