@@ -7934,6 +7934,10 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
     val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsState()
     val paymentBackfillStatus by viewModel.paymentBackfillStatus.collectAsState()
+    val isDescriptionBackfillRunning by viewModel.isBackfillingDescriptions.collectAsState()
+    val descriptionBackfillStatus by viewModel.descriptionBackfillStatus.collectAsState()
+    val descriptionBackfillCandidates by viewModel.descriptionBackfillCandidates.collectAsState()
+    var showDescriptionBackfillPreview by remember { mutableStateOf(false) }
 
     // Calculate totals per DATEV Konto
     val kontoMap = receipts.groupBy { it.kontoNr }
@@ -8152,6 +8156,97 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Altbelege – Beschreibung nacherkennen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(
+                    descriptionBackfillStatus ?: "Prüft nur leere oder offensichtlich durch Aussteller/Adresse ersetzte Beschreibungen. Andere Belegdaten bleiben unverändert.",
+                    fontSize = 11.sp,
+                    color = SlateGray
+                )
+                Button(
+                    onClick = { viewModel.analyzeLegacyDescriptions() },
+                    enabled = !isDescriptionBackfillRunning,
+                    modifier = Modifier.fillMaxWidth().testTag("legacy_description_backfill_button")
+                ) {
+                    Text(if (isDescriptionBackfillRunning) "Altbelege werden geprüft …" else "Altbelege prüfen")
+                }
+                if (descriptionBackfillCandidates.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { showDescriptionBackfillPreview = true },
+                        modifier = Modifier.fillMaxWidth().testTag("legacy_description_preview_button")
+                    ) {
+                        Text("Vorschau (${descriptionBackfillCandidates.size})")
+                    }
+                }
+            }
+        }
+
+        if (showDescriptionBackfillPreview && descriptionBackfillCandidates.isNotEmpty()) {
+            var selectedIds by remember(descriptionBackfillCandidates) {
+                mutableStateOf(descriptionBackfillCandidates.filter { it.isSafe }.map { it.receiptId }.toSet())
+            }
+            AlertDialog(
+                onDismissRequest = { showDescriptionBackfillPreview = false },
+                title = { Text("Beschreibungen prüfen", fontWeight = FontWeight.Bold, color = DarkNavy) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "Sichere Treffer sind vorausgewählt. Es wird ausschließlich das Feld Beschreibung/Zweck geändert.",
+                            fontSize = 11.sp,
+                            color = SlateGray
+                        )
+                        descriptionBackfillCandidates.forEach { candidate ->
+                            val selected = candidate.receiptId in selectedIds
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                border = BorderStroke(1.dp, BorderColor)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = selected,
+                                            onCheckedChange = { checked ->
+                                                selectedIds = if (checked) selectedIds + candidate.receiptId else selectedIds - candidate.receiptId
+                                            }
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(candidate.displayId, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkNavy)
+                                            Text(candidate.aussteller, fontSize = 10.sp, color = SlateGray)
+                                        }
+                                        Text(if (candidate.isSafe) "Sicher" else "Prüfen", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (candidate.isSafe) EmeraldGreen else Color(0xFFD97706))
+                                    }
+                                    Text("Grund: ${candidate.reason}", fontSize = 10.sp, color = SlateGray)
+                                    Text("Alt: ${candidate.oldDescription.ifBlank { "(leer)" }}", fontSize = 11.sp, color = Color(0xFF991B1B))
+                                    Text("Neu: ${candidate.newDescription}", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = DarkNavy)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.applyDescriptionBackfill(selectedIds)
+                            showDescriptionBackfillPreview = false
+                        },
+                        enabled = selectedIds.isNotEmpty()
+                    ) { Text("Ausgewählte übernehmen") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDescriptionBackfillPreview = false }) { Text("Abbrechen") }
+                }
+            )
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White),
