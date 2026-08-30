@@ -1,0 +1,103 @@
+name: AfA Aufteilung und 15 Prozent Details
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/tax_phase1_details.py"
+      - ".github/workflows/tax-phase1-details.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Apply tax detail patch
+        run: python3 .github/scripts/tax_phase1_details.py
+
+      - name: Verify tax detail markers
+        shell: bash
+        run: |
+          git diff --check
+          grep -q 'val grundUndBodenWert: Double' app/src/main/java/com/example/data/ReceiptDatabase.kt
+          grep -q 'MIGRATION_15_16' app/src/main/java/com/example/data/ReceiptDatabase.kt
+          grep -q 'version = 16' app/src/main/java/com/example/data/ReceiptDatabase.kt
+          grep -q 'put("grundUndBodenWert"' app/src/main/java/com/example/data/DrivePersistenceRepository.kt
+          grep -q 'data class ModernizationMonitorDetail' app/src/main/java/com/example/data/TaxPropertyCalculator.kt
+          grep -q 'Aufteilung & Nebenkosten anzeigen' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          grep -q 'Belege im Monitor anzeigen' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          grep -q 'edit_property_grund_boden' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+
+      - name: Compile Kotlin
+        timeout-minutes: 10
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified feature
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/ReceiptDatabase.kt \
+                  app/src/main/java/com/example/data/DrivePersistenceRepository.kt \
+                  app/src/main/java/com/example/data/TaxPropertyCalculator.kt \
+                  app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git rm .github/scripts/tax_phase1_details.py .github/workflows/tax-phase1-details.yml
+          git commit -m "Feature: Kaufpreisaufteilung und 15-Prozent-Belegdetails [skip ci]"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-AfA-Details-${{ steps.commit.outputs.short }}.apk"
+
+      - name: Publish test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tax-phase1-details-${{ steps.commit.outputs.sha }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          name: Steuer-Assistent AfA Details
+          body: |
+            Phase 1 Erweiterung:
+            - Grund und Boden separat in den Objekt-Stammdaten
+            - Room Migration 15 auf 16 ohne Datenverlust
+            - Drive Backup und Restore der Kaufpreisaufteilung
+            - transparente Aufteilung der Anschaffungsnebenkosten
+            - Belegdetails im 15-Prozent-Monitor: einbezogen oder ausgeschlossen mit Begründung
+          prerelease: true
+          make_latest: false
+          files: Steuer-Assistent-AfA-Details-*.apk
