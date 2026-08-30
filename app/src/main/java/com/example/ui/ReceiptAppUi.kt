@@ -1090,6 +1090,12 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 onClick = { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
             )
         }
+        QuickActionCard(
+            modifier = Modifier.fillMaxWidth().testTag("rent_overview_quick_action"),
+            title = "Mieteingänge", subtitle = "Soll/Ist & Nebenkosten",
+            icon = Icons.Default.Home, containerColor = Color(0xFFEFF6FF), contentColor = AccentBlue,
+            onClick = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
