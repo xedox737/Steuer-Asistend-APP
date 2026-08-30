@@ -6,17 +6,36 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 
-/**
- * Advisory tax calculations for privately rented residential property.
- * Results are preparation aids only and intentionally expose estimates/review items.
- */
+data class AcquisitionCostDetail(
+    val displayId: String,
+    val datum: String,
+    val description: String,
+    val grossAmount: Double,
+    val buildingAllocatedAmount: Double
+)
+
+data class ModernizationMonitorDetail(
+    val displayId: String,
+    val datum: String,
+    val description: String,
+    val grossAmount: Double,
+    val netAmount: Double,
+    val included: Boolean,
+    val estimatedNet: Boolean,
+    val reason: String
+)
+
+/** Preparation aid only. Values stay transparent so the user/tax adviser can review them. */
 data class TaxPhase1Summary(
     val purchasePrice: Double,
     val buildingPurchaseShare: Double,
     val landPurchaseShare: Double,
+    val allocationDifference: Double,
+    val allocationSource: String,
     val acquisitionAncillaryGross: Double,
     val buildingAncillaryShare: Double,
     val buildingAcquisitionCosts: Double,
+    val acquisitionCostDetails: List<AcquisitionCostDetail>,
     val afaRatePercent: Double,
     val annualAfa: Double,
     val firstYearAfa: Double,
@@ -27,12 +46,15 @@ data class TaxPhase1Summary(
     val relevantModernizationNet: Double,
     val candidateReceiptCount: Int,
     val estimatedNetCount: Int,
-    val heuristicallyExcludedCount: Int
+    val heuristicallyExcludedCount: Int,
+    val monitorDetails: List<ModernizationMonitorDetail>
 ) {
     val limitUsagePercent: Double
         get() = if (limit15Percent > 0.0) relevantModernizationNet / limit15Percent * 100.0 else 0.0
     val is15PercentExceeded: Boolean
         get() = limit15Percent > 0.0 && relevantModernizationNet > limit15Percent
+    val allocationNeedsReview: Boolean
+        get() = purchasePrice > 0.0 && abs(allocationDifference) > 1.0
 }
 
 object TaxPropertyCalculator {
@@ -40,16 +62,35 @@ object TaxPropertyCalculator {
 
     fun calculate(metadata: PropertyMetadata, receipts: List<Receipt>): TaxPhase1Summary {
         val purchasePrice = metadata.gesamtKaufpreis.coerceAtLeast(0.0)
-        val buildingShare = metadata.gebaeudewert.coerceAtLeast(0.0).coerceAtMost(purchasePrice.takeIf { it > 0.0 } ?: Double.MAX_VALUE)
-        val landShare = (purchasePrice - buildingShare).coerceAtLeast(0.0)
-        val buildingRatio = if (purchasePrice > 0.0) (buildingShare / purchasePrice).coerceIn(0.0, 1.0) else 0.0
+        val explicitLand = metadata.grundUndBodenWert.coerceAtLeast(0.0)
+        val rawBuilding = metadata.gebaeudewert.coerceAtLeast(0.0)
+        val buildingShare = when {
+            rawBuilding > 0.0 -> rawBuilding
+            purchasePrice > 0.0 && explicitLand > 0.0 -> (purchasePrice - explicitLand).coerceAtLeast(0.0)
+            else -> 0.0
+        }
+        val landShare = when {
+            explicitLand > 0.0 -> explicitLand
+            purchasePrice > 0.0 -> (purchasePrice - buildingShare).coerceAtLeast(0.0)
+            else -> 0.0
+        }
+        val allocationDifference = purchasePrice - buildingShare - landShare
+        val allocationBase = (buildingShare + landShare).takeIf { it > 0.0 } ?: purchasePrice
+        val buildingRatio = if (allocationBase > 0.0) (buildingShare / allocationBase).coerceIn(0.0, 1.0) else 0.0
 
-        // Existing acquisition-cost receipts are ancillary costs; financing costs live in a separate category.
-        val ancillaryGross = receipts
-            .filter { it.deletionStatus == "ACTIVE" || it.deletionStatus.isBlank() }
-            .filter { it.hauptkategorie == "Anschaffungskosten" }
-            .sumOf { it.bruttobetrag.coerceAtLeast(0.0) }
-        val buildingAncillary = ancillaryGross * buildingRatio
+        val activeReceipts = receipts.filter { it.deletionStatus == "ACTIVE" || it.deletionStatus.isBlank() }
+        val acquisitionReceipts = activeReceipts.filter { it.hauptkategorie == "Anschaffungskosten" }
+        val acquisitionDetails = acquisitionReceipts.map { receipt ->
+            AcquisitionCostDetail(
+                displayId = receipt.getEffectiveDisplayId(),
+                datum = receipt.datum,
+                description = receipt.beschreibung.ifBlank { receipt.aussteller },
+                grossAmount = receipt.bruttobetrag.coerceAtLeast(0.0),
+                buildingAllocatedAmount = receipt.bruttobetrag.coerceAtLeast(0.0) * buildingRatio
+            )
+        }
+        val ancillaryGross = acquisitionDetails.sumOf { it.grossAmount }
+        val buildingAncillary = acquisitionDetails.sumOf { it.buildingAllocatedAmount }
         val buildingAcquisitionCosts = buildingShare + buildingAncillary
 
         val afaRate = when {
@@ -63,10 +104,8 @@ object TaxPropertyCalculator {
         val startDate = parseDate(startText)
         val firstYearAfa = if (startDate != null && annualAfa > 0.0) {
             val cal = Calendar.getInstance(Locale.GERMANY).apply { time = startDate }
-            val month = cal.get(Calendar.MONTH) + 1
-            annualAfa * (13 - month) / 12.0
+            annualAfa * (13 - (cal.get(Calendar.MONTH) + 1)) / 12.0
         } else 0.0
-
         val monitorEnd = startDate?.let {
             Calendar.getInstance(Locale.GERMANY).apply {
                 time = it
@@ -75,45 +114,51 @@ object TaxPropertyCalculator {
             }.time
         }
 
-        var relevantNet = 0.0
-        var candidateCount = 0
-        var estimatedCount = 0
-        var excludedCount = 0
-
+        val monitorDetails = mutableListOf<ModernizationMonitorDetail>()
         if (startDate != null && monitorEnd != null) {
-            receipts
-                .asSequence()
-                .filter { it.deletionStatus == "ACTIVE" || it.deletionStatus.isBlank() }
+            activeReceipts
                 .filter { it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen" }
                 .forEach { receipt ->
-                    val receiptDate = parseDate(receipt.datum) ?: return@forEach
-                    if (receiptDate.before(startDate) || receiptDate.after(monitorEnd)) return@forEach
-
+                    val receiptDate = parseDate(receipt.datum)
                     val text = (receipt.unterkategorie + " " + receipt.beschreibung).lowercase(Locale.GERMANY)
-                    // Obvious statutory exclusions: extensions and usually recurring maintenance.
-                    val obviousExclusion = listOf(
+                    val exclusion = listOf(
                         "erweiterung", "anbau", "aufstockung", "wartung", "schornsteinfeger",
                         "jährliche prüfung", "jaehrliche pruefung", "heizungswartung"
-                    ).any { text.contains(it) }
-                    if (obviousExclusion) {
-                        excludedCount++
-                        return@forEach
-                    }
-
-                    candidateCount++
+                    ).firstOrNull { text.contains(it) }
+                    val inPeriod = receiptDate != null && !receiptDate.before(startDate) && !receiptDate.after(monitorEnd)
                     val net = netAmountForMonitor(receipt)
-                    relevantNet += net.first
-                    if (net.second) estimatedCount++
+                    val included = inPeriod && exclusion == null
+                    val reason = when {
+                        receiptDate == null -> "Belegdatum nicht auswertbar"
+                        !inPeriod -> "Außerhalb des 3-Jahres-Zeitraums"
+                        exclusion != null -> "Heuristisch ausgeschlossen: $exclusion"
+                        net.second -> "Einbezogen; Nettobetrag mangels belastbarer MwSt.-Daten geschätzt"
+                        else -> "Einbezogen; Nettobetrag aus Positions-/MwSt.-Daten"
+                    }
+                    monitorDetails += ModernizationMonitorDetail(
+                        displayId = receipt.getEffectiveDisplayId(),
+                        datum = receipt.datum,
+                        description = receipt.beschreibung.ifBlank { receipt.aussteller },
+                        grossAmount = receipt.bruttobetrag.coerceAtLeast(0.0),
+                        netAmount = if (included) net.first else 0.0,
+                        included = included,
+                        estimatedNet = included && net.second,
+                        reason = reason
+                    )
                 }
         }
+        val includedDetails = monitorDetails.filter { it.included }
 
         return TaxPhase1Summary(
             purchasePrice = purchasePrice,
             buildingPurchaseShare = buildingShare,
             landPurchaseShare = landShare,
+            allocationDifference = allocationDifference,
+            allocationSource = metadata.kaufpreisAufteilungQuelle,
             acquisitionAncillaryGross = ancillaryGross,
             buildingAncillaryShare = buildingAncillary,
             buildingAcquisitionCosts = buildingAcquisitionCosts,
+            acquisitionCostDetails = acquisitionDetails,
             afaRatePercent = afaRate,
             annualAfa = annualAfa,
             firstYearAfa = firstYearAfa,
@@ -121,10 +166,11 @@ object TaxPropertyCalculator {
             monitorStartDate = startDate?.let(germanDate::format).orEmpty(),
             monitorEndDate = monitorEnd?.let(germanDate::format).orEmpty(),
             limit15Percent = buildingAcquisitionCosts * 0.15,
-            relevantModernizationNet = relevantNet,
-            candidateReceiptCount = candidateCount,
-            estimatedNetCount = estimatedCount,
-            heuristicallyExcludedCount = excludedCount
+            relevantModernizationNet = includedDetails.sumOf { it.netAmount },
+            candidateReceiptCount = includedDetails.size,
+            estimatedNetCount = includedDetails.count { it.estimatedNet },
+            heuristicallyExcludedCount = monitorDetails.count { !it.included },
+            monitorDetails = monitorDetails
         )
     }
 
@@ -142,7 +188,6 @@ object TaxPropertyCalculator {
                 if (net > 0.0) return net to false
             }
         }
-        // Most domestic construction/repair invoices use 19% VAT. Mark this explicitly as an estimate.
         return (gross / 1.19) to true
     }
 

@@ -1006,6 +1006,8 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     val syncStatus by viewModel.driveSyncStatus.collectAsState()
     var showAuthDialog by remember { mutableStateOf(false) }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
+    var showAfaDetails by remember { mutableStateOf(false) }
+    var showMonitorDetails by remember { mutableStateOf(false) }
 
     if (showKiPowerCenterDialog) {
         KiPowerCenterDialog(
@@ -1154,7 +1156,11 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     Text("${taxPhase1.afaRatePercent}% p.a.", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
                 }
                 Text("Gebäude-Kaufpreisanteil: ${NumberFormatter.format(taxPhase1.buildingPurchaseShare)}", fontSize = 11.sp, color = SlateGray)
+                Text("Grund und Boden: ${NumberFormatter.format(taxPhase1.landPurchaseShare)}", fontSize = 11.sp, color = SlateGray)
                 Text("+ anteilige Anschaffungsnebenkosten: ${NumberFormatter.format(taxPhase1.buildingAncillaryShare)}", fontSize = 11.sp, color = SlateGray)
+                if (taxPhase1.allocationNeedsReview) {
+                    Text("⚠ Kaufpreisaufteilung weicht um ${NumberFormatter.format(taxPhase1.allocationDifference)} vom Gesamtkaufpreis ab.", fontSize = 10.sp, color = WarmOrange)
+                }
                 HorizontalDivider(color = BorderColor)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("AfA-Bemessungsgrundlage", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
@@ -1176,6 +1182,9 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     color = SlateGray,
                     lineHeight = 13.sp
                 )
+                TextButton(onClick = { showAfaDetails = true }, modifier = Modifier.align(Alignment.End)) {
+                    Text("Aufteilung & Nebenkosten anzeigen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
 
@@ -1219,6 +1228,9 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     color = SlateGray,
                     lineHeight = 13.sp
                 )
+                TextButton(onClick = { showMonitorDetails = true }, modifier = Modifier.align(Alignment.End)) {
+                    Text("Belege im Monitor anzeigen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
                 if (taxPhase1.is15PercentExceeded) {
                     Text(
                         "Prüfwert überschritten: steuerliche Einordnung fachlich prüfen.",
@@ -1228,6 +1240,69 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     )
                 }
             }
+        }
+
+        if (showAfaDetails) {
+            AlertDialog(
+                onDismissRequest = { showAfaDetails = false },
+                title = { Text("AfA – Kaufpreisaufteilung", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Kaufpreis: ${NumberFormatter.format(taxPhase1.purchasePrice)}", fontWeight = FontWeight.Bold)
+                        Text("Gebäude: ${NumberFormatter.format(taxPhase1.buildingPurchaseShare)}")
+                        Text("Grund und Boden: ${NumberFormatter.format(taxPhase1.landPurchaseShare)}")
+                        Text("Quelle: ${taxPhase1.allocationSource}", fontSize = 11.sp, color = SlateGray)
+                        HorizontalDivider()
+                        Text("Anschaffungsnebenkosten", fontWeight = FontWeight.Bold)
+                        if (taxPhase1.acquisitionCostDetails.isEmpty()) {
+                            Text("Keine Belege der Kategorie Anschaffungskosten vorhanden.", fontSize = 11.sp, color = SlateGray)
+                        } else {
+                            taxPhase1.acquisitionCostDetails.forEach { item ->
+                                Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
+                                    Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text("${item.displayId} • ${item.datum}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(item.description, fontSize = 10.sp)
+                                        Text("Gesamt: ${NumberFormatter.format(item.grossAmount)} • Gebäudeanteil: ${NumberFormatter.format(item.buildingAllocatedAmount)}", fontSize = 10.sp, color = SlateGray)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showAfaDetails = false }) { Text("Schließen") } }
+            )
+        }
+
+        if (showMonitorDetails) {
+            AlertDialog(
+                onDismissRequest = { showMonitorDetails = false },
+                title = { Text("15%-Monitor – Belegprüfung", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (taxPhase1.monitorDetails.isEmpty()) {
+                            Text("Keine Renovierungs-/Reparaturbelege vorhanden.", color = SlateGray)
+                        } else {
+                            taxPhase1.monitorDetails.forEach { item ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = if (item.included) Color(0xFFECFDF5) else Color(0xFFF8FAFC)),
+                                    border = BorderStroke(1.dp, if (item.included) EmeraldGreen.copy(alpha = 0.35f) else BorderColor)
+                                ) {
+                                    Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("${item.displayId} • ${item.datum}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            Text(if (item.included) "EINBEZOGEN" else "AUSGESCHLOSSEN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (item.included) EmeraldGreen else SlateGray)
+                                        }
+                                        Text(item.description, fontSize = 10.sp)
+                                        Text(item.reason, fontSize = 9.sp, color = SlateGray)
+                                        if (item.included) Text("Netto Prüfwert: ${NumberFormatter.format(item.netAmount)}" + if (item.estimatedNet) " (geschätzt)" else "", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showMonitorDetails = false }) { Text("Schließen") } }
+            )
         }
 
         Text(
@@ -10883,6 +10958,7 @@ fun PropertyMetadataFormDialog(
     var editWohneinheiten by remember(metadata) { mutableStateOf(metadata.wohneinheiten) }
     var editGesamtKaufpreis by remember(metadata) { mutableStateOf(metadata.gesamtKaufpreis.toString()) }
     var editGebaeudewert by remember(metadata) { mutableStateOf(metadata.gebaeudewert.toString()) }
+    var editGrundUndBodenWert by remember(metadata) { mutableStateOf(metadata.grundUndBodenWert.toString()) }
 
     val scrollState = rememberScrollState()
 
@@ -10932,7 +11008,8 @@ fun PropertyMetadataFormDialog(
                     Pair("Grundstücksgröße", editGrundstuecksgroesse.toDoubleOrNull() != null && editGrundstuecksgroesse.toDouble() > 0.0),
                     Pair("Wohneinheiten", editWohneinheiten.isNotBlank()),
                     Pair("Gesamtkaufpreis", editGesamtKaufpreis.toDoubleOrNull() != null && editGesamtKaufpreis.toDouble() > 0.0),
-                    Pair("Gebäudewert", editGebaeudewert.toDoubleOrNull() != null && editGebaeudewert.toDouble() > 0.0)
+                    Pair("Gebäudewert", editGebaeudewert.toDoubleOrNull() != null && editGebaeudewert.toDouble() > 0.0),
+                    Pair("Grund und Boden", editGrundUndBodenWert.toDoubleOrNull() != null && editGrundUndBodenWert.toDouble() >= 0.0)
                 )
                 val completedCount = completenessChecks.count { it.second }
                 val totalCount = completenessChecks.size
@@ -11140,34 +11217,57 @@ fun PropertyMetadataFormDialog(
                     )
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = editGesamtKaufpreis,
-                        onValueChange = { editGesamtKaufpreis = it },
-                        label = { Text("Gesamtkaufpreis (€)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f).testTag("edit_property_kaufpreis"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
-                    )
+Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp)
+) {
+    OutlinedTextField(
+        value = editGesamtKaufpreis,
+        onValueChange = { editGesamtKaufpreis = it },
+        label = { Text("Gesamtkaufpreis (€)") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.weight(1f).testTag("edit_property_kaufpreis"),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White
+        )
+    )
 
-                    OutlinedTextField(
-                        value = editGebaeudewert,
-                        onValueChange = { editGebaeudewert = it },
-                        label = { Text("Gebäudewert (€)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f).testTag("edit_property_gebaeudewert"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
-                    )
-                }
+    OutlinedTextField(
+        value = editGebaeudewert,
+        onValueChange = { editGebaeudewert = it },
+        label = { Text("Gebäudewert (€)") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.weight(1f).testTag("edit_property_gebaeudewert"),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White
+        )
+    )
+}
+
+OutlinedTextField(
+    value = editGrundUndBodenWert,
+    onValueChange = { editGrundUndBodenWert = it },
+    label = { Text("Grund und Boden (€)") },
+    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    modifier = Modifier.fillMaxWidth().testTag("edit_property_grund_boden"),
+    colors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Color.White,
+        unfocusedContainerColor = Color.White
+    )
+)
+
+val allocationDiffPreview = (editGesamtKaufpreis.toDoubleOrNull() ?: 0.0) -
+    (editGebaeudewert.toDoubleOrNull() ?: 0.0) -
+    (editGrundUndBodenWert.toDoubleOrNull() ?: 0.0)
+if (kotlin.math.abs(allocationDiffPreview) > 1.0) {
+    Text(
+        "Hinweis: Gebäude + Grund/Boden weichen um ${NumberFormatter.format(allocationDiffPreview)} vom Kaufpreis ab.",
+        fontSize = 10.sp,
+        color = WarmOrange
+    )
+}
             }
         },
         confirmButton = {
@@ -11178,6 +11278,7 @@ fun PropertyMetadataFormDialog(
                     val finalGrundstuecksgroesse = editGrundstuecksgroesse.toDoubleOrNull() ?: metadata.grundstuecksgroesse
                     val finalGesamtKaufpreis = editGesamtKaufpreis.toDoubleOrNull() ?: metadata.gesamtKaufpreis
                     val finalGebaeudewert = editGebaeudewert.toDoubleOrNull() ?: metadata.gebaeudewert
+                    val finalGrundUndBodenWert = editGrundUndBodenWert.toDoubleOrNull() ?: metadata.grundUndBodenWert
 
                     val updated = metadata.copy(
                         name = editName,
@@ -11190,7 +11291,9 @@ fun PropertyMetadataFormDialog(
                         uebergangNutzenLasten = editUebergangNutzenLasten,
                         wohneinheiten = editWohneinheiten,
                         gesamtKaufpreis = finalGesamtKaufpreis,
-                        gebaeudewert = finalGebaeudewert
+                        gebaeudewert = finalGebaeudewert,
+                        grundUndBodenWert = finalGrundUndBodenWert,
+                        kaufpreisAufteilungQuelle = "MANUELL"
                     )
                     viewModel.updatePropertyMetadata(updated)
                     onDismiss()

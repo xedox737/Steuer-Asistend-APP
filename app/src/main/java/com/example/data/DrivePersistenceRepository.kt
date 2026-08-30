@@ -277,6 +277,8 @@ class DrivePersistenceRepository(
             put("wohneinheiten", wohneinheiten)
             put("gesamtKaufpreis", gesamtKaufpreis)
             put("gebaeudewert", gebaeudewert)
+            put("grundUndBodenWert", grundUndBodenWert)
+            put("kaufpreisAufteilungQuelle", kaufpreisAufteilungQuelle)
         }.toString(4)
     }
 
@@ -294,7 +296,9 @@ class DrivePersistenceRepository(
             uebergangNutzenLasten = json.optString("uebergangNutzenLasten", ""),
             wohneinheiten = json.optString("wohneinheiten", ""),
             gesamtKaufpreis = json.optDouble("gesamtKaufpreis", 0.0),
-            gebaeudewert = json.optDouble("gebaeudewert", 0.0)
+            gebaeudewert = json.optDouble("gebaeudewert", 0.0),
+            grundUndBodenWert = if (json.has("grundUndBodenWert")) json.optDouble("grundUndBodenWert", 0.0) else (json.optDouble("gesamtKaufpreis", 0.0) - json.optDouble("gebaeudewert", 0.0)).coerceAtLeast(0.0),
+            kaufpreisAufteilungQuelle = json.optString("kaufpreisAufteilungQuelle", "ABGELEITET")
         )
     }
 
