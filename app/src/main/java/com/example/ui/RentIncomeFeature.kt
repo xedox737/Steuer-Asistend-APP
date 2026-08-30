@@ -1,9 +1,4 @@
-from pathlib import Path
-
-UI = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
-FEATURE = Path('app/src/main/java/com/example/ui/RentIncomeFeature.kt')
-
-FEATURE.write_text(r'''package com.example.ui
+package com.example.ui
 
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
@@ -279,15 +274,3 @@ private fun RentPlanEditDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }
-''', encoding='utf-8')
-
-u = UI.read_text(encoding='utf-8')
-start_marker = '@Composable\nfun RentOverviewScreen(viewModel: ReceiptViewModel) {'
-end_marker = '@Composable\nfun TaxCalculatorScreen(viewModel: ReceiptViewModel) {'
-start = u.find(start_marker)
-end = u.find(end_marker, start + 1)
-if start < 0 or end < 0:
-    raise SystemExit('RentOverviewScreen boundaries not found')
-replacement = '''@Composable\nfun RentOverviewScreen(viewModel: ReceiptViewModel) {\n    RentIncomeOverviewScreen(viewModel)\n}\n\n'''
-u = u[:start] + replacement + u[end:]
-UI.write_text(u, encoding='utf-8')

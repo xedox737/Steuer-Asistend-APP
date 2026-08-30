@@ -448,58 +448,7 @@ fun Icon(imageName: androidx.compose.ui.graphics.vector.ImageVector, contentDesc
 
 @Composable
 fun RentOverviewScreen(viewModel: ReceiptViewModel) {
-    val rentStatus by viewModel.rentStatus.collectAsState()
-    var selectedDraft by remember { mutableStateOf<String?>(null) }
-    
-    selectedDraft?.let { draft ->
-        AlertDialog(
-            onDismissRequest = { selectedDraft = null },
-            title = { Text("Zahlungserinnerung Entwurf") },
-            text = { Text(draft) },
-            confirmButton = {
-                TextButton(onClick = { selectedDraft = null }) {
-                    Text("OK")
-                }
-            }
-        )
-    }
-    
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text("Mieteingang (Juli 2026)", style = MaterialTheme.typography.titleLarge, color = DarkNavy)
-        Spacer(modifier = Modifier.height(16.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(rentStatus) { (unit, hasPaid) ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(unit.label, fontWeight = FontWeight.Bold, color = DarkNavy)
-                        if (hasPaid) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.Icon(Icons.Default.CheckCircle, contentDescription = "Gezahlt", tint = EmeraldGreen, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Gezahlt", color = EmeraldGreen, fontWeight = FontWeight.Medium)
-                            }
-                        } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                androidx.compose.material3.Icon(Icons.Default.Warning, contentDescription = "Ausstehend", tint = CrimsonRed, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                TextButton(onClick = { selectedDraft = viewModel.generatePaymentReminder(unit) }) {
-                                    Text("Erinnerung", color = CrimsonRed, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    RentIncomeOverviewScreen(viewModel)
 }
 
 @Composable
