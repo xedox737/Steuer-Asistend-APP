@@ -1,0 +1,103 @@
+name: Phase 1 AfA und 15-Prozent-Monitor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/phase1-afa-15-monitor.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Apply Phase 1 tax patch
+        run: python3 .github/scripts/phase1_afa_15_monitor.py
+
+      - name: Verify tax markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -q 'object TaxPropertyCalculator' app/src/main/java/com/example/data/TaxPropertyCalculator.kt
+          grep -q 'relevantModernizationNet' app/src/main/java/com/example/data/TaxPropertyCalculator.kt
+          grep -q 'AfA Gebäude' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          grep -q '3-Jahres-Prüfwert' app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          if grep -q 'Bei Überschreitung 50 Jahre Abschreibung' app/src/main/java/com/example/ui/ReceiptAppUi.kt; then
+            echo "Old inaccurate 15-percent text still present"
+            exit 1
+          fi
+
+      - name: Compile Kotlin
+        timeout-minutes: 10
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Run unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified feature and clean temporary files
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/TaxPropertyCalculator.kt \
+                  app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git rm .github/scripts/phase1_afa_15_monitor.py .github/workflows/phase1-afa-15-monitor.yml
+          git commit -m "Feature: AfA und 15-Prozent-Monitor steuerlich präzisieren [skip ci]"
+          git push origin HEAD:main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-AfA-15-Prozent-${{ steps.commit.outputs.short }}.apk"
+
+      - name: Publish test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tax-phase1-${{ steps.commit.outputs.sha }}
+          target_commitish: ${{ steps.commit.outputs.sha }}
+          name: Steuer-Assistent AfA & 15-Prozent-Monitor
+          body: |
+            Phase 1 Steuer-Vorbereitung:
+            - AfA-Bemessungsgrundlage aus Gebäudeanteil plus anteiligen Anschaffungsnebenkosten
+            - gesetzlicher AfA-Grundsatzsatz nach Baujahr
+            - zeitanteilige AfA im Anschaffungsjahr
+            - 15-Prozent-Monitor nur im Drei-Jahres-Zeitraum
+            - Netto-Betrachtung mit sichtbarer Kennzeichnung geschätzter Nettobeträge
+            - offensichtliche Erweiterungen und regelmäßig wiederkehrende Wartungen werden heuristisch nicht in den Prüfwert eingerechnet
+            - fachliche Prüfhinweise statt pauschaler Steuerbehauptungen
+          prerelease: true
+          make_latest: false
+          files: Steuer-Assistent-AfA-15-Prozent-*.apk
