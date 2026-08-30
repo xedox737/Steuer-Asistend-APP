@@ -448,7 +448,7 @@ fun Icon(imageName: androidx.compose.ui.graphics.vector.ImageVector, contentDesc
 
 @Composable
 fun RentOverviewScreen(viewModel: ReceiptViewModel) {
-    RentIncomeOverviewScreen(viewModel)
+    RentIncomeWithTenantHistoryScreen(viewModel)
 }
 
 @Composable
