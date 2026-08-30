@@ -982,9 +982,10 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     val completeness by viewModel.anlageVCompleteness.collectAsState()
 
     // Calculations
+    val taxPhase1 = com.example.data.TaxPropertyCalculator.calculate(metadata, receipts)
     val totalKaufpreis = metadata.gesamtKaufpreis
     val totalGebaeudeAnteil = metadata.gebaeudewert
-    val limit15Percent = totalGebaeudeAnteil * 0.15
+    val limit15Percent = taxPhase1.limit15Percent
 
     val totalAnschaffung = receipts.filter { it.hauptkategorie == "Anschaffungskosten" }.sumOf { it.bruttobetrag }
     val totalFinanzierung = receipts.filter { it.hauptkategorie == "Finanzierung, Kredite & Versicherungen" }.sumOf { it.bruttobetrag }
@@ -1688,10 +1689,43 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         // 6. Monthly Income vs. Expenses Bar Chart
         MonthlyIncomeExpenseChart(receipts)
 
-        // 7. 15%-Grenze Warning Monitor
-        val progress15 = (totalRenovierung / limit15Percent).toFloat().coerceIn(0f, 1f)
+        // 7. AfA-Übersicht
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("AfA Gebäude", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text("${taxPhase1.afaRatePercent}% p.a.", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
+                }
+                Text("Gebäude-Kaufpreisanteil: ${NumberFormatter.format(taxPhase1.buildingPurchaseShare)}", fontSize = 11.sp, color = SlateGray)
+                Text("+ anteilige Anschaffungsnebenkosten: ${NumberFormatter.format(taxPhase1.buildingAncillaryShare)}", fontSize = 11.sp, color = SlateGray)
+                HorizontalDivider(color = BorderColor)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("AfA-Bemessungsgrundlage", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                    Text(NumberFormatter.format(taxPhase1.buildingAcquisitionCosts), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("AfA volles Jahr", fontSize = 12.sp, color = SlateGray)
+                    Text(NumberFormatter.format(taxPhase1.annualAfa), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                }
+                if (taxPhase1.afaStartDate.isNotBlank()) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Erstes Jahr ab ${taxPhase1.afaStartDate}", fontSize = 11.sp, color = SlateGray)
+                        Text(NumberFormatter.format(taxPhase1.firstYearAfa), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                    }
+                }
+                Text("Vorbereitungshilfe: Gebäudewert und Anschaffungsnebenkosten müssen steuerlich plausibel auf Grund/Boden und Gebäude aufgeteilt sein.", fontSize = 9.5.sp, color = Color.Gray, lineHeight = 12.sp)
+            }
+        }
+
+        // 8. 15%-Grenze Warning Monitor
+        val progress15 = (taxPhase1.relevantModernizationNet / limit15Percent).toFloat().coerceIn(0f, 1f)
         val progressColor = when {
-            totalRenovierung >= limit15Percent -> CrimsonRed
+            taxPhase1.is15PercentExceeded -> CrimsonRed
             progress15 > 0.8f -> WarmOrange
             else -> EmeraldGreen
         }
@@ -1700,7 +1734,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = BorderStroke(1.dp, if (totalRenovierung >= limit15Percent) CrimsonRed else BorderColor)
+            border = BorderStroke(1.dp, if (taxPhase1.is15PercentExceeded) CrimsonRed else BorderColor)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -1727,7 +1761,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                         }
                     }
                     Icon(
-                        imageVector = if (totalRenovierung >= limit15Percent) Icons.Default.Warning else Icons.Default.Info,
+                        imageVector = if (taxPhase1.is15PercentExceeded) Icons.Default.Warning else Icons.Default.Info,
                         contentDescription = "Status",
                         tint = progressColor,
                         modifier = Modifier.size(20.dp)
@@ -1742,11 +1776,19 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     color = DarkNavy
                 )
                 Text(
-                    "3-Jahres-Limit: Max. 15% des Gebäudeanteils (${NumberFormatter.format(limit15Percent)}). Bei Überschreitung 50 Jahre Abschreibung!",
+                    "3-Jahres-Prüfwert: 15% der Gebäude-Anschaffungskosten (${NumberFormatter.format(limit15Percent)}), maßgeblich ohne Umsatzsteuer.",
                     fontSize = 11.sp,
                     color = Color.Gray,
                     lineHeight = 14.sp
                 )
+                Text(
+                    "Zeitraum: ${taxPhase1.monitorStartDate.ifBlank { "nicht festgelegt" }} bis ${taxPhase1.monitorEndDate.ifBlank { "nicht festgelegt" }} • Potenziell relevante Belege: ${taxPhase1.candidateReceiptCount}" +
+                        if (taxPhase1.estimatedNetCount > 0) " • Netto bei ${taxPhase1.estimatedNetCount} Beleg(en) geschätzt" else "",
+                    fontSize = 10.sp,
+                    color = SlateGray,
+                    lineHeight = 13.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Progress Bar
@@ -1796,7 +1838,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Verbleibender Puffer:", fontSize = 12.sp, color = Color.Gray)
-                    val buffer = limit15Percent - totalRenovierung
+                    val buffer = limit15Percent - taxPhase1.relevantModernizationNet
                     Text(
                         if (buffer >= 0) NumberFormatter.format(buffer) else "Überschritten um " + NumberFormatter.format(-buffer),
                         fontSize = 13.sp,
@@ -1805,7 +1847,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     )
                 }
 
-                if (totalRenovierung >= limit15Percent) {
+                if (taxPhase1.is15PercentExceeded) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Box(
                         modifier = Modifier
@@ -1818,7 +1860,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Icon(Icons.Default.Warning, contentDescription = "Alarm", tint = CrimsonRed, modifier = Modifier.size(18.dp))
                             Text(
-                                "STEUER-WARNUNG: Die 15%-Grenze wurde überschritten! Erhaltungsaufwendungen müssen als Herstellungskosten aktiviert werden.",
+                                "STEUER-WARNUNG: Der vorläufige 15%-Prüfwert ist überschritten. Einordnung als anschaffungsnahe Herstellungskosten fachlich prüfen; Erweiterungen und jährlich übliche Erhaltungsarbeiten sind gesondert zu behandeln.",
                                 fontSize = 11.sp,
                                 color = CrimsonRed,
                                 fontWeight = FontWeight.Bold,
