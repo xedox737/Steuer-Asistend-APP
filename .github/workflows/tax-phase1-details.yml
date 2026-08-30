@@ -63,10 +63,10 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import textwrap
 
           p = Path('app/src/main/java/com/example/ui/ReceiptAppUi.kt')
           s = p.read_text(encoding='utf-8')
-
           marker = 'value = editGesamtKaufpreis'
           pos = s.find(marker)
           if pos < 0:
@@ -78,7 +78,8 @@ jobs:
           if start < 0 or end < 0:
               raise SystemExit('purchase price block boundaries not found')
 
-          block = '''                Row(
+          block = textwrap.dedent('''\
+                Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -129,7 +130,7 @@ jobs:
                         color = WarmOrange
                     )
                 }
-'''
+          ''')
           s = s[:start] + block + s[end:]
           p.write_text(s, encoding='utf-8')
           PY
