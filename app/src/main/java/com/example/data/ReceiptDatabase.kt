@@ -175,6 +175,39 @@ interface ReceiptDao {
     suspend fun deleteAll()
 }
 
+@Entity(tableName = "loans")
+data class Loan(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val bezeichnung: String = "",
+    val bank: String = "",
+    val darlehensbetrag: Double = 0.0,
+    val restschuld: Double = 0.0,
+    val sollzinsProzent: Double = 0.0,
+    val tilgungProzent: Double = 0.0,
+    val monatlicheRate: Double = 0.0,
+    val startDatum: String = "",
+    val zinsbindungBis: String = "",
+    val laufzeitBis: String = "",
+    val vermietungsanteilProzent: Double = 100.0,
+    val notiz: String = "",
+    val aktiv: Boolean = true
+)
+
+@Dao
+interface LoanDao {
+    @Query("SELECT * FROM loans ORDER BY aktiv DESC, id ASC")
+    fun getAllLoansFlow(): Flow<List<Loan>>
+
+    @Query("SELECT * FROM loans ORDER BY aktiv DESC, id ASC")
+    suspend fun getAllLoans(): List<Loan>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertLoan(loan: Loan): Long
+
+    @Query("DELETE FROM loans WHERE id = :id")
+    suspend fun deleteLoan(id: Int)
+}
+
 @Entity(tableName = "property_metadata")
 data class PropertyMetadata(
     @PrimaryKey val id: Int = 1,
@@ -355,10 +388,34 @@ val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 16, exportSchema = false)
+val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `loans` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `bezeichnung` TEXT NOT NULL,
+                `bank` TEXT NOT NULL,
+                `darlehensbetrag` REAL NOT NULL,
+                `restschuld` REAL NOT NULL,
+                `sollzinsProzent` REAL NOT NULL,
+                `tilgungProzent` REAL NOT NULL,
+                `monatlicheRate` REAL NOT NULL,
+                `startDatum` TEXT NOT NULL,
+                `zinsbindungBis` TEXT NOT NULL,
+                `laufzeitBis` TEXT NOT NULL,
+                `vermietungsanteilProzent` REAL NOT NULL,
+                `notiz` TEXT NOT NULL,
+                `aktiv` INTEGER NOT NULL
+            )
+        """.trimIndent())
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 17, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
+    abstract fun loanDao(): LoanDao
     abstract fun receiptEntityDao(): ReceiptEntityDao
     abstract fun belegDao(): BelegDao
     abstract fun exportAuditDao(): ExportAuditDao
@@ -377,7 +434,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

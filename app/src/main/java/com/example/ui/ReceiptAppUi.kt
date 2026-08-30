@@ -1086,6 +1086,8 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             }
         }
 
+        LoanManagementSection()
+
         Text("Überblick", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
         Card(
             modifier = Modifier.fillMaxWidth(),
