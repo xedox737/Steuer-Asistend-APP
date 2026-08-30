@@ -48,6 +48,10 @@ jobs:
               'if (taxPhase1.estimatedNetCount > 0) " • ${taxPhase1.estimatedNetCount} Netto-Schätzung(en)" else "",',
               'if (taxPhase1.estimatedNetCount > 0) " • ${taxPhase1.estimatedNetCount} Nettobetrag/-beträge geschätzt" else "",'
           )
+          s = s.replace(
+              '                    fontSize = 10.sp, color = SlateGray, lineHeight = 13.sp\\n                )',
+              '                    fontSize = 10.sp,\\n                    color = SlateGray,\\n                    lineHeight = 13.sp\\n                )'
+          )
           p.write_text(s, encoding='utf-8')
           PY
 
