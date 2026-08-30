@@ -1,5 +1,6 @@
 name: AfA Aufteilung und 15 Prozent Details
 
+# retrigger: 2026-08-30
 on:
   push:
     branches: [main]
