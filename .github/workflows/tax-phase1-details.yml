@@ -1,6 +1,5 @@
 name: AfA Aufteilung und 15 Prozent Details
 
-# retrigger: 2026-08-30
 on:
   push:
     branches: [main]
@@ -37,6 +36,20 @@ jobs:
           if [ ! -f debug.keystore ]; then
             keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           fi
+
+      - name: Repair current dashboard anchor
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/tax_phase1_details.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              'if (taxPhase1.estimatedNetCount > 0) " • ${taxPhase1.estimatedNetCount} Netto-Schätzung(en)" else "",',
+              'if (taxPhase1.estimatedNetCount > 0) " • ${taxPhase1.estimatedNetCount} Nettobetrag/-beträge geschätzt" else "",'
+          )
+          p.write_text(s, encoding='utf-8')
+          PY
 
       - name: Apply tax detail patch
         run: python3 .github/scripts/tax_phase1_details.py
