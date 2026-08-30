@@ -171,7 +171,7 @@ jobs:
                   app/src/main/java/com/example/data/DrivePersistenceRepository.kt \
                   app/src/main/java/com/example/data/TaxPropertyCalculator.kt \
                   app/src/main/java/com/example/ui/ReceiptAppUi.kt
-          git rm .github/scripts/tax_phase1_details.py .github/workflows/tax-phase1-details.yml
+          git rm -f .github/scripts/tax_phase1_details.py .github/workflows/tax-phase1-details.yml
           git commit -m "Feature: Kaufpreisaufteilung und 15-Prozent-Belegdetails [skip ci]"
           git push origin HEAD:main
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
