@@ -1,0 +1,181 @@
+name: Phase 3.7 Werteherkunft
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/phase3-7-value-provenance.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Phase 3.7 patchen
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/ui/AnnualTaxAssistantFeature.kt')
+          s = p.read_text()
+
+          old = '''private data class AnlageVPreviewValue(
+              val label: String,
+              val amount: Double,
+              val note: String = ""
+          )'''
+          new = '''private data class AnlageVPreviewValue(
+              val label: String,
+              val amount: Double,
+              val source: String,
+              val checkStatus: String,
+              val note: String = ""
+          )'''
+          assert old in s, 'preview data class anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = '''private fun buildAnlageVPreview(summary: AnnualTaxSummary): Pair<List<AnlageVPreviewValue>, List<AnlageVPreviewValue>> {
+              val income = summary.incomeBuckets.map {
+                  AnlageVPreviewValue(
+                      it.title,
+                      it.amount,
+                      if (it.title.startsWith("Mieten")) "Tatsächlich erfasste Zahlungen; Kautionen ausgeschlossen" else it.note
+                  )
+              }
+              val expenses = summary.expenseBuckets.map {
+                  AnlageVPreviewValue(it.title, it.amount, it.note)
+              }
+              return income to expenses
+          }'''
+          new = '''private fun buildAnlageVPreview(
+              summary: AnnualTaxSummary,
+              closingChecks: List<AnnualClosingCheck>
+          ): Pair<List<AnlageVPreviewValue>, List<AnlageVPreviewValue>> {
+              fun stateFor(vararg titles: String): String {
+                  val states = closingChecks.filter { it.title in titles }.map { it.state }
+                  return when {
+                      states.any { it == ClosingCheckState.BLOCKED } -> "KRITISCH"
+                      states.any { it == ClosingCheckState.REVIEW } -> "PRÜFEN"
+                      else -> "OK"
+                  }
+              }
+
+              fun sourceFor(bucket: TaxBucket): String = when (bucket.title) {
+                  "Mieten & umlagefähige Nebenkosten", "Sonstige Einnahmen aus Vermietung" ->
+                      "${bucket.receipts.size} erfasste Einnahmebeleg(e); Kautionen ausgeschlossen"
+                  "Schuldzinsen" ->
+                      "${bucket.receipts.size} zugeordnete Zinsbeleg(e) + Vermietungsanteil des Darlehens"
+                  "AfA Gebäude" ->
+                      "Objekt-Stammdaten + Kaufpreisaufteilung + AfA-Berechnung"
+                  "Erhaltungsaufwand / Reparaturen" ->
+                      "${bucket.receipts.size} Sanierungs-/Reparaturbeleg(e) + 15-%-Monitor"
+                  else -> "${bucket.receipts.size} zugeordnete Beleg(e)"
+              }
+
+              fun statusFor(bucket: TaxBucket): String = when (bucket.title) {
+                  "Mieten & umlagefähige Nebenkosten", "Sonstige Einnahmen aus Vermietung" ->
+                      stateFor("Mieteinnahmen abgeglichen", "Miet-/Belegzuordnungen vollständig", "Belege freigegeben")
+                  "Schuldzinsen" -> stateFor("Schuldzinsen zugeordnet", "Belege freigegeben")
+                  "AfA Gebäude" -> stateFor("AfA-Grundlage plausibel")
+                  "Erhaltungsaufwand / Reparaturen" -> stateFor("15-%-Sanierungsmonitor", "Belege freigegeben")
+                  else -> stateFor("Belege freigegeben", "Keine Dubletten")
+              }
+
+              val income = summary.incomeBuckets.map { bucket ->
+                  AnlageVPreviewValue(
+                      label = bucket.title,
+                      amount = bucket.amount,
+                      source = sourceFor(bucket),
+                      checkStatus = statusFor(bucket),
+                      note = if (bucket.title.startsWith("Mieten"))
+                          "Tatsächlich erfasste Zahlungen; Kautionen ausgeschlossen"
+                      else bucket.note
+                  )
+              }
+              val expenses = summary.expenseBuckets.map { bucket ->
+                  AnlageVPreviewValue(
+                      label = bucket.title,
+                      amount = bucket.amount,
+                      source = sourceFor(bucket),
+                      checkStatus = statusFor(bucket),
+                      note = bucket.note
+                  )
+              }
+              return income to expenses
+          }'''
+          assert old in s, 'buildAnlageVPreview anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = 'val preview = remember(summary) { buildAnlageVPreview(summary) }'
+          new = 'val preview = remember(summary, closingChecks) { buildAnlageVPreview(summary, closingChecks) }'
+          assert old in s, 'preview remember anchor missing'
+          s = s.replace(old, new, 1)
+
+          old = '''        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                      Text(value.label, fontSize = 10.sp, color = DarkNavy)
+                      if (value.note.isNotBlank()) Text(value.note, fontSize = 8.sp, color = SlateGray)
+                  }
+                  Text(
+                      NumberFormatter.format(value.amount),
+                      fontSize = 10.sp,
+                      fontWeight = FontWeight.Bold,
+                      color = amountColor
+                  )'''
+          new = '''        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                      Text(value.label, fontSize = 10.sp, color = DarkNavy)
+                      Text("Quelle: ${value.source}", fontSize = 8.sp, color = SlateGray)
+                      if (value.note.isNotBlank()) Text(value.note, fontSize = 8.sp, color = SlateGray)
+                  }
+                  Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                      Text(
+                          NumberFormatter.format(value.amount),
+                          fontSize = 10.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = amountColor
+                      )
+                      val checkColor = when (value.checkStatus) {
+                          "KRITISCH" -> CrimsonRed
+                          "PRÜFEN" -> WarmOrange
+                          else -> EmeraldGreen
+                      }
+                      Text(value.checkStatus, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = checkColor)
+                  }'''
+          assert old in s, 'preview row anchor missing'
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+      - name: Diff prüfen
+        run: |
+          git diff --check
+          grep -q 'Quelle:' app/src/main/java/com/example/ui/AnnualTaxAssistantFeature.kt
+          grep -q 'checkStatus' app/src/main/java/com/example/ui/AnnualTaxAssistantFeature.kt
+      - name: Debug-Keystore erzeugen
+        run: |
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p "$HOME/.android"
+          cp debug.keystore "$HOME/.android/debug.keystore"
+      - name: Kotlin kompilieren
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
+      - name: Unit Tests
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+      - name: APK bauen
+        run: gradle assembleDebug --stacktrace --no-daemon
+      - name: Verifizierten Code committen
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/AnnualTaxAssistantFeature.kt
+          git rm .github/workflows/phase3-7-value-provenance.yml
+          git commit -m "Feature: Phase 3.7 Werteherkunft und Prüfstatus [skip ci]"
+          git push origin main
