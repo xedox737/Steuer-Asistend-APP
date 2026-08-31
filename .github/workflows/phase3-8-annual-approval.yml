@@ -19,6 +19,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
       - name: Phase 3.8 patchen
         shell: bash
         run: |
@@ -80,11 +82,11 @@ jobs:
           mkdir -p "$HOME/.android"
           keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
       - name: Kotlin kompilieren
-        run: ./gradlew :app:compileDebugKotlin --no-daemon
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
       - name: Unit Tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
       - name: APK bauen
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: gradle assembleDebug --stacktrace --no-daemon
       - name: Verifizierten Code committen
         shell: bash
         run: |
