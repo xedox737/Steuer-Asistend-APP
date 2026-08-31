@@ -58,8 +58,8 @@ replace_once(
 )
 replace_once(
     loan,
-    '                    onClick = { scope.launch { database.loanDao().deleteLoan(loan.id) }; pendingDelete = null },',
-    '                    onClick = { scope.launch { database.loanDao().deleteLoan(loan.id); viewModel.syncAllToDrive() }; pendingDelete = null },',
+    '                        assignments.filterValues { it == loan.id }.keys.forEach { assignReceipt(it, null) }\n                        scope.launch { database.loanDao().deleteLoan(loan.id) }\n                        pendingDelete = null',
+    '                        assignments.filterValues { it == loan.id }.keys.forEach { assignReceipt(it, null) }\n                        scope.launch { database.loanDao().deleteLoan(loan.id); viewModel.syncAllToDrive() }\n                        pendingDelete = null',
     'delete loan sync'
 )
 
