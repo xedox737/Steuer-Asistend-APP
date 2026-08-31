@@ -45,6 +45,7 @@ import java.time.YearMonth
 import kotlin.math.abs
 
 private enum class TaxIssueSeverity { RED, YELLOW }
+private enum class ClosingCheckState { OK, REVIEW, BLOCKED }
 
 private data class TaxIssue(
     val title: String,
@@ -94,6 +95,12 @@ private data class AnnualRentRow(
     val difference: Double get() = actual - expected
     val missing: Double get() = (expected - actual).coerceAtLeast(0.0)
 }
+
+private data class AnnualClosingCheck(
+    val title: String,
+    val detail: String,
+    val state: ClosingCheckState
+)
 
 private fun Receipt.yearOrNull(): Int? = datum.take(4).toIntOrNull()
 private fun receiptText(r: Receipt): String = (r.hauptkategorie + " " + r.unterkategorie + " " + r.beschreibung + " " + r.kontoNr).lowercase()
@@ -256,6 +263,73 @@ private fun buildAnnualTaxSummary(context: Context, year: Int, all: List<Receipt
     return AnnualTaxSummary(year, totalIncome, totalExpenses, totalIncome - totalExpenses, incomeBuckets, expenseBuckets, issues)
 }
 
+private fun buildAnnualClosingChecks(
+    summary: AnnualTaxSummary,
+    rentRows: List<AnnualRentRow>,
+    metadata: PropertyMetadata,
+    allReceipts: List<Receipt>
+): List<AnnualClosingCheck> {
+    val phase1 = TaxPropertyCalculator.calculate(metadata, allReceipts)
+    val rentMissing = rentRows.sumOf { it.missing }
+    val rentMonths = rentRows.sumOf { it.missingMonths.size }
+    val titles = summary.issues.map { it.title }.toSet()
+    val afa = summary.expenseBuckets.firstOrNull { it.title == "AfA Gebäude" }?.amount ?: 0.0
+
+    return listOf(
+        AnnualClosingCheck(
+            "Mieteinnahmen abgeglichen",
+            if (rentMissing <= 0.01 && rentMonths == 0) "Jahres-Soll und erfasste Zahlungen ohne offene Unterdeckung." else "${NumberFormatter.format(rentMissing)} Unterdeckung; $rentMonths auffällige Monatszuordnung(en).",
+            if (rentMissing <= 0.01 && rentMonths == 0) ClosingCheckState.OK else ClosingCheckState.REVIEW
+        ),
+        AnnualClosingCheck(
+            "Belege freigegeben",
+            if ("Nicht freigegebene Belege" !in titles && "Belege mit Prüfstatus" !in titles) "Keine offenen Freigabe-/Prüfstatus gefunden." else "Es bestehen noch offene oder zu prüfende Belege.",
+            if ("Nicht freigegebene Belege" !in titles && "Belege mit Prüfstatus" !in titles) ClosingCheckState.OK else ClosingCheckState.REVIEW
+        ),
+        AnnualClosingCheck(
+            "Schuldzinsen zugeordnet",
+            if ("Schuldzinsen ohne Darlehenszuordnung" !in titles) "Alle erkannten Schuldzinsen sind einem gültigen Darlehen zugeordnet." else "Mindestens ein Schuldzins-Beleg hat keine gültige Darlehenszuordnung.",
+            if ("Schuldzinsen ohne Darlehenszuordnung" !in titles) ClosingCheckState.OK else ClosingCheckState.BLOCKED
+        ),
+        AnnualClosingCheck(
+            "AfA-Grundlage plausibel",
+            when {
+                phase1.allocationNeedsReview -> "Kaufpreisaufteilung Gebäude/Grund und Boden ist nicht schlüssig."
+                afa <= 0.0 -> "Für das gewählte Jahr wurde keine AfA ermittelt; Stammdaten prüfen."
+                else -> "AfA ${NumberFormatter.format(afa)}; Kaufpreisaufteilung rechnerisch plausibel."
+            },
+            when {
+                phase1.allocationNeedsReview -> ClosingCheckState.BLOCKED
+                afa <= 0.0 -> ClosingCheckState.REVIEW
+                else -> ClosingCheckState.OK
+            }
+        ),
+        AnnualClosingCheck(
+            "15-%-Sanierungsmonitor",
+            when {
+                phase1.is15PercentExceeded -> "Grenze überschritten; steuerliche Behandlung der betroffenen Maßnahmen muss geklärt werden."
+                phase1.limitUsagePercent >= 80.0 -> "Monitor bei ${"%.1f".format(phase1.limitUsagePercent)} %; vor Abschluss prüfen."
+                else -> "Monitor bei ${"%.1f".format(phase1.limitUsagePercent)} %; kein automatischer Grenzkonflikt."
+            },
+            when {
+                phase1.is15PercentExceeded -> ClosingCheckState.BLOCKED
+                phase1.limitUsagePercent >= 80.0 || phase1.estimatedNetCount > 0 -> ClosingCheckState.REVIEW
+                else -> ClosingCheckState.OK
+            }
+        ),
+        AnnualClosingCheck(
+            "Miet-/Belegzuordnungen vollständig",
+            if ("Miete ohne Wohneinheit" !in titles) "Keine erfasste Mietzahlung ohne Wohneinheit erkannt." else "Mindestens eine Miet-/Nebenkostenzahlung ist keiner Wohneinheit zugeordnet.",
+            if ("Miete ohne Wohneinheit" !in titles) ClosingCheckState.OK else ClosingCheckState.REVIEW
+        ),
+        AnnualClosingCheck(
+            "Keine Dubletten",
+            if ("Doppelte Beleg-ID erkannt" !in titles) "Keine doppelte stabile Beleg-ID im Steuerjahr erkannt." else "Doppelte stabile Beleg-IDs müssen vor dem Abschluss bereinigt werden.",
+            if ("Doppelte Beleg-ID erkannt" !in titles) ClosingCheckState.OK else ClosingCheckState.BLOCKED
+        )
+    )
+}
+
 @Composable
 fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
@@ -277,6 +351,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val previous = remember(context, year, receipts, metadata, loans) { buildAnnualTaxSummary(context, year - 1, receipts, metadata, loans) }
     val unitSummaries = remember(year, receipts, units) { buildUnitAnnualSummaries(year, receipts, units) }
     val rentRows = remember(context, year, receipts, units) { buildAnnualRentRows(context, year, receipts, units) }
+    val closingChecks = remember(summary, rentRows, metadata, receipts) { buildAnnualClosingChecks(summary, rentRows, metadata, receipts) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("anlage_v_annual_assistant"),
@@ -286,7 +361,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Anlage-V-Jahresassistent", fontSize = 21.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                Text("Jahresübersicht mit Einnahmen, Werbungskosten, Mietprüfung und Prüfpunkten", fontSize = 11.sp, color = SlateGray)
+                Text("Jahresübersicht mit Einnahmen, Werbungskosten, Mietprüfung und Abschlusscheck", fontSize = 11.sp, color = SlateGray)
             }
         }
         item {
@@ -297,6 +372,8 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
             }
         }
         item { AnnualStatusCard(summary) }
+        item { AnnualClosingCheckCard(closingChecks, year) }
+
         if (summary.issues.isNotEmpty()) {
             item { SectionTitle("Offene Prüfpunkte") }
             items(summary.issues, key = { "issue_${it.severity}_${it.title}" }) { AnnualTaxIssueCard(it) { issueDetails = it } }
@@ -342,6 +419,64 @@ private fun AnnualStatusCard(summary: AnnualTaxSummary) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Jahres-Prüfstatus", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text(status, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = color)
+        }
+    }
+}
+
+@Composable
+private fun AnnualClosingCheckCard(checks: List<AnnualClosingCheck>, year: Int) {
+    val blocked = checks.count { it.state == ClosingCheckState.BLOCKED }
+    val review = checks.count { it.state == ClosingCheckState.REVIEW }
+    val ready = blocked == 0 && review == 0
+    val statusColor = when {
+        blocked > 0 -> CrimsonRed
+        review > 0 -> WarmOrange
+        else -> EmeraldGreen
+    }
+    val statusText = when {
+        blocked > 0 -> "NICHT BEREIT · $blocked kritische Abschlussprüfung(en)"
+        review > 0 -> "PRÜFEN · $review Punkt(e) vor Jahresabschluss"
+        else -> "BEREIT · Anlage-V-Vorbereitung kann abgeschlossen werden"
+    }
+
+    Card(
+        Modifier.fillMaxWidth().testTag("annual_closing_check"),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, statusColor.copy(alpha = .55f)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Jahresabschluss-Check $year", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(statusText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
+            HorizontalDivider(color = BorderColor)
+            checks.forEach { check -> AnnualClosingCheckRow(check) }
+            Text(
+                if (ready) "Alle automatischen Abschlussprüfungen sind erfüllt. Die Werte bleiben eine Vorbereitungshilfe und sollten vor Abgabe fachlich geprüft werden."
+                else "Offene Punkte zuerst in den jeweiligen Bereichen korrigieren. Der Abschlussstatus aktualisiert sich automatisch.",
+                fontSize = 9.sp,
+                color = SlateGray
+            )
+        }
+    }
+}
+
+@Composable
+private fun AnnualClosingCheckRow(check: AnnualClosingCheck) {
+    val marker = when (check.state) {
+        ClosingCheckState.OK -> "✓"
+        ClosingCheckState.REVIEW -> "!"
+        ClosingCheckState.BLOCKED -> "×"
+    }
+    val color = when (check.state) {
+        ClosingCheckState.OK -> EmeraldGreen
+        ClosingCheckState.REVIEW -> WarmOrange
+        ClosingCheckState.BLOCKED -> CrimsonRed
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        Text(marker, fontSize = 12.sp, fontWeight = FontWeight.Black, color = color)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(check.title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(check.detail, fontSize = 9.sp, color = SlateGray)
         }
     }
 }
@@ -463,7 +598,10 @@ private fun AnnualTaxReceiptDialog(title: String, amount: Double?, note: String,
                 else items(receipts, key = { "annual_detail_${it.id}_${it.internalId}" }) { r ->
                     Card(colors = CardDefaults.cardColors(containerColor = SoftBackground), border = BorderStroke(1.dp, BorderColor)) {
                         Column(Modifier.padding(9.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(r.getEffectiveDisplayId(), fontSize = 9.sp, color = SlateGray); Text(NumberFormatter.format(r.bruttobetrag), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(r.getEffectiveDisplayId(), fontSize = 9.sp, color = SlateGray)
+                                Text(NumberFormatter.format(r.bruttobetrag), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                            }
                             Text(r.aussteller, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                             Text("${r.datum} · ${r.unterkategorie}", fontSize = 9.sp, color = SlateGray)
                             if (r.wohneinheit.isNotBlank()) Text(r.wohneinheit, fontSize = 9.sp, color = SlateGray)
