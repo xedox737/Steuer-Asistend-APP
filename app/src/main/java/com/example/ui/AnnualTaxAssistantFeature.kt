@@ -102,8 +102,17 @@ private data class AnnualClosingCheck(
     val state: ClosingCheckState
 )
 
+private data class AnlageVPreviewValue(
+    val label: String,
+    val amount: Double,
+    val note: String = ""
+)
+
 private fun Receipt.yearOrNull(): Int? = datum.take(4).toIntOrNull()
-private fun receiptText(r: Receipt): String = (r.hauptkategorie + " " + r.unterkategorie + " " + r.beschreibung + " " + r.kontoNr).lowercase()
+
+private fun receiptText(r: Receipt): String =
+    (r.hauptkategorie + " " + r.unterkategorie + " " + r.beschreibung + " " + r.kontoNr).lowercase()
+
 private fun isDeposit(r: Receipt): Boolean = receiptText(r).contains("kaution")
 
 private fun isRentalIncome(r: Receipt): Boolean {
@@ -124,7 +133,8 @@ private fun isPrincipalOrLoanFlow(r: Receipt): Boolean {
 
 private fun isInterest(r: Receipt): Boolean =
     r.hauptkategorie == "Finanzierung, Kredite & Versicherungen" &&
-        (r.unterkategorie.equals("Kreditzinsen", true) || receiptText(r).contains("sollzins") || receiptText(r).contains("schuldzins"))
+        (r.unterkategorie.equals("Kreditzinsen", true) ||
+            receiptText(r).contains("sollzins") || receiptText(r).contains("schuldzins"))
 
 private fun afaForYear(metadata: PropertyMetadata, all: List<Receipt>, year: Int): Double {
     val phase1 = TaxPropertyCalculator.calculate(metadata, all)
@@ -141,18 +151,27 @@ private fun classifyGenericExpense(r: Receipt): String {
     return when {
         text.contains("fahrt") || text.contains("kilometer") || text.contains("fahrtenbuch") -> "Fahrtkosten"
         text.contains("versicherung") || text.contains("rechtsschutz") -> "Versicherungen"
-        text.contains("verwaltung") || text.contains("steuerberater") || text.contains("buchhaltung") || text.contains("kontoführung") || text.contains("kontofuehrung") -> "Verwaltung & Beratung"
-        text.contains("grundsteuer") || text.contains("wasser") || text.contains("abwasser") || text.contains("müll") || text.contains("muell") || text.contains("strom") || text.contains("heizung") || text.contains("schornstein") -> "Laufende Objektkosten"
+        text.contains("verwaltung") || text.contains("steuerberater") || text.contains("buchhaltung") ||
+            text.contains("kontoführung") || text.contains("kontofuehrung") -> "Verwaltung & Beratung"
+        text.contains("grundsteuer") || text.contains("wasser") || text.contains("abwasser") ||
+            text.contains("müll") || text.contains("muell") || text.contains("strom") ||
+            text.contains("heizung") || text.contains("schornstein") -> "Laufende Objektkosten"
         else -> "Sonstige Werbungskosten"
     }
 }
 
-private fun buildUnitAnnualSummaries(year: Int, all: List<Receipt>, units: List<WohneinheitStatus>): List<UnitAnnualSummary> {
+private fun buildUnitAnnualSummaries(
+    year: Int,
+    all: List<Receipt>,
+    units: List<WohneinheitStatus>
+): List<UnitAnnualSummary> {
     val yearReceipts = all.filter { it.yearOrNull() == year }
     return units.map { unit ->
         val direct = yearReceipts.filter { it.wohneinheit == unit.name }
         val income = direct.filter(::isRentalIncome).sumOf { it.bruttobetrag }
-        val expenses = direct.filter { !isRentalIncome(it) && it.hauptkategorie != "Anschaffungskosten" && !isPrincipalOrLoanFlow(it) }.sumOf { it.bruttobetrag }
+        val expenses = direct.filter {
+            !isRentalIncome(it) && it.hauptkategorie != "Anschaffungskosten" && !isPrincipalOrLoanFlow(it)
+        }.sumOf { it.bruttobetrag }
         UnitAnnualSummary(unit.name, unit.label, income, expenses, direct)
     }.filter { it.receipts.isNotEmpty() || it.income != 0.0 || it.expenses != 0.0 }
 }
@@ -160,7 +179,16 @@ private fun buildUnitAnnualSummaries(year: Int, all: List<Receipt>, units: List<
 private fun fallbackTenantPeriod(unit: WohneinheitStatus, nk: Double, other: Double): TenantPeriod? {
     if (unit.status != "Vermietet") return null
     if (unit.mieter.isBlank() && unit.kaltmiete <= 0.0 && nk <= 0.0 && other <= 0.0) return null
-    return TenantPeriod(-unit.name.hashCode().toLong(), unit.name, unit.mieter, unit.mietvertragsstart, "", unit.kaltmiete, nk, other)
+    return TenantPeriod(
+        -unit.name.hashCode().toLong(),
+        unit.name,
+        unit.mieter,
+        unit.mietvertragsstart,
+        "",
+        unit.kaltmiete,
+        nk,
+        other
+    )
 }
 
 private fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {
@@ -173,7 +201,12 @@ private fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {
     return period.monatSoll * days / month.lengthOfMonth().toDouble()
 }
 
-private fun buildAnnualRentRows(context: Context, year: Int, all: List<Receipt>, units: List<WohneinheitStatus>): List<AnnualRentRow> {
+private fun buildAnnualRentRows(
+    context: Context,
+    year: Int,
+    all: List<Receipt>,
+    units: List<WohneinheitStatus>
+): List<AnnualRentRow> {
     val rentPrefs = context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE)
     return units.map { unit ->
         val nk = rentPrefs.getFloat("nk_${unit.name}", 0f).toDouble()
@@ -181,7 +214,9 @@ private fun buildAnnualRentRows(context: Context, year: Int, all: List<Receipt>,
         val stored = TenantHistoryStore.load(context, unit.name)
         val periods = if (stored.isNotEmpty()) stored else listOfNotNull(fallbackTenantPeriod(unit, nk, other))
         val expected = TenantHistoryStore.expectedForYear(periods, year)
-        val unitReceipts = all.filter { it.yearOrNull() == year && it.wohneinheit == unit.name && isRentalIncome(it) }
+        val unitReceipts = all.filter {
+            it.yearOrNull() == year && it.wohneinheit == unit.name && isRentalIncome(it)
+        }
         val actual = unitReceipts.sumOf { it.bruttobetrag }
         val missingMonths = (1..12).filter { monthNo ->
             val month = YearMonth.of(year, monthNo)
@@ -193,7 +228,13 @@ private fun buildAnnualRentRows(context: Context, year: Int, all: List<Receipt>,
     }.filter { it.expected > 0.01 || it.actual > 0.01 }
 }
 
-private fun buildAnnualTaxSummary(context: Context, year: Int, all: List<Receipt>, metadata: PropertyMetadata, loans: List<Loan>): AnnualTaxSummary {
+private fun buildAnnualTaxSummary(
+    context: Context,
+    year: Int,
+    all: List<Receipt>,
+    metadata: PropertyMetadata,
+    loans: List<Loan>
+): AnnualTaxSummary {
     val receipts = all.filter { it.yearOrNull() == year }
     val phase1 = TaxPropertyCalculator.calculate(metadata, all)
     val rentalReceipts = receipts.filter(::isRentalIncome)
@@ -203,64 +244,194 @@ private fun buildAnnualTaxSummary(context: Context, year: Int, all: List<Receipt
     val assignmentPrefs = context.getSharedPreferences("loan_interest_assignments", Context.MODE_PRIVATE)
     val loansById = loans.associateBy { it.id }
     val interestReceipts = receipts.filter(::isInterest)
-    val assignedInterest = interestReceipts.mapNotNull { r -> loansById[assignmentPrefs.getInt("receipt_${r.id}", 0)]?.let { r to it } }
-    val debtInterest = assignedInterest.sumOf { (r, loan) -> r.bruttobetrag * loan.vermietungsanteilProzent.coerceIn(0.0, 100.0) / 100.0 }
+    val assignedInterest = interestReceipts.mapNotNull { r ->
+        loansById[assignmentPrefs.getInt("receipt_${r.id}", 0)]?.let { r to it }
+    }
+    val debtInterest = assignedInterest.sumOf { (r, loan) ->
+        r.bruttobetrag * loan.vermietungsanteilProzent.coerceIn(0.0, 100.0) / 100.0
+    }
 
     val afa = afaForYear(metadata, all, year)
-    val renovationReceipts = receipts.filter { it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen" }
-    val inMonitor = phase1.monitorStartDate.take(4).toIntOrNull()?.let { s -> phase1.monitorEndDate.take(4).toIntOrNull()?.let { e -> year in s..e } } ?: false
+    val renovationReceipts = receipts.filter {
+        it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen"
+    }
+    val inMonitor = phase1.monitorStartDate.take(4).toIntOrNull()?.let { start ->
+        phase1.monitorEndDate.take(4).toIntOrNull()?.let { end -> year in start..end }
+    } ?: false
     val renovationBlocked = phase1.is15PercentExceeded && inMonitor
     val renovationDeductible = if (renovationBlocked) 0.0 else renovationReceipts.sumOf { it.bruttobetrag }
 
-    val otherFinancing = receipts.filter { it.hauptkategorie == "Finanzierung, Kredite & Versicherungen" && !isInterest(it) && !isPrincipalOrLoanFlow(it) }
+    val otherFinancing = receipts.filter {
+        it.hauptkategorie == "Finanzierung, Kredite & Versicherungen" &&
+            !isInterest(it) && !isPrincipalOrLoanFlow(it)
+    }
     val generic = receipts.filter {
-        !isRentalIncome(it) && it.hauptkategorie !in setOf("Anschaffungskosten", "Finanzierung, Kredite & Versicherungen", "Renovierungs- / Reparaturkosten & Investitionen")
+        !isRentalIncome(it) && it.hauptkategorie !in setOf(
+            "Anschaffungskosten",
+            "Finanzierung, Kredite & Versicherungen",
+            "Renovierungs- / Reparaturkosten & Investitionen"
+        )
     }
     val grouped = generic.groupBy(::classifyGenericExpense)
 
     val incomeBuckets = listOf(
-        TaxBucket("Mieten & umlagefähige Nebenkosten", regularRental.sumOf { it.bruttobetrag }, regularRental, "Kautionen ausgeschlossen"),
-        TaxBucket("Sonstige Einnahmen aus Vermietung", otherRental.sumOf { it.bruttobetrag }, otherRental)
+        TaxBucket(
+            "Mieten & umlagefähige Nebenkosten",
+            regularRental.sumOf { it.bruttobetrag },
+            regularRental,
+            "Kautionen ausgeschlossen"
+        ),
+        TaxBucket(
+            "Sonstige Einnahmen aus Vermietung",
+            otherRental.sumOf { it.bruttobetrag },
+            otherRental
+        )
     ).filter { it.amount != 0.0 || it.receipts.isNotEmpty() }
 
     val expenseBuckets = mutableListOf(
-        TaxBucket("Schuldzinsen", debtInterest, assignedInterest.map { it.first }, "Zugeordnete Zinsbelege × Vermietungsanteil"),
-        TaxBucket("AfA Gebäude", afa, note = "Aus Objekt-Stammdaten und AfA-Bemessungsgrundlage"),
-        TaxBucket("Erhaltungsaufwand / Reparaturen", renovationDeductible, renovationReceipts, if (renovationBlocked) "Nicht als Sofortaufwand angesetzt: 15-%-Prüfung erforderlich" else "Vorläufiger Sofortaufwand; steuerlich prüfen", renovationBlocked),
-        TaxBucket("Weitere Finanzierungskosten", otherFinancing.sumOf { it.bruttobetrag }, otherFinancing, "Tilgung und Darlehensauszahlung ausgeschlossen")
+        TaxBucket(
+            "Schuldzinsen",
+            debtInterest,
+            assignedInterest.map { it.first },
+            "Zugeordnete Zinsbelege × Vermietungsanteil"
+        ),
+        TaxBucket(
+            "AfA Gebäude",
+            afa,
+            note = "Aus Objekt-Stammdaten und AfA-Bemessungsgrundlage"
+        ),
+        TaxBucket(
+            "Erhaltungsaufwand / Reparaturen",
+            renovationDeductible,
+            renovationReceipts,
+            if (renovationBlocked) "Nicht als Sofortaufwand angesetzt: 15-%-Prüfung erforderlich"
+            else "Vorläufiger Sofortaufwand; steuerlich prüfen",
+            renovationBlocked
+        ),
+        TaxBucket(
+            "Weitere Finanzierungskosten",
+            otherFinancing.sumOf { it.bruttobetrag },
+            otherFinancing,
+            "Tilgung und Darlehensauszahlung ausgeschlossen"
+        )
     )
-    listOf("Verwaltung & Beratung", "Versicherungen", "Laufende Objektkosten", "Fahrtkosten", "Sonstige Werbungskosten").forEach { title ->
-        grouped[title].orEmpty().takeIf { it.isNotEmpty() }?.let { expenseBuckets += TaxBucket(title, it.sumOf { r -> r.bruttobetrag }, it) }
+    listOf(
+        "Verwaltung & Beratung",
+        "Versicherungen",
+        "Laufende Objektkosten",
+        "Fahrtkosten",
+        "Sonstige Werbungskosten"
+    ).forEach { title ->
+        grouped[title].orEmpty().takeIf { it.isNotEmpty() }?.let {
+            expenseBuckets += TaxBucket(title, it.sumOf { r -> r.bruttobetrag }, it)
+        }
     }
 
     val issues = mutableListOf<TaxIssue>()
-    val unassignedInterest = interestReceipts.filter { loansById[assignmentPrefs.getInt("receipt_${it.id}", 0)] == null }
-    if (unassignedInterest.isNotEmpty()) issues += TaxIssue("Schuldzinsen ohne Darlehenszuordnung", "${unassignedInterest.size} Zinsbeleg(e) ohne gültiges Darlehen.", TaxIssueSeverity.RED, unassignedInterest)
+    val unassignedInterest = interestReceipts.filter {
+        loansById[assignmentPrefs.getInt("receipt_${it.id}", 0)] == null
+    }
+    if (unassignedInterest.isNotEmpty()) {
+        issues += TaxIssue(
+            "Schuldzinsen ohne Darlehenszuordnung",
+            "${unassignedInterest.size} Zinsbeleg(e) ohne gültiges Darlehen.",
+            TaxIssueSeverity.RED,
+            unassignedInterest
+        )
+    }
 
-    val rentWithoutUnit = rentalReceipts.filter { it.wohneinheit.isBlank() || it.wohneinheit == "Gesamtobjekt / Allgemein" }
-    if (rentWithoutUnit.isNotEmpty()) issues += TaxIssue("Miete ohne Wohneinheit", "${rentWithoutUnit.size} Miet-/Nebenkostenbeleg(e) ohne konkrete Wohneinheit.", TaxIssueSeverity.YELLOW, rentWithoutUnit)
+    val rentWithoutUnit = rentalReceipts.filter {
+        it.wohneinheit.isBlank() || it.wohneinheit == "Gesamtobjekt / Allgemein"
+    }
+    if (rentWithoutUnit.isNotEmpty()) {
+        issues += TaxIssue(
+            "Miete ohne Wohneinheit",
+            "${rentWithoutUnit.size} Miet-/Nebenkostenbeleg(e) ohne konkrete Wohneinheit.",
+            TaxIssueSeverity.YELLOW,
+            rentWithoutUnit
+        )
+    }
 
     val open = receipts.filter { it.freigabestatus != "FREIGEGEBEN" }
-    if (open.isNotEmpty()) issues += TaxIssue("Nicht freigegebene Belege", "${open.size} Beleg(e) noch nicht steuerlich freigegeben.", TaxIssueSeverity.YELLOW, open)
+    if (open.isNotEmpty()) {
+        issues += TaxIssue(
+            "Nicht freigegebene Belege",
+            "${open.size} Beleg(e) noch nicht steuerlich freigegeben.",
+            TaxIssueSeverity.YELLOW,
+            open
+        )
+    }
 
-    val review = receipts.filter { it.exportStatus == "ZU_PRUEFEN" || it.pruefstatus == "UNGEPRUEFT" || it.syncStatus == "REVIEW_REQUIRED" }
-    if (review.isNotEmpty()) issues += TaxIssue("Belege mit Prüfstatus", "${review.size} Beleg(e) benötigen noch Prüfung.", TaxIssueSeverity.YELLOW, review)
+    val review = receipts.filter {
+        it.exportStatus == "ZU_PRUEFEN" || it.pruefstatus == "UNGEPRUEFT" || it.syncStatus == "REVIEW_REQUIRED"
+    }
+    if (review.isNotEmpty()) {
+        issues += TaxIssue(
+            "Belege mit Prüfstatus",
+            "${review.size} Beleg(e) benötigen noch Prüfung.",
+            TaxIssueSeverity.YELLOW,
+            review
+        )
+    }
 
-    if (phase1.allocationNeedsReview) issues += TaxIssue("Kaufpreisaufteilung prüfen", "Gebäude und Grund/Boden weichen um ${NumberFormatter.format(abs(phase1.allocationDifference))} vom Gesamtkaufpreis ab.", TaxIssueSeverity.RED)
-    if (phase1.is15PercentExceeded) issues += TaxIssue("15-%-Grenze überschritten", "Betroffene Sanierungskosten werden nicht automatisch als Sofortaufwand angesetzt.", TaxIssueSeverity.RED, renovationReceipts)
-    else if (phase1.limitUsagePercent >= 80.0) issues += TaxIssue("15-%-Grenze nähert sich", "Monitor: ${"%.1f".format(phase1.limitUsagePercent)} %.", TaxIssueSeverity.YELLOW, renovationReceipts)
+    if (phase1.allocationNeedsReview) {
+        issues += TaxIssue(
+            "Kaufpreisaufteilung prüfen",
+            "Gebäude und Grund/Boden weichen um ${NumberFormatter.format(abs(phase1.allocationDifference))} vom Gesamtkaufpreis ab.",
+            TaxIssueSeverity.RED
+        )
+    }
+    if (phase1.is15PercentExceeded) {
+        issues += TaxIssue(
+            "15-%-Grenze überschritten",
+            "Betroffene Sanierungskosten werden nicht automatisch als Sofortaufwand angesetzt.",
+            TaxIssueSeverity.RED,
+            renovationReceipts
+        )
+    } else if (phase1.limitUsagePercent >= 80.0) {
+        issues += TaxIssue(
+            "15-%-Grenze nähert sich",
+            "Monitor: ${"%.1f".format(phase1.limitUsagePercent)} %.",
+            TaxIssueSeverity.YELLOW,
+            renovationReceipts
+        )
+    }
 
     if (phase1.estimatedNetCount > 0) {
         val ids = phase1.monitorDetails.filter { it.included && it.estimatedNet }.map { it.displayId }.toSet()
-        issues += TaxIssue("Nettobeträge im 15-%-Monitor geschätzt", "Bei ${phase1.estimatedNetCount} Beleg(en) wurde netto geschätzt.", TaxIssueSeverity.YELLOW, all.filter { it.getEffectiveDisplayId() in ids })
+        issues += TaxIssue(
+            "Nettobeträge im 15-%-Monitor geschätzt",
+            "Bei ${phase1.estimatedNetCount} Beleg(en) wurde netto geschätzt.",
+            TaxIssueSeverity.YELLOW,
+            all.filter { it.getEffectiveDisplayId() in ids }
+        )
     }
 
-    val duplicates = receipts.filter { it.internalId.isNotBlank() }.groupBy { it.internalId }.filterValues { it.size > 1 }.values.flatten()
-    if (duplicates.isNotEmpty()) issues += TaxIssue("Doppelte Beleg-ID erkannt", "Doppelte stabile Beleg-IDs vorhanden.", TaxIssueSeverity.RED, duplicates)
+    val duplicates = receipts.filter { it.internalId.isNotBlank() }
+        .groupBy { it.internalId }
+        .filterValues { it.size > 1 }
+        .values
+        .flatten()
+    if (duplicates.isNotEmpty()) {
+        issues += TaxIssue(
+            "Doppelte Beleg-ID erkannt",
+            "Doppelte stabile Beleg-IDs vorhanden.",
+            TaxIssueSeverity.RED,
+            duplicates
+        )
+    }
 
     val totalIncome = incomeBuckets.sumOf { it.amount }
     val totalExpenses = expenseBuckets.sumOf { it.amount }
-    return AnnualTaxSummary(year, totalIncome, totalExpenses, totalIncome - totalExpenses, incomeBuckets, expenseBuckets, issues)
+    return AnnualTaxSummary(
+        year,
+        totalIncome,
+        totalExpenses,
+        totalIncome - totalExpenses,
+        incomeBuckets,
+        expenseBuckets,
+        issues
+    )
 }
 
 private fun buildAnnualClosingChecks(
@@ -278,18 +449,26 @@ private fun buildAnnualClosingChecks(
     return listOf(
         AnnualClosingCheck(
             "Mieteinnahmen abgeglichen",
-            if (rentMissing <= 0.01 && rentMonths == 0) "Jahres-Soll und erfasste Zahlungen ohne offene Unterdeckung." else "${NumberFormatter.format(rentMissing)} Unterdeckung; $rentMonths auffällige Monatszuordnung(en).",
+            if (rentMissing <= 0.01 && rentMonths == 0)
+                "Jahres-Soll und erfasste Zahlungen ohne offene Unterdeckung."
+            else "${NumberFormatter.format(rentMissing)} Unterdeckung; $rentMonths auffällige Monatszuordnung(en).",
             if (rentMissing <= 0.01 && rentMonths == 0) ClosingCheckState.OK else ClosingCheckState.REVIEW
         ),
         AnnualClosingCheck(
             "Belege freigegeben",
-            if ("Nicht freigegebene Belege" !in titles && "Belege mit Prüfstatus" !in titles) "Keine offenen Freigabe-/Prüfstatus gefunden." else "Es bestehen noch offene oder zu prüfende Belege.",
-            if ("Nicht freigegebene Belege" !in titles && "Belege mit Prüfstatus" !in titles) ClosingCheckState.OK else ClosingCheckState.REVIEW
+            if ("Nicht freigegebene Belege" !in titles && "Belege mit Prüfstatus" !in titles)
+                "Keine offenen Freigabe-/Prüfstatus gefunden."
+            else "Es bestehen noch offene oder zu prüfende Belege.",
+            if ("Nicht freigegebene Belege" !in titles && "Belege mit Prüfstatus" !in titles)
+                ClosingCheckState.OK else ClosingCheckState.REVIEW
         ),
         AnnualClosingCheck(
             "Schuldzinsen zugeordnet",
-            if ("Schuldzinsen ohne Darlehenszuordnung" !in titles) "Alle erkannten Schuldzinsen sind einem gültigen Darlehen zugeordnet." else "Mindestens ein Schuldzins-Beleg hat keine gültige Darlehenszuordnung.",
-            if ("Schuldzinsen ohne Darlehenszuordnung" !in titles) ClosingCheckState.OK else ClosingCheckState.BLOCKED
+            if ("Schuldzinsen ohne Darlehenszuordnung" !in titles)
+                "Alle erkannten Schuldzinsen sind einem gültigen Darlehen zugeordnet."
+            else "Mindestens ein Schuldzins-Beleg hat keine gültige Darlehenszuordnung.",
+            if ("Schuldzinsen ohne Darlehenszuordnung" !in titles)
+                ClosingCheckState.OK else ClosingCheckState.BLOCKED
         ),
         AnnualClosingCheck(
             "AfA-Grundlage plausibel",
@@ -319,15 +498,33 @@ private fun buildAnnualClosingChecks(
         ),
         AnnualClosingCheck(
             "Miet-/Belegzuordnungen vollständig",
-            if ("Miete ohne Wohneinheit" !in titles) "Keine erfasste Mietzahlung ohne Wohneinheit erkannt." else "Mindestens eine Miet-/Nebenkostenzahlung ist keiner Wohneinheit zugeordnet.",
+            if ("Miete ohne Wohneinheit" !in titles)
+                "Keine erfasste Mietzahlung ohne Wohneinheit erkannt."
+            else "Mindestens eine Miet-/Nebenkostenzahlung ist keiner Wohneinheit zugeordnet.",
             if ("Miete ohne Wohneinheit" !in titles) ClosingCheckState.OK else ClosingCheckState.REVIEW
         ),
         AnnualClosingCheck(
             "Keine Dubletten",
-            if ("Doppelte Beleg-ID erkannt" !in titles) "Keine doppelte stabile Beleg-ID im Steuerjahr erkannt." else "Doppelte stabile Beleg-IDs müssen vor dem Abschluss bereinigt werden.",
+            if ("Doppelte Beleg-ID erkannt" !in titles)
+                "Keine doppelte stabile Beleg-ID im Steuerjahr erkannt."
+            else "Doppelte stabile Beleg-IDs müssen vor dem Abschluss bereinigt werden.",
             if ("Doppelte Beleg-ID erkannt" !in titles) ClosingCheckState.OK else ClosingCheckState.BLOCKED
         )
     )
+}
+
+private fun buildAnlageVPreview(summary: AnnualTaxSummary): Pair<List<AnlageVPreviewValue>, List<AnlageVPreviewValue>> {
+    val income = summary.incomeBuckets.map {
+        AnlageVPreviewValue(
+            it.title,
+            it.amount,
+            if (it.title.startsWith("Mieten")) "Tatsächlich erfasste Zahlungen; Kautionen ausgeschlossen" else it.note
+        )
+    }
+    val expenses = summary.expenseBuckets.map {
+        AnlageVPreviewValue(it.title, it.amount, it.note)
+    }
+    return income to expenses
 }
 
 @Composable
@@ -340,18 +537,33 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val loans by database.loanDao().getAllLoansFlow().collectAsState(initial = emptyList())
     val metadata = propertyState ?: PropertyMetadata()
-    val availableYears = remember(receipts) { receipts.mapNotNull { it.yearOrNull() }.distinct().sortedDescending() }
-    var year by remember(availableYears) { mutableIntStateOf(availableYears.firstOrNull() ?: LocalDate.now().year) }
+    val availableYears = remember(receipts) {
+        receipts.mapNotNull { it.yearOrNull() }.distinct().sortedDescending()
+    }
+    var year by remember(availableYears) {
+        mutableIntStateOf(availableYears.firstOrNull() ?: LocalDate.now().year)
+    }
     var details by remember { mutableStateOf<TaxBucket?>(null) }
     var issueDetails by remember { mutableStateOf<TaxIssue?>(null) }
     var unitDetails by remember { mutableStateOf<UnitAnnualSummary?>(null) }
     var rentDetails by remember { mutableStateOf<AnnualRentRow?>(null) }
 
-    val summary = remember(context, year, receipts, metadata, loans) { buildAnnualTaxSummary(context, year, receipts, metadata, loans) }
-    val previous = remember(context, year, receipts, metadata, loans) { buildAnnualTaxSummary(context, year - 1, receipts, metadata, loans) }
-    val unitSummaries = remember(year, receipts, units) { buildUnitAnnualSummaries(year, receipts, units) }
-    val rentRows = remember(context, year, receipts, units) { buildAnnualRentRows(context, year, receipts, units) }
-    val closingChecks = remember(summary, rentRows, metadata, receipts) { buildAnnualClosingChecks(summary, rentRows, metadata, receipts) }
+    val summary = remember(context, year, receipts, metadata, loans) {
+        buildAnnualTaxSummary(context, year, receipts, metadata, loans)
+    }
+    val previous = remember(context, year, receipts, metadata, loans) {
+        buildAnnualTaxSummary(context, year - 1, receipts, metadata, loans)
+    }
+    val unitSummaries = remember(year, receipts, units) {
+        buildUnitAnnualSummaries(year, receipts, units)
+    }
+    val rentRows = remember(context, year, receipts, units) {
+        buildAnnualRentRows(context, year, receipts, units)
+    }
+    val closingChecks = remember(summary, rentRows, metadata, receipts) {
+        buildAnnualClosingChecks(summary, rentRows, metadata, receipts)
+    }
+    val preview = remember(summary) { buildAnlageVPreview(summary) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("anlage_v_annual_assistant"),
@@ -361,11 +573,19 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Anlage-V-Jahresassistent", fontSize = 21.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                Text("Jahresübersicht mit Einnahmen, Werbungskosten, Mietprüfung und Abschlusscheck", fontSize = 11.sp, color = SlateGray)
+                Text(
+                    "Jahresübersicht mit Einnahmen, Werbungskosten, Mietprüfung, Abschlusscheck und Anlage-V-Vorschau",
+                    fontSize = 11.sp,
+                    color = SlateGray
+                )
             }
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 OutlinedButton(onClick = { year-- }) { Text("‹") }
                 Text("Steuerjahr $year", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                 OutlinedButton(onClick = { year++ }) { Text("›") }
@@ -373,49 +593,103 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         }
         item { AnnualStatusCard(summary) }
         item { AnnualClosingCheckCard(closingChecks, year) }
+        item { AnlageVPreviewCard(summary, closingChecks, preview.first, preview.second) }
 
         if (summary.issues.isNotEmpty()) {
             item { SectionTitle("Offene Prüfpunkte") }
-            items(summary.issues, key = { "issue_${it.severity}_${it.title}" }) { AnnualTaxIssueCard(it) { issueDetails = it } }
+            items(summary.issues, key = { "issue_${it.severity}_${it.title}" }) {
+                AnnualTaxIssueCard(it) { issueDetails = it }
+            }
         }
 
         item { AnnualYearComparisonCard(summary, previous) }
         item { AnnualRentCheckCard(rentRows, year) }
-        items(rentRows.filter { abs(it.difference) > 0.01 || it.missingMonths.isNotEmpty() }, key = { "rent_${it.unit.name}" }) { row -> AnnualRentRowCard(row) { rentDetails = row } }
+        items(
+            rentRows.filter { abs(it.difference) > 0.01 || it.missingMonths.isNotEmpty() },
+            key = { "rent_${it.unit.name}" }
+        ) { row ->
+            AnnualRentRowCard(row) { rentDetails = row }
+        }
 
         if (unitSummaries.isNotEmpty()) {
             item { SectionTitle("Wohneinheiten – direkte Zuordnung") }
-            item { Text("Nur direkt zugeordnete Belege; AfA und allgemeine Objektkosten bleiben im Gesamtobjekt.", fontSize = 9.sp, color = SlateGray) }
-            items(unitSummaries, key = { "unit_${it.name}" }) { AnnualUnitCard(it) { unitDetails = it } }
+            item {
+                Text(
+                    "Nur direkt zugeordnete Belege; AfA und allgemeine Objektkosten bleiben im Gesamtobjekt.",
+                    fontSize = 9.sp,
+                    color = SlateGray
+                )
+            }
+            items(unitSummaries, key = { "unit_${it.name}" }) {
+                AnnualUnitCard(it) { unitDetails = it }
+            }
         }
 
         item { SectionTitle("Einnahmen – Anlage V") }
-        items(summary.incomeBuckets, key = { "income_${it.title}" }) { AnnualTaxBucketCard(it) { details = it } }
+        items(summary.incomeBuckets, key = { "income_${it.title}" }) {
+            AnnualTaxBucketCard(it) { details = it }
+        }
         item { SectionTitle("Werbungskosten – Anlage V") }
-        items(summary.expenseBuckets, key = { "expense_${it.title}" }) { AnnualTaxBucketCard(it) { details = it } }
+        items(summary.expenseBuckets, key = { "expense_${it.title}" }) {
+            AnnualTaxBucketCard(it) { details = it }
+        }
         item { AnnualResultCard(summary) }
     }
 
-    details?.let { AnnualTaxReceiptDialog(it.title, it.amount, it.note, it.warning, it.receipts) { details = null } }
-    issueDetails?.let { AnnualTaxReceiptDialog(it.title, null, it.message, it.severity == TaxIssueSeverity.RED, it.receipts) { issueDetails = null } }
-    unitDetails?.let { AnnualTaxReceiptDialog(it.label, it.result, "Einnahmen ${NumberFormatter.format(it.income)} · direkt zugeordnete Ausgaben ${NumberFormatter.format(it.expenses)}", it.result < 0, it.receipts) { unitDetails = null } }
+    details?.let {
+        AnnualTaxReceiptDialog(it.title, it.amount, it.note, it.warning, it.receipts) { details = null }
+    }
+    issueDetails?.let {
+        AnnualTaxReceiptDialog(it.title, null, it.message, it.severity == TaxIssueSeverity.RED, it.receipts) {
+            issueDetails = null
+        }
+    }
+    unitDetails?.let {
+        AnnualTaxReceiptDialog(
+            it.label,
+            it.result,
+            "Einnahmen ${NumberFormatter.format(it.income)} · direkt zugeordnete Ausgaben ${NumberFormatter.format(it.expenses)}",
+            it.result < 0,
+            it.receipts
+        ) { unitDetails = null }
+    }
     rentDetails?.let { row ->
         AnnualTaxReceiptDialog(
-            "Mietprüfung ${row.unit.label}", row.actual,
+            "Mietprüfung ${row.unit.label}",
+            row.actual,
             "Jahres-Soll ${NumberFormatter.format(row.expected)} · Differenz ${(if (row.difference >= 0) "+" else "") + NumberFormatter.format(row.difference)}" +
-                if (row.missingMonths.isNotEmpty()) " · Auffällige Monate: ${row.missingMonths.joinToString(", ") { it.toString().padStart(2, '0') }}" else "",
-            row.missing > 0.01, row.receipts
+                if (row.missingMonths.isNotEmpty())
+                    " · Auffällige Monate: ${row.missingMonths.joinToString(", ") { it.toString().padStart(2, '0') }}"
+                else "",
+            row.missing > 0.01,
+            row.receipts
         ) { rentDetails = null }
     }
 }
 
-@Composable private fun SectionTitle(text: String) { Text(text, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+}
 
 @Composable
 private fun AnnualStatusCard(summary: AnnualTaxSummary) {
-    val status = when { summary.redCount > 0 -> "KRITISCH · ${summary.redCount} rote Punkte"; summary.yellowCount > 0 -> "PRÜFEN · ${summary.yellowCount} gelbe Punkte"; else -> "BEREIT · keine offenen automatischen Prüfpunkte" }
-    val color = when { summary.redCount > 0 -> CrimsonRed; summary.yellowCount > 0 -> WarmOrange; else -> EmeraldGreen }
-    Card(Modifier.fillMaxWidth().testTag("annual_tax_review_status"), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, color.copy(alpha = .5f)), shape = RoundedCornerShape(14.dp)) {
+    val status = when {
+        summary.redCount > 0 -> "KRITISCH · ${summary.redCount} rote Punkte"
+        summary.yellowCount > 0 -> "PRÜFEN · ${summary.yellowCount} gelbe Punkte"
+        else -> "BEREIT · keine offenen automatischen Prüfpunkte"
+    }
+    val color = when {
+        summary.redCount > 0 -> CrimsonRed
+        summary.yellowCount > 0 -> WarmOrange
+        else -> EmeraldGreen
+    }
+    Card(
+        Modifier.fillMaxWidth().testTag("annual_tax_review_status"),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, color.copy(alpha = .5f)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Jahres-Prüfstatus", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text(status, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = color)
@@ -449,10 +723,12 @@ private fun AnnualClosingCheckCard(checks: List<AnnualClosingCheck>, year: Int) 
             Text("Jahresabschluss-Check $year", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text(statusText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
             HorizontalDivider(color = BorderColor)
-            checks.forEach { check -> AnnualClosingCheckRow(check) }
+            checks.forEach { AnnualClosingCheckRow(it) }
             Text(
-                if (ready) "Alle automatischen Abschlussprüfungen sind erfüllt. Die Werte bleiben eine Vorbereitungshilfe und sollten vor Abgabe fachlich geprüft werden."
-                else "Offene Punkte zuerst in den jeweiligen Bereichen korrigieren. Der Abschlussstatus aktualisiert sich automatisch.",
+                if (ready)
+                    "Alle automatischen Abschlussprüfungen sind erfüllt. Die Werte bleiben eine Vorbereitungshilfe und sollten vor Abgabe fachlich geprüft werden."
+                else
+                    "Offene Punkte zuerst in den jeweiligen Bereichen korrigieren. Der Abschlussstatus aktualisiert sich automatisch.",
                 fontSize = 9.sp,
                 color = SlateGray
             )
@@ -472,7 +748,11 @@ private fun AnnualClosingCheckRow(check: AnnualClosingCheck) {
         ClosingCheckState.REVIEW -> WarmOrange
         ClosingCheckState.BLOCKED -> CrimsonRed
     }
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
         Text(marker, fontSize = 12.sp, fontWeight = FontWeight.Black, color = color)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(check.title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -482,19 +762,123 @@ private fun AnnualClosingCheckRow(check: AnnualClosingCheck) {
 }
 
 @Composable
+private fun AnlageVPreviewCard(
+    summary: AnnualTaxSummary,
+    closingChecks: List<AnnualClosingCheck>,
+    incomeValues: List<AnlageVPreviewValue>,
+    expenseValues: List<AnlageVPreviewValue>
+) {
+    val blocked = closingChecks.count { it.state == ClosingCheckState.BLOCKED }
+    val review = closingChecks.count { it.state == ClosingCheckState.REVIEW }
+    val statusColor = when {
+        blocked > 0 -> CrimsonRed
+        review > 0 -> WarmOrange
+        else -> EmeraldGreen
+    }
+    val statusText = when {
+        blocked > 0 -> "Vorschau mit kritischen offenen Punkten"
+        review > 0 -> "Vorschau – Werte vor Übernahme prüfen"
+        else -> "Vorschau – automatische Prüfungen ohne offenen Punkt"
+    }
+
+    Card(
+        Modifier.fillMaxWidth().testTag("anlage_v_preview"),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, statusColor.copy(alpha = .5f)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Anlage-V-Vorschau ${summary.year}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(statusText, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = statusColor)
+            Text(
+                "Vorbereitete Übernahmewerte aus den aktuellen App-Daten. Keine festen ELSTER-Zeilennummern, da Formularfelder je Steuerjahr abweichen können.",
+                fontSize = 9.sp,
+                color = SlateGray
+            )
+
+            HorizontalDivider(color = BorderColor)
+            Text("Einnahmen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            if (incomeValues.isEmpty()) {
+                Text("Keine auswertbaren Einnahmen erfasst.", fontSize = 9.sp, color = SlateGray)
+            } else {
+                incomeValues.forEach { AnlageVPreviewRow(it, EmeraldGreen) }
+            }
+            AnnualTaxAmountRow("Einnahmen gesamt", summary.totalIncome, EmeraldGreen)
+
+            HorizontalDivider(color = BorderColor)
+            Text("Werbungskosten", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            if (expenseValues.isEmpty()) {
+                Text("Keine auswertbaren Werbungskosten erfasst.", fontSize = 9.sp, color = SlateGray)
+            } else {
+                expenseValues.forEach { AnlageVPreviewRow(it, DarkNavy) }
+            }
+            AnnualTaxAmountRow("Werbungskosten gesamt", summary.totalExpenses, CrimsonRed)
+
+            HorizontalDivider(color = BorderColor)
+            AnnualTaxAmountRow(
+                if (summary.result >= 0) "Vorläufiger Überschuss" else "Vorläufiger Verlust",
+                abs(summary.result),
+                if (summary.result >= 0) EmeraldGreen else CrimsonRed
+            )
+            if (blocked > 0 || review > 0) {
+                Text(
+                    "$blocked kritische und $review zu prüfende Abschlussposition(en) sind noch offen. Diese Vorschau nicht ungeprüft in ELSTER übernehmen.",
+                    fontSize = 9.sp,
+                    color = statusColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnlageVPreviewRow(value: AnlageVPreviewValue, amountColor: androidx.compose.ui.graphics.Color) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(value.label, fontSize = 10.sp, color = DarkNavy)
+            if (value.note.isNotBlank()) Text(value.note, fontSize = 8.sp, color = SlateGray)
+        }
+        Text(
+            NumberFormatter.format(value.amount),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = amountColor
+        )
+    }
+}
+
+@Composable
 private fun AnnualRentCheckCard(rows: List<AnnualRentRow>, year: Int) {
     val expected = rows.sumOf { it.expected }
     val actual = rows.sumOf { it.actual }
     val missing = rows.sumOf { it.missing }
     val affected = rows.count { it.missing > 0.01 || it.missingMonths.isNotEmpty() }
-    Card(Modifier.fillMaxWidth().testTag("annual_rent_check"), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, if (missing > .01) WarmOrange else BorderColor), shape = RoundedCornerShape(14.dp)) {
+    Card(
+        Modifier.fillMaxWidth().testTag("annual_rent_check"),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, if (missing > .01) WarmOrange else BorderColor),
+        shape = RoundedCornerShape(14.dp)
+    ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Jahres-Mietprüfung $year", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             AnnualTaxAmountRow("Soll laut Mietverlauf", expected, DarkNavy)
             AnnualTaxAmountRow("Ist laut Belegen", actual, EmeraldGreen)
             AnnualTaxAmountRow("Offener Unterschied", missing, if (missing > .01) CrimsonRed else EmeraldGreen)
-            Text(if (affected > 0) "$affected Wohneinheit(en) mit Abweichung – Details unten." else "Alle erwarteten Jahreszahlungen sind anhand der erfassten Belege abgedeckt.", fontSize = 9.sp, color = if (affected > 0) WarmOrange else EmeraldGreen)
-            Text("Soll berücksichtigt Mieterwechsel zeitanteilig. Die Anlage-V-Einnahmen bleiben die tatsächlich erfassten Zahlungen.", fontSize = 9.sp, color = SlateGray)
+            Text(
+                if (affected > 0) "$affected Wohneinheit(en) mit Abweichung – Details unten."
+                else "Alle erwarteten Jahreszahlungen sind anhand der erfassten Belege abgedeckt.",
+                fontSize = 9.sp,
+                color = if (affected > 0) WarmOrange else EmeraldGreen
+            )
+            Text(
+                "Soll berücksichtigt Mieterwechsel zeitanteilig. Die Anlage-V-Einnahmen bleiben die tatsächlich erfassten Zahlungen.",
+                fontSize = 9.sp,
+                color = SlateGray
+            )
         }
     }
 }
@@ -502,23 +886,53 @@ private fun AnnualRentCheckCard(rows: List<AnnualRentRow>, year: Int) {
 @Composable
 private fun AnnualRentRowCard(row: AnnualRentRow, onClick: () -> Unit) {
     val warning = row.missing > .01 || row.missingMonths.isNotEmpty()
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, if (warning) WarmOrange else BorderColor), shape = RoundedCornerShape(12.dp)) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, if (warning) WarmOrange else BorderColor),
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(row.unit.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text((if (row.difference >= 0) "+" else "") + NumberFormatter.format(row.difference), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (row.difference >= 0) EmeraldGreen else CrimsonRed)
+                Text(
+                    (if (row.difference >= 0) "+" else "") + NumberFormatter.format(row.difference),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (row.difference >= 0) EmeraldGreen else CrimsonRed
+                )
             }
-            Text("Soll ${NumberFormatter.format(row.expected)} · Ist ${NumberFormatter.format(row.actual)}", fontSize = 9.sp, color = SlateGray)
-            if (row.missingMonths.isNotEmpty()) Text("Monate mit Unterdeckung: ${row.missingMonths.joinToString(", ") { it.toString().padStart(2, '0') }}", fontSize = 9.sp, color = CrimsonRed)
+            Text(
+                "Soll ${NumberFormatter.format(row.expected)} · Ist ${NumberFormatter.format(row.actual)}",
+                fontSize = 9.sp,
+                color = SlateGray
+            )
+            if (row.missingMonths.isNotEmpty()) {
+                Text(
+                    "Monate mit Unterdeckung: ${row.missingMonths.joinToString(", ") { it.toString().padStart(2, '0') }}",
+                    fontSize = 9.sp,
+                    color = CrimsonRed
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun AnnualYearComparisonCard(current: AnnualTaxSummary, previous: AnnualTaxSummary) {
-    Card(Modifier.fillMaxWidth().testTag("annual_tax_year_comparison"), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, BorderColor), shape = RoundedCornerShape(14.dp)) {
+    Card(
+        Modifier.fillMaxWidth().testTag("annual_tax_year_comparison"),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, BorderColor),
+        shape = RoundedCornerShape(14.dp)
+    ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Text("Vorjahresvergleich ${previous.year} → ${current.year}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(
+                "Vorjahresvergleich ${previous.year} → ${current.year}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = DarkNavy
+            )
             AnnualComparisonRow("Einnahmen", previous.totalIncome, current.totalIncome)
             AnnualComparisonRow("Werbungskosten", previous.totalExpenses, current.totalExpenses)
             AnnualComparisonRow("Ergebnis", previous.result, current.result)
@@ -526,23 +940,47 @@ private fun AnnualYearComparisonCard(current: AnnualTaxSummary, previous: Annual
     }
 }
 
-@Composable private fun AnnualComparisonRow(label: String, previous: Double, current: Double) {
+@Composable
+private fun AnnualComparisonRow(label: String, previous: Double, current: Double) {
     val delta = current - previous
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("$label: ${NumberFormatter.format(previous)} → ${NumberFormatter.format(current)}", fontSize = 10.sp, color = SlateGray)
-        Text((if (delta >= 0) "+" else "") + NumberFormatter.format(delta), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (delta >= 0) EmeraldGreen else CrimsonRed)
+        Text(
+            "$label: ${NumberFormatter.format(previous)} → ${NumberFormatter.format(current)}",
+            fontSize = 10.sp,
+            color = SlateGray
+        )
+        Text(
+            (if (delta >= 0) "+" else "") + NumberFormatter.format(delta),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (delta >= 0) EmeraldGreen else CrimsonRed
+        )
     }
 }
 
 @Composable
 private fun AnnualUnitCard(unit: UnitAnnualSummary, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, BorderColor), shape = RoundedCornerShape(12.dp)) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, BorderColor),
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(unit.label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text((if (unit.result >= 0) "+" else "") + NumberFormatter.format(unit.result), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (unit.result >= 0) EmeraldGreen else CrimsonRed)
+                Text(
+                    (if (unit.result >= 0) "+" else "") + NumberFormatter.format(unit.result),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (unit.result >= 0) EmeraldGreen else CrimsonRed
+                )
             }
-            Text("Einnahmen ${NumberFormatter.format(unit.income)} · Ausgaben ${NumberFormatter.format(unit.expenses)}", fontSize = 9.sp, color = SlateGray)
+            Text(
+                "Einnahmen ${NumberFormatter.format(unit.income)} · Ausgaben ${NumberFormatter.format(unit.expenses)}",
+                fontSize = 9.sp,
+                color = SlateGray
+            )
         }
     }
 }
@@ -550,9 +988,19 @@ private fun AnnualUnitCard(unit: UnitAnnualSummary, onClick: () -> Unit) {
 @Composable
 private fun AnnualTaxIssueCard(issue: TaxIssue, onClick: () -> Unit) {
     val color = if (issue.severity == TaxIssueSeverity.RED) CrimsonRed else WarmOrange
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, color.copy(alpha = .55f)), shape = RoundedCornerShape(12.dp)) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, color.copy(alpha = .55f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
         Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text((if (issue.severity == TaxIssueSeverity.RED) "ROT · " else "GELB · ") + issue.title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color)
+            Text(
+                (if (issue.severity == TaxIssueSeverity.RED) "ROT · " else "GELB · ") + issue.title,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
             Text(issue.message, fontSize = 9.sp, color = SlateGray)
         }
     }
@@ -560,51 +1008,121 @@ private fun AnnualTaxIssueCard(issue: TaxIssue, onClick: () -> Unit) {
 
 @Composable
 private fun AnnualTaxBucketCard(bucket: TaxBucket, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, if (bucket.warning) CrimsonRed.copy(alpha = .5f) else BorderColor), shape = RoundedCornerShape(12.dp)) {
-        Row(Modifier.fillMaxWidth().padding(11.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    Card(
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, if (bucket.warning) CrimsonRed.copy(alpha = .5f) else BorderColor),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(11.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f)) {
                 Text(bucket.title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                if (bucket.note.isNotBlank()) Text(bucket.note, fontSize = 9.sp, color = if (bucket.warning) CrimsonRed else SlateGray)
+                if (bucket.note.isNotBlank()) {
+                    Text(
+                        bucket.note,
+                        fontSize = 9.sp,
+                        color = if (bucket.warning) CrimsonRed else SlateGray
+                    )
+                }
             }
-            Text(NumberFormatter.format(bucket.amount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (bucket.warning) CrimsonRed else DarkNavy)
+            Text(
+                NumberFormatter.format(bucket.amount),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (bucket.warning) CrimsonRed else DarkNavy
+            )
         }
     }
 }
 
 @Composable
 private fun AnnualResultCard(summary: AnnualTaxSummary) {
-    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White), border = BorderStroke(1.dp, BorderColor), shape = RoundedCornerShape(14.dp)) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, BorderColor),
+        shape = RoundedCornerShape(14.dp)
+    ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Text("Vorläufiges Jahresergebnis", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             AnnualTaxAmountRow("Einnahmen gesamt", summary.totalIncome, EmeraldGreen)
             AnnualTaxAmountRow("Werbungskosten gesamt", summary.totalExpenses, CrimsonRed)
             HorizontalDivider(color = BorderColor)
-            AnnualTaxAmountRow(if (summary.result >= 0) "Überschuss" else "Verlust", abs(summary.result), if (summary.result >= 0) EmeraldGreen else CrimsonRed)
+            AnnualTaxAmountRow(
+                if (summary.result >= 0) "Überschuss" else "Verlust",
+                abs(summary.result),
+                if (summary.result >= 0) EmeraldGreen else CrimsonRed
+            )
             Text("Vorbereitungshilfe, keine Steuerberatung.", fontSize = 9.sp, color = SlateGray)
         }
     }
 }
 
 @Composable
-private fun AnnualTaxReceiptDialog(title: String, amount: Double?, note: String, warning: Boolean, receipts: List<Receipt>, onDismiss: () -> Unit) {
+private fun AnnualTaxReceiptDialog(
+    title: String,
+    amount: Double?,
+    note: String,
+    warning: Boolean,
+    receipts: List<Receipt>,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title, fontWeight = FontWeight.Bold) },
         text = {
-            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                if (amount != null) item { Text("Summe: ${NumberFormatter.format(amount)}", fontWeight = FontWeight.Bold, color = DarkNavy) }
-                if (note.isNotBlank()) item { Text(note, fontSize = 10.sp, color = if (warning) CrimsonRed else SlateGray) }
-                if (receipts.isEmpty()) item { Text("Kein einzelner Beleg hinterlegt – Wert stammt aus Stammdaten oder Berechnung.", fontSize = 10.sp, color = SlateGray) }
-                else items(receipts, key = { "annual_detail_${it.id}_${it.internalId}" }) { r ->
-                    Card(colors = CardDefaults.cardColors(containerColor = SoftBackground), border = BorderStroke(1.dp, BorderColor)) {
-                        Column(Modifier.padding(9.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(r.getEffectiveDisplayId(), fontSize = 9.sp, color = SlateGray)
-                                Text(NumberFormatter.format(r.bruttobetrag), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            LazyColumn(
+                Modifier.fillMaxWidth().heightIn(max = 480.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                if (amount != null) {
+                    item {
+                        Text(
+                            "Summe: ${NumberFormatter.format(amount)}",
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy
+                        )
+                    }
+                }
+                if (note.isNotBlank()) {
+                    item {
+                        Text(note, fontSize = 10.sp, color = if (warning) CrimsonRed else SlateGray)
+                    }
+                }
+                if (receipts.isEmpty()) {
+                    item {
+                        Text(
+                            "Kein einzelner Beleg hinterlegt – Wert stammt aus Stammdaten oder Berechnung.",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    }
+                } else {
+                    items(receipts, key = { "annual_detail_${it.id}_${it.internalId}" }) { r ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = SoftBackground),
+                            border = BorderStroke(1.dp, BorderColor)
+                        ) {
+                            Column(Modifier.padding(9.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(r.getEffectiveDisplayId(), fontSize = 9.sp, color = SlateGray)
+                                    Text(
+                                        NumberFormatter.format(r.bruttobetrag),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DarkNavy
+                                    )
+                                }
+                                Text(r.aussteller, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                Text("${r.datum} · ${r.unterkategorie}", fontSize = 9.sp, color = SlateGray)
+                                if (r.wohneinheit.isNotBlank()) {
+                                    Text(r.wohneinheit, fontSize = 9.sp, color = SlateGray)
+                                }
                             }
-                            Text(r.aussteller, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                            Text("${r.datum} · ${r.unterkategorie}", fontSize = 9.sp, color = SlateGray)
-                            if (r.wohneinheit.isNotBlank()) Text(r.wohneinheit, fontSize = 9.sp, color = SlateGray)
                         }
                     }
                 }
@@ -615,9 +1133,18 @@ private fun AnnualTaxReceiptDialog(title: String, amount: Double?, note: String,
 }
 
 @Composable
-private fun AnnualTaxAmountRow(label: String, amount: Double, color: androidx.compose.ui.graphics.Color) {
+private fun AnnualTaxAmountRow(
+    label: String,
+    amount: Double,
+    color: androidx.compose.ui.graphics.Color
+) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, fontSize = 11.sp, color = SlateGray)
-        Text(NumberFormatter.format(amount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = color)
+        Text(
+            NumberFormatter.format(amount),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
     }
 }
