@@ -105,6 +105,8 @@ private data class AnnualClosingCheck(
 private data class AnlageVPreviewValue(
     val label: String,
     val amount: Double,
+    val source: String,
+    val checkStatus: String,
     val note: String = ""
 )
 
@@ -513,16 +515,59 @@ private fun buildAnnualClosingChecks(
     )
 }
 
-private fun buildAnlageVPreview(summary: AnnualTaxSummary): Pair<List<AnlageVPreviewValue>, List<AnlageVPreviewValue>> {
-    val income = summary.incomeBuckets.map {
+private fun buildAnlageVPreview(
+    summary: AnnualTaxSummary,
+    closingChecks: List<AnnualClosingCheck>
+): Pair<List<AnlageVPreviewValue>, List<AnlageVPreviewValue>> {
+    fun stateFor(vararg titles: String): String {
+        val states = closingChecks.filter { it.title in titles }.map { it.state }
+        return when {
+            states.any { it == ClosingCheckState.BLOCKED } -> "KRITISCH"
+            states.any { it == ClosingCheckState.REVIEW } -> "PRÜFEN"
+            else -> "OK"
+        }
+    }
+
+    fun sourceFor(bucket: TaxBucket): String = when (bucket.title) {
+        "Mieten & umlagefähige Nebenkosten", "Sonstige Einnahmen aus Vermietung" ->
+            "${bucket.receipts.size} erfasste Einnahmebeleg(e); Kautionen ausgeschlossen"
+        "Schuldzinsen" ->
+            "${bucket.receipts.size} zugeordnete Zinsbeleg(e) + Vermietungsanteil des Darlehens"
+        "AfA Gebäude" ->
+            "Objekt-Stammdaten + Kaufpreisaufteilung + AfA-Berechnung"
+        "Erhaltungsaufwand / Reparaturen" ->
+            "${bucket.receipts.size} Sanierungs-/Reparaturbeleg(e) + 15-%-Monitor"
+        else -> "${bucket.receipts.size} zugeordnete Beleg(e)"
+    }
+
+    fun statusFor(bucket: TaxBucket): String = when (bucket.title) {
+        "Mieten & umlagefähige Nebenkosten", "Sonstige Einnahmen aus Vermietung" ->
+            stateFor("Mieteinnahmen abgeglichen", "Miet-/Belegzuordnungen vollständig", "Belege freigegeben")
+        "Schuldzinsen" -> stateFor("Schuldzinsen zugeordnet", "Belege freigegeben")
+        "AfA Gebäude" -> stateFor("AfA-Grundlage plausibel")
+        "Erhaltungsaufwand / Reparaturen" -> stateFor("15-%-Sanierungsmonitor", "Belege freigegeben")
+        else -> stateFor("Belege freigegeben", "Keine Dubletten")
+    }
+
+    val income = summary.incomeBuckets.map { bucket ->
         AnlageVPreviewValue(
-            it.title,
-            it.amount,
-            if (it.title.startsWith("Mieten")) "Tatsächlich erfasste Zahlungen; Kautionen ausgeschlossen" else it.note
+            label = bucket.title,
+            amount = bucket.amount,
+            source = sourceFor(bucket),
+            checkStatus = statusFor(bucket),
+            note = if (bucket.title.startsWith("Mieten"))
+                "Tatsächlich erfasste Zahlungen; Kautionen ausgeschlossen"
+            else bucket.note
         )
     }
-    val expenses = summary.expenseBuckets.map {
-        AnlageVPreviewValue(it.title, it.amount, it.note)
+    val expenses = summary.expenseBuckets.map { bucket ->
+        AnlageVPreviewValue(
+            label = bucket.title,
+            amount = bucket.amount,
+            source = sourceFor(bucket),
+            checkStatus = statusFor(bucket),
+            note = bucket.note
+        )
     }
     return income to expenses
 }
@@ -563,7 +608,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val closingChecks = remember(summary, rentRows, metadata, receipts) {
         buildAnnualClosingChecks(summary, rentRows, metadata, receipts)
     }
-    val preview = remember(summary) { buildAnlageVPreview(summary) }
+    val preview = remember(summary, closingChecks) { buildAnlageVPreview(summary, closingChecks) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("anlage_v_annual_assistant"),
@@ -840,14 +885,23 @@ private fun AnlageVPreviewRow(value: AnlageVPreviewValue, amountColor: androidx.
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(value.label, fontSize = 10.sp, color = DarkNavy)
+            Text("Quelle: ${value.source}", fontSize = 8.sp, color = SlateGray)
             if (value.note.isNotBlank()) Text(value.note, fontSize = 8.sp, color = SlateGray)
         }
-        Text(
-            NumberFormatter.format(value.amount),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = amountColor
-        )
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                NumberFormatter.format(value.amount),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = amountColor
+            )
+            val checkColor = when (value.checkStatus) {
+                "KRITISCH" -> CrimsonRed
+                "PRÜFEN" -> WarmOrange
+                else -> EmeraldGreen
+            }
+            Text(value.checkStatus, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = checkColor)
+        }
     }
 }
 
