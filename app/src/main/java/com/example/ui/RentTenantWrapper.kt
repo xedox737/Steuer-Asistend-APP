@@ -98,6 +98,10 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel) {
             sonstigeCurrent = other,
             onDismiss = { selectedUnit = null },
             onCurrentTenantChanged = { newPeriod ->
+                rentPrefs.edit()
+                    .putFloat("nk_${unit.name}", newPeriod.nebenkosten.toFloat())
+                    .putFloat("other_${unit.name}", newPeriod.sonstige.toFloat())
+                    .apply()
                 viewModel.updateWohneinheit(
                     unit.copy(
                         status = "Vermietet",
@@ -106,10 +110,6 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel) {
                         mietvertragsstart = newPeriod.startDate
                     )
                 )
-                rentPrefs.edit()
-                    .putFloat("nk_${unit.name}", newPeriod.nebenkosten.toFloat())
-                    .putFloat("other_${unit.name}", newPeriod.sonstige.toFloat())
-                    .apply()
             },
             onHistoryChanged = { historyVersion++ }
         )

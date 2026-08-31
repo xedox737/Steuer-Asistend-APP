@@ -747,13 +747,18 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val initResult = drivePersistenceRepository.initializeDriveStorage(token)
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     val report = drivePersistenceRepository.executeFullDriveRestore(token, initResult.config, mode)
+                    val supplementalRestore = com.example.data.SupplementalDriveBackup.restore(
+                        getApplication(), database, token, initResult.config.systemFolderId
+                    )
                     _restoreReport.value = report
                     _isRestoring.value = false
                     _isRestoreRequired.value = false
                     _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
                     loadLearnedRules()
-                    _driveSyncStatus.value = if (report.isSuccess) {
-                        "Wiederherstellung erfolgreich! ${report.receiptsRestored} Belege geladen."
+                    _driveSyncStatus.value = if (report.isSuccess && supplementalRestore.success) {
+                        "Wiederherstellung erfolgreich! ${report.receiptsRestored} Belege sowie Miet- und Darlehensdaten geladen."
+                    } else if (report.isSuccess) {
+                        "Belege wiederhergestellt, aber Zusatzdaten konnten nicht vollständig geladen werden: ${supplementalRestore.message}"
                     } else {
                         "Wiederherstellung mit ${report.errorCount} Fehlern abgeschlossen."
                     }
@@ -1125,6 +1130,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
                 // 4. Update JSON files in _BelegApp-Daten to ensure latest changes are saved
                 val backupSuccess = drivePersistenceRepository.saveStammdatenToDrive(token, config)
+                val supplementalBackup = com.example.data.SupplementalDriveBackup.backup(
+                    getApplication(), database, token, config.systemFolderId
+                )
 
                 // 5. Upload each receipt
                 var successCount = 0
@@ -1134,8 +1142,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 _isDriveSyncing.value = false
-                if (csvSuccess && unitsSuccess && backupSuccess) {
-                    _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten & $successCount Belege synchronisiert."
+                if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success) {
+                    _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten, Miet-/Darlehensdaten & $successCount Belege synchronisiert."
                     _driveSyncError.value = null
                     sharedPrefs.edit().remove("drive_sync_error").apply()
                 } else if (csvSuccess) {

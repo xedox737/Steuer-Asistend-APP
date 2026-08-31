@@ -210,11 +210,11 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel) {
             sonstigeInitial = currentPlan.sonstige,
             onDismiss = { editingUnit = null },
             onSave = { kalt, nk, other, start ->
-                viewModel.updateWohneinheit(unit.copy(kaltmiete = kalt, mietvertragsstart = start))
                 prefs.edit()
                     .putFloat("nk_${unit.name}", nk.toFloat())
                     .putFloat("other_${unit.name}", other.toFloat())
                     .apply()
+                viewModel.updateWohneinheit(unit.copy(kaltmiete = kalt, mietvertragsstart = start))
                 prefsVersion++
                 editingUnit = null
             }

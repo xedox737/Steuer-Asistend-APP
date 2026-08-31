@@ -74,7 +74,7 @@ private fun actualDeductibleInterest(receipts: List<Receipt>, loansById: Map<Int
     }
 
 @Composable
-fun LoanManagementSection() {
+fun LoanManagementSection(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val database = remember(context) { AppDatabase.getDatabase(context.applicationContext, scope) }
@@ -110,6 +110,7 @@ fun LoanManagementSection() {
         if (loanId == null) editor.remove("receipt_$receiptId") else editor.putInt("receipt_$receiptId", loanId)
         editor.apply()
         assignmentVersion++
+        viewModel.syncAllToDrive()
     }
 
     Card(
@@ -321,7 +322,7 @@ fun LoanManagementSection() {
             initial = Loan(),
             title = "Darlehen hinzufügen",
             onDismiss = { showNewLoan = false },
-            onSave = { loan -> scope.launch { database.loanDao().upsertLoan(loan) }; showNewLoan = false }
+            onSave = { loan -> scope.launch { database.loanDao().upsertLoan(loan); viewModel.syncAllToDrive() }; showNewLoan = false }
         )
     }
 
@@ -330,7 +331,7 @@ fun LoanManagementSection() {
             initial = loan,
             title = "Darlehen bearbeiten",
             onDismiss = { editingLoan = null },
-            onSave = { updated -> scope.launch { database.loanDao().upsertLoan(updated) }; editingLoan = null }
+            onSave = { updated -> scope.launch { database.loanDao().upsertLoan(updated); viewModel.syncAllToDrive() }; editingLoan = null }
         )
     }
 
@@ -343,7 +344,7 @@ fun LoanManagementSection() {
                 Button(
                     onClick = {
                         assignments.filterValues { it == loan.id }.keys.forEach { assignReceipt(it, null) }
-                        scope.launch { database.loanDao().deleteLoan(loan.id) }
+                        scope.launch { database.loanDao().deleteLoan(loan.id); viewModel.syncAllToDrive() }
                         pendingDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)
