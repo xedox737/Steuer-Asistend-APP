@@ -453,24 +453,7 @@ fun RentOverviewScreen(viewModel: ReceiptViewModel) {
 
 @Composable
 fun TaxCalculatorScreen(viewModel: ReceiptViewModel) {
-    val report by viewModel.taxReport.collectAsState()
-    
-    Column(modifier = Modifier.padding(16.dp)) {
-        Text("Steuer-Schätzung (Anlage V)", style = MaterialTheme.typography.titleLarge, color = DarkNavy)
-        Spacer(modifier = Modifier.height(16.dp))
-        
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Einnahmen: ${"%.2f".format(report.income)} EUR")
-                Text("Ausgaben: ${"%.2f".format(report.expenses)} EUR")
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                Text("Zu versteuernder Gewinn: ${"%.2f".format(report.profit)} EUR")
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("Geschätzte Steuerlast (30%): ${"%.2f".format(report.estimatedTax)} EUR", fontWeight = FontWeight.Bold)
-            }
-        }
-        Text("Hinweis: Dies ist eine grobe Schätzung und keine steuerliche Beratung.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-    }
+    AnnualTaxAssistantScreen(viewModel)
 }
 
 // --- SCREEN 1: DASHBOARD// --- SCREEN 1: DASHBOARD ---
