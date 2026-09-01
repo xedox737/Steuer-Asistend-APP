@@ -110,6 +110,55 @@ private data class AnlageVPreviewValue(
     val note: String = ""
 )
 
+private const val ANNUAL_APPROVAL_PREFS = "annual_tax_approval_prefs"
+
+private fun annualApprovalFingerprint(
+    summary: AnnualTaxSummary,
+    closingChecks: List<AnnualClosingCheck>,
+    rentRows: List<AnnualRentRow>,
+    receipts: List<Receipt>,
+    metadata: PropertyMetadata,
+    loans: List<Loan>
+): String {
+    val canonical = buildString {
+        append("year=").append(summary.year).append('\n')
+        append("income=").append(summary.totalIncome).append('\n')
+        append("expenses=").append(summary.totalExpenses).append('\n')
+        append("result=").append(summary.result).append('\n')
+        summary.incomeBuckets.sortedBy { it.title }.forEach {
+            append("I|").append(it.title).append('|').append(it.amount).append('\n')
+        }
+        summary.expenseBuckets.sortedBy { it.title }.forEach {
+            append("E|").append(it.title).append('|').append(it.amount).append('|').append(it.warning).append('\n')
+        }
+        summary.issues.sortedWith(compareBy<TaxIssue> { it.title }.thenBy { it.severity.name }).forEach {
+            append("ISSUE|").append(it.severity.name).append('|').append(it.title).append('|').append(it.receipts.size).append('\n')
+        }
+        closingChecks.sortedBy { it.title }.forEach {
+            append("CHECK|").append(it.title).append('|').append(it.state.name).append('|').append(it.detail).append('\n')
+        }
+        rentRows.sortedBy { it.unit.name }.forEach {
+            append("RENT|").append(it.unit.name).append('|').append(it.expected).append('|').append(it.actual)
+                .append('|').append(it.missingMonths.joinToString(",")).append('\n')
+        }
+        receipts.filter { it.yearOrNull() == summary.year }
+            .sortedWith(compareBy<Receipt> { it.internalId }.thenBy { it.id })
+            .forEach { r ->
+                append("R|").append(r.internalId).append('|').append(r.id).append('|').append(r.datum)
+                    .append('|').append(r.bruttobetrag).append('|').append(r.hauptkategorie)
+                    .append('|').append(r.unterkategorie).append('|').append(r.beschreibung)
+                    .append('|').append(r.wohneinheit).append('|').append(r.freigabestatus)
+                    .append('|').append(r.exportStatus).append('|').append(r.pruefstatus)
+                    .append('|').append(r.syncStatus).append('\n')
+            }
+        append("META|").append(metadata.toString()).append('\n')
+        loans.sortedBy { it.id }.forEach { append("LOAN|").append(it.toString()).append('\n') }
+    }
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(canonical.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+}
+
 private fun Receipt.yearOrNull(): Int? = datum.take(4).toIntOrNull()
 
 private fun receiptText(r: Receipt): String =
@@ -592,6 +641,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     var issueDetails by remember { mutableStateOf<TaxIssue?>(null) }
     var unitDetails by remember { mutableStateOf<UnitAnnualSummary?>(null) }
     var rentDetails by remember { mutableStateOf<AnnualRentRow?>(null) }
+    var approvalVersion by remember(year) { mutableIntStateOf(0) }
 
     val summary = remember(context, year, receipts, metadata, loans) {
         buildAnnualTaxSummary(context, year, receipts, metadata, loans)
@@ -609,6 +659,19 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         buildAnnualClosingChecks(summary, rentRows, metadata, receipts)
     }
     val preview = remember(summary, closingChecks) { buildAnlageVPreview(summary, closingChecks) }
+    val approvalFingerprint = remember(summary, closingChecks, rentRows, receipts, metadata, loans) {
+        annualApprovalFingerprint(summary, closingChecks, rentRows, receipts, metadata, loans)
+    }
+    val approvalPrefs = remember(context) { context.getSharedPreferences(ANNUAL_APPROVAL_PREFS, Context.MODE_PRIVATE) }
+    val storedApprovalFingerprint = remember(year, approvalFingerprint, approvalVersion) {
+        approvalPrefs.getString("fingerprint_$year", "").orEmpty()
+    }
+    val approvedAt = remember(year, approvalFingerprint, approvalVersion) {
+        approvalPrefs.getString("approved_at_$year", "").orEmpty()
+    }
+    val approvalIsCurrent = storedApprovalFingerprint.isNotBlank() && storedApprovalFingerprint == approvalFingerprint
+    val approvalWasSet = storedApprovalFingerprint.isNotBlank()
+    val approvalBlocked = closingChecks.any { it.state == ClosingCheckState.BLOCKED }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("anlage_v_annual_assistant"),
@@ -638,6 +701,30 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         }
         item { AnnualStatusCard(summary) }
         item { AnnualClosingCheckCard(closingChecks, year) }
+        item {
+            AnnualManualApprovalCard(
+                year = year,
+                isCurrent = approvalIsCurrent,
+                wasSet = approvalWasSet,
+                approvedAt = approvedAt,
+                blocked = approvalBlocked,
+                reviewCount = closingChecks.count { it.state == ClosingCheckState.REVIEW },
+                onApprove = {
+                    approvalPrefs.edit()
+                        .putString("fingerprint_$year", approvalFingerprint)
+                        .putString("approved_at_$year", java.time.OffsetDateTime.now().toString())
+                        .apply()
+                    approvalVersion++
+                },
+                onRevoke = {
+                    approvalPrefs.edit()
+                        .remove("fingerprint_$year")
+                        .remove("approved_at_$year")
+                        .apply()
+                    approvalVersion++
+                }
+            )
+        }
         item { AnlageVPreviewCard(summary, closingChecks, preview.first, preview.second) }
 
         if (summary.issues.isNotEmpty()) {
@@ -802,6 +889,64 @@ private fun AnnualClosingCheckRow(check: AnnualClosingCheck) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(check.title, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text(check.detail, fontSize = 9.sp, color = SlateGray)
+        }
+    }
+}
+
+@Composable
+private fun AnnualManualApprovalCard(
+    year: Int,
+    isCurrent: Boolean,
+    wasSet: Boolean,
+    approvedAt: String,
+    blocked: Boolean,
+    reviewCount: Int,
+    onApprove: () -> Unit,
+    onRevoke: () -> Unit
+) {
+    val color = when {
+        blocked -> CrimsonRed
+        isCurrent -> EmeraldGreen
+        wasSet -> WarmOrange
+        else -> AccentBlue
+    }
+    val status = when {
+        blocked -> "NICHT FREIGEBBAR · kritische Punkte offen"
+        isCurrent -> "MANUELL GEPRÜFT · Freigabe aktuell"
+        wasSet -> "FREIGABE VERALTET · relevante Jahresdaten wurden geändert"
+        else -> "NOCH NICHT MANUELL FREIGEGEBEN"
+    }
+    Card(
+        Modifier.fillMaxWidth().testTag("annual_manual_approval"),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        border = BorderStroke(1.dp, color.copy(alpha = .55f)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text("Manuelle Jahres-Freigabe $year", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(status, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = color)
+            if (isCurrent && approvedAt.isNotBlank()) {
+                Text("Freigegeben: ${approvedAt.replace('T', ' ').take(16)}", fontSize = 9.sp, color = SlateGray)
+            }
+            if (!blocked && reviewCount > 0) {
+                Text("$reviewCount gelbe Prüfpunkt(e) bleiben sichtbar. Die Freigabe bestätigt, dass sie bewusst geprüft wurden.", fontSize = 9.sp, color = WarmOrange)
+            }
+            Text(
+                "Die Freigabe ist an einen Fingerabdruck der Jahreswerte, Belege, Mietprüfung, Objekt- und Darlehensdaten gekoppelt. Relevante Änderungen machen sie automatisch ungültig.",
+                fontSize = 9.sp,
+                color = SlateGray
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!isCurrent) {
+                    OutlinedButton(onClick = onApprove, enabled = !blocked, modifier = Modifier.weight(1f)) {
+                        Text(if (wasSet) "Erneut freigeben" else "Als geprüft freigeben", fontSize = 10.sp)
+                    }
+                } else {
+                    OutlinedButton(onClick = onRevoke, modifier = Modifier.weight(1f)) {
+                        Text("Freigabe aufheben", fontSize = 10.sp)
+                    }
+                }
+            }
         }
     }
 }

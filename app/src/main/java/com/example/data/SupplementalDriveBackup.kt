@@ -48,6 +48,7 @@ object SupplementalDriveBackup {
                 put("rentPlanPrefs", prefsToJson(context, "rent_plan_prefs"))
                 put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
                 put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
+                put("annualTaxApprovalPrefs", prefsToJson(context, "annual_tax_approval_prefs"))
             }
 
             val existing = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE)
@@ -109,7 +110,8 @@ object SupplementalDriveBackup {
             jsonToPrefs(context, "rent_plan_prefs", root.optJSONObject("rentPlanPrefs"))
             jsonToPrefs(context, "tenant_history_prefs", root.optJSONObject("tenantHistoryPrefs"))
             jsonToPrefs(context, "loan_interest_assignments", root.optJSONObject("loanInterestAssignments"))
-            Result(true, "Miet-, Mieterhistorien- und Darlehensdaten wiederhergestellt")
+            jsonToPrefs(context, "annual_tax_approval_prefs", root.optJSONObject("annualTaxApprovalPrefs"))
+            Result(true, "Miet-, Mieterhistorien-, Darlehens- und Jahresfreigabedaten wiederhergestellt")
         } catch (e: Exception) {
             Result(false, e.message ?: e.toString())
         }
