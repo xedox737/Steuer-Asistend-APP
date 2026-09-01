@@ -385,4 +385,113 @@ object PdfExporter {
             Log.e(TAG, "Error sharing PDF: ${e.localizedMessage}", e)
         }
     }
+
+    /**
+     * Creates the ordered annual start document for the tax advisor package.
+     * It intentionally uses descriptive sections instead of fixed ELSTER line numbers.
+     */
+    fun createAdvisorStartPdf(summary: AdvisorAnnualSummary): ByteArray {
+        val readiness = AdvisorPackageReadinessEvaluator.evaluate(summary)
+        val document = PdfDocument()
+        val output = java.io.ByteArrayOutputStream()
+        var pageNumber = 0
+        var page: PdfDocument.Page? = null
+        var canvas: Canvas? = null
+        var y = 0f
+
+        val title = Paint().apply {
+            color = 0xFF0F172A.toInt()
+            textSize = 18f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val heading = Paint().apply {
+            color = 0xFF0F172A.toInt()
+            textSize = 12f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            isAntiAlias = true
+        }
+        val body = Paint().apply {
+            color = 0xFF334155.toInt()
+            textSize = 9f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+            isAntiAlias = true
+        }
+        val status = Paint().apply {
+            color = if (readiness.ready) 0xFF047857.toInt() else 0xFFB91C1C.toInt()
+            textSize = 11f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            isAntiAlias = true
+        }
+
+        fun newPage() {
+            page?.let(document::finishPage)
+            pageNumber++
+            page = document.startPage(
+                PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, pageNumber).create()
+            )
+            canvas = page!!.canvas
+            y = 44f
+            canvas!!.drawText(
+                "Steuerberater-Jahresabschlusspaket ${summary.year}",
+                MARGIN_LEFT,
+                25f,
+                body
+            )
+        }
+
+        fun line(text: String, paint: Paint = body, indent: Float = 0f) {
+            if (y > PAGE_HEIGHT - 55f) newPage()
+            val maxWidth = CONTENT_WIDTH - indent
+            var safe = text
+            while (safe.isNotEmpty() && paint.measureText(safe) > maxWidth) {
+                safe = safe.dropLast(1)
+            }
+            if (safe.length < text.length) safe = safe.dropLast(3.coerceAtMost(safe.length)) + "..."
+            canvas!!.drawText(safe, MARGIN_LEFT + indent, y, paint)
+            y += if (paint === heading) 18f else 13f
+        }
+
+        fun section(number: Int, name: String, lines: List<String>) {
+            y += 5f
+            line("$number. $name", heading)
+            if (lines.isEmpty()) line("Keine Angaben vorhanden.", body, 10f)
+            else lines.forEach { line("• $it", body, 10f) }
+        }
+
+        return try {
+            newPage()
+            line("Jahresübersicht für den Steuerberater", title)
+            line(readiness.status, status)
+            line("Objekt: ${summary.propertyTitle}")
+            line("Einnahmen: ${String.format(Locale.GERMANY, "%.2f", summary.totalIncome)} EUR")
+            line("Werbungskosten: ${String.format(Locale.GERMANY, "%.2f", summary.totalExpenses)} EUR")
+            line("Vorläufiges Ergebnis: ${String.format(Locale.GERMANY, "%.2f", summary.result)} EUR")
+            line("Vorbereitungshilfe – keine Steuerberatung; keine festen ELSTER-Zeilennummern.")
+            section(1, "Objektübersicht", summary.propertyOverview)
+            section(2, "Finanzierung", summary.financing)
+            section(3, "Mieten", summary.rentOverview)
+            section(4, "Sanierungen", summary.renovationsAndAfa)
+            section(5, "AfA / 15-%-Monitor", summary.renovationsAndAfa)
+            section(
+                6,
+                "Werbungskosten",
+                summary.expenseValues.map {
+                    "${it.label}: ${String.format(Locale.GERMANY, "%.2f", it.amount)} EUR – ${it.checkStatus}"
+                }
+            )
+            section(7, "Offene Prüfhinweise", summary.openIssues)
+            section(8, "Beigefügte Originalunterlagen", summary.attachedOriginalDocuments)
+            if (readiness.blockers.isNotEmpty()) {
+                section(9, "Blockierende Punkte", readiness.blockers)
+            }
+            page?.let(document::finishPage)
+            document.writeTo(output)
+            output.toByteArray()
+        } finally {
+            document.close()
+            output.close()
+        }
+    }
+
 }

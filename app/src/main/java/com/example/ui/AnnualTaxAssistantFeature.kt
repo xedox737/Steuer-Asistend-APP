@@ -673,6 +673,87 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val approvalWasSet = storedApprovalFingerprint.isNotBlank()
     val approvalBlocked = closingChecks.any { it.state == ClosingCheckState.BLOCKED }
 
+    val advisorAnnualSummary = remember(
+        year,
+        summary,
+        closingChecks,
+        rentRows,
+        receipts,
+        metadata,
+        loans,
+        preview,
+        approvalFingerprint,
+        storedApprovalFingerprint,
+        approvedAt,
+        approvalIsCurrent
+    ) {
+        val yearReceipts = receipts.filter { it.yearOrNull() == year }
+        val exportEligibleReceipts = yearReceipts.filter {
+            com.example.util.DatevReceiptEligibility.issues(it).isEmpty()
+        }
+        val originals = exportEligibleReceipts.mapNotNull { receipt ->
+            com.example.util.DatevOriginalAttachmentPolicy.resolve(receipt)?.let {
+                receipt.getEffectiveDisplayId()
+            }
+        }
+        val missingOriginals = exportEligibleReceipts.filter {
+            com.example.util.DatevOriginalAttachmentPolicy.resolve(it) == null
+        }.map { it.getEffectiveDisplayId() }
+
+        com.example.util.AdvisorAnnualSummary(
+            year = year,
+            propertyTitle = metadata.name.ifBlank { "Immobilienobjekt" },
+            closingStatus = when {
+                closingChecks.any { it.state == ClosingCheckState.BLOCKED } -> "KRITISCH"
+                closingChecks.any { it.state == ClosingCheckState.REVIEW } -> "PRÜFEN"
+                else -> "OK"
+            },
+            manualApprovalCurrent = approvalIsCurrent,
+            approvedAt = approvedAt,
+            dataFingerprint = approvalFingerprint,
+            approvedFingerprint = storedApprovalFingerprint,
+            criticalAnnualIssues = summary.redCount,
+            criticalClosingChecks = closingChecks.count {
+                it.state == ClosingCheckState.BLOCKED
+            },
+            missingRequiredOriginals = missingOriginals,
+            totalIncome = summary.totalIncome,
+            totalExpenses = summary.totalExpenses,
+            result = summary.result,
+            propertyOverview = listOf(metadata.toString()),
+            financing = loans.map { it.toString() },
+            rentOverview = rentRows.map {
+                "${it.unit.label}: Soll ${it.expected}, Ist ${it.actual}, Differenz ${it.difference}"
+            },
+            renovationsAndAfa = summary.expenseBuckets
+                .filter {
+                    it.title.contains("AfA", ignoreCase = true) ||
+                        it.title.contains("Erhaltung", ignoreCase = true) ||
+                        it.title.contains("Sanierung", ignoreCase = true)
+                }
+                .map { "${it.title}: ${it.amount} EUR – ${it.note}" },
+            incomeValues = preview.first.map {
+                com.example.util.AdvisorAnnualValue(
+                    it.label, it.amount, it.source, it.checkStatus, it.note
+                )
+            },
+            expenseValues = preview.second.map {
+                com.example.util.AdvisorAnnualValue(
+                    it.label, it.amount, it.source, it.checkStatus, it.note
+                )
+            },
+            openIssues = summary.issues.map {
+                "${it.severity.name}: ${it.title} – ${it.message}"
+            } + closingChecks.filter { it.state != ClosingCheckState.OK }.map {
+                "${it.state.name}: ${it.title} – ${it.detail}"
+            },
+            attachedOriginalDocuments = originals
+        )
+    }
+    androidx.compose.runtime.LaunchedEffect(advisorAnnualSummary) {
+        viewModel.updateAdvisorAnnualSummary(advisorAnnualSummary)
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("anlage_v_annual_assistant"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),

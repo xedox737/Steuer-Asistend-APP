@@ -18,7 +18,9 @@ data class AdvisorPackageResult(
     val totalRecords: Int,
     val totalAmountEur: Double,
     val sha256Checksum: String,
-    val warningsCount: Int
+    val warningsCount: Int,
+    val advisorStatus: String,
+    val packageStructureVerified: Boolean
 )
 
 object AdvisorPackageBuilder {
@@ -50,6 +52,12 @@ object AdvisorPackageBuilder {
         val fileItems = mutableListOf<ManifestFileItem>()
 
         ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
+            // Explicit directory entries make the professional package structure stable,
+            // including sections that do not have documents for the selected year.
+            AdvisorPackageStructure.requiredFolders.forEach { folder ->
+                zos.putNextEntry(ZipEntry("$folder/"))
+                zos.closeEntry()
+            }
 
             // 1. 01_DATEV/EXTF_Buchungsstapel_<Zeitraum>.csv
             val extfCsv = DatevCsvSerializer.serializeToCsvString(records, profile, periodSummary.take(4))
@@ -64,7 +72,7 @@ object AdvisorPackageBuilder {
             zos.write(extfBytes)
             zos.closeEntry()
 
-            // 2. 02_Belege/ (exactly one verified original per stable receipt identity)
+            // 2. 02_Originalbelege/ (exactly one verified original per stable receipt identity)
             val includedByRoomId = includedReceipts.associateBy { it.id }
             val processedReceiptReferences = mutableSetOf<String>()
             if (includeOriginals) records.forEach { record ->
@@ -81,7 +89,7 @@ object AdvisorPackageBuilder {
                     val belegFileName =
                         record.belegdatum + "_" + record.belegfeld1 + "_Original." +
                             attachment.extension
-                    val entryName = "02_Belege/" + belegFileName
+                    val entryName = "02_Originalbelege/" + belegFileName
                     val originalBytes = attachment.file.readBytes()
 
                     zos.putNextEntry(ZipEntry(entryName))
@@ -103,10 +111,10 @@ object AdvisorPackageBuilder {
                 }
             }
 
-            // 3. 03_Kontrolle/
+            // 3. 08_Pruefprotokoll/
             // Buchungsvorschlaege.csv
             val controlCsv = DatevCsvSerializer.createControlCsv(records)
-            zos.putNextEntry(ZipEntry("03_Kontrolle/Buchungsvorschlaege.csv"))
+            zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Buchungsvorschlaege.csv"))
             zos.write(bom)
             zos.write(controlCsv.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
@@ -120,7 +128,7 @@ object AdvisorPackageBuilder {
             validationReport.warnings.forEach { w ->
                 offenePunkteSb.append("WARNUNG;${w.bookingId};${w.receiptId};${w.field};\"${w.message}\"\n")
             }
-            zos.putNextEntry(ZipEntry("03_Kontrolle/Offene_Punkte.csv"))
+            zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Offene_Punkte.csv"))
             zos.write(bom)
             zos.write(offenePunkteSb.toString().toByteArray(Charsets.UTF_8))
             zos.closeEntry()
@@ -131,7 +139,7 @@ object AdvisorPackageBuilder {
             excludedReceipts.forEach { r ->
                 nichtExpSb.append("${r.id};\"${r.aussteller}\";${r.datum};${r.bruttobetrag};\"${r.hauptkategorie}\";${r.exportStatus};\"Ausgeschlossen/Nicht freigegeben\"\n")
             }
-            zos.putNextEntry(ZipEntry("03_Kontrolle/Nicht_exportierte_Belege.csv"))
+            zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Nicht_exportierte_Belege.csv"))
             zos.write(bom)
             zos.write(nichtExpSb.toString().toByteArray(Charsets.UTF_8))
             zos.closeEntry()
@@ -139,12 +147,12 @@ object AdvisorPackageBuilder {
             // Dubletten.csv
             val dublettenSb = StringBuilder()
             dublettenSb.append("Receipt_ID;Aussteller;Datum;Betrag_EUR;Status\n")
-            zos.putNextEntry(ZipEntry("03_Kontrolle/Dubletten.csv"))
+            zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Dubletten.csv"))
             zos.write(bom)
             zos.write(dublettenSb.toString().toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 4. 04_Dokumentation/
+            // 4. Start-, DATEV- und Prüfprotokoll-Dokumentation
             // Exportprotokoll.txt
             val protokollText = """
                 ================================================================================
@@ -165,35 +173,44 @@ object AdvisorPackageBuilder {
                 ${records.joinToString("\n") { " - ${it.belegdatum} | ${it.belegfeld1} | Konto ${it.sachkonto} -> ${it.gegenkonto} | ${String.format(Locale.GERMANY, "%.2f", it.bruttobetrag)} EUR | ${it.beschreibung}" }}
             """.trimIndent()
 
-            zos.putNextEntry(ZipEntry("04_Dokumentation/Exportprotokoll.txt"))
+            zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Exportprotokoll.txt"))
             zos.write(protokollText.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
             // Kanzleiprofil.txt
             val profileText = DatevProfileService.exportProfileToJson(profile)
-            zos.putNextEntry(ZipEntry("04_Dokumentation/Kanzleiprofil.txt"))
+            zos.putNextEntry(ZipEntry("01_DATEV/Kanzleiprofil.txt"))
             zos.write(profileText.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
             // README.txt
             val readmeText = """
-                STEUERBERATER-ÜBERGABEPAKET ANLAGE V (IMMOBILIEN)
+                STEUERBERATER-JAHRESABSCHLUSSPAKET ANLAGE V (IMMOBILIEN)
                 --------------------------------------------------------------------------------
                 Ordnerstruktur:
-                - 01_DATEV/             Enthält die EXTF_Buchungsstapel.csv zur direkten DATEV-Stapelvearbeitung.
-                - 02_Belege/            Enthält alle zugehörigen Beleg-PDFs mit eindeutigen Dateinamen.
-                - 03_Kontrolle/         Enthält Buchungsvorschläge, Prüfprotokolle und nicht exportierte Belege.
-                - 04_Dokumentation/     Enthält Exportprotokoll und Kanzleiprofil.
-                - 05_Jahresabschluss/   Enthält Jahresübersicht, Objekt, Finanzierung, Mieten, AfA/15 %, Anlage-V-Vorschau und offene Prüfpunkte.
-                - manifest.json         DATEV-/Beleg-Manifest; der Jahresabschluss enthält zusätzlich eine eigene SHA-256-Prüfsummenliste.
+                - 00_Start/                 Start-PDF, Übersicht und Nutzungshinweise.
+                - 01_DATEV/                 Geprüfter EXTF-Buchungsstapel und Kanzleiprofil.
+                - 02_Originalbelege/        Je stabiler Belegidentität höchstens ein verifiziertes Original.
+                - 03_Anlage_V/              Anlage-V-Vorschau mit Werteherkunft und Prüfstatus.
+                - 04_Mieten/                Jahres-Mietprüfung und Soll-/Ist-Abgleich.
+                - 05_Finanzierung/          Finanzierung und Schuldzinsen.
+                - 06_AfA_und_15Prozent/     AfA-Grundlagen und konservativer 15-%-Monitor.
+                - 07_Sanierungen/           Sanierungsübersicht.
+                - 08_Pruefprotokoll/        Offene Punkte, Freigabe, Manifest und Prüfsummen.
+
+                Vorbereitungshilfe, keine Steuerberatung. Keine festen ELSTER-Zeilennummern.
             """.trimIndent()
 
-            zos.putNextEntry(ZipEntry("04_Dokumentation/README.txt"))
+            zos.putNextEntry(ZipEntry("00_Start/Paketbeschreibung.txt"))
             zos.write(readmeText.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 5. 05_Jahresabschluss/ - Jahresübersicht, Finanzierung, Mieten, AfA/15 % und Anlage-V-Vorschau
+            // 5. Jahresabschluss-Unterlagen in der finalen neunordnerigen Struktur
             annualSummary?.let { summary ->
+                val startPdf = PdfExporter.createAdvisorStartPdf(summary)
+                zos.putNextEntry(ZipEntry("00_Start/01_Jahresuebersicht.pdf"))
+                zos.write(startPdf)
+                zos.closeEntry()
                 AdvisorAnnualPackageContentBuilder.buildEntries(summary).forEach { (entryName, bytes) ->
                     zos.putNextEntry(ZipEntry(entryName))
                     zos.write(bytes)
@@ -209,12 +226,37 @@ object AdvisorPackageBuilder {
                 fileItems = fileItems,
                 totalAmountEur = validationReport.totalAmount
             )
-            zos.putNextEntry(ZipEntry("manifest.json"))
+            zos.putNextEntry(ZipEntry("08_Pruefprotokoll/manifest.json"))
             zos.write(manifestJson.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
         }
 
         val zipSha256 = ReceiptManifestService.calculateSha256(zipFile)
+        val archiveInspection = java.util.zip.ZipFile(zipFile).use { zip ->
+            val entries = zip.entries().asSequence().toList()
+            val names = entries.map { it.name }
+            val originalHashes = entries
+                .filter { !it.isDirectory && it.name.startsWith("02_Originalbelege/") }
+                .map { entry ->
+                    zip.getInputStream(entry).use { input ->
+                        ReceiptManifestService.calculateSha256Bytes(input.readBytes())
+                    }
+                }
+            names to originalHashes
+        }
+        val structureValidation = AdvisorPackageStructureValidator.validateEntryNames(
+            entryNames = archiveInspection.first,
+            originalContentHashes = archiveInspection.second
+        )
+        require(structureValidation.valid) {
+            "Steuerberaterpaket ist unvollständig: " + structureValidation.errors.joinToString(" | ")
+        }
+        val readiness = annualSummary?.let(AdvisorPackageReadinessEvaluator::evaluate)
+            ?: AdvisorPackageReadiness(
+                ready = false,
+                status = "NICHT BEREIT",
+                blockers = listOf("Jahresabschlussdaten wurden nicht übergeben.")
+            )
 
         return AdvisorPackageResult(
             zipFile = zipFile,
@@ -222,7 +264,9 @@ object AdvisorPackageBuilder {
             totalRecords = records.size,
             totalAmountEur = validationReport.totalAmount,
             sha256Checksum = zipSha256,
-            warningsCount = validationReport.warnings.size
+            warningsCount = validationReport.warnings.size,
+            advisorStatus = readiness.status,
+            packageStructureVerified = structureValidation.valid
         )
     }
 
