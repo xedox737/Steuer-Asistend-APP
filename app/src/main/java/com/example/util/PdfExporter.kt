@@ -442,7 +442,12 @@ object PdfExporter {
 
         fun line(text: String, paint: Paint = body, indent: Float = 0f) {
             if (y > PAGE_HEIGHT - 55f) newPage()
-            val safe = paint.truncate(text, CONTENT_WIDTH - indent)
+            val maxWidth = CONTENT_WIDTH - indent
+            var safe = text
+            while (safe.isNotEmpty() && paint.measureText(safe) > maxWidth) {
+                safe = safe.dropLast(1)
+            }
+            if (safe.length < text.length) safe = safe.dropLast(3.coerceAtMost(safe.length)) + "..."
             canvas!!.drawText(safe, MARGIN_LEFT + indent, y, paint)
             y += if (paint === heading) 18f else 13f
         }
