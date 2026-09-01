@@ -232,10 +232,22 @@ object AdvisorPackageBuilder {
         }
 
         val zipSha256 = ReceiptManifestService.calculateSha256(zipFile)
-        val zipEntryNames = java.util.zip.ZipFile(zipFile).use { zip ->
-            zip.entries().asSequence().map { it.name }.toList()
+        val archiveInspection = java.util.zip.ZipFile(zipFile).use { zip ->
+            val entries = zip.entries().asSequence().toList()
+            val names = entries.map { it.name }
+            val originalHashes = entries
+                .filter { !it.isDirectory && it.name.startsWith("02_Originalbelege/") }
+                .map { entry ->
+                    zip.getInputStream(entry).use { input ->
+                        ReceiptManifestService.calculateSha256Bytes(input.readBytes())
+                    }
+                }
+            names to originalHashes
         }
-        val structureValidation = AdvisorPackageStructureValidator.validateEntryNames(zipEntryNames)
+        val structureValidation = AdvisorPackageStructureValidator.validateEntryNames(
+            entryNames = archiveInspection.first,
+            originalContentHashes = archiveInspection.second
+        )
         require(structureValidation.valid) {
             "Steuerberaterpaket ist unvollständig: " + structureValidation.errors.joinToString(" | ")
         }
