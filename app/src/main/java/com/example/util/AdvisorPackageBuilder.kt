@@ -152,7 +152,7 @@ object AdvisorPackageBuilder {
             zos.write(dublettenSb.toString().toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 4. 04_Dokumentation/
+            // 4. Start-, DATEV- und Prüfprotokoll-Dokumentation
             // Exportprotokoll.txt
             val protokollText = """
                 ================================================================================
@@ -185,22 +185,27 @@ object AdvisorPackageBuilder {
 
             // README.txt
             val readmeText = """
-                STEUERBERATER-ÜBERGABEPAKET ANLAGE V (IMMOBILIEN)
+                STEUERBERATER-JAHRESABSCHLUSSPAKET ANLAGE V (IMMOBILIEN)
                 --------------------------------------------------------------------------------
                 Ordnerstruktur:
-                - 01_DATEV/             Enthält die EXTF_Buchungsstapel.csv zur direkten DATEV-Stapelvearbeitung.
-                - 02_Originalbelege/            Enthält alle zugehörigen Beleg-PDFs mit eindeutigen Dateinamen.
-                - 08_Pruefprotokoll/         Enthält Buchungsvorschläge, Prüfprotokolle und nicht exportierte Belege.
-                - 04_Dokumentation/     Enthält Exportprotokoll und Kanzleiprofil.
-                - 03_Anlage_V/   Enthält Jahresübersicht, Objekt, Finanzierung, Mieten, AfA/15 %, Anlage-V-Vorschau und offene Prüfpunkte.
-                - manifest.json         DATEV-/Beleg-Manifest; der Jahresabschluss enthält zusätzlich eine eigene SHA-256-Prüfsummenliste.
+                - 00_Start/                 Start-PDF, Übersicht und Nutzungshinweise.
+                - 01_DATEV/                 Geprüfter EXTF-Buchungsstapel und Kanzleiprofil.
+                - 02_Originalbelege/        Je stabiler Belegidentität höchstens ein verifiziertes Original.
+                - 03_Anlage_V/              Anlage-V-Vorschau mit Werteherkunft und Prüfstatus.
+                - 04_Mieten/                Jahres-Mietprüfung und Soll-/Ist-Abgleich.
+                - 05_Finanzierung/          Finanzierung und Schuldzinsen.
+                - 06_AfA_und_15Prozent/     AfA-Grundlagen und konservativer 15-%-Monitor.
+                - 07_Sanierungen/           Sanierungsübersicht.
+                - 08_Pruefprotokoll/        Offene Punkte, Freigabe, Manifest und Prüfsummen.
+
+                Vorbereitungshilfe, keine Steuerberatung. Keine festen ELSTER-Zeilennummern.
             """.trimIndent()
 
             zos.putNextEntry(ZipEntry("00_Start/Paketbeschreibung.txt"))
             zos.write(readmeText.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 5. 03_Anlage_V/ - Jahresübersicht, Finanzierung, Mieten, AfA/15 % und Anlage-V-Vorschau
+            // 5. Jahresabschluss-Unterlagen in der finalen neunordnerigen Struktur
             annualSummary?.let { summary ->
                 val startPdf = PdfExporter.createAdvisorStartPdf(summary)
                 zos.putNextEntry(ZipEntry("00_Start/01_Jahresuebersicht.pdf"))
