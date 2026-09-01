@@ -79,8 +79,7 @@ jobs:
         run: git diff --check && git diff --stat
       - name: Debug-Keystore erzeugen
         run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
       - name: Kotlin kompilieren
         run: gradle compileDebugKotlin --stacktrace --no-daemon
       - name: Unit Tests
