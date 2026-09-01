@@ -33,7 +33,8 @@ object AdvisorPackageBuilder {
         includeOriginals: Boolean,
         profile: DatevProfile,
         validationReport: ValidationReport,
-        periodSummary: String = "2026"
+        periodSummary: String = "2026",
+        annualSummary: AdvisorAnnualSummary? = null
     ): AdvisorPackageResult {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.GERMANY).format(Date())
         val timestampIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.GERMANY).format(Date())
@@ -183,14 +184,24 @@ object AdvisorPackageBuilder {
                 - 02_Belege/            Enthält alle zugehörigen Beleg-PDFs mit eindeutigen Dateinamen.
                 - 03_Kontrolle/         Enthält Buchungsvorschläge, Prüfprotokolle und nicht exportierte Belege.
                 - 04_Dokumentation/     Enthält Exportprotokoll und Kanzleiprofil.
-                - manifest.json         Kryptografisches Prüfsummen-Manifest (SHA-256) aller Dateien.
+                - 05_Jahresabschluss/   Enthält Jahresübersicht, Objekt, Finanzierung, Mieten, AfA/15 %, Anlage-V-Vorschau und offene Prüfpunkte.
+                - manifest.json         DATEV-/Beleg-Manifest; der Jahresabschluss enthält zusätzlich eine eigene SHA-256-Prüfsummenliste.
             """.trimIndent()
 
             zos.putNextEntry(ZipEntry("04_Dokumentation/README.txt"))
             zos.write(readmeText.toByteArray(Charsets.UTF_8))
             zos.closeEntry()
 
-            // 5. manifest.json
+            // 5. 05_Jahresabschluss/ - Jahresübersicht, Finanzierung, Mieten, AfA/15 % und Anlage-V-Vorschau
+            annualSummary?.let { summary ->
+                AdvisorAnnualPackageContentBuilder.buildEntries(summary).forEach { (entryName, bytes) ->
+                    zos.putNextEntry(ZipEntry(entryName))
+                    zos.write(bytes)
+                    zos.closeEntry()
+                }
+            }
+
+            // 6. manifest.json
             val manifestJson = ReceiptManifestService.generateManifestJson(
                 exportId = exportId,
                 timestampIso = timestampIso,
