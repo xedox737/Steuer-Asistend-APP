@@ -1497,6 +1497,15 @@ data class AiSearchUiState(
     private val _lastExportResult = MutableStateFlow<com.example.util.AdvisorPackageResult?>(null)
     val lastExportResult: StateFlow<com.example.util.AdvisorPackageResult?> = _lastExportResult.asStateFlow()
 
+    private val _advisorAnnualSummary =
+        MutableStateFlow<com.example.util.AdvisorAnnualSummary?>(null)
+    val advisorAnnualSummary: StateFlow<com.example.util.AdvisorAnnualSummary?> =
+        _advisorAnnualSummary.asStateFlow()
+
+    fun updateAdvisorAnnualSummary(summary: com.example.util.AdvisorAnnualSummary) {
+        _advisorAnnualSummary.value = summary
+    }
+
     fun recalculateWizardStepData() {
         val allRecs = receipts.value
         val profile = _activeDatevProfile.value
@@ -1588,7 +1597,11 @@ data class AiSearchUiState(
             includeOriginals = _wizardTargetFormat.value == "FULL_ZIP",
             profile = profile,
             validationReport = report,
-            periodSummary = _wizardYearFilter.value
+            periodSummary = _wizardYearFilter.value,
+            annualSummary = _advisorAnnualSummary.value?.takeIf {
+                _wizardYearFilter.value != "ALLE" &&
+                    it.year.toString() == _wizardYearFilter.value
+            }
         )
 
         _lastExportResult.value = packageResult
