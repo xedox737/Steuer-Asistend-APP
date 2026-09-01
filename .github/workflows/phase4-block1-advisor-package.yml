@@ -1,0 +1,222 @@
+name: Phase 4 Block 1 Steuerberater-Paket
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/phase4-block1-advisor-package.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Phase 4.1 Grundstruktur und Jahresinhalte anlegen
+        shell: bash
+        run: |
+          cat > app/src/main/java/com/example/util/AdvisorAnnualPackageContent.kt <<'EOF'
+          package com.example.util
+
+          import java.security.MessageDigest
+          import java.util.Locale
+
+          data class AdvisorAnnualValue(
+              val label: String,
+              val amount: Double,
+              val source: String,
+              val checkStatus: String,
+              val note: String = ""
+          )
+
+          data class AdvisorAnnualSummary(
+              val year: Int,
+              val propertyTitle: String,
+              val closingStatus: String,
+              val manualApprovalCurrent: Boolean,
+              val approvedAt: String = "",
+              val totalIncome: Double,
+              val totalExpenses: Double,
+              val result: Double,
+              val propertyOverview: List<String> = emptyList(),
+              val financing: List<String> = emptyList(),
+              val rentOverview: List<String> = emptyList(),
+              val renovationsAndAfa: List<String> = emptyList(),
+              val incomeValues: List<AdvisorAnnualValue> = emptyList(),
+              val expenseValues: List<AdvisorAnnualValue> = emptyList(),
+              val openIssues: List<String> = emptyList()
+          )
+
+          object AdvisorAnnualPackageContentBuilder {
+              private const val ROOT = "05_Jahresabschluss"
+
+              fun buildEntries(summary: AdvisorAnnualSummary): LinkedHashMap<String, ByteArray> {
+                  val entries = linkedMapOf<String, ByteArray>()
+                  entries["$ROOT/00_Jahresuebersicht.txt"] = overview(summary).toByteArray(Charsets.UTF_8)
+                  entries["$ROOT/01_Objektuebersicht.txt"] = section("OBJEKTÜBERSICHT", summary.propertyOverview).toByteArray(Charsets.UTF_8)
+                  entries["$ROOT/02_Finanzierung.txt"] = section("FINANZIERUNG", summary.financing).toByteArray(Charsets.UTF_8)
+                  entries["$ROOT/03_Mieten.txt"] = section("MIETEN", summary.rentOverview).toByteArray(Charsets.UTF_8)
+                  entries["$ROOT/04_Sanierungen_AfA_15Prozent.txt"] = section("SANIERUNGEN / AfA / 15-%-MONITOR", summary.renovationsAndAfa).toByteArray(Charsets.UTF_8)
+                  entries["$ROOT/05_Anlage_V_Vorschau.csv"] = AnlageVCsv(summary).toByteArray(Charsets.UTF_8)
+                  entries["$ROOT/06_Offene_Pruefpunkte.txt"] = section("OFFENE PRÜFPUNKTE", summary.openIssues.ifEmpty { listOf("Keine offenen Prüfpunkte erfasst.") }).toByteArray(Charsets.UTF_8)
+
+                  val checksumText = entries.entries.joinToString("\n") { (path, bytes) ->
+                      "${sha256(bytes)}  $path"
+                  } + "\n"
+                  entries["$ROOT/99_Pruefsummen_SHA256.txt"] = checksumText.toByteArray(Charsets.UTF_8)
+                  return entries
+              }
+
+              private fun overview(summary: AdvisorAnnualSummary): String = buildString {
+                  appendLine("STEUERBERATER-JAHRESÜBERSICHT ${summary.year}")
+                  appendLine("============================================================")
+                  appendLine("Objekt: ${summary.propertyTitle}")
+                  appendLine("Abschlussstatus: ${summary.closingStatus}")
+                  appendLine("Manuelle Jahresfreigabe: ${if (summary.manualApprovalCurrent) "AKTUELL" else "NICHT AKTUELL"}")
+                  if (summary.approvedAt.isNotBlank()) appendLine("Freigegeben am: ${summary.approvedAt}")
+                  appendLine()
+                  appendLine("Einnahmen: ${money(summary.totalIncome)} EUR")
+                  appendLine("Werbungskosten: ${money(summary.totalExpenses)} EUR")
+                  appendLine("Vorläufiges Ergebnis: ${money(summary.result)} EUR")
+                  appendLine()
+                  appendLine("Hinweis: Dieses Paket bereitet Unterlagen für Steuerberater/Anlage V vor und ersetzt keine steuerliche Prüfung.")
+              }
+
+              private fun section(title: String, lines: List<String>): String = buildString {
+                  appendLine(title)
+                  appendLine("=".repeat(title.length.coerceAtLeast(12)))
+                  if (lines.isEmpty()) appendLine("Keine Angaben vorhanden.") else lines.forEach { appendLine("- $it") }
+              }
+
+              private fun AnlageVCsv(summary: AdvisorAnnualSummary): String = buildString {
+                  appendLine("Bereich;Position;Betrag_EUR;Quelle;Pruefstatus;Hinweis")
+                  summary.incomeValues.forEach { appendValue("Einnahmen", it) }
+                  summary.expenseValues.forEach { appendValue("Werbungskosten", it) }
+                  appendLine("Ergebnis;Vorlaeufiger_Ueberschuss_Verlußt;${csvMoney(summary.result)};Jahresassistent;${csv(summary.closingStatus)};${csv(if (summary.manualApprovalCurrent) "Manuelle Jahresfreigabe aktuell" else "Manuelle Jahresfreigabe fehlt oder ist veraltet")}")
+              }
+
+              private fun StringBuilder.appendValue(area: String, value: AdvisorAnnualValue) {
+                  append(area).append(';')
+                      .append(csv(value.label)).append(';')
+                      .append(csvMoney(value.amount)).append(';')
+                      .append(csv(value.source)).append(';')
+                      .append(csv(value.checkStatus)).append(';')
+                      .append(csv(value.note)).append('\n')
+              }
+
+              private fun csv(value: String): String = "\"" + value.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\""
+              private fun money(value: Double): String = String.format(Locale.GERMANY, "%.2f", value)
+              private fun csvMoney(value: Double): String = String.format(Locale.GERMANY, "%.2f", value)
+
+              private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+                  .digest(bytes)
+                  .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+          }
+          EOF
+
+          cat > app/src/test/java/com/example/util/AdvisorAnnualPackageContentTest.kt <<'EOF'
+          package com.example.util
+
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class AdvisorAnnualPackageContentTest {
+              @Test
+              fun `creates ordered annual advisor files with Anlage V provenance`() {
+                  val summary = AdvisorAnnualSummary(
+                      year = 2026,
+                      propertyTitle = "Testobjekt",
+                      closingStatus = "PRÜFEN",
+                      manualApprovalCurrent = true,
+                      approvedAt = "2026-09-01T12:00:00+02:00",
+                      totalIncome = 24000.0,
+                      totalExpenses = 10000.0,
+                      result = 14000.0,
+                      propertyOverview = listOf("Kaufpreis 520.000 EUR", "7 Wohneinheiten"),
+                      financing = listOf("Darlehen A"),
+                      rentOverview = listOf("Soll/Ist geprüft"),
+                      renovationsAndAfa = listOf("AfA-Basis geprüft", "15-%-Monitor aktiv"),
+                      incomeValues = listOf(AdvisorAnnualValue("Mieten", 24000.0, "24 Belege", "OK")),
+                      expenseValues = listOf(AdvisorAnnualValue("Schuldzinsen", 10000.0, "Darlehenszuordnung", "PRÜFEN", "Anteil prüfen")),
+                      openIssues = listOf("Gelber Prüfpunkt")
+                  )
+
+                  val entries = AdvisorAnnualPackageContentBuilder.buildEntries(summary)
+
+                  assertEquals("05_Jahresabschluss/00_Jahresuebersicht.txt", entries.keys.first())
+                  assertTrue(entries.containsKey("05_Jahresabschluss/05_Anlage_V_Vorschau.csv"))
+                  assertTrue(entries.containsKey("05_Jahresabschluss/99_Pruefsummen_SHA256.txt"))
+                  val csv = entries.getValue("05_Jahresabschluss/05_Anlage_V_Vorschau.csv").toString(Charsets.UTF_8)
+                  assertTrue(csv.contains("\"Mieten\";24000,00;\"24 Belege\";\"OK\""))
+                  assertTrue(csv.contains("\"Schuldzinsen\";10000,00;\"Darlehenszuordnung\";\"PRÜFEN\""))
+                  val checksums = entries.getValue("05_Jahresabschluss/99_Pruefsummen_SHA256.txt").toString(Charsets.UTF_8)
+                  assertTrue(checksums.contains("05_Jahresabschluss/00_Jahresuebersicht.txt"))
+                  assertTrue(checksums.contains("05_Jahresabschluss/06_Offene_Pruefpunkte.txt"))
+              }
+          }
+          EOF
+
+      - name: Zwischenprüfung 4.1 - Inhaltsmodell testen
+        run: gradle testDebugUnitTest --tests com.example.util.AdvisorAnnualPackageContentTest --stacktrace --no-daemon
+
+      - name: Phase 4.2-4.3 in bestehenden AdvisorPackageBuilder integrieren
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/util/AdvisorPackageBuilder.kt')
+          s = p.read_text()
+
+          old = '''        validationReport: ValidationReport,\n        periodSummary: String = "2026"\n    ): AdvisorPackageResult {'''
+          new = '''        validationReport: ValidationReport,\n        periodSummary: String = "2026",\n        annualSummary: AdvisorAnnualSummary? = null\n    ): AdvisorPackageResult {'''
+          if old not in s:
+              raise SystemExit('buildPackage signature anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''            // 5. manifest.json\n            val manifestJson = ReceiptManifestService.generateManifestJson('''
+          new = '''            // 5. 05_Jahresabschluss/ - Jahresübersicht, Finanzierung, Mieten, AfA/15 % und Anlage-V-Vorschau\n            annualSummary?.let { summary ->\n                AdvisorAnnualPackageContentBuilder.buildEntries(summary).forEach { (entryName, bytes) ->\n                    zos.putNextEntry(ZipEntry(entryName))\n                    zos.write(bytes)\n                    zos.closeEntry()\n                }\n            }\n\n            // 6. manifest.json\n            val manifestJson = ReceiptManifestService.generateManifestJson('''
+          if old not in s:
+              raise SystemExit('manifest anchor not found')
+          s = s.replace(old, new, 1)
+
+          old = '''                - 04_Dokumentation/     Enthält Exportprotokoll und Kanzleiprofil.\n                - manifest.json         Kryptografisches Prüfsummen-Manifest (SHA-256) aller Dateien.'''
+          new = '''                - 04_Dokumentation/     Enthält Exportprotokoll und Kanzleiprofil.\n                - 05_Jahresabschluss/   Enthält Jahresübersicht, Objekt, Finanzierung, Mieten, AfA/15 %, Anlage-V-Vorschau und offene Prüfpunkte.\n                - manifest.json         DATEV-/Beleg-Manifest; der Jahresabschluss enthält zusätzlich eine eigene SHA-256-Prüfsummenliste.'''
+          if old not in s:
+              raise SystemExit('README anchor not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Zwischenprüfung 4.2 - Kotlin kompilieren
+        run: gradle compileDebugKotlin --stacktrace --no-daemon
+
+      - name: Zwischenprüfung 4.3 - alle Unit Tests
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Diff prüfen
+        run: git diff --check && git diff --stat
+
+      - name: Verifizierten Block committen
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/util/AdvisorAnnualPackageContent.kt \
+                  app/src/main/java/com/example/util/AdvisorPackageBuilder.kt \
+                  app/src/test/java/com/example/util/AdvisorAnnualPackageContentTest.kt
+          git commit -m "Feature: Phase 4.1-4.3 Steuerberater-Jahrespaket [skip ci]"
+          git rm .github/workflows/phase4-block1-advisor-package.yml
+          git commit -m "CI: Phase 4 Block 1 Workflow entfernen [skip ci]"
+          git push
