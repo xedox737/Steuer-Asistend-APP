@@ -441,15 +441,52 @@ object PdfExporter {
         }
 
         fun line(text: String, paint: Paint = body, indent: Float = 0f) {
-            if (y > PAGE_HEIGHT - 55f) newPage()
             val maxWidth = CONTENT_WIDTH - indent
-            var safe = text
-            while (safe.isNotEmpty() && paint.measureText(safe) > maxWidth) {
-                safe = safe.dropLast(1)
+            val lineHeight = if (paint === heading) 18f else 13f
+            val paragraphs = text.replace("\r", "").split("\n")
+            paragraphs.forEach paragraphLoop@ { paragraph ->
+                val words = paragraph.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+                if (words.isEmpty()) {
+                    y += lineHeight
+                    return@paragraphLoop
+                }
+                var current = ""
+                words.forEach { word ->
+                    val candidate = if (current.isBlank()) word else "$current $word"
+                    if (paint.measureText(candidate) <= maxWidth) {
+                        current = candidate
+                    } else {
+                        if (current.isNotBlank()) {
+                            if (y > PAGE_HEIGHT - 55f) newPage()
+                            canvas!!.drawText(current, MARGIN_LEFT + indent, y, paint)
+                            y += lineHeight
+                        }
+                        current = word
+                        while (paint.measureText(current) > maxWidth && current.length > 1) {
+                            var splitAt = current.length - 1
+                            while (splitAt > 1 &&
+                                paint.measureText(current.substring(0, splitAt) + "-") > maxWidth
+                            ) {
+                                splitAt--
+                            }
+                            if (y > PAGE_HEIGHT - 55f) newPage()
+                            canvas!!.drawText(
+                                current.substring(0, splitAt) + "-",
+                                MARGIN_LEFT + indent,
+                                y,
+                                paint
+                            )
+                            y += lineHeight
+                            current = current.substring(splitAt)
+                        }
+                    }
+                }
+                if (current.isNotBlank()) {
+                    if (y > PAGE_HEIGHT - 55f) newPage()
+                    canvas!!.drawText(current, MARGIN_LEFT + indent, y, paint)
+                    y += lineHeight
+                }
             }
-            if (safe.length < text.length) safe = safe.dropLast(3.coerceAtMost(safe.length)) + "..."
-            canvas!!.drawText(safe, MARGIN_LEFT + indent, y, paint)
-            y += if (paint === heading) 18f else 13f
         }
 
         fun section(number: Int, name: String, lines: List<String>) {

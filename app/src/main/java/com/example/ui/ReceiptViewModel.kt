@@ -271,6 +271,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             initialValue = null
         )
 
+    val loans: StateFlow<List<com.example.data.Loan>> =
+        database.loanDao().getAllLoansFlow()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = emptyList()
+            )
+
     init {
         // Initialize Firestore
         FirestoreService.initialize(application)
@@ -1497,17 +1505,9 @@ data class AiSearchUiState(
     private val _lastExportResult = MutableStateFlow<com.example.util.AdvisorPackageResult?>(null)
     val lastExportResult: StateFlow<com.example.util.AdvisorPackageResult?> = _lastExportResult.asStateFlow()
 
-    private val _advisorAnnualSummary =
-        MutableStateFlow<com.example.util.AdvisorAnnualSummary?>(null)
-    val advisorAnnualSummary: StateFlow<com.example.util.AdvisorAnnualSummary?> =
-        _advisorAnnualSummary.asStateFlow()
-
-    fun updateAdvisorAnnualSummary(summary: com.example.util.AdvisorAnnualSummary) {
-        _advisorAnnualSummary.value = summary
-    }
-
-    fun recalculateWizardStepData() {
-        val allRecs = receipts.value
+    fun recalculateWizardStepData(
+        allRecs: List<Receipt> = receipts.value
+    ) {
         val profile = _activeDatevProfile.value
         val unitFilter = _wizardUnitFilter.value
         val yearFilter = _wizardYearFilter.value
@@ -1578,14 +1578,41 @@ data class AiSearchUiState(
         _wizardValidationReport.value = report
     }
 
-    fun executeWizardExport(context: Context): com.example.util.AdvisorPackageResult? {
-        recalculateWizardStepData()
+    internal fun buildAdvisorAnnualSummaryForExport(
+        context: Context,
+        year: Int,
+        currentReceipts: List<Receipt> = receipts.value,
+        currentMetadata: PropertyMetadata = propertyMetadata.value ?: PropertyMetadata(),
+        currentLoans: List<com.example.data.Loan> = loans.value,
+        currentUnits: List<WohneinheitStatus> = _wohneinheitenStatus.value
+    ): com.example.util.AdvisorAnnualSummary = buildAdvisorAnnualSummary(
+        context = context.applicationContext,
+        year = year,
+        receipts = currentReceipts,
+        metadata = currentMetadata,
+        loans = currentLoans,
+        units = currentUnits
+    )
+
+    suspend fun executeWizardExport(
+        context: Context
+    ): com.example.util.AdvisorPackageResult? {
+        val currentReceipts = database.receiptDao().getAllReceiptsList()
+        recalculateWizardStepData(currentReceipts)
         val records = _wizardMappedRecords.value
         val excluded = _wizardExcludedReceipts.value
         val profile = _activeDatevProfile.value
         val report = _wizardValidationReport.value ?: return null
         if (!report.isValidForExport || records.isEmpty()) {
             Log.w("ReceiptViewModel", "DATEV export blocked by validation policy")
+            return null
+        }
+        val selectedYear = _wizardYearFilter.value.toIntOrNull()
+        if (_wizardTargetFormat.value == "FULL_ZIP" && selectedYear == null) {
+            Log.w(
+                "ReceiptViewModel",
+                "Steuerberaterpaket benötigt ein eindeutig ausgewähltes Steuerjahr"
+            )
             return null
         }
 
@@ -1598,9 +1625,16 @@ data class AiSearchUiState(
             profile = profile,
             validationReport = report,
             periodSummary = _wizardYearFilter.value,
-            annualSummary = _advisorAnnualSummary.value?.takeIf {
-                _wizardYearFilter.value != "ALLE" &&
-                    it.year.toString() == _wizardYearFilter.value
+            annualSummary = selectedYear?.let { year ->
+                buildAdvisorAnnualSummaryForExport(
+                    context = context,
+                    year = year,
+                    currentReceipts = currentReceipts,
+                    currentMetadata = database.propertyDao().getPropertyMetadata()
+                        ?: PropertyMetadata(),
+                    currentLoans = database.loanDao().getAllLoans(),
+                    currentUnits = _wohneinheitenStatus.value
+                )
             }
         )
 

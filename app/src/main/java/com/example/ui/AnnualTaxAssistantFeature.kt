@@ -26,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,13 +34,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.AppDatabase
 import com.example.data.Loan
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import com.example.data.TaxPropertyCalculator
 import java.time.LocalDate
 import java.time.YearMonth
+import java.util.Locale
 import kotlin.math.abs
 
 private enum class TaxIssueSeverity { RED, YELLOW }
@@ -621,15 +620,237 @@ private fun buildAnlageVPreview(
     return income to expenses
 }
 
+
+internal fun buildAdvisorAnnualSummary(
+    context: Context,
+    year: Int,
+    receipts: List<Receipt>,
+    metadata: PropertyMetadata,
+    loans: List<Loan>,
+    units: List<WohneinheitStatus>
+): com.example.util.AdvisorAnnualSummary {
+    val summary = buildAnnualTaxSummary(context, year, receipts, metadata, loans)
+    val rentRows = buildAnnualRentRows(context, year, receipts, units)
+    val closingChecks = buildAnnualClosingChecks(summary, rentRows, metadata, receipts)
+    val preview = buildAnlageVPreview(summary, closingChecks)
+    val dataFingerprint = annualApprovalFingerprint(
+        summary,
+        closingChecks,
+        rentRows,
+        receipts,
+        metadata,
+        loans
+    )
+    val approvalPrefs = context.getSharedPreferences(
+        ANNUAL_APPROVAL_PREFS,
+        Context.MODE_PRIVATE
+    )
+    val approvedFingerprint = approvalPrefs.getString("fingerprint_$year", "").orEmpty()
+    val approvedAt = approvalPrefs.getString("approved_at_$year", "").orEmpty()
+    val approvalIsCurrent =
+        approvedFingerprint.isNotBlank() && approvedFingerprint == dataFingerprint
+    val phase1 = TaxPropertyCalculator.calculate(metadata, receipts)
+
+    val yearReceipts = receipts.filter { it.yearOrNull() == year }
+    val exportEligibleReceipts = yearReceipts.filter {
+        com.example.util.DatevReceiptEligibility.issues(it).isEmpty()
+    }
+    val originalsByReceipt = exportEligibleReceipts.associateWith {
+        com.example.util.DatevOriginalAttachmentPolicy.resolve(it)
+    }
+    val attachedOriginals = originalsByReceipt
+        .filterValues { it != null }
+        .keys
+        .map { it.getEffectiveDisplayId() }
+    val missingOriginals = originalsByReceipt
+        .filterValues { it == null }
+        .keys
+        .map { it.getEffectiveDisplayId() }
+
+    fun money(value: Double): String =
+        java.text.NumberFormat.getCurrencyInstance(Locale.GERMANY).format(value)
+
+    fun percent(value: Double): String =
+        String.format(Locale.GERMANY, "%.2f %%", value)
+
+    fun area(value: Double): String =
+        String.format(Locale.GERMANY, "%.2f m²", value)
+
+    fun germanDate(value: String): String {
+        if (value.isBlank()) return ""
+        return runCatching {
+            java.time.LocalDate.parse(value)
+                .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        }.getOrDefault(value)
+    }
+
+    val propertyOverview = buildList {
+        if (metadata.name.isNotBlank()) add("Objektbezeichnung: ${metadata.name}")
+        if (metadata.adresse.isNotBlank()) add("Adresse: ${metadata.adresse}")
+        if (metadata.baujahr > 0) add("Baujahr: ${metadata.baujahr}")
+        if (metadata.wohneinheiten.isNotBlank()) {
+            add("Wohneinheiten: ${metadata.wohneinheiten}")
+        }
+        if (metadata.wohnflaeche > 0.0) add("Wohnfläche: ${area(metadata.wohnflaeche)}")
+        if (metadata.grundstuecksgroesse > 0.0) {
+            add("Grundstücksgröße: ${area(metadata.grundstuecksgroesse)}")
+        }
+        if (metadata.gesamtKaufpreis > 0.0) {
+            add("Gesamtkaufpreis: ${money(metadata.gesamtKaufpreis)}")
+        }
+        if (phase1.buildingPurchaseShare > 0.0) {
+            add("Gebäudeanteil Kaufpreis: ${money(phase1.buildingPurchaseShare)}")
+        }
+        if (phase1.landPurchaseShare > 0.0) {
+            add("Grund und Boden: ${money(phase1.landPurchaseShare)}")
+        }
+        if (metadata.kaufpreisAufteilungQuelle.isNotBlank()) {
+            add("Quelle der Kaufpreisaufteilung: ${metadata.kaufpreisAufteilungQuelle}")
+        }
+        if (metadata.notariellesKaufdatum.isNotBlank()) {
+            add("Notarielles Kaufdatum: ${germanDate(metadata.notariellesKaufdatum)}")
+        }
+        if (metadata.uebergangNutzenLasten.isNotBlank()) {
+            add("Übergang Nutzen und Lasten: ${germanDate(metadata.uebergangNutzenLasten)}")
+        }
+        if (phase1.buildingAcquisitionCosts > 0.0) {
+            add("AfA-Bemessungsgrundlage Gebäude: ${money(phase1.buildingAcquisitionCosts)}")
+        }
+        if (phase1.afaRatePercent > 0.0) {
+            add("AfA-Satz: ${percent(phase1.afaRatePercent)}")
+        }
+        if (phase1.annualAfa > 0.0) {
+            add("AfA pro vollem Jahr: ${money(phase1.annualAfa)}")
+        }
+        if (phase1.firstYearAfa > 0.0) {
+            add("Zeitanteilige AfA im Anschaffungsjahr: ${money(phase1.firstYearAfa)}")
+        }
+        if (phase1.afaStartDate.isNotBlank()) {
+            add("AfA-Beginn: ${germanDate(phase1.afaStartDate)}")
+        }
+    }
+
+    val financing = loans.flatMapIndexed { index, loan ->
+        buildList {
+            val title = loan.bezeichnung.ifBlank { "Darlehen ${index + 1}" }
+            add("Darlehen ${index + 1}: $title")
+            if (loan.bank.isNotBlank()) add("  Bank: ${loan.bank}")
+            if (loan.darlehensbetrag > 0.0) {
+                add("  Darlehensbetrag: ${money(loan.darlehensbetrag)}")
+            }
+            if (loan.restschuld > 0.0) add("  Restschuld: ${money(loan.restschuld)}")
+            if (loan.sollzinsProzent > 0.0) {
+                add("  Sollzins: ${percent(loan.sollzinsProzent)}")
+            }
+            if (loan.tilgungProzent > 0.0) {
+                add("  Tilgung: ${percent(loan.tilgungProzent)}")
+            }
+            if (loan.monatlicheRate > 0.0) {
+                add("  Monatsrate: ${money(loan.monatlicheRate)}")
+            }
+            if (loan.startDatum.isNotBlank()) {
+                add("  Startdatum: ${germanDate(loan.startDatum)}")
+            }
+            if (loan.zinsbindungBis.isNotBlank()) {
+                add("  Zinsbindung bis: ${germanDate(loan.zinsbindungBis)}")
+            }
+            if (loan.laufzeitBis.isNotBlank()) {
+                add("  Laufzeit bis: ${germanDate(loan.laufzeitBis)}")
+            }
+            add("  Vermietungsanteil: ${percent(loan.vermietungsanteilProzent)}")
+            if (loan.notiz.isNotBlank()) add("  Notiz: ${loan.notiz}")
+            if (!loan.aktiv) add("  Status: Inaktiv")
+        }
+    }
+
+    val renovationsAndAfa = buildList {
+        if (phase1.afaStartDate.isNotBlank()) {
+            add("AfA-Beginn: ${germanDate(phase1.afaStartDate)}")
+        }
+        if (phase1.buildingAcquisitionCosts > 0.0) {
+            add("AfA-Bemessungsgrundlage: ${money(phase1.buildingAcquisitionCosts)}")
+        }
+        if (phase1.annualAfa > 0.0) add("Jährliche AfA: ${money(phase1.annualAfa)}")
+        if (phase1.monitorStartDate.isNotBlank() && phase1.monitorEndDate.isNotBlank()) {
+            add(
+                "15-%-Prüfzeitraum: ${germanDate(phase1.monitorStartDate)} bis " +
+                    germanDate(phase1.monitorEndDate)
+            )
+        }
+        if (phase1.limit15Percent > 0.0) {
+            add("15-%-Grenze: ${money(phase1.limit15Percent)}")
+            add("Berücksichtigte Modernisierungskosten netto: " +
+                money(phase1.relevantModernizationNet))
+            add("Auslastung der 15-%-Grenze: ${percent(phase1.limitUsagePercent)}")
+            add(
+                "Status 15-%-Monitor: " +
+                    if (phase1.is15PercentExceeded) "Grenze überschritten – steuerlich prüfen"
+                    else "Grenze nach aktuellem Datenstand nicht überschritten"
+            )
+        }
+    }
+
+    return com.example.util.AdvisorAnnualSummary(
+        year = year,
+        propertyTitle = metadata.name.ifBlank { "Immobilienobjekt" },
+        closingStatus = when {
+            closingChecks.any { it.state == ClosingCheckState.BLOCKED } -> "KRITISCH"
+            closingChecks.any { it.state == ClosingCheckState.REVIEW } -> "PRÜFEN"
+            else -> "OK"
+        },
+        manualApprovalCurrent = approvalIsCurrent,
+        approvedAt = approvedAt,
+        dataFingerprint = dataFingerprint,
+        approvedFingerprint = approvedFingerprint,
+        criticalAnnualIssues = summary.redCount,
+        criticalClosingChecks = closingChecks.count {
+            it.state == ClosingCheckState.BLOCKED
+        },
+        missingRequiredOriginals = missingOriginals,
+        totalIncome = summary.totalIncome,
+        totalExpenses = summary.totalExpenses,
+        result = summary.result,
+        propertyOverview = propertyOverview,
+        financing = financing,
+        rentOverview = rentRows.map {
+            "${it.unit.label}: Soll ${money(it.expected)}, Ist ${money(it.actual)}, " +
+                "Differenz ${money(it.difference)}"
+        },
+        renovationsAndAfa = renovationsAndAfa,
+        incomeValues = preview.first.map {
+            com.example.util.AdvisorAnnualValue(
+                it.label,
+                it.amount,
+                it.source,
+                it.checkStatus,
+                it.note
+            )
+        },
+        expenseValues = preview.second.map {
+            com.example.util.AdvisorAnnualValue(
+                it.label,
+                it.amount,
+                it.source,
+                it.checkStatus,
+                it.note
+            )
+        },
+        openIssues = summary.issues.map {
+            "${it.severity.name}: ${it.title} – ${it.message}"
+        } + closingChecks.filter { it.state != ClosingCheckState.OK }.map {
+            "${it.state.name}: ${it.title} – ${it.detail}"
+        },
+        attachedOriginalDocuments = attachedOriginals
+    )
+}
+
 @Composable
 fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val database = remember(context) { AppDatabase.getDatabase(context.applicationContext, scope) }
     val receipts by viewModel.receipts.collectAsState()
     val propertyState by viewModel.propertyMetadata.collectAsState()
     val units by viewModel.wohneinheitenStatus.collectAsState()
-    val loans by database.loanDao().getAllLoansFlow().collectAsState(initial = emptyList())
+    val loans by viewModel.loans.collectAsState()
     val metadata = propertyState ?: PropertyMetadata()
     val availableYears = remember(receipts) {
         receipts.mapNotNull { it.yearOrNull() }.distinct().sortedDescending()
@@ -673,86 +894,6 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val approvalWasSet = storedApprovalFingerprint.isNotBlank()
     val approvalBlocked = closingChecks.any { it.state == ClosingCheckState.BLOCKED }
 
-    val advisorAnnualSummary = remember(
-        year,
-        summary,
-        closingChecks,
-        rentRows,
-        receipts,
-        metadata,
-        loans,
-        preview,
-        approvalFingerprint,
-        storedApprovalFingerprint,
-        approvedAt,
-        approvalIsCurrent
-    ) {
-        val yearReceipts = receipts.filter { it.yearOrNull() == year }
-        val exportEligibleReceipts = yearReceipts.filter {
-            com.example.util.DatevReceiptEligibility.issues(it).isEmpty()
-        }
-        val originals = exportEligibleReceipts.mapNotNull { receipt ->
-            com.example.util.DatevOriginalAttachmentPolicy.resolve(receipt)?.let {
-                receipt.getEffectiveDisplayId()
-            }
-        }
-        val missingOriginals = exportEligibleReceipts.filter {
-            com.example.util.DatevOriginalAttachmentPolicy.resolve(it) == null
-        }.map { it.getEffectiveDisplayId() }
-
-        com.example.util.AdvisorAnnualSummary(
-            year = year,
-            propertyTitle = metadata.name.ifBlank { "Immobilienobjekt" },
-            closingStatus = when {
-                closingChecks.any { it.state == ClosingCheckState.BLOCKED } -> "KRITISCH"
-                closingChecks.any { it.state == ClosingCheckState.REVIEW } -> "PRÜFEN"
-                else -> "OK"
-            },
-            manualApprovalCurrent = approvalIsCurrent,
-            approvedAt = approvedAt,
-            dataFingerprint = approvalFingerprint,
-            approvedFingerprint = storedApprovalFingerprint,
-            criticalAnnualIssues = summary.redCount,
-            criticalClosingChecks = closingChecks.count {
-                it.state == ClosingCheckState.BLOCKED
-            },
-            missingRequiredOriginals = missingOriginals,
-            totalIncome = summary.totalIncome,
-            totalExpenses = summary.totalExpenses,
-            result = summary.result,
-            propertyOverview = listOf(metadata.toString()),
-            financing = loans.map { it.toString() },
-            rentOverview = rentRows.map {
-                "${it.unit.label}: Soll ${it.expected}, Ist ${it.actual}, Differenz ${it.difference}"
-            },
-            renovationsAndAfa = summary.expenseBuckets
-                .filter {
-                    it.title.contains("AfA", ignoreCase = true) ||
-                        it.title.contains("Erhaltung", ignoreCase = true) ||
-                        it.title.contains("Sanierung", ignoreCase = true)
-                }
-                .map { "${it.title}: ${it.amount} EUR – ${it.note}" },
-            incomeValues = preview.first.map {
-                com.example.util.AdvisorAnnualValue(
-                    it.label, it.amount, it.source, it.checkStatus, it.note
-                )
-            },
-            expenseValues = preview.second.map {
-                com.example.util.AdvisorAnnualValue(
-                    it.label, it.amount, it.source, it.checkStatus, it.note
-                )
-            },
-            openIssues = summary.issues.map {
-                "${it.severity.name}: ${it.title} – ${it.message}"
-            } + closingChecks.filter { it.state != ClosingCheckState.OK }.map {
-                "${it.state.name}: ${it.title} – ${it.detail}"
-            },
-            attachedOriginalDocuments = originals
-        )
-    }
-    androidx.compose.runtime.LaunchedEffect(advisorAnnualSummary) {
-        viewModel.updateAdvisorAnnualSummary(advisorAnnualSummary)
-    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("anlage_v_annual_assistant"),

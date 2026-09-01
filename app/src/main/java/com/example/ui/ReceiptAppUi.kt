@@ -13309,6 +13309,7 @@ fun DatevExportDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val exportScope = rememberCoroutineScope()
 
     val step by viewModel.wizardStep.collectAsState()
     val activeProfile by viewModel.activeDatevProfile.collectAsState()
@@ -13843,7 +13844,9 @@ fun DatevExportDialog(
 
                                 Button(
                                     onClick = {
-                                        viewModel.executeWizardExport(context)
+                                        exportScope.launch {
+                                            viewModel.executeWizardExport(context)
+                                        }
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
