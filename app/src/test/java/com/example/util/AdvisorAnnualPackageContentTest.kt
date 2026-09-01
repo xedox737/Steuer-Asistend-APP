@@ -98,4 +98,20 @@ class AdvisorAnnualPackageContentTest {
         assertFalse(validation.valid)
         assertTrue(validation.errors.any { it.contains("06_AfA_und_15Prozent") })
     }
+
+    @Test
+    fun `rejects duplicate original bytes`() {
+        val validation = AdvisorPackageStructureValidator.validateEntryNames(
+            entryNames = AdvisorPackageStructure.requiredFolders.map { "$it/" } +
+                listOf(
+                    "02_Originalbelege/BELEG-1.pdf",
+                    "02_Originalbelege/BELEG-2.pdf"
+                ),
+            originalContentHashes = listOf("same-hash", "same-hash")
+        )
+
+        assertFalse(validation.valid)
+        assertTrue(validation.errors.any { it.contains("Inhalte") })
+    }
+
 }
