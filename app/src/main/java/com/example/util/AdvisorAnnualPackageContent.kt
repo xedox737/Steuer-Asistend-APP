@@ -91,7 +91,10 @@ data class AdvisorPackageStructureValidation(
 )
 
 object AdvisorPackageStructureValidator {
-    fun validateEntryNames(entryNames: List<String>): AdvisorPackageStructureValidation {
+    fun validateEntryNames(
+        entryNames: List<String>,
+        originalContentHashes: List<String> = emptyList()
+    ): AdvisorPackageStructureValidation {
         val errors = mutableListOf<String>()
         AdvisorPackageStructure.requiredFolders.forEach { folder ->
             if (entryNames.none { it == "$folder/" || it.startsWith("$folder/") }) {
@@ -102,7 +105,12 @@ object AdvisorPackageStructureValidator {
         val duplicateOriginalNames = originals.groupingBy { it.substringAfterLast('/') }
             .eachCount().filterValues { it > 1 }.keys
         if (duplicateOriginalNames.isNotEmpty()) {
-            errors += "Doppelte Originalbelege: ${duplicateOriginalNames.joinToString()}"
+            errors += "Doppelte Originalbeleg-Dateinamen: ${duplicateOriginalNames.joinToString()}"
+        }
+        val duplicateOriginalHashes = originalContentHashes.groupingBy { it }
+            .eachCount().filterValues { it > 1 }.keys
+        if (duplicateOriginalHashes.isNotEmpty()) {
+            errors += "Doppelte Originalbeleg-Inhalte erkannt."
         }
         return AdvisorPackageStructureValidation(errors.isEmpty(), errors)
     }
