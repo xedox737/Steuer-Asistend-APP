@@ -411,7 +411,38 @@ val MIGRATION_16_17 = object : androidx.room.migration.Migration(16, 17) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class], version = 17, exportSchema = false)
+
+val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS logbook_trips (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                date TEXT NOT NULL, time TEXT NOT NULL, purpose TEXT NOT NULL,
+                propertyReference TEXT NOT NULL, startAddress TEXT NOT NULL,
+                destinationAddress TEXT NOT NULL, stopsJson TEXT NOT NULL,
+                routeMode TEXT NOT NULL, sameReturnRoute INTEGER NOT NULL,
+                taxDistanceKm REAL NOT NULL, kilometerSource TEXT NOT NULL,
+                aiEstimatedKm REAL, routedKm REAL, gpsMeasuredKm REAL,
+                odometerStartKm REAL, odometerEndKm REAL, standardRouteId INTEGER,
+                plausibilityStatus TEXT NOT NULL, manuallyConfirmed INTEGER NOT NULL,
+                sourceReceiptId INTEGER, expenseReceiptId INTEGER,
+                note TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+            )
+        """.trimIndent())
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS standard_routes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                name TEXT NOT NULL, startAddress TEXT NOT NULL,
+                destinationAddress TEXT NOT NULL, stopsJson TEXT NOT NULL,
+                routeMode TEXT NOT NULL, sameReturnRoute INTEGER NOT NULL,
+                distanceKm REAL NOT NULL, active INTEGER NOT NULL,
+                createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL
+            )
+        """.trimIndent())
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class], version = 18, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -420,6 +451,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun belegDao(): BelegDao
     abstract fun exportAuditDao(): ExportAuditDao
     abstract fun receiptDocumentDao(): ReceiptDocumentDao
+    abstract fun logbookDao(): LogbookDao
 
     companion object {
         @Volatile
@@ -434,7 +466,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

@@ -94,6 +94,27 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     )
     val drivePersistenceRepository = com.example.data.DrivePersistenceRepository(application, repository)
 
+    val logbookTrips: StateFlow<List<com.example.data.LogbookTrip>> =
+        database.logbookDao().observeTrips().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+    val standardRoutes: StateFlow<List<com.example.data.StandardRoute>> =
+        database.logbookDao().observeStandardRoutes().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    private var routeDistanceService: com.example.data.RouteDistanceService =
+        com.example.data.UnavailableRouteDistanceService
+
+    internal fun setRouteDistanceServiceForTesting(service: com.example.data.RouteDistanceService) {
+        routeDistanceService = service
+    }
+
+
     private val sharedPrefs = application.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
     private val _aiProviderState = MutableStateFlow(AiProviderSettings.loadState(application))
     val aiProviderState: StateFlow<AiProviderState> = _aiProviderState.asStateFlow()
@@ -2965,6 +2986,102 @@ data class AiSearchUiState(
             _bankStatementResult.value = result
             _isMatchingBankStatement.value = false
         }
+    }
+
+
+    suspend fun calculateLogbookRoadDistance(
+        stops: List<com.example.data.TripStop>,
+        routeMode: com.example.data.TripRouteMode,
+        sameReturnRoute: Boolean
+    ): com.example.data.RouteDistanceResult? {
+        return routeDistanceService.calculateRoadDistance(
+            com.example.data.RouteDistanceRequest(stops, routeMode, sameReturnRoute)
+        )
+    }
+
+    suspend fun findStandardRoute(
+        startAddress: String,
+        destinationAddress: String
+    ): com.example.data.StandardRoute? =
+        database.logbookDao().findStandardRoute(startAddress, destinationAddress)
+
+    suspend fun saveStandardRoute(route: com.example.data.StandardRoute): Long =
+        database.logbookDao().upsertStandardRoute(route)
+
+    fun deleteStandardRoute(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) { database.logbookDao().deleteStandardRoute(id) }
+    }
+
+    suspend fun saveLogbookTrip(
+        originalReceipt: Receipt,
+        purpose: String,
+        startAddress: String,
+        destinationAddress: String,
+        stops: List<com.example.data.TripStop>,
+        routeMode: com.example.data.TripRouteMode,
+        sameReturnRoute: Boolean,
+        evidence: com.example.data.DistanceEvidence,
+        standardRouteId: Long? = null,
+        note: String = ""
+    ): Result<Long> = runCatching {
+        val decision = com.example.data.LogbookDistancePolicy.decide(evidence)
+        val distance = requireNotNull(decision.taxDistanceKm) {
+            "Die steuerliche Kilometerzahl muss durch Route, GPS, Tacho, Standardstrecke oder manuell bestätigt werden."
+        }
+        val source = requireNotNull(decision.source)
+        require(source != com.example.data.KilometerSource.KI_GESCHAETZT) {
+            "Eine reine KI-Schätzung darf nicht steuerlich eingebucht werden."
+        }
+        val now = java.time.Instant.now().toString()
+        val expenseId = repository.insert(
+            Receipt(
+                aussteller = "Fahrtkosten: ${originalReceipt.aussteller}",
+                datum = originalReceipt.datum,
+                uhrzeit = originalReceipt.uhrzeit,
+                bruttobetrag = distance * 0.30,
+                hauptkategorie = "Sonstige Ausgaben",
+                unterkategorie = "Fahrtkosten",
+                kontoNr = "4670",
+                beschreibung = "Fahrtenbuch: ${stops.joinToString(" -> ") { it.label.ifBlank { it.address } }} | Zweck: §purpose | ${String.format(Locale.GERMANY, "%.1f", distance)} km | Quelle: ${source.name}",
+                isEigenleistungSanierung = originalReceipt.isEigenleistungSanierung,
+                wohneinheit = originalReceipt.wohneinheit
+            )
+        )
+        val tripId = database.logbookDao().upsertTrip(
+            com.example.data.LogbookTrip(
+                date = originalReceipt.datum,
+                time = originalReceipt.uhrzeit,
+                purpose = purpose,
+                propertyReference = originalReceipt.wohneinheit,
+                startAddress = startAddress,
+                destinationAddress = destinationAddress,
+                stopsJson = com.example.data.TripStopJson.encode(stops),
+                routeMode = routeMode.name,
+                sameReturnRoute = sameReturnRoute,
+                taxDistanceKm = distance,
+                kilometerSource = source.name,
+                aiEstimatedKm = evidence.aiEstimatedKm,
+                routedKm = evidence.routedKm,
+                gpsMeasuredKm = evidence.gpsMeasuredKm,
+                odometerStartKm = evidence.odometerStartKm,
+                odometerEndKm = evidence.odometerEndKm,
+                standardRouteId = standardRouteId,
+                plausibilityStatus = decision.plausibilityStatus.name,
+                manuallyConfirmed = evidence.manuallyConfirmed,
+                sourceReceiptId = originalReceipt.id,
+                expenseReceiptId = expenseId.toInt(),
+                note = note,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+        repository.insert(
+            originalReceipt.copy(
+                beschreibung = originalReceipt.beschreibung.replace(Regex("""\s*\[Fahrt gebucht:[^\]]*]"""), "") +
+                    " [Fahrt gebucht: ${String.format(Locale.GERMANY, "%.1f", distance)} km, ${source.name}]"
+            )
+        )
+        tripId
     }
 
     suspend fun estimateLogbookRouteDistance(

@@ -683,7 +683,7 @@ object GeminiClient {
 
 
     /**
-     * Estimates route distance between Start, Via (Store), and End (Property) addresses in Germany.
+     * Produces an explicitly unverified AI route estimate. It is never a routing-provider result.
      */
     suspend fun estimateRouteDistance(
         startAddress: String,
@@ -709,11 +709,13 @@ object GeminiClient {
             - Routentyp: $routeType
 
             Routentyp Erklärung:
-            - "standard": Rundfahrt (Startadresse -> Zwischenstation -> Zieladresse -> Startadresse)
-            - "store_only": Fahrt zum Markt (Startadresse -> Zwischenstation -> Startadresse)
-            - "property_only": Fahrt zum Objekt (Startadresse -> Zieladresse -> Startadresse)
+            - "one_way": einfache Fahrt (Startadresse -> optionale Zwischenstation -> Zieladresse)
+            - "round_trip": Hin- und Rückfahrt mit gleicher Rückstrecke
+            - "individual": individuelle Route über die angegebenen Stationen
+            - "standard", "store_only" und "property_only": bestehende Altfälle
 
-            Schätze die echte Fahrtstrecke auf Straßen (keine Luftlinie).
+            Schätze eine mögliche Straßenstrecke. Das Ergebnis ist ausdrücklich nur ein KI-Vorschlag,
+            keine gemessene oder von einem Routingdienst berechnete Entfernung.
             Gib NUR ein gültiges JSON zurück mit folgendem Aufbau (kein Markdown, kein Freitext):
             {
               "distanceKm": 24.5
