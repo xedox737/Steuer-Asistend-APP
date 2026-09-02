@@ -218,7 +218,7 @@ object LogbookDistancePolicy {
             ).filter { it != chosen }.forEach { other ->
                 val tolerance = maxOf(ABSOLUTE_TOLERANCE_KM, chosen * RELATIVE_TOLERANCE)
                 if (abs(other - chosen) > tolerance) {
-                    warnings += "Kilometerangaben weichen deutlich voneinander ab."
+                    warnings += "Kilometerangaben können deutlich voneinander abweichen."
                 }
             }
             if (chosen > MAX_REASONABLE_KM) warnings += "Die Strecke ist ungewöhnlich lang und sollte geprüft werden."
