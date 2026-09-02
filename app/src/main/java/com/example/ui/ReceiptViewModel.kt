@@ -108,7 +108,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         )
 
     private var routeDistanceService: com.example.data.RouteDistanceService =
-        com.example.data.UnavailableRouteDistanceService
+        com.example.data.GoogleRoutesDistanceService(application) {
+            AiProviderSettings.getGoogleRoutesKey(application)
+        }
 
     internal fun setRouteDistanceServiceForTesting(service: com.example.data.RouteDistanceService) {
         routeDistanceService = service
@@ -123,7 +125,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         provider: ReceiptAnalysisProvider,
         model: String,
         newOpenAiKey: String,
-        newGeminiKey: String
+        newGeminiKey: String,
+        newGoogleRoutesKey: String = ""
     ): String? {
         return try {
             if (newOpenAiKey.isNotBlank()) {
@@ -138,6 +141,19 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     newGeminiKey.toCharArray()
                 )
             }
+            if (newGoogleRoutesKey.isNotBlank()) {
+                AiProviderSettings.storeGoogleRoutesKey(
+                    getApplication(),
+                    newGoogleRoutesKey.toCharArray()
+                )
+            }
+            val onlyGoogleUpdate = newGoogleRoutesKey.isNotBlank() &&
+                newOpenAiKey.isBlank() && newGeminiKey.isBlank() &&
+                selectedProviderIsUnavailable(provider)
+            if (onlyGoogleUpdate) {
+                _aiProviderState.value = AiProviderSettings.loadState(getApplication())
+                return null
+            }
             _aiProviderState.value = AiProviderSettings.saveSelection(
                 context = getApplication(),
                 provider = provider,
@@ -151,8 +167,21 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun selectedProviderIsUnavailable(provider: ReceiptAnalysisProvider): Boolean {
+        val state = AiProviderSettings.loadState(getApplication())
+        return when (provider) {
+            ReceiptAnalysisProvider.OPENAI -> !state.hasOpenAiKey
+            ReceiptAnalysisProvider.GEMINI -> !state.hasGeminiKey &&
+                (com.example.BuildConfig.GEMINI_API_KEY.isBlank() || com.example.BuildConfig.GEMINI_API_KEY == "MY_GEMINI_API_KEY")
+        }
+    }
+
     fun deleteOpenAiKey() {
         _aiProviderState.value = AiProviderSettings.clearOpenAiKey(getApplication())
+    }
+
+    fun deleteGoogleRoutesKey() {
+        _aiProviderState.value = AiProviderSettings.clearGoogleRoutesKey(getApplication())
     }
 
     fun deleteGeminiKey() {
@@ -2993,20 +3022,50 @@ data class AiSearchUiState(
         stops: List<com.example.data.TripStop>,
         routeMode: com.example.data.TripRouteMode,
         sameReturnRoute: Boolean
-    ): com.example.data.RouteDistanceResult? {
-        return routeDistanceService.calculateRoadDistance(
-            com.example.data.RouteDistanceRequest(stops, routeMode, sameReturnRoute)
-        )
+    ): com.example.data.RouteDistanceAttempt {
+        return try {
+            val result = routeDistanceService.calculateRoadDistance(
+                com.example.data.RouteDistanceRequest(stops, routeMode, sameReturnRoute)
+            )
+            if (result == null) {
+                com.example.data.RouteDistanceAttempt(errorMessage = "Google-Routenberechnung derzeit nicht verfügbar.")
+            } else {
+                com.example.data.RouteDistanceAttempt(result = result)
+            }
+        } catch (e: com.example.data.RouteDistanceException) {
+            com.example.data.RouteDistanceAttempt(errorMessage = e.userMessage)
+        } catch (_: Exception) {
+            com.example.data.RouteDistanceAttempt(errorMessage = "Google-Routenberechnung derzeit nicht verfügbar.")
+        }
     }
 
-    suspend fun findStandardRoute(
-        startAddress: String,
-        destinationAddress: String
-    ): com.example.data.StandardRoute? =
-        database.logbookDao().findStandardRoute(startAddress, destinationAddress)
+    suspend fun findStandardRoute(routeSignature: String): com.example.data.StandardRoute? {
+        database.logbookDao().findStandardRoute(routeSignature)?.let { return it }
+        // Lazily index pre-v19 standard routes without changing any historic trip distance.
+        val legacy = database.logbookDao().getAllStandardRoutes().firstOrNull { route ->
+            if (!route.active || route.routeSignature.isNotBlank()) return@firstOrNull false
+            val mode = runCatching { com.example.data.TripRouteMode.valueOf(route.routeMode) }
+                .getOrDefault(com.example.data.TripRouteMode.EINFACH)
+            runCatching {
+                val routeStops = route.stops.takeIf { it.size >= 2 } ?: listOf(
+                    com.example.data.TripStop(route.startAddress, "Start", 0),
+                    com.example.data.TripStop(route.destinationAddress, "Ziel", 1)
+                )
+                com.example.data.TripRouteNormalizer.normalize(
+                    com.example.data.RouteDistanceRequest(routeStops, mode, route.sameReturnRoute)
+                ).signature == routeSignature
+            }.getOrDefault(false)
+        } ?: return null
+        database.logbookDao().upsertStandardRoute(legacy.copy(routeSignature = routeSignature))
+        return legacy.copy(routeSignature = routeSignature)
+    }
 
-    suspend fun saveStandardRoute(route: com.example.data.StandardRoute): Long =
-        database.logbookDao().upsertStandardRoute(route)
+    suspend fun saveStandardRoute(route: com.example.data.StandardRoute): Long {
+        val existing = database.logbookDao().findStandardRoute(route.routeSignature)
+        return database.logbookDao().upsertStandardRoute(
+            if (existing == null) route else route.copy(id = existing.id, createdAt = existing.createdAt)
+        )
+    }
 
     fun deleteStandardRoute(id: Long) {
         viewModelScope.launch(Dispatchers.IO) { database.logbookDao().deleteStandardRoute(id) }
@@ -3021,16 +3080,30 @@ data class AiSearchUiState(
         routeMode: com.example.data.TripRouteMode,
         sameReturnRoute: Boolean,
         evidence: com.example.data.DistanceEvidence,
+        routeResult: com.example.data.RouteDistanceResult? = null,
         standardRouteId: Long? = null,
+        correctionReason: String = "",
+        correctionNote: String = "",
         note: String = ""
     ): Result<Long> = runCatching {
-        val decision = com.example.data.LogbookDistancePolicy.decide(evidence)
+        require(evidence.manuallyConfirmed) { "Route, Fahrtzweck und Kilometer müssen vor dem Einbuchen bestätigt werden." }
+        val normalized = com.example.data.TripRouteNormalizer.normalize(
+            com.example.data.RouteDistanceRequest(stops, routeMode, sameReturnRoute)
+        )
+        val checkedEvidence = evidence.copy(correctionReason = correctionReason)
+        val decision = com.example.data.LogbookDistancePolicy.decide(checkedEvidence)
         val distance = requireNotNull(decision.taxDistanceKm) {
             "Die steuerliche Kilometerzahl muss durch Route, GPS, Tacho, Standardstrecke oder manuell bestätigt werden."
         }
         val source = requireNotNull(decision.source)
         require(source != com.example.data.KilometerSource.KI_GESCHAETZT) {
             "Eine reine KI-Schätzung darf nicht steuerlich eingebucht werden."
+        }
+        require(!decision.correctionReasonRequired || correctionReason.isNotBlank()) {
+            "Für die deutlich abweichende manuelle Strecke ist ein Korrekturgrund erforderlich."
+        }
+        require(correctionReason != "Sonstiges" || correctionNote.isNotBlank()) {
+            "Für den Korrekturgrund Sonstiges ist eine kurze Beschreibung erforderlich."
         }
         val now = java.time.Instant.now().toString()
         val expenseId = repository.insert(
@@ -3042,7 +3115,7 @@ data class AiSearchUiState(
                 hauptkategorie = "Sonstige Ausgaben",
                 unterkategorie = "Fahrtkosten",
                 kontoNr = "4670",
-                beschreibung = "Fahrtenbuch: ${stops.joinToString(" -> ") { it.label.ifBlank { it.address } }} | Zweck: §purpose | ${String.format(Locale.GERMANY, "%.1f", distance)} km | Quelle: ${source.name}",
+                beschreibung = "Fahrtenbuch: ${normalized.stops.joinToString(" -> ") { it.label.ifBlank { it.address } }} | Zweck: $purpose | ${String.format(Locale.GERMANY, "%.1f", distance)} km | Quelle: ${source.name}",
                 isEigenleistungSanierung = originalReceipt.isEigenleistungSanierung,
                 wohneinheit = originalReceipt.wohneinheit
             )
@@ -3055,13 +3128,14 @@ data class AiSearchUiState(
                 propertyReference = originalReceipt.wohneinheit,
                 startAddress = startAddress,
                 destinationAddress = destinationAddress,
-                stopsJson = com.example.data.TripStopJson.encode(stops),
+                stopsJson = com.example.data.TripStopJson.encode(normalized.stops),
                 routeMode = routeMode.name,
                 sameReturnRoute = sameReturnRoute,
                 taxDistanceKm = distance,
                 kilometerSource = source.name,
                 aiEstimatedKm = evidence.aiEstimatedKm,
                 routedKm = evidence.routedKm,
+                manualKm = evidence.manualKm,
                 gpsMeasuredKm = evidence.gpsMeasuredKm,
                 odometerStartKm = evidence.odometerStartKm,
                 odometerEndKm = evidence.odometerEndKm,
@@ -3070,6 +3144,12 @@ data class AiSearchUiState(
                 manuallyConfirmed = evidence.manuallyConfirmed,
                 sourceReceiptId = originalReceipt.id,
                 expenseReceiptId = expenseId.toInt(),
+                routeProvider = routeResult?.providerId.orEmpty(),
+                routeCalculatedAt = routeResult?.calculatedAt.orEmpty(),
+                routeDurationSeconds = routeResult?.durationSeconds,
+                correctionReason = correctionReason,
+                correctionNote = correctionNote,
+                routeSignature = normalized.signature,
                 note = note,
                 createdAt = now,
                 updatedAt = now

@@ -22,7 +22,8 @@ data class AiProviderState(
     val provider: ReceiptAnalysisProvider = ReceiptAnalysisProvider.GEMINI,
     val openAiModel: String = DEFAULT_OPENAI_MODEL,
     val hasOpenAiKey: Boolean = false,
-    val hasGeminiKey: Boolean = false
+    val hasGeminiKey: Boolean = false,
+    val hasGoogleRoutesKey: Boolean = false
 ) {
     companion object {
         const val DEFAULT_OPENAI_MODEL = "gpt-5.6"
@@ -30,8 +31,8 @@ data class AiProviderState(
 }
 
 /**
- * Stores a user-entered OpenAI key encrypted with a non-exportable Android Keystore key.
- * The key is never exposed through [AiProviderState], logs, backups, or BuildConfig.
+ * Stores user-entered provider keys encrypted with non-exportable Android Keystore keys.
+ * Plaintext keys are never exposed through [AiProviderState], logs, backups, or BuildConfig.
  */
 object AiProviderSettings {
     private const val PREFS_NAME = "ai_provider_settings"
@@ -41,8 +42,11 @@ object AiProviderSettings {
     private const val KEY_IV = "openai_key_iv"
     private const val KEY_GEMINI_CIPHERTEXT = "gemini_key_ciphertext"
     private const val KEY_GEMINI_IV = "gemini_key_iv"
+    private const val KEY_GOOGLE_ROUTES_CIPHERTEXT = "google_routes_key_ciphertext"
+    private const val KEY_GOOGLE_ROUTES_IV = "google_routes_key_iv"
     private const val KEYSTORE_ALIAS = "steuer_assistent_openai_key_v1"
     private const val GEMINI_KEYSTORE_ALIAS = "steuer_assistent_gemini_key_v1"
+    private const val GOOGLE_ROUTES_KEYSTORE_ALIAS = "steuer_assistent_google_routes_key_v1"
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     fun loadState(context: Context): AiProviderState {
@@ -62,7 +66,8 @@ object AiProviderSettings {
             provider = provider,
             openAiModel = model,
             hasOpenAiKey = hasStoredOpenAiKey(context),
-            hasGeminiKey = hasStoredGeminiKey(context)
+            hasGeminiKey = hasStoredGeminiKey(context),
+            hasGoogleRoutesKey = hasStoredGoogleRoutesKey(context)
         )
     }
 
@@ -164,6 +169,40 @@ object AiProviderSettings {
         }
     }
 
+    fun storeGoogleRoutesKey(context: Context, rawKey: CharArray) {
+        val key = rawKey.concatToString().trim()
+        try {
+            require(isPlausibleGoogleRoutesKey(key)) { "Der Google-Routes-API-Schlüssel hat kein gültiges Format." }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGoogleRoutesSecretKey())
+            val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putString(KEY_GOOGLE_ROUTES_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                .putString(KEY_GOOGLE_ROUTES_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                .apply()
+        } finally {
+            rawKey.fill('\u0000')
+        }
+    }
+
+    fun getGoogleRoutesKey(context: Context): CharArray? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ciphertext = prefs.getString(KEY_GOOGLE_ROUTES_CIPHERTEXT, null) ?: return null
+        val iv = prefs.getString(KEY_GOOGLE_ROUTES_IV, null) ?: return null
+        return runCatching {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(
+                Cipher.DECRYPT_MODE,
+                getGoogleRoutesSecretKey(),
+                GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))
+            )
+            String(cipher.doFinal(Base64.decode(ciphertext, Base64.NO_WRAP)), StandardCharsets.UTF_8).toCharArray()
+        }.getOrElse {
+            clearGoogleRoutesKey(context)
+            null
+        }
+    }
+
     fun clearOpenAiKey(context: Context): AiProviderState {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -183,12 +222,23 @@ object AiProviderSettings {
         return loadState(context)
     }
 
+    fun clearGoogleRoutesKey(context: Context): AiProviderState {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(KEY_GOOGLE_ROUTES_CIPHERTEXT)
+            .remove(KEY_GOOGLE_ROUTES_IV)
+            .apply()
+        return loadState(context)
+    }
+
     internal fun isPlausibleOpenAiKey(value: String): Boolean =
         value.startsWith("sk-") && value.length >= 24 && value.none(Char::isWhitespace)
 
     // Google AI Studio now issues both legacy AIza keys and newer auth keys.
     // Key prefixes are not a stable validation mechanism; reject only clearly malformed input.
     internal fun isPlausibleGeminiKey(value: String): Boolean =
+        value.length >= 16 && value.none(Char::isWhitespace)
+
+    internal fun isPlausibleGoogleRoutesKey(value: String): Boolean =
         value.length >= 16 && value.none(Char::isWhitespace)
 
     private fun hasStoredOpenAiKey(context: Context): Boolean {
@@ -199,6 +249,11 @@ object AiProviderSettings {
     private fun hasStoredGeminiKey(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.contains(KEY_GEMINI_CIPHERTEXT) && prefs.contains(KEY_GEMINI_IV)
+    }
+
+    private fun hasStoredGoogleRoutesKey(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.contains(KEY_GOOGLE_ROUTES_CIPHERTEXT) && prefs.contains(KEY_GOOGLE_ROUTES_IV)
     }
 
     private fun hasBuildConfigGeminiKey(): Boolean =
@@ -245,5 +300,24 @@ object AiProviderSettings {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         return keyStore.getKey(GEMINI_KEYSTORE_ALIAS, null) as? SecretKey
     }
-}
 
+    private fun getOrCreateGoogleRoutesSecretKey(): SecretKey =
+        getGoogleRoutesSecretKey() ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+            .apply {
+                init(
+                    KeyGenParameterSpec.Builder(
+                        GOOGLE_ROUTES_KEYSTORE_ALIAS,
+                        KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                    )
+                        .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                        .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                        .setRandomizedEncryptionRequired(true)
+                        .build()
+                )
+            }.generateKey()
+
+    private fun getGoogleRoutesSecretKey(): SecretKey? {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        return keyStore.getKey(GOOGLE_ROUTES_KEYSTORE_ALIAS, null) as? SecretKey
+    }
+}

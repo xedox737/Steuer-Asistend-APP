@@ -12147,6 +12147,7 @@ fun AiProviderSettingsDialog(
     var model by remember(savedState.openAiModel) { mutableStateOf(savedState.openAiModel) }
     var apiKeyInput by remember { mutableStateOf("") }
     var geminiApiKeyInput by remember { mutableStateOf("") }
+    var googleRoutesApiKeyInput by remember { mutableStateOf("") }
     var privateDeviceConfirmed by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -12155,7 +12156,7 @@ fun AiProviderSettingsDialog(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(22.dp))
-                Text("KI-Anbieter für Beleganalyse", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("KI- und Routing-Anbieter", fontWeight = FontWeight.Bold, color = DarkNavy)
             }
         },
         text = {
@@ -12323,6 +12324,33 @@ fun AiProviderSettingsDialog(
                     }
                 }
 
+                HorizontalDivider(color = BorderColor)
+                Text("Google Routes – echte Straßenkilometer", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(
+                    "Unabhängig von der KI. Der Schlüssel wird mit Android Keystore verschlüsselt, nur maskiert behandelt und nicht gesichert oder exportiert.",
+                    fontSize = 10.5.sp, color = SlateGray
+                )
+                OutlinedTextField(
+                    value = googleRoutesApiKeyInput,
+                    onValueChange = { googleRoutesApiKeyInput = it.trim() },
+                    label = {
+                        Text(if (savedState.hasGoogleRoutesKey) "Neuer Google-Routes-Schlüssel (leer = behalten)" else "Google-Routes-API-Schlüssel")
+                    },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("google_routes_api_key_input")
+                )
+                if (savedState.hasGoogleRoutesKey) {
+                    Text("Google-Routes-Schlüssel: •••••••• (gespeichert)", fontSize = 10.sp, color = EmeraldGreen)
+                    OutlinedButton(
+                        onClick = {
+                            googleRoutesApiKeyInput = ""
+                            viewModel.deleteGoogleRoutesKey()
+                        },
+                        modifier = Modifier.testTag("delete_google_routes_api_key_button")
+                    ) { Text("Google-Routes-Schlüssel löschen", fontSize = 11.sp) }
+                }
+
                 errorMessage?.let {
                     Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
@@ -12335,20 +12363,24 @@ fun AiProviderSettingsDialog(
                         provider = selectedProvider,
                         model = model,
                         newOpenAiKey = apiKeyInput,
-                        newGeminiKey = geminiApiKeyInput
+                        newGeminiKey = geminiApiKeyInput,
+                        newGoogleRoutesKey = googleRoutesApiKeyInput
                     )
                     if (error == null) {
                         apiKeyInput = ""
                         geminiApiKeyInput = ""
+                        googleRoutesApiKeyInput = ""
                         onDismiss()
                     } else {
                         errorMessage = error
                     }
                 },
-                enabled = when (selectedProvider) {
-                    ReceiptAnalysisProvider.OPENAI -> privateDeviceConfirmed && (savedState.hasOpenAiKey || apiKeyInput.isNotBlank())
-                    ReceiptAnalysisProvider.GEMINI -> privateDeviceConfirmed && (savedState.hasGeminiKey || geminiApiKeyInput.isNotBlank())
-                },
+                enabled = privateDeviceConfirmed && (
+                    googleRoutesApiKeyInput.isNotBlank() || when (selectedProvider) {
+                        ReceiptAnalysisProvider.OPENAI -> savedState.hasOpenAiKey || apiKeyInput.isNotBlank()
+                        ReceiptAnalysisProvider.GEMINI -> savedState.hasGeminiKey || geminiApiKeyInput.isNotBlank()
+                    }
+                ),
                 modifier = Modifier.testTag("save_ai_provider_settings_button")
             ) {
                 Text("Speichern")
@@ -12359,6 +12391,7 @@ fun AiProviderSettingsDialog(
                 onClick = {
                     apiKeyInput = ""
                     geminiApiKeyInput = ""
+                    googleRoutesApiKeyInput = ""
                     onDismiss()
                 }
             ) {

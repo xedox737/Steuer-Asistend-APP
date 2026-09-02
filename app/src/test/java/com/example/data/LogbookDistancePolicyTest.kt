@@ -62,7 +62,33 @@ class LogbookDistancePolicyTest {
             DistanceEvidence(routedKm = 23.8, manualKm = 40.0)
         )
         assertEquals(TripPlausibilityStatus.PRUEFEN, result.plausibilityStatus)
-        assertTrue(result.warnings.any { it.contains("abweichen") })
+        assertTrue(result.warnings.any { it.contains("weich") })
+    }
+
+    @Test
+    fun confirmedManualOverrideWinsOverGoogleAndRequiresReasonWhenMaterial() {
+        val modestOverride = LogbookDistancePolicy.decide(
+            DistanceEvidence(routedKm = 24.7, manualKm = 27.5, manuallyConfirmed = true)
+        )
+        assertEquals(27.5, modestOverride.taxDistanceKm!!, 0.001)
+        assertEquals(KilometerSource.MANUELL, modestOverride.source)
+
+        val missingReason = LogbookDistancePolicy.decide(
+            DistanceEvidence(routedKm = 24.7, manualKm = 34.0, manuallyConfirmed = true)
+        )
+        assertEquals(KilometerSource.MANUELL, missingReason.source)
+        assertTrue(missingReason.correctionReasonRequired)
+        assertEquals(TripPlausibilityStatus.PRUEFEN, missingReason.plausibilityStatus)
+
+        val explained = LogbookDistancePolicy.decide(
+            DistanceEvidence(
+                routedKm = 24.7, manualKm = 34.0, manuallyConfirmed = true,
+                correctionReason = "Umleitung"
+            )
+        )
+        assertEquals(34.0, explained.taxDistanceKm!!, 0.001)
+        assertEquals(KilometerSource.MANUELL, explained.source)
+        assertEquals(TripPlausibilityStatus.MANUELL_BESTAETIGT, explained.plausibilityStatus)
     }
 
     @Test

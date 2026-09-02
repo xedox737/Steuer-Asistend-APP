@@ -442,7 +442,22 @@ val MIGRATION_17_18 = object : androidx.room.migration.Migration(17, 18) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class], version = 18, exportSchema = false)
+val MIGRATION_18_19 = object : androidx.room.migration.Migration(18, 19) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN manualKm REAL")
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN routeProvider TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN routeCalculatedAt TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN routeDurationSeconds INTEGER")
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN correctionReason TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN correctionNote TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE logbook_trips ADD COLUMN routeSignature TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE standard_routes ADD COLUMN routeSignature TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE standard_routes ADD COLUMN sourceProvider TEXT NOT NULL DEFAULT ''")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_standard_routes_routeSignature ON standard_routes(routeSignature)")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class], version = 19, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -466,7 +481,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

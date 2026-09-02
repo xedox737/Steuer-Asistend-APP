@@ -14,7 +14,9 @@ object LogbookCsvExporter {
             "Datum", "Uhrzeit", "Fahrtzweck", "Objekt", "Start", "Ziel", "Route",
             "Fahrtart", "Gleiche Rueckstrecke", "Steuerliche Kilometer",
             "Kilometerquelle", "KI-Schaetzung", "Strassenroute", "GPS",
-            "Tacho Start", "Tacho Ende", "Plausibilitaet", "Manuell bestaetigt", "Beleg-ID", "Notiz"
+            "Tacho Start", "Tacho Ende", "Manuelle Kilometer", "Route Provider",
+            "Route berechnet am", "Korrekturgrund", "Korrekturhinweis",
+            "Plausibilitaet", "Manuell bestaetigt", "Beleg-ID", "Notiz"
         ).joinToString(";")
         return buildString {
             appendLine(header)
@@ -31,6 +33,9 @@ object LogbookCsvExporter {
                         trip.gpsMeasuredKm?.let(decimal::format).orEmpty(),
                         trip.odometerStartKm?.let(decimal::format).orEmpty(),
                         trip.odometerEndKm?.let(decimal::format).orEmpty(),
+                        trip.manualKm?.let(decimal::format).orEmpty(),
+                        trip.routeProvider, trip.routeCalculatedAt,
+                        trip.correctionReason, trip.correctionNote,
                         trip.plausibilityStatus,
                         if (trip.manuallyConfirmed) "Ja" else "Nein",
                         trip.sourceReceiptId?.toString().orEmpty(), trip.note

@@ -12,6 +12,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -39,7 +41,9 @@ import com.example.data.LogbookTrip
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import com.example.data.StandardRoute
+import com.example.data.RouteDistanceResult
 import com.example.data.TripRouteMode
+import com.example.data.TripRouteNormalizer
 import com.example.data.TripStop
 import com.example.data.TripStopJson
 import java.time.Instant
@@ -47,21 +51,6 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 private fun Double.germanKm(): String = String.format(Locale.GERMANY, "%.1f km", this)
-
-private fun buildStops(
-    start: String,
-    via: String,
-    destination: String,
-    mode: TripRouteMode,
-    sameReturnRoute: Boolean
-): List<TripStop> = buildList {
-    add(TripStop(start.trim(), "Start", 0))
-    if (via.isNotBlank()) add(TripStop(via.trim(), "Zwischenstopp", size))
-    add(TripStop(destination.trim(), "Ziel", size))
-    if (mode == TripRouteMode.HIN_UND_RUECKFAHRT && sameReturnRoute) {
-        add(TripStop(start.trim(), "Rückkehr", size))
-    }
-}
 
 @Composable
 fun LogbookScreen(viewModel: ReceiptViewModel) {
@@ -144,22 +133,62 @@ private fun EditableStandardRoute(route: StandardRoute, viewModel: ReceiptViewMo
     val scope = rememberCoroutineScope()
     var name by remember(route.id) { mutableStateOf(route.name) }
     var distance by remember(route.id) { mutableStateOf(route.distanceKm.toString()) }
+    var startAddress by remember(route.id) { mutableStateOf(route.startAddress) }
+    var destinationAddress by remember(route.id) { mutableStateOf(route.destinationAddress) }
+    var intermediate by remember(route.id) {
+        mutableStateOf(route.stops.filter { it.label.startsWith("Zwischenstopp") }.map { it.address })
+    }
     var message by remember(route.id) { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(name, { name = it }, label = { Text("Bezeichnung") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(startAddress, { startAddress = it }, label = { Text("Start") }, modifier = Modifier.fillMaxWidth())
+        intermediate.forEachIndexed { index, value ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(value, { changed ->
+                    intermediate = intermediate.toMutableList().also { it[index] = changed }
+                }, label = { Text("Zwischenstopp ${index + 1}") }, modifier = Modifier.weight(1f))
+                OutlinedButton(onClick = {
+                    if (index > 0) intermediate = intermediate.toMutableList().also {
+                        val item = it.removeAt(index); it.add(index - 1, item)
+                    }
+                }, enabled = index > 0) { Text("↑") }
+                OutlinedButton(onClick = {
+                    if (index < intermediate.lastIndex) intermediate = intermediate.toMutableList().also {
+                        val item = it.removeAt(index); it.add(index + 1, item)
+                    }
+                }, enabled = index < intermediate.lastIndex) { Text("↓") }
+                OutlinedButton(onClick = {
+                    intermediate = intermediate.toMutableList().also { it.removeAt(index) }
+                }) { Text("×") }
+            }
+        }
+        OutlinedButton(onClick = { intermediate = intermediate + "" }) { Text("+ Zwischenstopp") }
+        OutlinedTextField(destinationAddress, { destinationAddress = it }, label = { Text("Ziel") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(
             distance, { distance = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' } },
             label = { Text("Gesamtstrecke (km)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth()
         )
-        Text("${route.startAddress} → ${route.destinationAddress}", fontSize = 10.sp, color = SlateGray)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
                 val km = distance.replace(',', '.').toDoubleOrNull()
                 if (name.isBlank() || km == null || km <= 0.0) message = "Bezeichnung und positive Strecke erforderlich."
                 else scope.launch {
-                    viewModel.saveStandardRoute(route.copy(name = name.trim(), distanceKm = km, updatedAt = Instant.now().toString()))
+                    val mode = runCatching { TripRouteMode.valueOf(route.routeMode) }.getOrDefault(TripRouteMode.EINFACH)
+                    val normalized = runCatching {
+                        TripRouteNormalizer.normalize(
+                            startAddress,
+                            intermediate.mapIndexed { index, address -> TripStop(address, "Zwischenstopp ${index + 1}", index) },
+                            destinationAddress, mode, route.sameReturnRoute
+                        )
+                    }.getOrElse { message = it.message; return@launch }
+                    viewModel.saveStandardRoute(route.copy(
+                        name = name.trim(), startAddress = startAddress.trim(), destinationAddress = destinationAddress.trim(),
+                        stopsJson = TripStopJson.encode(normalized.stops), distanceKm = km,
+                        routeSignature = normalized.signature, sourceProvider = KilometerSource.MANUELL.name,
+                        updatedAt = Instant.now().toString()
+                    ))
                     message = "Gespeichert."
                 }
             }) { Text("Änderung speichern") }
@@ -173,7 +202,7 @@ private fun EditableStandardRoute(route: StandardRoute, viewModel: ReceiptViewMo
 private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, viewModel: ReceiptViewModel) {
     val scope = rememberCoroutineScope()
     var start by remember(receipt.id) { mutableStateOf(metadata.wohnort) }
-    var via by remember(receipt.id) { mutableStateOf(receipt.aussteller) }
+    var intermediateStops by remember(receipt.id) { mutableStateOf(listOf(receipt.aussteller)) }
     var destination by remember(receipt.id) { mutableStateOf(metadata.adresse) }
     var purpose by remember(receipt.id) {
         mutableStateOf(if (receipt.beschreibung.isNotBlank()) "Materialkauf / ${receipt.beschreibung}" else "Materialkauf bei ${receipt.aussteller}")
@@ -181,31 +210,47 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
     var mode by remember(receipt.id) { mutableStateOf(TripRouteMode.INDIVIDUELL) }
     var sameReturnRoute by remember(receipt.id) { mutableStateOf(false) }
     var aiKm by remember(receipt.id) { mutableStateOf<Double?>(null) }
-    var routedKm by remember(receipt.id) { mutableStateOf<Double?>(null) }
+    var routeResult by remember(receipt.id) { mutableStateOf<RouteDistanceResult?>(null) }
     var manualKmText by remember(receipt.id) { mutableStateOf("") }
     var odometerStartText by remember(receipt.id) { mutableStateOf("") }
     var odometerEndText by remember(receipt.id) { mutableStateOf("") }
     var matchedStandardRoute by remember(receipt.id) { mutableStateOf<StandardRoute?>(null) }
     var useStandardRoute by remember(receipt.id) { mutableStateOf(false) }
+    var correctionReason by remember(receipt.id) { mutableStateOf("") }
+    var correctionNote by remember(receipt.id) { mutableStateOf("") }
+    var correctionMenuExpanded by remember(receipt.id) { mutableStateOf(false) }
     var confirmed by remember(receipt.id) { mutableStateOf(false) }
     var message by remember(receipt.id) { mutableStateOf<String?>(null) }
     var busy by remember(receipt.id) { mutableStateOf(false) }
 
-    LaunchedEffect(start, destination) {
-        matchedStandardRoute = if (start.isNotBlank() && destination.isNotBlank()) viewModel.findStandardRoute(start, destination) else null
+    val normalizedRoute = runCatching {
+        TripRouteNormalizer.normalize(
+            start,
+            intermediateStops.mapIndexed { index, address -> TripStop(address, "Zwischenstopp ${index + 1}", index) },
+            destination,
+            mode,
+            sameReturnRoute
+        )
+    }.getOrNull()
+
+    LaunchedEffect(normalizedRoute?.signature) {
+        routeResult = null
+        confirmed = false
+        matchedStandardRoute = normalizedRoute?.let { viewModel.findStandardRoute(it.signature) }
         useStandardRoute = matchedStandardRoute != null
     }
 
     val evidence = DistanceEvidence(
-        aiEstimatedKm = aiKm, routedKm = routedKm,
+        aiEstimatedKm = aiKm, routedKm = routeResult?.distanceKm,
         odometerStartKm = odometerStartText.replace(',', '.').toDoubleOrNull(),
         odometerEndKm = odometerEndText.replace(',', '.').toDoubleOrNull(),
         standardRouteKm = matchedStandardRoute?.distanceKm?.takeIf { useStandardRoute },
         manualKm = manualKmText.replace(',', '.').toDoubleOrNull(),
-        manuallyConfirmed = confirmed
+        manuallyConfirmed = confirmed,
+        correctionReason = correctionReason
     )
     val decision = LogbookDistancePolicy.decide(evidence)
-    val stops = buildStops(start, via, destination, mode, sameReturnRoute)
+    val stops = normalizedRoute?.stops.orEmpty()
 
     Card(
         modifier = Modifier.fillMaxWidth().testTag("suggested_trip_card_${receipt.id}"),
@@ -223,7 +268,37 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
             }
             OutlinedTextField(purpose, { purpose = it }, label = { Text("Fahrtzweck") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(start, { start = it; confirmed = false }, label = { Text("Startadresse") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(via, { via = it; confirmed = false }, label = { Text("Zwischenstopp (optional)") }, modifier = Modifier.fillMaxWidth())
+            Text("Zwischenstopps", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            intermediateStops.forEachIndexed { index, value ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { changed ->
+                            intermediateStops = intermediateStops.toMutableList().also { it[index] = changed }
+                        },
+                        label = { Text("Zwischenstopp ${index + 1}") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            if (index > 0) intermediateStops = intermediateStops.toMutableList().also {
+                                val item = it.removeAt(index); it.add(index - 1, item)
+                            }
+                        }, enabled = index > 0
+                    ) { Text("↑") }
+                    OutlinedButton(
+                        onClick = {
+                            if (index < intermediateStops.lastIndex) intermediateStops = intermediateStops.toMutableList().also {
+                                val item = it.removeAt(index); it.add(index + 1, item)
+                            }
+                        }, enabled = index < intermediateStops.lastIndex
+                    ) { Text("↓") }
+                    OutlinedButton(onClick = {
+                        intermediateStops = intermediateStops.toMutableList().also { it.removeAt(index) }
+                    }) { Text("×") }
+                }
+            }
+            OutlinedButton(onClick = { intermediateStops = intermediateStops + "" }) { Text("+ Zwischenstopp") }
             OutlinedTextField(destination, { destination = it; confirmed = false }, label = { Text("Zieladresse") }, modifier = Modifier.fillMaxWidth())
 
             Text("Fahrtart", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -235,7 +310,11 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                         TripRouteMode.INDIVIDUELL -> "Individuell"
                     }
                     OutlinedButton(
-                        onClick = { mode = option; sameReturnRoute = false; confirmed = false },
+                        onClick = {
+                            mode = option
+                            sameReturnRoute = option == TripRouteMode.HIN_UND_RUECKFAHRT
+                            confirmed = false
+                        },
                         colors = ButtonDefaults.outlinedButtonColors(
                             containerColor = if (mode == option) DarkNavy else Color.White,
                             contentColor = if (mode == option) Color.White else DarkNavy
@@ -247,9 +326,13 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text("Gleiche Rückstrecke annehmen", fontSize = 12.sp, color = DarkNavy)
-                        Text("Nur dann darf ein Routendienst die einfache Strecke verdoppeln.", fontSize = 9.sp, color = SlateGray)
+                        Text("Bei Aktivierung wird die Rückkehr einmal als letzter Wegpunkt berechnet.", fontSize = 9.sp, color = SlateGray)
                     }
-                    Switch(checked = sameReturnRoute, onCheckedChange = { sameReturnRoute = it; confirmed = false })
+                    Switch(checked = sameReturnRoute, onCheckedChange = { checked ->
+                        sameReturnRoute = checked
+                        if (!checked) mode = TripRouteMode.INDIVIDUELL
+                        confirmed = false
+                    })
                 }
             }
             matchedStandardRoute?.let { route ->
@@ -271,7 +354,12 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                                 mode == TripRouteMode.HIN_UND_RUECKFAHRT && sameReturnRoute -> "round_trip"
                                 else -> "individual"
                             }
-                            aiKm = viewModel.estimateLogbookRouteDistance(start, via, destination, routeType)
+                            aiKm = viewModel.estimateLogbookRouteDistance(
+                                start,
+                                intermediateStops.filter(String::isNotBlank).joinToString(" → "),
+                                destination,
+                                routeType
+                            )
                             busy = false
                             message = if (aiKm == null) "KI-Schätzung nicht verfügbar." else "KI-Strecke ist nur ein unbestätigter Vorschlag."
                         }
@@ -282,17 +370,20 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                     onClick = {
                         busy = true
                         scope.launch {
-                            routedKm = viewModel.calculateLogbookRoadDistance(stops, mode, sameReturnRoute)?.distanceKm
+                            val attempt = viewModel.calculateLogbookRoadDistance(stops, mode, sameReturnRoute)
+                            routeResult = attempt.result
                             busy = false
-                            message = if (routedKm == null) "Noch kein Routing-Anbieter konfiguriert. Es wurde keine Straßenentfernung erfunden."
-                                else "Straßenroute berechnet."
+                            message = attempt.errorMessage ?: "Google-Straßenroute berechnet."
                         }
                     },
-                    enabled = !busy && start.isNotBlank() && destination.isNotBlank()
-                ) { Text("Straßenroute") }
+                    enabled = !busy && stops.size >= 2
+                ) { Text(if (routeResult == null) "Straßenroute berechnen" else "Route neu berechnen") }
             }
             aiKm?.let { Text("KI geschätzt: ${it.germanKm()} (nicht steuerlich verwendbar)", fontSize = 10.sp, color = SlateGray) }
-            routedKm?.let { Text("Straßenroute: ${it.germanKm()}", fontSize = 10.sp, color = EmeraldGreen) }
+            routeResult?.let {
+                Text("Google Straßenroute: ${it.distanceKm.germanKm()}", fontSize = 10.sp, color = EmeraldGreen)
+                Text("Provider: ${it.providerId} · berechnet: ${it.calculatedAt}", fontSize = 9.sp, color = SlateGray)
+            }
 
             OutlinedTextField(
                 manualKmText,
@@ -317,6 +408,28 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                     modifier = Modifier.weight(1f)
                 )
             }
+            if (manualKmText.isNotBlank()) {
+                Box {
+                    OutlinedButton(onClick = { correctionMenuExpanded = true }) {
+                        Text("Korrekturgrund: ${correctionReason.ifBlank { "auswählen" }}")
+                    }
+                    DropdownMenu(expanded = correctionMenuExpanded, onDismissRequest = { correctionMenuExpanded = false }) {
+                        listOf(
+                            "Umleitung", "zusätzlicher Termin", "zusätzlicher Zwischenstopp",
+                            "Parkplatzsuche", "abweichende gefahrene Route", "Sonstiges"
+                        ).forEach { reason ->
+                            DropdownMenuItem(text = { Text(reason) }, onClick = {
+                                correctionReason = reason; correctionMenuExpanded = false; confirmed = false
+                            })
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    correctionNote, { correctionNote = it; confirmed = false },
+                    label = { Text(if (correctionReason == "Sonstiges") "Beschreibung (erforderlich)" else "Korrekturhinweis (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             Text(
                 "Steuerliche Quelle: ${decision.source?.name?.replace('_', ' ') ?: "NOCH NICHT BESTÄTIGT"}",
                 fontSize = 11.sp, fontWeight = FontWeight.Bold,
@@ -337,8 +450,9 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                                 originalReceipt = receipt, purpose = purpose.trim(),
                                 startAddress = start.trim(), destinationAddress = destination.trim(),
                                 stops = stops, routeMode = mode, sameReturnRoute = sameReturnRoute,
-                                evidence = evidence.copy(manuallyConfirmed = true),
-                                standardRouteId = matchedStandardRoute?.id?.takeIf { useStandardRoute }
+                                evidence = evidence.copy(manuallyConfirmed = true), routeResult = routeResult,
+                                standardRouteId = matchedStandardRoute?.id?.takeIf { useStandardRoute },
+                                correctionReason = correctionReason, correctionNote = correctionNote
                             )
                             busy = false
                             message = result.fold(
@@ -349,13 +463,15 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                     },
                     enabled = !busy && confirmed && decision.taxDistanceKm != null &&
                         decision.source != KilometerSource.KI_GESCHAETZT &&
-                        purpose.isNotBlank() && start.isNotBlank() && destination.isNotBlank(),
+                        purpose.isNotBlank() && start.isNotBlank() && destination.isNotBlank() &&
+                        (!decision.correctionReasonRequired || correctionReason.isNotBlank()) &&
+                        (correctionReason != "Sonstiges" || correctionNote.isNotBlank()),
                     modifier = Modifier.weight(1f).testTag("book_trip_button_${receipt.id}"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                 ) { Text("Fahrt einbuchen") }
                 OutlinedButton(
                     onClick = {
-                        val km = decision.taxDistanceKm
+                        val km = routeResult?.distanceKm
                         if (km == null) message = "Zuerst eine bestätigte Kilometerquelle erfassen."
                         else scope.launch {
                             val now = Instant.now().toString()
@@ -365,14 +481,16 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                                     startAddress = start.trim(), destinationAddress = destination.trim(),
                                     stopsJson = TripStopJson.encode(stops), routeMode = mode.name,
                                     sameReturnRoute = sameReturnRoute, distanceKm = km,
+                                    routeSignature = normalizedRoute?.signature.orEmpty(),
+                                    sourceProvider = routeResult?.providerId.orEmpty(),
                                     createdAt = now, updatedAt = now
                                 )
                             )
                             message = "Als Standardstrecke gespeichert."
                         }
                     },
-                    enabled = decision.taxDistanceKm != null
-                ) { Text("Als Standard") }
+                    enabled = routeResult != null && normalizedRoute != null
+                ) { Text("Als Standardstrecke speichern") }
             }
             message?.let { Text(it, fontSize = 10.sp, color = SlateGray) }
         }
