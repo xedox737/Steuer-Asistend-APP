@@ -441,7 +441,7 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                 Checkbox(checked = confirmed, onCheckedChange = { confirmed = it })
                 Text("Route, Zweck und steuerlich verwendete Kilometer geprüft", modifier = Modifier.padding(top = 12.dp), fontSize = 11.sp)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
                         busy = true
@@ -466,7 +466,7 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                         purpose.isNotBlank() && start.isNotBlank() && destination.isNotBlank() &&
                         (!decision.correctionReasonRequired || correctionReason.isNotBlank()) &&
                         (correctionReason != "Sonstiges" || correctionNote.isNotBlank()),
-                    modifier = Modifier.weight(1f).testTag("book_trip_button_${receipt.id}"),
+                    modifier = Modifier.fillMaxWidth().testTag("book_trip_button_${receipt.id}"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                 ) { Text("Fahrt einbuchen") }
                 OutlinedButton(
@@ -489,7 +489,8 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                             message = "Als Standardstrecke gespeichert."
                         }
                     },
-                    enabled = routeResult != null && normalizedRoute != null
+                    enabled = routeResult != null && normalizedRoute != null,
+                    modifier = Modifier.fillMaxWidth()
                 ) { Text("Als Standardstrecke speichern") }
             }
             message?.let { Text(it, fontSize = 10.sp, color = SlateGray) }
