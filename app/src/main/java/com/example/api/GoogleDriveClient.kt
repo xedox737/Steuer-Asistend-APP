@@ -149,6 +149,16 @@ object GoogleDriveClient {
         return null
     }
 
+    suspend fun findFileByReceiptPropertiesGlobally(
+        accessToken: String,
+        receiptInternalId: String,
+        documentRole: String = "ORIGINAL"
+    ): DriveFile? {
+        if (receiptInternalId.isBlank()) return null
+        val q = "appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
+        return searchFiles(accessToken, q).singleOrNull()
+    }
+
     suspend fun getOrCreateFolder(
         accessToken: String,
         folderName: String = "Steuerassistent Belege",
@@ -880,6 +890,61 @@ object GoogleDriveClient {
         }
     }
 
+    /** Metadata used by the non-destructive document-layout migration. */
+    suspend fun getFileMetadata(accessToken: String, fileId: String): DriveManagedFile? {
+        if (fileId.isBlank()) return null
+        val request = Request.Builder()
+            .url("https://www.googleapis.com/drive/v3/files/$fileId?fields=id,name,mimeType,size,parents,trashed")
+            .addHeader("Authorization", "Bearer $accessToken")
+            .build()
+        return try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val json = JSONObject(response.body?.string().orEmpty())
+                if (json.optBoolean("trashed", false)) return null
+                DriveManagedFile(
+                    id = json.optString("id"),
+                    name = json.optString("name"),
+                    mimeType = json.optString("mimeType"),
+                    sizeBytes = json.optLong("size", 0L),
+                    parentIds = json.optJSONArray("parents")?.let { array ->
+                        (0 until array.length()).map { array.optString(it) }.filter(String::isNotBlank)
+                    }.orEmpty()
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not read Drive metadata for document migration", e)
+            null
+        }
+    }
+
+    /** Moves and/or renames the same Drive file. It never copies, replaces or deletes the original. */
+    suspend fun moveAndRenameFile(
+        accessToken: String,
+        fileId: String,
+        targetParentId: String,
+        oldParentIds: List<String>,
+        targetFilename: String
+    ): Boolean {
+        val removeParents = oldParentIds.filter { it != targetParentId }.joinToString(",")
+        val query = buildString {
+            append("addParents=").append(URLEncoder.encode(targetParentId, "UTF-8"))
+            if (removeParents.isNotBlank()) append("&removeParents=").append(URLEncoder.encode(removeParents, "UTF-8"))
+            append("&fields=id,parents,name")
+        }
+        val request = Request.Builder()
+            .url("https://www.googleapis.com/drive/v3/files/$fileId?$query")
+            .patch(JSONObject().put("name", targetFilename).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .addHeader("Authorization", "Bearer $accessToken")
+            .build()
+        return try {
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not move Drive file during document migration", e)
+            false
+        }
+    }
+
     suspend fun fetchDriveFileInfoAndHeader(
         accessToken: String,
         fileId: String,
@@ -1189,6 +1254,7 @@ object GoogleDriveClient {
             "datevProfiles" -> "datev-profiles.json"
             "aiLearnedRules" -> "ai-learned-rules.json"
             "receiptIndex" -> "receipt-index.json"
+            "documentIndex" -> "document-index.json"
             else -> "$entityType.json"
         }
     }
@@ -1697,6 +1763,13 @@ data class DriveTestApiResult(
 
 data class DriveFolder(val id: String, val name: String)
 data class DriveFile(val id: String, val name: String)
+data class DriveManagedFile(
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val parentIds: List<String>
+)
 data class DriveFileResult(val success: Boolean, val fileId: String?, val errorMessage: String? = null)
 
 data class DriveFileInfoAndHeader(

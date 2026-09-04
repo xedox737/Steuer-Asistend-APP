@@ -211,6 +211,7 @@ interface LoanDao {
 @Entity(tableName = "property_metadata")
 data class PropertyMetadata(
     @PrimaryKey val id: Int = 1,
+    val propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID,
     val name: String = "7-Familienhaus (Anlage V)",
     val adresse: String = "Musterstraße 42, 12345 Musterstadt",
     val wohnort: String = "Hauptstraße 1, 12345 Wohnstadt",
@@ -457,7 +458,70 @@ val MIGRATION_18_19 = object : androidx.room.migration.Migration(18, 19) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class], version = 19, exportSchema = false)
+val MIGRATION_19_20 = object : androidx.room.migration.Migration(19, 20) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE property_metadata ADD COLUMN propertyId TEXT NOT NULL DEFAULT 'property-1'")
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS managed_documents (
+                documentId TEXT NOT NULL PRIMARY KEY,
+                propertyId TEXT NOT NULL,
+                unitId TEXT,
+                receiptInternalId TEXT,
+                documentType TEXT NOT NULL,
+                documentCategory TEXT NOT NULL,
+                documentDate TEXT NOT NULL,
+                title TEXT NOT NULL,
+                originalFilename TEXT NOT NULL,
+                storedFilename TEXT NOT NULL,
+                mimeType TEXT NOT NULL,
+                localUri TEXT NOT NULL,
+                driveFileId TEXT,
+                driveFolderId TEXT,
+                sha256 TEXT NOT NULL,
+                fileSizeBytes INTEGER NOT NULL,
+                createdAt TEXT NOT NULL,
+                updatedAt TEXT NOT NULL,
+                ocrStatus TEXT NOT NULL,
+                ocrText TEXT NOT NULL,
+                aiAnalysisStatus TEXT NOT NULL,
+                aiConfidence REAL NOT NULL,
+                reviewStatus TEXT NOT NULL,
+                source TEXT NOT NULL,
+                extractedFieldsJson TEXT NOT NULL,
+                loanId INTEGER,
+                tenantReference TEXT,
+                renovationReference TEXT,
+                migrationStatus TEXT NOT NULL,
+                legacyDriveFolderId TEXT
+            )
+        """.trimIndent())
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_propertyId ON managed_documents(propertyId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_unitId ON managed_documents(unitId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_receiptInternalId ON managed_documents(receiptInternalId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_driveFileId ON managed_documents(driveFileId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_sha256 ON managed_documents(sha256)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_documentDate ON managed_documents(documentDate)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_managed_documents_documentType ON managed_documents(documentType)")
+        db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS document_search_fts USING FTS4(documentId, searchableText)")
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS document_migration_journal (
+                documentId TEXT NOT NULL PRIMARY KEY,
+                receiptInternalId TEXT,
+                driveFileId TEXT NOT NULL,
+                originalFolderId TEXT NOT NULL,
+                originalFilename TEXT NOT NULL,
+                targetFolderId TEXT NOT NULL,
+                targetFilename TEXT NOT NULL,
+                beforeSha256 TEXT NOT NULL,
+                state TEXT NOT NULL,
+                lastError TEXT NOT NULL,
+                updatedAt TEXT NOT NULL
+            )
+        """.trimIndent())
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class], version = 20, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -467,6 +531,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun exportAuditDao(): ExportAuditDao
     abstract fun receiptDocumentDao(): ReceiptDocumentDao
     abstract fun logbookDao(): LogbookDao
+    abstract fun managedDocumentDao(): ManagedDocumentDao
 
     companion object {
         @Volatile
@@ -481,7 +546,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
@@ -762,7 +827,8 @@ class ReceiptRepository(
     private val receiptEntityDao: ReceiptEntityDao? = null,
     private val belegDao: BelegDao? = null,
     private val exportAuditDao: ExportAuditDao? = null,
-    private val receiptDocumentDao: ReceiptDocumentDao? = null
+    private val receiptDocumentDao: ReceiptDocumentDao? = null,
+    private val managedDocumentDao: ManagedDocumentDao? = null
 ) {
     val allReceipts: Flow<List<Receipt>> = receiptDao.getAllReceipts()
     val deletedReceipts: Flow<List<Receipt>> = receiptDao.getDeletedReceipts()
@@ -770,6 +836,33 @@ class ReceiptRepository(
     val allReceiptEntities: Flow<List<ReceiptEntity>> = receiptEntityDao?.getAllEntities() ?: kotlinx.coroutines.flow.flowOf(emptyList())
     val allBelege: Flow<List<Beleg>> = belegDao?.getAllBelege() ?: kotlinx.coroutines.flow.flowOf(emptyList())
     val allAuditRuns: Flow<List<ExportAuditRun>> = exportAuditDao?.getAllRunsFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    val allManagedDocuments: Flow<List<ManagedDocument>> = managedDocumentDao?.observeAll() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+    suspend fun getAllManagedDocuments(): List<ManagedDocument> = managedDocumentDao?.getAll().orEmpty()
+    suspend fun getManagedDocument(id: String): ManagedDocument? = managedDocumentDao?.getById(id)
+    suspend fun findManagedDocumentsByHash(hash: String): List<ManagedDocument> = managedDocumentDao?.getByHash(hash).orEmpty()
+    suspend fun upsertManagedDocument(document: ManagedDocument, receipt: Receipt? = null) {
+        val dao = managedDocumentDao ?: return
+        dao.upsert(document)
+        dao.deleteSearchEntry(document.documentId)
+        dao.insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, receipt)))
+    }
+    suspend fun searchManagedDocuments(query: String, propertyId: String = "", unitId: String = "", year: String = "", documentType: String = "", category: String = ""): List<ManagedDocument> {
+        val normalized = DocumentSearchTextBuilder.ftsQuery(query)
+        return if (normalized.isBlank()) getAllManagedDocuments().filter {
+            (propertyId.isBlank() || it.propertyId == propertyId) && (unitId.isBlank() || it.unitId == unitId) &&
+                (year.isBlank() || it.documentDate.startsWith(year)) && (documentType.isBlank() || it.documentType == documentType) &&
+                (category.isBlank() || it.documentCategory == category)
+        } else managedDocumentDao?.search(normalized, propertyId, unitId, year, documentType, category).orEmpty()
+    }
+    suspend fun rebuildDocumentSearchIndex(receipts: List<Receipt> = getAllReceiptsList()) {
+        val dao = managedDocumentDao ?: return
+        dao.clearSearchIndex()
+        val receiptMap = receipts.associateBy { it.internalId }
+        dao.getAll().forEach { dao.insertSearchEntry(DocumentSearchFts(it.documentId, DocumentSearchTextBuilder.build(it, it.receiptInternalId?.let(receiptMap::get)))) }
+    }
+    suspend fun getDocumentMigrationJournal(): List<DocumentMigrationJournal> = managedDocumentDao?.getMigrationJournal().orEmpty()
+    suspend fun upsertDocumentMigrationJournal(entry: DocumentMigrationJournal) { managedDocumentDao?.upsertMigrationJournal(entry) }
 
     suspend fun getAllReceiptsList(): List<Receipt> {
         return receiptDao.getAllReceiptsList()
@@ -872,6 +965,7 @@ class ReceiptRepository(
                 bildPfad = finalReceipt.imageUrl
             )
         )
+        indexReceiptDocument(finalReceipt)
         return id
     }
 
@@ -898,7 +992,47 @@ class ReceiptRepository(
                     bildPfad = receipt.imageUrl
                 )
             )
+            indexReceiptDocument(receipt)
         }
+    }
+
+    private suspend fun indexReceiptDocument(receipt: Receipt) {
+        val dao = managedDocumentDao ?: return
+        if (receipt.internalId.isBlank()) return
+        val existing = dao.getByReceiptId(receipt.internalId)
+        val now = java.time.Instant.now().toString()
+        val propertyId = propertyDao.getPropertyMetadata()?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val localPath = receipt.imageUrl.substringBefore(',').removePrefix("file://")
+        val localFile = java.io.File(localPath)
+        val localBytes = if (existing?.sha256.isNullOrBlank() && localFile.isFile) runCatching { localFile.readBytes() }.getOrNull() else null
+        val document = (existing ?: ManagedDocument(
+            documentId = StableDocumentIdentity.receiptDocumentId(receipt.internalId),
+            propertyId = propertyId,
+            receiptInternalId = receipt.internalId,
+            createdAt = now,
+            source = DocumentSource.RECEIPT.name,
+            aiAnalysisStatus = DocumentProcessingStatus.NICHT_ERFORDERLICH.name,
+            reviewStatus = DocumentReviewStatus.GEPRUEFT.name
+        )).copy(
+            propertyId = propertyId,
+            documentType = ManagedDocumentType.RECHNUNG.name,
+            documentCategory = existing?.documentCategory ?: "02_Belege/${receipt.datum.take(4)}",
+            documentDate = receipt.datum,
+            title = receipt.aussteller,
+            originalFilename = existing?.originalFilename?.takeIf(String::isNotBlank)
+                ?: receipt.imageUrl.substringBefore(',').substringAfterLast('/'),
+            storedFilename = receipt.storedFilename ?: existing?.storedFilename.orEmpty(),
+            mimeType = receipt.originalMimeType ?: existing?.mimeType ?: "application/octet-stream",
+            localUri = receipt.imageUrl.substringBefore(',').ifBlank { existing?.localUri.orEmpty() },
+            driveFileId = receipt.driveFileId ?: existing?.driveFileId,
+            driveFolderId = receipt.driveFolderId ?: existing?.driveFolderId,
+            sha256 = existing?.sha256?.takeIf(String::isNotBlank) ?: localBytes?.let { StableDocumentIdentity.sha256(it) }.orEmpty(),
+            fileSizeBytes = receipt.fileSizeBytes ?: existing?.fileSizeBytes?.takeIf { it > 0 } ?: localBytes?.size?.toLong() ?: 0L,
+            updatedAt = now
+        )
+        dao.upsert(document)
+        dao.deleteSearchEntry(document.documentId)
+        dao.insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, receipt)))
     }
 
     suspend fun deleteById(id: Int) {
@@ -917,6 +1051,9 @@ class ReceiptRepository(
         belegDao?.deleteAllBelege()
         receiptDocumentDao?.deleteAll()
         exportAuditDao?.deleteAll()
+        managedDocumentDao?.clearSearchIndex()
+        managedDocumentDao?.deleteAllDocuments()
+        managedDocumentDao?.clearMigrationJournal()
     }
 
     suspend fun getPropertyMetadata(): PropertyMetadata? {

@@ -57,7 +57,7 @@ class SupplementalDriveBackupTest {
             .putString("google_routes_key_ciphertext", "MUST_NOT_LEAVE_DEVICE").apply()
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(2, payload.getInt("schemaVersion"))
+        assertEquals(3, payload.getInt("schemaVersion"))
         assertFalse(payload.toString().contains("MUST_NOT_LEAVE_DEVICE"))
         database.logbookDao().deleteTrip(41)
         database.logbookDao().deleteStandardRoute(17)
@@ -79,6 +79,55 @@ class SupplementalDriveBackupTest {
         assertTrue(csv.contains("A -> B -> C"))
         assertTrue(csv.contains("\"Baustelle; \"\"Süd\"\"\""))
         assertFalse(csv.contains("MUST_NOT_LEAVE_DEVICE"))
+    }
+
+    @Test fun managedDocumentsRestoreCompletelyWithoutOcrPayloadAndRemainIdempotent() = runTest {
+        val document = ManagedDocument(
+            documentId = "doc-1", propertyId = "property-1", unitId = "unit-1",
+            documentType = ManagedDocumentType.MIETVERTRAG.name, documentDate = "2026-10-01",
+            title = "Mietvertrag Mustermann", originalFilename = "scan.pdf", storedFilename = "Mietvertrag.pdf",
+            mimeType = "application/pdf", localUri = "/private/device/path.pdf", driveFileId = "drive-1",
+            driveFolderId = "folder-1", sha256 = "abc", fileSizeBytes = 123,
+            createdAt = "now", updatedAt = "now", ocrStatus = DocumentProcessingStatus.ERFOLGREICH.name,
+            ocrText = "sensibler Volltext", extractedFieldsJson = "{\"mieter\":\"Mustermann\"}"
+        )
+        database.managedDocumentDao().upsert(document)
+        val payload = SupplementalDriveBackup.createPayload(context, database)
+        assertFalse(payload.toString().contains("sensibler Volltext"))
+        assertFalse(payload.toString().contains("/private/device/path.pdf"))
+        database.managedDocumentDao().deleteById(document.documentId)
+        SupplementalDriveBackup.restorePayload(context, database, payload)
+        SupplementalDriveBackup.restorePayload(context, database, payload)
+        val restored = database.managedDocumentDao().getAll().single()
+        assertEquals("drive-1", restored.driveFileId)
+        assertEquals("abc", restored.sha256)
+        assertEquals("", restored.ocrText)
+        assertEquals(DocumentProcessingStatus.AUSSTEHEND.name, restored.ocrStatus)
+    }
+
+    @Test fun fullTextSearchFindsVendorReceiptIdAmountOcrAndHonorsFilters() = runTest {
+        val repository = ReceiptRepository(
+            database.receiptDao(), database.propertyDao(), database.receiptEntityDao(), database.belegDao(),
+            database.exportAuditDao(), database.receiptDocumentDao(), database.managedDocumentDao()
+        )
+        val receipt = Receipt(
+            aussteller = "Hornbach", datum = "2026-09-04", uhrzeit = "", bruttobetrag = 84.5,
+            hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800", beschreibung = "Farbe",
+            internalId = "receipt-1", displayId = "BLG-2026-00127"
+        )
+        val document = ManagedDocument(
+            documentId = "receipt:receipt-1", propertyId = "property-1", unitId = "unit-1",
+            receiptInternalId = "receipt-1", documentType = ManagedDocumentType.RECHNUNG.name,
+            documentCategory = "02_Belege/2026", documentDate = "2026-09-04", title = "Rechnung",
+            ocrText = "Rechnungsnummer AB-4711"
+        )
+        repository.upsertManagedDocument(document, receipt)
+        assertEquals(1, repository.searchManagedDocuments("Hornbach").size)
+        assertEquals(1, repository.searchManagedDocuments("AB-4711").size)
+        assertEquals(1, repository.searchManagedDocuments("BLG-2026-00127").size)
+        assertEquals(1, repository.searchManagedDocuments("84.50").size)
+        assertEquals(1, repository.searchManagedDocuments("", "property-1", "unit-1", "2026", ManagedDocumentType.RECHNUNG.name, "02_Belege/2026").size)
+        assertTrue(repository.searchManagedDocuments("", "other-property").isEmpty())
     }
 
     @Test fun schemaOneWithoutLogbookArraysStillRestores() = runTest {

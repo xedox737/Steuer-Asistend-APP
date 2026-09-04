@@ -274,6 +274,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         AppScreen.LEDGER -> "Finanzen"
         AppScreen.RENT_OVERVIEW -> "Mieteingänge"
         AppScreen.TAX_CALCULATOR -> "Steuerschätzung"
+        AppScreen.DOCUMENTS -> "Dokumentenakte"
     }
 
     var showAccountSettingsDialog by remember { mutableStateOf(false) }
@@ -430,6 +431,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.LEDGER -> LedgerScreen(viewModel)
                 AppScreen.RENT_OVERVIEW -> RentOverviewScreen(viewModel)
                 AppScreen.TAX_CALCULATOR -> TaxCalculatorScreen(viewModel)
+                AppScreen.DOCUMENTS -> DocumentManagementScreen(viewModel)
             }
             }
         }
@@ -1078,6 +1080,15 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             title = "Mieteingänge", subtitle = "Soll/Ist & Nebenkosten",
             icon = Icons.Default.Home, containerColor = Color(0xFFEFF6FF), contentColor = AccentBlue,
             onClick = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+        )
+        QuickActionCard(
+            modifier = Modifier.fillMaxWidth(),
+            title = "Dokumentenakte",
+            subtitle = "Verträge, Stammdaten und Volltextsuche",
+            icon = Icons.Default.Description,
+            containerColor = Color(0xFFEFF6FF),
+            contentColor = AccentBlue,
+            onClick = { viewModel.setScreen(AppScreen.DOCUMENTS) }
         )
 
         Card(

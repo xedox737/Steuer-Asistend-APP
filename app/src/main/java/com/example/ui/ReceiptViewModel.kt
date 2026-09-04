@@ -37,7 +37,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 import com.example.data.FirestoreService
 
 enum class AppScreen {
@@ -47,7 +46,8 @@ enum class AppScreen {
     LOGBOOK,
     LEDGER,
     RENT_OVERVIEW,
-    TAX_CALCULATOR
+    TAX_CALCULATOR,
+    DOCUMENTS
 }
 
 sealed interface ScanUiState {
@@ -70,7 +70,8 @@ data class WohneinheitStatus(
     val mieter: String,
     val kaltmiete: Double,
     val wohnflaeche: Double,
-    val mietvertragsstart: String = ""
+    val mietvertragsstart: String = "",
+    val unitId: String = ""
 )
 
 data class LearnedVendorRule(
@@ -90,9 +91,27 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         database.receiptEntityDao(),
         database.belegDao(),
         database.exportAuditDao(),
-        database.receiptDocumentDao()
+        database.receiptDocumentDao(),
+        database.managedDocumentDao()
     )
     val drivePersistenceRepository = com.example.data.DrivePersistenceRepository(application, repository)
+    private val managedDocumentService = com.example.data.ManagedDocumentService(application, repository)
+    val managedDocuments: StateFlow<List<com.example.data.ManagedDocument>> = repository.allManagedDocuments.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
+    private val _documentSearchResults = MutableStateFlow<List<com.example.data.ManagedDocument>>(emptyList())
+    val documentSearchResults: StateFlow<List<com.example.data.ManagedDocument>> = _documentSearchResults.asStateFlow()
+    private val _documentOperationStatus = MutableStateFlow<String?>(null)
+    val documentOperationStatus: StateFlow<String?> = _documentOperationStatus.asStateFlow()
+    private val _pendingDocumentDuplicate = MutableStateFlow<Pair<com.example.data.ManagedDocument, com.example.data.ManagedDocument>?>(null)
+    val pendingDocumentDuplicate = _pendingDocumentDuplicate.asStateFlow()
+    private var pendingDocumentDuplicateUri: android.net.Uri? = null
+    private val _documentAiReview = MutableStateFlow<Pair<String, com.example.api.ManagedDocumentAiResult>?>(null)
+    val documentAiReview = _documentAiReview.asStateFlow()
+    private val _documentMigrationPreview = MutableStateFlow<com.example.data.DocumentMigrationPreview?>(null)
+    val documentMigrationPreview = _documentMigrationPreview.asStateFlow()
 
     val logbookTrips: StateFlow<List<com.example.data.LogbookTrip>> =
         database.logbookDao().observeTrips().stateIn(
@@ -497,9 +516,15 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             "WE 7" to WohneinheitStatus("WE 7", "WE 7 (DG Studio)", "Vermietet", "Dr. Julia Wagner", 580.0, 65.0)
         )
 
+        val propertyId = propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
         return unitNames.mapIndexed { index, name ->
             val preset = defaultPresetMap[name]
             val exists = unitPrefs.contains("unit_status_$name")
+            val stableUnitId = unitPrefs.getString("unit_id_$name", null)
+                ?: unitPrefs.getString("unit_id_index_$index", null)
+                ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name).also {
+                    unitPrefs.edit().putString("unit_id_$name", it).putString("unit_id_index_$index", it).apply()
+                }
 
             if (exists) {
                 WohneinheitStatus(
@@ -509,7 +534,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     mieter = unitPrefs.getString("unit_mieter_$name", "") ?: "",
                     kaltmiete = unitPrefs.getFloat("unit_rent_$name", 0f).toDouble(),
                     wohnflaeche = unitPrefs.getFloat("unit_area_$name", 0f).toDouble(),
-                    mietvertragsstart = unitPrefs.getString("unit_start_$name", "") ?: ""
+                    mietvertragsstart = unitPrefs.getString("unit_start_$name", "") ?: "",
+                    unitId = stableUnitId
                 )
             } else if (preset != null) {
                 val editor = unitPrefs.edit()
@@ -520,7 +546,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 editor.putFloat("unit_area_${preset.name}", preset.wohnflaeche.toFloat())
                 editor.putString("unit_start_${preset.name}", preset.mietvertragsstart)
                 editor.apply()
-                preset
+                preset.copy(unitId = stableUnitId)
             } else {
                 val floor = when (index % 4) {
                     0 -> "EG"
@@ -537,7 +563,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     mieter = "",
                     kaltmiete = 500.0,
                     wohnflaeche = 60.0,
-                    mietvertragsstart = ""
+                    mietvertragsstart = "",
+                    unitId = stableUnitId
                 )
                 val editor = unitPrefs.edit()
                 editor.putString("unit_status_$name", newUnit.status)
@@ -554,6 +581,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun updateWohneinheit(updated: WohneinheitStatus) {
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val stableId = updated.unitId.ifBlank {
+            com.example.data.StableDocumentIdentity.legacyUnitId(
+                propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID,
+                updated.name
+            )
+        }
+        val unitIndex = _wohneinheitenStatus.value.indexOfFirst { it.unitId == updated.unitId || it.name == updated.name }
         unitPrefs.edit().apply {
             putString("unit_status_${updated.name}", updated.status)
             putString("unit_label_${updated.name}", updated.label)
@@ -561,6 +595,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             putFloat("unit_rent_${updated.name}", updated.kaltmiete.toFloat())
             putFloat("unit_area_${updated.name}", updated.wohnflaeche.toFloat())
             putString("unit_start_${updated.name}", updated.mietvertragsstart)
+            putString("unit_id_${updated.name}", stableId)
+            if (unitIndex >= 0) putString("unit_id_index_$unitIndex", stableId)
         }.apply()
         _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
 
@@ -1182,15 +1218,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 val csvSuccess = GoogleDriveClient.uploadLedgerCsv(token, config.rootFolderId, list)
+                val documentStructureSuccess = drivePersistenceRepository.ensurePropertyDocumentStructure(token, config)
                 
                 // 3. Upload Wohneinheiten CSV
                 val unitsSuccess = GoogleDriveClient.uploadWohneinheitenCsv(token, config.rootFolderId, _wohneinheitenStatus.value)
 
                 // 4. Update JSON files in _BelegApp-Daten to ensure latest changes are saved
                 val backupSuccess = drivePersistenceRepository.saveStammdatenToDrive(token, config)
-                val supplementalBackup = com.example.data.SupplementalDriveBackup.backup(
-                    getApplication(), database, token, config.systemFolderId
-                )
 
                 // 5. Upload each receipt
                 var successCount = 0
@@ -1198,10 +1232,18 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     val success = drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
                     if (success) successCount++
                 }
+                var documentSuccessCount = 0
+                for (document in repository.getAllManagedDocuments().filter { it.receiptInternalId.isNullOrBlank() }) {
+                    if (drivePersistenceRepository.syncManagedDocumentToDrive(token, config, document.documentId)) documentSuccessCount++
+                }
+                val documentIndexSuccess = drivePersistenceRepository.updateManagedDocumentIndex(token, config)
+                val supplementalBackup = com.example.data.SupplementalDriveBackup.backup(
+                    getApplication(), database, token, config.systemFolderId
+                )
 
                 _isDriveSyncing.value = false
-                if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success) {
-                    _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten, Miet-/Darlehensdaten & $successCount Belege synchronisiert."
+                if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess) {
+                    _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten, $successCount Belege und $documentSuccessCount Dokumente synchronisiert."
                     _driveSyncError.value = null
                     sharedPrefs.edit().remove("drive_sync_error").apply()
                 } else if (csvSuccess) {
@@ -2005,6 +2047,225 @@ data class AiSearchUiState(
     fun setScreen(screen: AppScreen) {
         _currentScreen.value = screen
         _scanState.value = ScanUiState.Idle
+    }
+
+    fun importManagedDocument(uri: android.net.Uri, unitId: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentOperationStatus.value = "Dokument wird geprüft …"
+            val property = propertyMetadata.value ?: com.example.data.PropertyMetadata()
+            when (val result = managedDocumentService.prepareImport(uri, property, unitId)) {
+                is com.example.data.ManagedDocumentImportResult.Imported -> {
+                    _documentOperationStatus.value = "Dokument importiert. OCR und KI-Zuordnung laufen …"
+                    managedDocumentService.runOcr(result.document.documentId)
+                    val analysis = managedDocumentService.analyze(result.document.documentId, property, _wohneinheitenStatus.value)
+                    if (analysis != null) {
+                        _documentAiReview.value = result.document.documentId to analysis
+                        _documentOperationStatus.value = "Erkannte Daten müssen vor der Übernahme geprüft werden."
+                    } else {
+                        _documentOperationStatus.value = "Dokument und OCR-Text gespeichert. KI-Analyse derzeit nicht verfügbar."
+                    }
+                }
+                is com.example.data.ManagedDocumentImportResult.ExactDuplicate ->
+                    _documentOperationStatus.value = "Identisches Original bereits vorhanden: ${result.existing.title}"
+                is com.example.data.ManagedDocumentImportResult.PossibleDuplicate -> {
+                    pendingDocumentDuplicateUri = uri
+                    _pendingDocumentDuplicate.value = result.candidate to result.existing
+                    _documentOperationStatus.value = "Mögliche Dublette gefunden. Bitte entscheiden."
+                }
+                is com.example.data.ManagedDocumentImportResult.Error -> _documentOperationStatus.value = result.message
+            }
+        }
+    }
+
+    fun resolvePossibleDocumentDuplicate(useExisting: Boolean, keepSeparate: Boolean = false) {
+        val pending = _pendingDocumentDuplicate.value ?: return
+        val uri = pendingDocumentDuplicateUri
+        viewModelScope.launch(Dispatchers.IO) {
+            when {
+                useExisting -> _documentOperationStatus.value = "Vorhandenes Dokument wird weiterverwendet."
+                keepSeparate && uri != null -> {
+                    val result = managedDocumentService.persistPossibleDuplicate(pending.first, uri)
+                    if (result is com.example.data.ManagedDocumentImportResult.Imported) {
+                        managedDocumentService.runOcr(result.document.documentId)
+                        val analysis = managedDocumentService.analyze(result.document.documentId, propertyMetadata.value ?: com.example.data.PropertyMetadata(), _wohneinheitenStatus.value)
+                        if (analysis != null) _documentAiReview.value = result.document.documentId to analysis
+                        _documentOperationStatus.value = "Dokument separat importiert und zur Prüfung vorbereitet."
+                    } else _documentOperationStatus.value = "Separater Import fehlgeschlagen."
+                }
+                else -> _documentOperationStatus.value = "Import abgebrochen."
+            }
+            pendingDocumentDuplicateUri = null
+            _pendingDocumentDuplicate.value = null
+        }
+    }
+
+    fun searchDocuments(query: String, propertyId: String = "", unitId: String = "", year: String = "", type: String = "", category: String = "") {
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentSearchResults.value = repository.searchManagedDocuments(query, propertyId, unitId, year, type, category)
+        }
+    }
+
+    fun runDocumentOcr(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentOperationStatus.value = "Texterkennung läuft …"
+            val updated = managedDocumentService.runOcr(documentId)
+            _documentOperationStatus.value = if (updated?.ocrStatus == com.example.data.DocumentProcessingStatus.ERFOLGREICH.name) "Texterkennung abgeschlossen." else "Texterkennung fehlgeschlagen."
+        }
+    }
+
+    fun downloadManagedDocument(documentId: String) {
+        val email = _googleAccountEmail.value
+        if (email.isNullOrBlank() || !_isDriveConnected.value) {
+            _documentOperationStatus.value = "Bitte zuerst Google Drive verbinden."
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val document = repository.getManagedDocument(documentId) ?: return@launch
+            val fileId = document.driveFileId?.takeIf(String::isNotBlank) ?: return@launch
+            _documentOperationStatus.value = "Original wird aus Google Drive geladen …"
+            try {
+                val bytes = GoogleDriveClient.downloadFileBytes(getValidToken(email), fileId)
+                    ?: throw IllegalStateException("Original nicht gefunden")
+                if (document.sha256.isNotBlank() && com.example.data.StableDocumentIdentity.sha256(bytes) != document.sha256) {
+                    throw IllegalStateException("Sicherheitsprüfung des Originals fehlgeschlagen")
+                }
+                val extension = document.storedFilename.substringAfterLast('.', "bin")
+                val file = java.io.File(getApplication<Application>().filesDir, "managed_documents/${document.documentId}.$extension")
+                file.parentFile?.mkdirs(); file.outputStream().use { it.write(bytes) }
+                repository.upsertManagedDocument(document.copy(localUri = file.absolutePath, fileSizeBytes = bytes.size.toLong(), updatedAt = java.time.Instant.now().toString()))
+                _documentOperationStatus.value = "Original lokal verfügbar."
+            } catch (e: Exception) {
+                _documentOperationStatus.value = "Original konnte nicht geladen werden: ${e.message}"
+            }
+        }
+    }
+
+    fun analyzeManagedDocument(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentOperationStatus.value = "KI-Dokumentanalyse läuft …"
+            val result = managedDocumentService.analyze(documentId, propertyMetadata.value ?: com.example.data.PropertyMetadata(), _wohneinheitenStatus.value)
+            if (result != null) {
+                _documentAiReview.value = documentId to result
+                _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
+            } else _documentOperationStatus.value = "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen."
+        }
+    }
+
+    fun dismissDocumentAiReview() { _documentAiReview.value = null }
+
+    fun previewDocumentStorageMigration() {
+        val email = _googleAccountEmail.value
+        if (email.isNullOrBlank() || !_isDriveConnected.value) {
+            _documentOperationStatus.value = "Bitte zuerst Google Drive verbinden."
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentOperationStatus.value = "Bestehende Drive-Ablage wird nur lesend geprüft …"
+            try {
+                _documentMigrationPreview.value = drivePersistenceRepository.previewReceiptDocumentMigration(getValidToken(email))
+                _documentOperationStatus.value = "Migrationsvorschau erstellt. Noch wurde keine Datei verändert."
+            } catch (e: Exception) {
+                _documentOperationStatus.value = "Migrationsvorschau fehlgeschlagen: ${e.message}"
+            }
+        }
+    }
+
+    fun dismissDocumentMigrationPreview() { _documentMigrationPreview.value = null }
+
+    fun confirmDocumentStorageMigration() {
+        val preview = _documentMigrationPreview.value ?: return
+        val email = _googleAccountEmail.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentOperationStatus.value = "Bestätigte Dokumentmigration läuft …"
+            try {
+                val token = getValidToken(email)
+                val init = drivePersistenceRepository.initializeDriveStorage(token)
+                val config = when (init) {
+                    is com.example.data.DriveInitializationResult.SuccessCreatedNew -> init.config
+                    is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> init.config
+                    is com.example.data.DriveInitializationResult.Failure -> throw IllegalStateException(init.error)
+                }
+                val result = drivePersistenceRepository.executeReceiptDocumentMigration(token, config, preview)
+                _documentOperationStatus.value = "Migration abgeschlossen: ${result.found - result.review} geprüft, ${result.review} manuell zu klären."
+                _documentMigrationPreview.value = null
+            } catch (e: Exception) {
+                _documentOperationStatus.value = "Migration unterbrochen. Der Journalstand bleibt erhalten: ${e.message}"
+            }
+        }
+    }
+
+    fun confirmManagedDocumentReview(
+        documentId: String,
+        type: com.example.data.ManagedDocumentType,
+        date: String,
+        unitId: String?,
+        proposals: List<com.example.data.DocumentFieldProposal>
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val document = repository.getManagedDocument(documentId) ?: return@launch
+            val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
+            val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
+            val updated = managedDocumentService.confirmReview(document, type, date, unitId, json)
+            applyConfirmedDocumentValues(updated, accepted)
+            _documentAiReview.value = null
+            _documentOperationStatus.value = "Geprüfte Dokumentdaten übernommen."
+        }
+    }
+
+    private suspend fun applyConfirmedDocumentValues(document: com.example.data.ManagedDocument, values: Map<String, String>) {
+        fun number(key: String): Double? {
+            val raw = values[key]?.trim()?.filter { it.isDigit() || it == '.' || it == ',' || it == '-' } ?: return null
+            val decimalSeparator = when {
+                raw.contains(',') -> ','
+                raw.count { it == '.' } == 1 && raw.substringAfter('.').length <= 2 -> '.'
+                else -> null
+            }
+            return raw.filterNot { it == '.' || it == ',' }
+                .let { digits ->
+                    if (decimalSeparator == null) digits
+                    else {
+                        val fraction = raw.substringAfterLast(decimalSeparator).filter(Char::isDigit)
+                        val whole = raw.substringBeforeLast(decimalSeparator).filter { it.isDigit() || it == '-' }
+                        "$whole.$fraction"
+                    }
+                }.toDoubleOrNull()
+        }
+        val currentProperty = database.propertyDao().getPropertyMetadata() ?: com.example.data.PropertyMetadata()
+        var property = currentProperty
+        values["objektadresse"]?.let { property = property.copy(adresse = it) }
+        number("kaufpreis")?.let { property = property.copy(gesamtKaufpreis = it) }
+        values["kaufvertragsdatum"]?.let { property = property.copy(notariellesKaufdatum = it) }
+        values["nutzen_lasten"]?.let { property = property.copy(uebergangNutzenLasten = it) }
+        number("grundstuecksflaeche")?.let { property = property.copy(grundstuecksgroesse = it) }
+        number("baujahr")?.toInt()?.let { property = property.copy(baujahr = it) }
+        if (property != currentProperty) repository.updatePropertyMetadata(property)
+
+        if (document.documentType == com.example.data.ManagedDocumentType.DARLEHENSVERTRAG.name) {
+            val existing = document.loanId?.let { id -> database.loanDao().getAllLoans().firstOrNull { it.id == id } }
+            val loan = (existing ?: com.example.data.Loan()).copy(
+                bank = values["bank"] ?: existing?.bank.orEmpty(),
+                darlehensbetrag = number("darlehensbetrag") ?: existing?.darlehensbetrag ?: 0.0,
+                restschuld = number("restschuld") ?: existing?.restschuld ?: 0.0,
+                sollzinsProzent = number("sollzins") ?: existing?.sollzinsProzent ?: 0.0,
+                tilgungProzent = number("tilgung") ?: existing?.tilgungProzent ?: 0.0,
+                monatlicheRate = number("monatsrate") ?: existing?.monatlicheRate ?: 0.0,
+                startDatum = values["startdatum"] ?: existing?.startDatum.orEmpty(),
+                zinsbindungBis = values["zinsbindung"] ?: existing?.zinsbindungBis.orEmpty(),
+                laufzeitBis = values["laufzeit"] ?: existing?.laufzeitBis.orEmpty()
+            )
+            val loanId = database.loanDao().upsertLoan(loan).toInt()
+            repository.upsertManagedDocument(document.copy(loanId = if (loan.id != 0) loan.id else loanId))
+        }
+
+        val unit = _wohneinheitenStatus.value.firstOrNull { it.unitId == document.unitId }
+        if (unit != null && document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name) {
+            updateWohneinheit(unit.copy(
+                mieter = values["mieter"] ?: unit.mieter,
+                kaltmiete = number("kaltmiete") ?: unit.kaltmiete,
+                wohnflaeche = number("wohnflaeche") ?: unit.wohnflaeche,
+                mietvertragsstart = values["vertragsbeginn"] ?: unit.mietvertragsstart
+            ))
+        }
     }
 
     // Trigger Gemini Receipt Analysis

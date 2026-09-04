@@ -216,7 +216,9 @@ object FirestoreService {
             "status" to unit.status,
             "mieter" to unit.mieter,
             "kaltmiete" to unit.kaltmiete,
-            "wohnflaeche" to unit.wohnflaeche
+            "wohnflaeche" to unit.wohnflaeche,
+            "mietvertragsstart" to unit.mietvertragsstart,
+            "unitId" to unit.unitId
         )
     }
 
@@ -227,7 +229,9 @@ object FirestoreService {
             status = map["status"] as? String ?: "",
             mieter = map["mieter"] as? String ?: "",
             kaltmiete = (map["kaltmiete"] as? Double) ?: (map["kaltmiete"] as? Long)?.toDouble() ?: 0.0,
-            wohnflaeche = (map["wohnflaeche"] as? Double) ?: (map["wohnflaeche"] as? Long)?.toDouble() ?: 0.0
+            wohnflaeche = (map["wohnflaeche"] as? Double) ?: (map["wohnflaeche"] as? Long)?.toDouble() ?: 0.0,
+            mietvertragsstart = map["mietvertragsstart"] as? String ?: "",
+            unitId = map["unitId"] as? String ?: ""
         )
     }
 }

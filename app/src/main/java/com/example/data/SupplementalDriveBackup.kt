@@ -8,7 +8,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 2
+    internal const val SCHEMA_VERSION = 3
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -30,7 +30,7 @@ object SupplementalDriveBackup {
             val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE)
                 ?: return Result(true, "Keine Zusatzdaten-Sicherung vorhanden")
             restorePayload(context, database, JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)))
-            Result(true, "Zusatzdaten einschließlich Fahrtenbuch wiederhergestellt")
+            Result(true, "Zusatzdaten einschließlich Fahrtenbuch und Dokumentenakte wiederhergestellt")
         } catch (e: Exception) {
             Result(false, e.message ?: "Zusatzdaten-Wiederherstellung fehlgeschlagen")
         }
@@ -40,6 +40,7 @@ object SupplementalDriveBackup {
         put("loans", JSONArray().apply { database.loanDao().getAllLoans().forEach { put(it.toJson()) } })
         put("logbookTrips", JSONArray().apply { database.logbookDao().getAllTrips().forEach { put(it.toJson()) } })
         put("standardRoutes", JSONArray().apply { database.logbookDao().getAllStandardRoutes().forEach { put(it.toJson()) } })
+        put("managedDocuments", JSONArray().apply { database.managedDocumentDao().getAll().forEach { put(it.toBackupJson()) } })
         put("rentPlanPrefs", prefsToJson(context, "rent_plan_prefs"))
         put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
         put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
@@ -54,6 +55,13 @@ object SupplementalDriveBackup {
         for (index in 0 until trips.length()) database.logbookDao().upsertTrip(trips.getJSONObject(index).toTrip())
         val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
         for (index in 0 until routes.length()) database.logbookDao().upsertStandardRoute(routes.getJSONObject(index).toStandardRoute())
+        val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
+        for (index in 0 until documents.length()) database.managedDocumentDao().upsert(documents.getJSONObject(index).toManagedDocument())
+        database.managedDocumentDao().clearSearchIndex()
+        val receiptMap = database.receiptDao().getAllReceiptsIncludingDeletedList().associateBy { it.internalId }
+        database.managedDocumentDao().getAll().forEach { document ->
+            database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, document.receiptInternalId?.let(receiptMap::get))))
+        }
         jsonToPrefs(context, "rent_plan_prefs", root.optJSONObject("rentPlanPrefs"))
         jsonToPrefs(context, "tenant_history_prefs", root.optJSONObject("tenantHistoryPrefs"))
         jsonToPrefs(context, "loan_interest_assignments", root.optJSONObject("loanInterestAssignments"))
@@ -123,6 +131,42 @@ object SupplementalDriveBackup {
         put("sourceProvider", sourceProvider); put("createdAt", createdAt); put("updatedAt", updatedAt)
     }
 
+    // OCR full text and local device paths are intentionally excluded. They are rebuilt locally;
+    // document identity, Drive references and extraction/review metadata remain restorable.
+    private fun ManagedDocument.toBackupJson() = JSONObject().apply {
+        put("documentId", documentId); put("propertyId", propertyId); putNullable("unitId", unitId)
+        putNullable("receiptInternalId", receiptInternalId); put("documentType", documentType)
+        put("documentCategory", documentCategory); put("documentDate", documentDate); put("title", title)
+        put("originalFilename", originalFilename); put("storedFilename", storedFilename); put("mimeType", mimeType)
+        putNullable("driveFileId", driveFileId); putNullable("driveFolderId", driveFolderId); put("sha256", sha256)
+        put("fileSizeBytes", fileSizeBytes); put("createdAt", createdAt); put("updatedAt", updatedAt)
+        put("ocrStatus", if (ocrText.isBlank()) ocrStatus else DocumentProcessingStatus.AUSSTEHEND.name)
+        put("aiAnalysisStatus", aiAnalysisStatus); put("aiConfidence", aiConfidence); put("reviewStatus", reviewStatus)
+        put("source", source); put("extractedFieldsJson", extractedFieldsJson); putNullable("loanId", loanId)
+        putNullable("tenantReference", tenantReference); putNullable("renovationReference", renovationReference)
+        put("migrationStatus", migrationStatus); putNullable("legacyDriveFolderId", legacyDriveFolderId)
+    }
+
+    private fun JSONObject.toManagedDocument() = ManagedDocument(
+        documentId = optString("documentId"), propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
+        unitId = nullableString("unitId"), receiptInternalId = nullableString("receiptInternalId"),
+        documentType = optString("documentType", ManagedDocumentType.SONSTIGES.name),
+        documentCategory = optString("documentCategory", "06_Sonstige_Objektunterlagen"),
+        documentDate = optString("documentDate", ""), title = optString("title", ""),
+        originalFilename = optString("originalFilename", ""), storedFilename = optString("storedFilename", ""),
+        mimeType = optString("mimeType", "application/octet-stream"), localUri = "",
+        driveFileId = nullableString("driveFileId"), driveFolderId = nullableString("driveFolderId"),
+        sha256 = optString("sha256", ""), fileSizeBytes = optLong("fileSizeBytes", 0L),
+        createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", ""),
+        ocrStatus = DocumentProcessingStatus.AUSSTEHEND.name, ocrText = "",
+        aiAnalysisStatus = optString("aiAnalysisStatus", DocumentProcessingStatus.AUSSTEHEND.name),
+        aiConfidence = optDouble("aiConfidence", 0.0), reviewStatus = optString("reviewStatus", DocumentReviewStatus.PRUEFEN.name),
+        source = optString("source", DocumentSource.DRIVE_RESTORE.name), extractedFieldsJson = optString("extractedFieldsJson", ""),
+        loanId = nullableInt("loanId"), tenantReference = nullableString("tenantReference"),
+        renovationReference = nullableString("renovationReference"), migrationStatus = optString("migrationStatus", ""),
+        legacyDriveFolderId = nullableString("legacyDriveFolderId")
+    )
+
     private fun JSONObject.toStandardRoute() = StandardRoute(
         id = optLong("id", 0L), name = optString("name", ""), startAddress = optString("startAddress", ""),
         destinationAddress = optString("destinationAddress", ""), stopsJson = optString("stopsJson", ""),
@@ -136,6 +180,7 @@ object SupplementalDriveBackup {
     private fun JSONObject.nullableDouble(name: String): Double? = if (!has(name) || isNull(name)) null else optDouble(name)
     private fun JSONObject.nullableLong(name: String): Long? = if (!has(name) || isNull(name)) null else optLong(name)
     private fun JSONObject.nullableInt(name: String): Int? = if (!has(name) || isNull(name)) null else optInt(name)
+    private fun JSONObject.nullableString(name: String): String? = if (!has(name) || isNull(name)) null else optString(name).takeIf(String::isNotBlank)
 
     private fun prefsToJson(context: Context, name: String): JSONObject = JSONObject().apply {
         context.getSharedPreferences(name, Context.MODE_PRIVATE).all.forEach { (key, value) ->
@@ -168,4 +213,3 @@ object SupplementalDriveBackup {
         editor.apply()
     }
 }
-
