@@ -49,9 +49,9 @@ object PdfEmbeddedTextExtractor {
     }.getOrDefault("")
 
     private fun extractTextOperators(content: String, target: MutableList<String>) {
-        Regex("\\((?:\\\\.|[^\\)])*)\\)\\s*Tj").findAll(content).forEach { target += decodeLiteral(it.groupValues[1]) }
+        Regex("""\(((?:\\.|[^\\()])*)\)\s*Tj""").findAll(content).forEach { target += decodeLiteral(it.groupValues[1]) }
         Regex("\\[(.*?)]\\s*TJ", RegexOption.DOT_MATCHES_ALL).findAll(content).forEach { array ->
-            Regex("\\((?:\\\\.|[^\\)])*)\\)").findAll(array.groupValues[1]).forEach { target += decodeLiteral(it.groupValues[1]) }
+            Regex("""\(((?:\\.|[^\\()])*)\)""").findAll(array.groupValues[1]).forEach { target += decodeLiteral(it.groupValues[1]) }
         }
     }
 
