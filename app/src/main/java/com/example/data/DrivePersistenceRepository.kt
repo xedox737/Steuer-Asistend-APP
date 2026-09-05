@@ -4086,7 +4086,7 @@ class DrivePersistenceRepository(
             return false
         }
         val referencedIds = references.map { it.driveFileId }.toSet()
-        val inventoryFiles = tree.asSequence()
+        val inventoryFiles = tree
             .filter { it.mimeType != "application/vnd.google-apps.folder" }
             .mapNotNull { file ->
                 val props = file.appProperties
@@ -4110,7 +4110,7 @@ class DrivePersistenceRepository(
                     documentRole = props["documentRole"].orEmpty(), entityType = entityType,
                     appRelevant = appRelevant, legacyFolder = legacyFolder, reachable = bytes != null
                 )
-            }.toList()
+            }
         val inventory = DriveDocumentInventoryPlanner.build(inventoryFiles, references)
 
         val items = localReceipts.mapNotNull { receipt ->

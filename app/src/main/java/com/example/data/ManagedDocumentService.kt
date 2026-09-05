@@ -27,7 +27,8 @@ class ManagedDocumentService(
     private val repository: ReceiptRepository,
     private val ocrService: DocumentOcrService = DocumentOcrService()
 ) {
-    suspend fun prepareImport(uri: Uri, property: PropertyMetadata, unitId: String? = null): ManagedDocumentImportResult = try {
+    suspend fun prepareImport(uri: Uri, property: PropertyMetadata, unitId: String? = null): ManagedDocumentImportResult {
+        return try {
         val resolver = context.contentResolver
         val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
             ?: return ManagedDocumentImportResult.Error("Die ausgewählte Datei konnte nicht gelesen werden.")
@@ -63,17 +64,22 @@ class ManagedDocumentService(
             DocumentDuplicateKind.POSSIBLE -> ManagedDocumentImportResult.PossibleDuplicate(candidate, repository.getManagedDocument(requireNotNull(duplicate.existingDocumentId))!!)
             DocumentDuplicateKind.NONE -> persistPrepared(candidate, bytes)
         }
-    } catch (e: Exception) {
-        ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.")
+        } catch (e: Exception) {
+            ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.")
+        }
     }
 
-    suspend fun persistPossibleDuplicate(candidate: ManagedDocument, uri: Uri): ManagedDocumentImportResult = try {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: return ManagedDocumentImportResult.Error("Die ausgewählte Datei konnte nicht erneut gelesen werden.")
-        val id = UUID.randomUUID().toString()
-        val extension = candidate.localUri.substringAfterLast('.', "bin")
-        persistPrepared(candidate.copy(documentId = id, localUri = File(context.filesDir, "managed_documents/$id.$extension").absolutePath), bytes)
-    } catch (e: Exception) { ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.") }
+    suspend fun persistPossibleDuplicate(candidate: ManagedDocument, uri: Uri): ManagedDocumentImportResult {
+        return try {
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: return ManagedDocumentImportResult.Error("Die ausgewählte Datei konnte nicht erneut gelesen werden.")
+            val id = UUID.randomUUID().toString()
+            val extension = candidate.localUri.substringAfterLast('.', "bin")
+            persistPrepared(candidate.copy(documentId = id, localUri = File(context.filesDir, "managed_documents/$id.$extension").absolutePath), bytes)
+        } catch (e: Exception) {
+            ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.")
+        }
+    }
 
     suspend fun runOcr(documentId: String): ManagedDocument? {
         val document = repository.getManagedDocument(documentId) ?: return null

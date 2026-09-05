@@ -855,10 +855,11 @@ class ReceiptRepository(
                 (category.isBlank() || it.documentCategory == category)
         } else managedDocumentDao?.search(normalized, propertyId, unitId, year, documentType, category).orEmpty()
     }
-    suspend fun rebuildDocumentSearchIndex(receipts: List<Receipt> = getAllReceiptsList()) {
+    suspend fun rebuildDocumentSearchIndex(receipts: List<Receipt>? = null) {
         val dao = managedDocumentDao ?: return
+        val currentReceipts = receipts ?: getAllReceiptsList()
         dao.clearSearchIndex()
-        val receiptMap = receipts.associateBy { it.internalId }
+        val receiptMap = currentReceipts.associateBy { it.internalId }
         dao.getAll().forEach { dao.insertSearchEntry(DocumentSearchFts(it.documentId, DocumentSearchTextBuilder.build(it, it.receiptInternalId?.let(receiptMap::get)))) }
     }
     suspend fun getDocumentMigrationJournal(): List<DocumentMigrationJournal> = managedDocumentDao?.getMigrationJournal().orEmpty()
