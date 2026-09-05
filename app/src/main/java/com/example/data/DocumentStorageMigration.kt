@@ -116,10 +116,10 @@ object DriveDocumentInventoryPlanner {
             val status = when {
                 !file.reachable -> DriveDocumentInventoryStatus.MIGRATION_PRUEFEN
                 multiple -> DriveDocumentInventoryStatus.MULTIPLE_REFERENCES
+                file.sha256.isNotBlank() && file.sha256.lowercase() in duplicateHashes -> DriveDocumentInventoryStatus.POSSIBLE_DUPLICATE
                 (receiptId.isNotBlank() || documentId.isNotBlank()) && !localReceipt && !localDocument -> DriveDocumentInventoryStatus.MISSING_LOCAL_REFERENCE
                 refs.isEmpty() && (file.appRelevant || file.legacyFolder) -> DriveDocumentInventoryStatus.ORPHAN
                 (localReceipt && !receiptIndex) || (localDocument && !documentIndex) -> DriveDocumentInventoryStatus.MISSING_INDEX_REFERENCE
-                file.sha256.isNotBlank() && file.sha256.lowercase() in duplicateHashes -> DriveDocumentInventoryStatus.POSSIBLE_DUPLICATE
                 file.legacyFolder || (targetFilename.isNotBlank() && file.name != targetFilename) -> DriveDocumentInventoryStatus.LEGACY_LAYOUT
                 refs.isEmpty() -> DriveDocumentInventoryStatus.UNKNOWN_APP_FILE
                 else -> DriveDocumentInventoryStatus.OK
