@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import com.example.data.DocumentFieldDecision
+import com.example.data.DocumentFieldProposal
 import com.example.data.ManagedDocument
 import com.example.data.ManagedDocumentType
 import java.io.File
@@ -81,7 +84,7 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel) {
     }
     var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) cameraUri?.let { viewModel.importManagedDocument(it) }
+        if (success) cameraUri?.let(viewModel::importManagedDocument)
     }
     val startCameraScan = {
         val target = File(context.cacheDir, "document_scan_${System.currentTimeMillis()}.jpg")
@@ -164,7 +167,7 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel) {
         AlertDialog(
             onDismissRequest = viewModel::dismissDocumentMigrationPreview,
             title = { Text("Dokumentenablage aktualisieren") },
-            text = { Text("Gefunden: ${preview.found}\nBereits neue Struktur: ${preview.alreadyNew}\nWerden verschoben: ${preview.willMove}\nWerden umbenannt: ${preview.willRename}\nBleiben unverändert: ${preview.unchanged}\nMögliche Dubletten: ${preview.possibleDuplicates}\nKonflikte: ${preview.conflicts}\nManuell prüfen: ${preview.review}\n\nEs werden keine Originale gelöscht oder kopiert. Die Drive-Datei-ID und der Inhalt bleiben erhalten und werden nach jeder Änderung geprüft.") },
+            text = { Text("Insgesamt geprüft: ${preview.found}\nKorrekt abgelegt: ${preview.alreadyNew}\nLegacy-Struktur: ${preview.inventoryItems.count { it.status == com.example.data.DriveDocumentInventoryStatus.LEGACY_LAYOUT }}\nWerden verschoben: ${preview.willMove}\nWerden umbenannt: ${preview.willRename}\nMögliche Dubletten: ${preview.possibleDuplicates}\nVerwaiste App-Dateien: ${preview.orphanedAppFiles}\nFehlende lokale Referenzen: ${preview.missingLocalReferences}\nIndex-Konflikte: ${preview.indexConflicts}\nManuell prüfen: ${preview.manualReview}\n\nEs werden keine Originale gelöscht oder kopiert. Unklare Dateien bleiben unverändert. Drive-Datei-ID und Inhalt werden nach jeder bestätigten Änderung geprüft.") },
             confirmButton = { Button(onClick = viewModel::confirmDocumentStorageMigration, modifier = Modifier.testTag("confirm_document_migration")) { Text("Migration bestätigen") } },
             dismissButton = { TextButton(onClick = viewModel::dismissDocumentMigrationPreview) { Text("Abbrechen") } }
         )

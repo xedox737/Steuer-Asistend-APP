@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.example.api.GoogleDriveClient
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,12 +26,18 @@ object SupplementalDriveBackup {
             Result(false, e.message ?: "Zusatzdaten-Backup fehlgeschlagen")
         }
 
-    suspend fun restore(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
+    suspend fun restore(
+        context: Context,
+        database: AppDatabase,
+        accessToken: String,
+        systemFolderId: String,
+        replaceManagedDocuments: Boolean = false
+    ): Result =
         try {
             val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE)
                 ?: return Result(true, "Keine Zusatzdaten-Sicherung vorhanden")
-            restorePayload(context, database, JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)))
-            Result(true, "Zusatzdaten einschließlich Fahrtenbuch und Dokumentenakte wiederhergestellt")
+            restorePayload(context, database, JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)), replaceManagedDocuments)
+            Result(true, "Zusatzdaten einschließlich Fahrtenbuch wiederhergestellt")
         } catch (e: Exception) {
             Result(false, e.message ?: "Zusatzdaten-Wiederherstellung fehlgeschlagen")
         }
@@ -48,20 +55,32 @@ object SupplementalDriveBackup {
         // ai_provider_settings is deliberately excluded: no API key may enter Drive backup.
     }
 
-    internal suspend fun restorePayload(context: Context, database: AppDatabase, root: JSONObject) {
-        val loans = root.optJSONArray("loans") ?: JSONArray()
-        for (index in 0 until loans.length()) database.loanDao().upsertLoan(loans.getJSONObject(index).toLoan())
-        val trips = root.optJSONArray("logbookTrips") ?: JSONArray()
-        for (index in 0 until trips.length()) database.logbookDao().upsertTrip(trips.getJSONObject(index).toTrip())
-        val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
-        for (index in 0 until routes.length()) database.logbookDao().upsertStandardRoute(routes.getJSONObject(index).toStandardRoute())
-        val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
-        for (index in 0 until documents.length()) database.managedDocumentDao().upsert(documents.getJSONObject(index).toManagedDocument())
-        database.managedDocumentDao().clearSearchIndex()
-        val receiptMap = database.receiptDao().getAllReceiptsIncludingDeletedList().associateBy { it.internalId }
-        database.managedDocumentDao().getAll().forEach { document ->
-            database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, document.receiptInternalId?.let(receiptMap::get))))
+    internal suspend fun restorePayload(
+        context: Context,
+        database: AppDatabase,
+        root: JSONObject,
+        replaceManagedDocuments: Boolean = false
+    ) {
+        database.withTransaction {
+            val loans = root.optJSONArray("loans") ?: JSONArray()
+            for (index in 0 until loans.length()) database.loanDao().upsertLoan(loans.getJSONObject(index).toLoan())
+            val trips = root.optJSONArray("logbookTrips") ?: JSONArray()
+            for (index in 0 until trips.length()) database.logbookDao().upsertTrip(trips.getJSONObject(index).toTrip())
+            val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
+            for (index in 0 until routes.length()) database.logbookDao().upsertStandardRoute(routes.getJSONObject(index).toStandardRoute())
+            if (replaceManagedDocuments && root.has("managedDocuments")) {
+                database.managedDocumentDao().clearSearchIndex()
+                database.managedDocumentDao().deleteAllDocuments()
+                database.managedDocumentDao().clearMigrationJournal()
+            }
+            val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
+            for (index in 0 until documents.length()) database.managedDocumentDao().upsert(documents.getJSONObject(index).toManagedDocument())
+            database.managedDocumentDao().clearSearchIndex()
+            database.managedDocumentDao().getAll().forEach { document ->
+                database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
+            }
         }
+        // Preferences are intentionally written only after the Room transaction committed.
         jsonToPrefs(context, "rent_plan_prefs", root.optJSONObject("rentPlanPrefs"))
         jsonToPrefs(context, "tenant_history_prefs", root.optJSONObject("tenantHistoryPrefs"))
         jsonToPrefs(context, "loan_interest_assignments", root.optJSONObject("loanInterestAssignments"))

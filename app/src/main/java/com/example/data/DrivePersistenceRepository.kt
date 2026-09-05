@@ -1798,7 +1798,7 @@ class DrivePersistenceRepository(
                 source = DocumentSource.RECEIPT.name,
                 legacyDriveFolderId = actualDriveFolderId?.takeIf { it != targetFolderId }
             )
-            localRepository.upsertManagedDocument(receiptManagedDocument, currentReceipt)
+            localRepository.upsertManagedDocument(receiptManagedDocument)
             val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
 
             val persistedReceipt = PersistedReceipt(
@@ -2128,6 +2128,15 @@ class DrivePersistenceRepository(
                 error = if (obj.optString("error").isBlank()) null else obj.optString("error")
             )
         } catch (e: Exception) { null }
+    }
+
+    fun updateLatestRestorePhase(phase: FullRestorePhase, error: String? = null) {
+        val current = getLatestRestoreJournal() ?: return
+        saveRestoreJournal(current.copy(
+            phase = phase.name,
+            completedAt = if (phase == FullRestorePhase.COMPLETE) SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date()) else current.completedAt,
+            error = error ?: current.error
+        ))
     }
 
     suspend fun getOrCreateDeletionsFolder(accessToken: String, config: DriveAppConfig): String? {
@@ -2709,13 +2718,13 @@ class DrivePersistenceRepository(
             restoreId = java.util.UUID.randomUUID().toString(),
             startedAt = nowStr,
             mode = mode.name,
-            phase = "DOWNLOADING"
+            phase = FullRestorePhase.DOWNLOAD.name
         )
         saveRestoreJournal(journal)
 
         val snapshot = buildRestoreSnapshot(accessToken, config)
 
-        journal = journal.copy(phase = "VALIDATING", snapshotReceiptCount = snapshot.receipts.size)
+        journal = journal.copy(phase = FullRestorePhase.VALIDATION.name, snapshotReceiptCount = snapshot.receipts.size)
         saveRestoreJournal(journal)
 
         val blockingErrors = snapshot.errors.filter { it.isBlocking }
@@ -2731,7 +2740,7 @@ class DrivePersistenceRepository(
             )
         }
 
-        journal = journal.copy(phase = "IMPORTING")
+        journal = journal.copy(phase = FullRestorePhase.CORE_IMPORT.name)
         saveRestoreJournal(journal)
 
         val db = AppDatabase.getDatabase(context, CoroutineScope(Dispatchers.IO))
@@ -2746,7 +2755,7 @@ class DrivePersistenceRepository(
         try {
             db.withTransaction {
                 if (mode == RestoreMode.REPLACE_FULL) {
-                    localRepository.clearRestoreRelevantTables()
+                    localRepository.clearCoreRestoreRelevantTables()
                 }
 
                 snapshot.propertyMetadata?.let {
@@ -2778,6 +2787,13 @@ class DrivePersistenceRepository(
                         exportsRestored++
                     }
                 }
+
+                if (mode == RestoreMode.REPLACE_FULL || mode == RestoreMode.REPLACE_EMPTY) {
+                    val importedCount = localRepository.getAllReceiptsList().size
+                    check(importedCount == snapshot.receipts.size) {
+                        "Nachkontrolle fehlgeschlagen: Erwartet ${snapshot.receipts.size} Belege, in DB $importedCount"
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Room Transaction error during restore", e)
@@ -2791,23 +2807,8 @@ class DrivePersistenceRepository(
             )
         }
 
-        journal = journal.copy(phase = "VERIFYING", importedReceiptCount = receiptsRestored)
+        journal = journal.copy(phase = FullRestorePhase.CORE_VERIFY.name, importedReceiptCount = receiptsRestored)
         saveRestoreJournal(journal)
-
-        val postReceipts = localRepository.getAllReceiptsList()
-        if (mode == RestoreMode.REPLACE_FULL || mode == RestoreMode.REPLACE_EMPTY) {
-            if (postReceipts.size != snapshot.receipts.size) {
-                val err = "Nachkontrolle fehlgeschlagen: Erwartet ${snapshot.receipts.size} Belege, in DB ${postReceipts.size}"
-                journal = journal.copy(phase = "FAILED", error = err)
-                saveRestoreJournal(journal)
-                return DriveRestoreReport(
-                    timestamp = nowStr,
-                    errorCount = 1,
-                    errors = listOf(err),
-                    isSuccess = false
-                )
-            }
-        }
 
         try {
             if (snapshot.units.isNotEmpty()) {
@@ -2823,7 +2824,7 @@ class DrivePersistenceRepository(
             Log.w(TAG, "Warnung beim Schreiben der SharedPreferences nach Restore: ${e.message}")
         }
 
-        journal = journal.copy(phase = "COMPLETED", completedAt = nowStr)
+        journal = journal.copy(phase = FullRestorePhase.COMPLETE.name, completedAt = nowStr)
         saveRestoreJournal(journal)
 
         val reportErrors = snapshot.warnings.map { "Warnung: ${it.message}" }
@@ -3348,6 +3349,18 @@ class DrivePersistenceRepository(
         }
     }
 
+    /** Loads existing Drive configuration without creating folders or restoring local data. */
+    suspend fun getExistingDriveAppConfigReadOnly(accessToken: String): DriveAppConfig? {
+        val systemFolder = GoogleDriveClient.findAppDataFolder(accessToken) ?: return null
+        val configFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig") ?: return null
+        return try {
+            parseDriveAppConfig(GoogleDriveClient.downloadJson(accessToken, configFile.id))
+        } catch (e: Exception) {
+            Log.e(TAG, "Bestehende Drive-Konfiguration konnte nicht gelesen werden", e)
+            null
+        }
+    }
+
     private fun extractYear(datum: String): String {
         return datum.trim().split("-", ".", "/").firstOrNull { it.length == 4 }
             ?: if (datum.length >= 4) datum.take(4) else "2026"
@@ -3731,6 +3744,35 @@ class DrivePersistenceRepository(
         }
     }
 
+    suspend fun getDocumentIndexFromDrive(accessToken: String, config: DriveAppConfig): List<DocumentIndexEntry> {
+        val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "documentIndex")
+            ?: return emptyList()
+        return try {
+            val root = JSONObject(GoogleDriveClient.downloadJson(accessToken, indexFile.id))
+            val documents = root.optJSONArray("documents") ?: JSONArray()
+            buildList {
+                for (index in 0 until documents.length()) {
+                    val item = documents.getJSONObject(index)
+                    add(DocumentIndexEntry(
+                        documentId = item.optString("documentId", ""),
+                        propertyId = item.optString("propertyId", ""),
+                        unitId = if (item.isNull("unitId")) "" else item.optString("unitId", ""),
+                        receiptInternalId = if (item.isNull("receiptInternalId")) "" else item.optString("receiptInternalId", ""),
+                        documentType = item.optString("documentType", ManagedDocumentType.SONSTIGES.name),
+                        documentDate = item.optString("documentDate", ""),
+                        storedFilename = item.optString("storedFilename", ""),
+                        driveFileId = if (item.isNull("driveFileId")) "" else item.optString("driveFileId", ""),
+                        driveFolderId = if (item.isNull("driveFolderId")) "" else item.optString("driveFolderId", ""),
+                        sha256 = item.optString("sha256", "")
+                    ))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "document-index.json konnte für die Inventur nicht gelesen werden", e)
+            emptyList()
+        }
+    }
+
     suspend fun generateMetadataDuplicateReport(
         accessToken: String,
         config: DriveAppConfig
@@ -3847,21 +3889,81 @@ class DrivePersistenceRepository(
         documentId: String
     ): Boolean {
         val document = localRepository.getManagedDocument(documentId) ?: return false
+        val property = localRepository.getPropertyMetadata() ?: PropertyMetadata()
+        val type = runCatching { ManagedDocumentType.valueOf(document.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)
+        val unit = localRepositoryUnitLabel(document.unitId)
+        val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, document.documentDate, document.unitId, unit)
+        val existingDriveId = document.driveFileId?.takeIf(String::isNotBlank)
+        if (existingDriveId != null) {
+            val metadata = GoogleDriveClient.getFileMetadata(accessToken, existingDriveId)
+            val driveBytes = GoogleDriveClient.downloadFileBytes(accessToken, existingDriveId)
+            if (metadata == null || driveBytes == null) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_DATEI_NICHT_ERREICHBAR", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            val beforeHash = getSha256(driveBytes)
+            if (document.sha256.isNotBlank() && !document.sha256.equals(beforeHash, ignoreCase = true)) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = DocumentReviewStatus.MIGRATION_PRUEFEN.name, updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            if (metadata.parentIds.size != 1) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN:AMBIGUOUS_PARENT", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            val referenceCount = localRepository.getAllManagedDocuments().count { it.driveFileId == existingDriveId }
+            if (referenceCount > 1) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN:MULTIPLE_LOCAL_REFERENCES", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            val folderId = ensureDocumentFolder(accessToken, config, property, type, document.documentDate, document.unitId, unit)
+                ?: return false
+            val extension = metadata.name.substringAfterLast('.', document.storedFilename.substringAfterLast('.', document.originalFilename.substringAfterLast('.', "bin")))
+            val targetFilename = DocumentFilenameGenerator.document(type, document.documentDate, document.title, extension, document.documentId)
+            val plan = ManagedDocumentDriveReorganization.plan(
+                reachable = true, currentParentIds = metadata.parentIds, currentFilename = metadata.name,
+                targetFolderId = folderId, targetFilename = targetFilename,
+                expectedSha256 = document.sha256, actualSha256 = beforeHash, referenceCount = referenceCount
+            )
+            if (!plan.canApply) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN:${plan.reason}", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            if (plan.action != DocumentMigrationAction.UNVERAENDERT &&
+                !GoogleDriveClient.moveAndRenameFile(accessToken, existingDriveId, folderId, metadata.parentIds, targetFilename)) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_MOVE_FEHLGESCHLAGEN", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            val afterMetadata = GoogleDriveClient.getFileMetadata(accessToken, existingDriveId)
+            val afterBytes = GoogleDriveClient.downloadFileBytes(accessToken, existingDriveId)
+            val afterHash = afterBytes?.let { getSha256(it) }.orEmpty()
+            val verified = ManagedDocumentDriveReorganization.isSameVerifiedOriginal(
+                expectedDriveFileId = existingDriveId,
+                actualDriveFileId = afterMetadata?.id,
+                beforeSha256 = beforeHash,
+                afterSha256 = afterHash
+            ) && afterMetadata?.parentIds?.singleOrNull() == folderId && afterMetadata?.name == targetFilename
+            if (!verified) {
+                localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_VERIFY_FEHLGESCHLAGEN", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            val updated = document.copy(
+                driveFileId = existingDriveId, driveFolderId = folderId, storedFilename = targetFilename,
+                documentCategory = route.segments.drop(1).joinToString("/"), sha256 = beforeHash,
+                fileSizeBytes = afterBytes?.size?.toLong() ?: document.fileSizeBytes,
+                legacyDriveFolderId = metadata.parentIds.singleOrNull()?.takeIf { it != folderId } ?: document.legacyDriveFolderId,
+                migrationStatus = "SYNCED", updatedAt = java.time.Instant.now().toString()
+            )
+            localRepository.upsertManagedDocument(updated)
+            if (!updateManagedDocumentIndex(accessToken, config)) {
+                localRepository.upsertManagedDocument(updated.copy(migrationStatus = "DOCUMENT_INDEX_PRUEFEN", updatedAt = java.time.Instant.now().toString()))
+                return false
+            }
+            return true
+        }
         val localFile = java.io.File(document.localUri)
         if (!localFile.isFile) return false
         val bytes = localFile.readBytes()
         val hash = getSha256(bytes)
-        val existingDriveId = document.driveFileId?.takeIf(String::isNotBlank)
-        if (existingDriveId != null) {
-            val driveBytes = GoogleDriveClient.downloadFileBytes(accessToken, existingDriveId) ?: return false
-            return if (getSha256(driveBytes) == hash) true else {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN", updatedAt = java.time.Instant.now().toString()))
-                false
-            }
-        }
-        val property = localRepository.getPropertyMetadata() ?: PropertyMetadata()
-        val type = runCatching { ManagedDocumentType.valueOf(document.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)
-        val unit = localRepositoryUnitLabel(document.unitId)
         val folderId = ensureDocumentFolder(accessToken, config, property, type, document.documentDate, document.unitId, unit) ?: return false
         val existingByHash = localRepository.getAllManagedDocuments().firstOrNull {
             it.documentId != document.documentId && it.sha256 == hash && it.fileSizeBytes == bytes.size.toLong() && !it.driveFileId.isNullOrBlank()
@@ -3890,7 +3992,7 @@ class DrivePersistenceRepository(
             driveFileId = fileId, driveFolderId = folderId, sha256 = hash,
             fileSizeBytes = bytes.size.toLong(), migrationStatus = "SYNCED", updatedAt = java.time.Instant.now().toString()
         ))
-        return true
+        return updateManagedDocumentIndex(accessToken, config)
     }
 
     suspend fun updateManagedDocumentIndex(accessToken: String, config: DriveAppConfig): Boolean {
@@ -3918,10 +4020,100 @@ class DrivePersistenceRepository(
             ?.removePrefix("unit_id_")
     }
 
-    /** Read-only inventory: it never creates folders or changes a Drive file. */
-    suspend fun previewReceiptDocumentMigration(accessToken: String): DocumentMigrationPreview {
+    /** Read-only, app-root-bounded inventory: it never creates folders or changes a Drive file. */
+    suspend fun previewReceiptDocumentMigration(accessToken: String, config: DriveAppConfig): DocumentMigrationPreview {
         val property = localRepository.getPropertyMetadata() ?: PropertyMetadata()
-        val items = localRepository.getAllReceiptsList().mapNotNull { receipt ->
+        val localReceipts = localRepository.getAllReceiptsList()
+        val localDocuments = localRepository.getAllManagedDocuments()
+        val receiptIndex = getReceiptIndexFromDrive(accessToken, config)
+        val documentIndex = getDocumentIndexFromDrive(accessToken, config)
+        val references = mutableListOf<DriveInventoryReference>()
+
+        localReceipts.filter { !it.driveFileId.isNullOrBlank() }.forEach { receipt ->
+            val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, ManagedDocumentType.RECHNUNG, receipt.datum)
+            val extension = receipt.storedFilename?.substringAfterLast('.', "bin") ?: "bin"
+            references += DriveInventoryReference(
+                driveFileId = requireNotNull(receipt.driveFileId), receiptInternalId = receipt.internalId,
+                source = DriveDocumentInventorySource.LOCAL_RECEIPT, targetPath = route.displayPath,
+                targetFilename = generateStandardizedReceiptFilename(receipt, extension)
+            )
+        }
+        receiptIndex.filter { it.mainDriveFileId.isNotBlank() }.forEach { entry ->
+            val localReceipt = localReceipts.firstOrNull { it.internalId == entry.internalId }
+            val receipt = localReceipt ?: Receipt(
+                aussteller = entry.aussteller.orEmpty(), datum = entry.datum.orEmpty(), uhrzeit = "",
+                bruttobetrag = (entry.bruttobetragCent ?: 0L) / 100.0, hauptkategorie = entry.hauptkategorie.orEmpty(),
+                unterkategorie = entry.unterkategorie.orEmpty(), kontoNr = "", beschreibung = "",
+                internalId = entry.internalId, displayId = entry.displayId
+            )
+            val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, ManagedDocumentType.RECHNUNG, receipt.datum)
+            references += DriveInventoryReference(
+                driveFileId = entry.mainDriveFileId, receiptInternalId = entry.internalId,
+                source = DriveDocumentInventorySource.RECEIPT_INDEX, targetPath = route.displayPath,
+                targetFilename = localReceipt?.let {
+                    generateStandardizedReceiptFilename(it, it.storedFilename?.substringAfterLast('.', "bin") ?: "bin")
+                }.orEmpty()
+            )
+        }
+        localDocuments.filter { !it.driveFileId.isNullOrBlank() }.forEach { document ->
+            val type = runCatching { ManagedDocumentType.valueOf(document.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)
+            val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, document.documentDate, document.unitId, localRepositoryUnitLabel(document.unitId))
+            references += DriveInventoryReference(
+                driveFileId = requireNotNull(document.driveFileId), receiptInternalId = document.receiptInternalId.orEmpty(),
+                documentId = document.documentId, source = DriveDocumentInventorySource.MANAGED_DOCUMENT,
+                targetPath = route.displayPath, targetFilename = document.storedFilename, sha256 = document.sha256
+            )
+        }
+        documentIndex.filter { it.driveFileId.isNotBlank() }.forEach { document ->
+            val type = runCatching { ManagedDocumentType.valueOf(document.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)
+            val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, document.documentDate, document.unitId, localRepositoryUnitLabel(document.unitId))
+            references += DriveInventoryReference(
+                driveFileId = document.driveFileId, receiptInternalId = document.receiptInternalId,
+                documentId = document.documentId, source = DriveDocumentInventorySource.DOCUMENT_INDEX,
+                targetPath = route.displayPath, targetFilename = document.storedFilename, sha256 = document.sha256
+            )
+        }
+
+        val tree = GoogleDriveClient.listAppTreeFiles(accessToken, config.rootFolderId)
+        val folders = tree.filter { it.mimeType == "application/vnd.google-apps.folder" }.associateBy { it.id }
+        fun isBelow(folderId: String, ancestorId: String): Boolean {
+            var current = folderId
+            val visited = mutableSetOf<String>()
+            while (current.isNotBlank() && visited.add(current)) {
+                if (current == ancestorId) return true
+                current = folders[current]?.parentIds?.singleOrNull().orEmpty()
+            }
+            return false
+        }
+        val referencedIds = references.map { it.driveFileId }.toSet()
+        val inventoryFiles = tree.asSequence()
+            .filter { it.mimeType != "application/vnd.google-apps.folder" }
+            .mapNotNull { file ->
+                val props = file.appProperties
+                val legacyFolder = file.parentIds.any { isBelow(it, config.receiptsFolderId) } &&
+                    !file.name.endsWith(".json", ignoreCase = true)
+                val entityType = props["entityType"].orEmpty()
+                val knownNonOriginal = file.name.endsWith(".json", ignoreCase = true) || entityType in setOf(
+                    "appConfig", "propertyMetadata", "units", "datevProfiles", "aiLearnedRules", "receiptIndex",
+                    "documentIndex", "supplementalBackup", "receiptMetadata", "exportRun", "tombstone"
+                )
+                val appRelevant =
+                    props["receiptInternalId"].orEmpty().isNotBlank() || props["documentId"].orEmpty().isNotBlank() ||
+                    props["documentRole"] == "ORIGINAL" || entityType == "managedDocument" ||
+                    (props["appName"] == config.appIdentifier && !knownNonOriginal)
+                if (!appRelevant && !legacyFolder && file.id !in referencedIds) return@mapNotNull null
+                val bytes = GoogleDriveClient.downloadFileBytes(accessToken, file.id)
+                DriveInventoryFile(
+                    driveFileId = file.id, name = file.name, mimeType = file.mimeType, parentIds = file.parentIds,
+                    sizeBytes = file.sizeBytes, sha256 = bytes?.let { getSha256(it) }.orEmpty(),
+                    receiptInternalId = props["receiptInternalId"].orEmpty(), documentId = props["documentId"].orEmpty(),
+                    documentRole = props["documentRole"].orEmpty(), entityType = entityType,
+                    appRelevant = appRelevant, legacyFolder = legacyFolder, reachable = bytes != null
+                )
+            }.toList()
+        val inventory = DriveDocumentInventoryPlanner.build(inventoryFiles, references)
+
+        val items = localReceipts.mapNotNull { receipt ->
             val fileId = receipt.driveFileId?.takeIf(String::isNotBlank) ?: return@mapNotNull null
             val meta = GoogleDriveClient.getFileMetadata(accessToken, fileId)
             val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, ManagedDocumentType.RECHNUNG, receipt.datum)
@@ -3929,7 +4121,7 @@ class DrivePersistenceRepository(
             val linkedDocument = localRepository.getManagedDocument(StableDocumentIdentity.receiptDocumentId(receipt.internalId))
             val knownCurrentLayout = linkedDocument?.documentCategory == "02_Belege/${receipt.datum.take(4)}" &&
                 linkedDocument.driveFolderId == meta?.parentIds?.singleOrNull()
-            val contentHash = GoogleDriveClient.downloadFileBytes(accessToken, fileId)?.let { getSha256(it) }.orEmpty()
+            val contentHash = GoogleDriveClient.downloadFileBytes(accessToken, fileId)?.let(::getSha256).orEmpty()
             DocumentMigrationCandidate(
                 receiptInternalId = receipt.internalId,
                 driveFileId = fileId,
@@ -3938,10 +4130,17 @@ class DrivePersistenceRepository(
                 targetFolderId = if (knownCurrentLayout) meta?.parentIds?.singleOrNull().orEmpty() else "PATH:${route.displayPath}",
                 targetFilename = generateStandardizedReceiptFilename(receipt, ext),
                 beforeSha256 = contentHash,
-                ambiguous = meta == null || meta.parentIds.size != 1 || contentHash.isBlank()
+                ambiguous = meta == null || meta.parentIds.size != 1 || contentHash.isBlank() ||
+                    (inventory.firstOrNull { it.driveFileId == fileId }?.status?.let { status ->
+                        status in setOf(
+                            DriveDocumentInventoryStatus.MULTIPLE_REFERENCES,
+                            DriveDocumentInventoryStatus.POSSIBLE_DUPLICATE,
+                            DriveDocumentInventoryStatus.MIGRATION_PRUEFEN
+                        )
+                    } == true)
             )
         }
-        return DocumentStorageMigrationPlanner.preview(items)
+        return DocumentStorageMigrationPlanner.preview(items).copy(inventoryItems = inventory)
     }
 
     /** Executes only after explicit UI confirmation. Every item is journaled and content-verified. */
@@ -4004,7 +4203,7 @@ class DrivePersistenceRepository(
             localRepository.upsertDocumentMigrationJournal(journal.copy(state = "COMPLETED", updatedAt = java.time.Instant.now().toString()))
             concretePlan
         }
-        return DocumentMigrationPreview(results)
+        return preview.copy(items = results)
     }
 
     suspend fun resumeInterruptedDocumentMigration(accessToken: String, config: DriveAppConfig): DocumentMigrationPreview {
@@ -4188,6 +4387,19 @@ data class ReceiptIndexEntry(
     val exportstatus: String?,
     val syncStatus: String,
     val updatedAt: String
+)
+
+data class DocumentIndexEntry(
+    val documentId: String,
+    val propertyId: String,
+    val unitId: String,
+    val receiptInternalId: String,
+    val documentType: String,
+    val documentDate: String,
+    val storedFilename: String,
+    val driveFileId: String,
+    val driveFolderId: String,
+    val sha256: String
 )
 
 data class PersistedCategory(

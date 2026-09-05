@@ -135,4 +135,29 @@ class SupplementalDriveBackupTest {
         assertTrue(database.logbookDao().getAllTrips().isEmpty())
         assertTrue(database.logbookDao().getAllStandardRoutes().isEmpty())
     }
+
+    @Test fun coreRestoreClearingLeavesSupplementalLoansLogbookAndDocumentsUntouched() = runTest {
+        database.loanDao().upsertLoan(Loan(id = 91, bezeichnung = "Bestand"))
+        database.logbookDao().upsertTrip(LogbookTrip(
+            id = 92, date = "2026-09-05", purpose = "Bestand", startAddress = "A", destinationAddress = "B",
+            taxDistanceKm = 1.0, kilometerSource = KilometerSource.MANUELL.name, createdAt = "now", updatedAt = "now"
+        ))
+        database.managedDocumentDao().upsert(ManagedDocument("doc-preserved", "property-1"))
+        val repository = ReceiptRepository(
+            database.receiptDao(), database.propertyDao(), database.receiptEntityDao(), database.belegDao(),
+            database.exportAuditDao(), database.receiptDocumentDao(), database.managedDocumentDao()
+        )
+        repository.clearCoreRestoreRelevantTables()
+        assertEquals("Bestand", database.loanDao().getAllLoans().single().bezeichnung)
+        assertEquals("Bestand", database.logbookDao().getAllTrips().single().purpose)
+        assertEquals("doc-preserved", database.managedDocumentDao().getAll().single().documentId)
+    }
+
+    @Test fun oldBackupWithoutManagedDocumentsDoesNotClearExistingDocuments() = runTest {
+        database.managedDocumentDao().upsert(ManagedDocument("doc-existing", "property-1"))
+        SupplementalDriveBackup.restorePayload(
+            context, database, JSONObject("""{"schemaVersion":2,"loans":[]}"""), replaceManagedDocuments = true
+        )
+        assertEquals("doc-existing", database.managedDocumentDao().getAll().single().documentId)
+    }
 }

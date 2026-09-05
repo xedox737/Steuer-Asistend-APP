@@ -19,6 +19,7 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withContext
@@ -894,7 +895,7 @@ object GoogleDriveClient {
     suspend fun getFileMetadata(accessToken: String, fileId: String): DriveManagedFile? {
         if (fileId.isBlank()) return null
         val request = Request.Builder()
-            .url("https://www.googleapis.com/drive/v3/files/$fileId?fields=id,name,mimeType,size,parents,trashed")
+            .url("https://www.googleapis.com/drive/v3/files/$fileId?fields=id,name,mimeType,size,parents,trashed,appProperties")
             .addHeader("Authorization", "Bearer $accessToken")
             .build()
         return try {
@@ -909,13 +910,77 @@ object GoogleDriveClient {
                     sizeBytes = json.optLong("size", 0L),
                     parentIds = json.optJSONArray("parents")?.let { array ->
                         (0 until array.length()).map { array.optString(it) }.filter(String::isNotBlank)
-                    }.orEmpty()
+                    }.orEmpty(),
+                    appProperties = json.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty()
                 )
             }
         } catch (e: Exception) {
             Log.e(TAG, "Could not read Drive metadata for document migration", e)
             null
         }
+    }
+
+    /** Bounded inventory below the app root. It never scans unrelated Drive areas. */
+    suspend fun listAppTreeFiles(
+        accessToken: String,
+        appRootFolderId: String,
+        maxEntries: Int = 10_000
+    ): List<DriveManagedFile> {
+        if (appRootFolderId.isBlank() || maxEntries <= 0) return emptyList()
+        val result = mutableListOf<DriveManagedFile>()
+        val folders = ArrayDeque<String>().apply { add(appRootFolderId) }
+        val visited = mutableSetOf<String>()
+        while (folders.isNotEmpty() && result.size < maxEntries) {
+            val parentId = folders.removeFirst()
+            if (!visited.add(parentId)) continue
+            val children = listManagedChildren(accessToken, parentId, maxEntries - result.size)
+            result += children
+            children.filter { it.mimeType == "application/vnd.google-apps.folder" }.forEach { folders.add(it.id) }
+        }
+        return result
+    }
+
+    private suspend fun listManagedChildren(accessToken: String, parentId: String, limit: Int): List<DriveManagedFile> {
+        val result = mutableListOf<DriveManagedFile>()
+        var pageToken = ""
+        do {
+            val q = "'$parentId' in parents and trashed = false"
+            val url = buildString {
+                append("https://www.googleapis.com/drive/v3/files?q=").append(URLEncoder.encode(q, "UTF-8"))
+                append("&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,size,parents,trashed,appProperties)")
+                if (pageToken.isNotBlank()) append("&pageToken=").append(URLEncoder.encode(pageToken, "UTF-8"))
+            }
+            val request = Request.Builder().url(url).addHeader("Authorization", "Bearer $accessToken").build()
+            val responseJson = client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Drive-Inventur fehlgeschlagen (${response.code})")
+                JSONObject(response.body?.string().orEmpty())
+            }
+            val files = responseJson.optJSONArray("files") ?: JSONArray()
+            for (index in 0 until files.length()) {
+                if (result.size >= limit) break
+                val file = files.getJSONObject(index)
+                result += DriveManagedFile(
+                    id = file.optString("id"), name = file.optString("name"), mimeType = file.optString("mimeType"),
+                    sizeBytes = file.optLong("size", 0L),
+                    parentIds = file.optJSONArray("parents")?.let { parents ->
+                        (0 until parents.length()).map { parents.optString(it) }.filter(String::isNotBlank)
+                    }.orEmpty(),
+                    appProperties = file.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty()
+                )
+            }
+            pageToken = responseJson.optString("nextPageToken", "")
+        } while (pageToken.isNotBlank() && result.size < limit)
+        return result
+    }
+
+    private fun jsonStringMap(json: JSONObject): Map<String, String> {
+        val result = linkedMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            result[key] = json.optString(key, "")
+        }
+        return result
     }
 
     /** Moves and/or renames the same Drive file. It never copies, replaces or deletes the original. */
@@ -928,9 +993,9 @@ object GoogleDriveClient {
     ): Boolean {
         val removeParents = oldParentIds.filter { it != targetParentId }.joinToString(",")
         val query = buildString {
-            append("addParents=").append(URLEncoder.encode(targetParentId, "UTF-8"))
-            if (removeParents.isNotBlank()) append("&removeParents=").append(URLEncoder.encode(removeParents, "UTF-8"))
-            append("&fields=id,parents,name")
+            if (targetParentId !in oldParentIds) append("addParents=").append(URLEncoder.encode(targetParentId, "UTF-8")).append('&')
+            if (removeParents.isNotBlank()) append("removeParents=").append(URLEncoder.encode(removeParents, "UTF-8")).append('&')
+            append("fields=id,parents,name")
         }
         val request = Request.Builder()
             .url("https://www.googleapis.com/drive/v3/files/$fileId?$query")
@@ -1768,7 +1833,8 @@ data class DriveManagedFile(
     val name: String,
     val mimeType: String,
     val sizeBytes: Long,
-    val parentIds: List<String>
+    val parentIds: List<String>,
+    val appProperties: Map<String, String> = emptyMap()
 )
 data class DriveFileResult(val success: Boolean, val fileId: String?, val errorMessage: String? = null)
 

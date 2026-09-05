@@ -840,21 +840,35 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val token = getValidToken(email)
                 val initResult = drivePersistenceRepository.initializeDriveStorage(token)
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
-                    val report = drivePersistenceRepository.executeFullDriveRestore(token, initResult.config, mode)
-                    val supplementalRestore = com.example.data.SupplementalDriveBackup.restore(
-                        getApplication(), database, token, initResult.config.systemFolderId
+                    val outcome = com.example.data.FullRestoreCoordinator.execute(
+                        coreRestore = { drivePersistenceRepository.executeFullDriveRestore(token, initResult.config, mode) },
+                        supplementalRestore = {
+                            com.example.data.SupplementalDriveBackup.restore(
+                                getApplication(), database, token, initResult.config.systemFolderId,
+                                replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL
+                            )
+                        },
+                        onPhase = { phase ->
+                            drivePersistenceRepository.updateLatestRestorePhase(phase)
+                            _driveSyncStatus.value = "Wiederherstellung: ${phase.name}"
+                        }
                     )
-                    _restoreReport.value = report
+                    val report = outcome.coreReport
+                    _restoreReport.value = if (outcome.isSuccess || !report.isSuccess) report else report.copy(
+                        isSuccess = false,
+                        errorCount = report.errorCount + 1,
+                        errors = report.errors + outcome.message
+                    )
                     _isRestoring.value = false
-                    _isRestoreRequired.value = false
-                    _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
-                    loadLearnedRules()
-                    _driveSyncStatus.value = if (report.isSuccess && supplementalRestore.success) {
+                    _isRestoreRequired.value = !outcome.isSuccess
+                    if (report.isSuccess) {
+                        _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
+                        loadLearnedRules()
+                    }
+                    _driveSyncStatus.value = if (outcome.isSuccess) {
                         "Wiederherstellung erfolgreich! ${report.receiptsRestored} Belege sowie Miet- und Darlehensdaten geladen."
-                    } else if (report.isSuccess) {
-                        "Belege wiederhergestellt, aber Zusatzdaten konnten nicht vollständig geladen werden: ${supplementalRestore.message}"
                     } else {
-                        "Wiederherstellung mit ${report.errorCount} Fehlern abgeschlossen."
+                        outcome.message
                     }
                 } else {
                     _isRestoring.value = false
@@ -2162,7 +2176,10 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) {
             _documentOperationStatus.value = "Bestehende Drive-Ablage wird nur lesend geprüft …"
             try {
-                _documentMigrationPreview.value = drivePersistenceRepository.previewReceiptDocumentMigration(getValidToken(email))
+                val token = getValidToken(email)
+                val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
+                    ?: throw IllegalStateException("Keine bestehende Drive-Ablage gefunden.")
+                _documentMigrationPreview.value = drivePersistenceRepository.previewReceiptDocumentMigration(token, config)
                 _documentOperationStatus.value = "Migrationsvorschau erstellt. Noch wurde keine Datei verändert."
             } catch (e: Exception) {
                 _documentOperationStatus.value = "Migrationsvorschau fehlgeschlagen: ${e.message}"
@@ -2179,14 +2196,10 @@ data class AiSearchUiState(
             _documentOperationStatus.value = "Bestätigte Dokumentmigration läuft …"
             try {
                 val token = getValidToken(email)
-                val init = drivePersistenceRepository.initializeDriveStorage(token)
-                val config = when (init) {
-                    is com.example.data.DriveInitializationResult.SuccessCreatedNew -> init.config
-                    is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> init.config
-                    is com.example.data.DriveInitializationResult.Failure -> throw IllegalStateException(init.error)
-                }
+                val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
+                    ?: throw IllegalStateException("Die geprüfte Drive-Ablage ist nicht mehr erreichbar.")
                 val result = drivePersistenceRepository.executeReceiptDocumentMigration(token, config, preview)
-                _documentOperationStatus.value = "Migration abgeschlossen: ${result.found - result.review} geprüft, ${result.review} manuell zu klären."
+                _documentOperationStatus.value = "Migration abgeschlossen: ${result.found} inventarisiert, ${result.manualReview} manuell zu klären."
                 _documentMigrationPreview.value = null
             } catch (e: Exception) {
                 _documentOperationStatus.value = "Migration unterbrochen. Der Journalstand bleibt erhalten: ${e.message}"
@@ -2208,7 +2221,24 @@ data class AiSearchUiState(
             val updated = managedDocumentService.confirmReview(document, type, date, unitId, json)
             applyConfirmedDocumentValues(updated, accepted)
             _documentAiReview.value = null
-            _documentOperationStatus.value = "Geprüfte Dokumentdaten übernommen."
+            val email = _googleAccountEmail.value
+            if (!email.isNullOrBlank() && _isDriveConnected.value) {
+                val synced = try {
+                    val token = getValidToken(email)
+                    val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
+                    config != null && drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
+                } catch (e: Exception) {
+                    Log.w("ReceiptViewModel", "Confirmed document remains pending for Drive sync", e)
+                    false
+                }
+                _documentOperationStatus.value = if (synced) {
+                    "Geprüfte Dokumentdaten übernommen und Drive-Ablage aktualisiert."
+                } else {
+                    "Geprüfte Dokumentdaten lokal übernommen. Drive-Synchronisierung muss erneut geprüft werden."
+                }
+            } else {
+                _documentOperationStatus.value = "Geprüfte Dokumentdaten lokal übernommen. Drive-Synchronisierung folgt bei der nächsten Verbindung."
+            }
         }
     }
 

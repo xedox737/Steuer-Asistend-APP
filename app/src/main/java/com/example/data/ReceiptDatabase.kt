@@ -855,10 +855,10 @@ class ReceiptRepository(
                 (category.isBlank() || it.documentCategory == category)
         } else managedDocumentDao?.search(normalized, propertyId, unitId, year, documentType, category).orEmpty()
     }
-    suspend fun rebuildDocumentSearchIndex(receipts: List<Receipt>? = null) {
+    suspend fun rebuildDocumentSearchIndex(receipts: List<Receipt> = getAllReceiptsList()) {
         val dao = managedDocumentDao ?: return
         dao.clearSearchIndex()
-        val receiptMap = (receipts ?: getAllReceiptsList()).associateBy { it.internalId }
+        val receiptMap = receipts.associateBy { it.internalId }
         dao.getAll().forEach { dao.insertSearchEntry(DocumentSearchFts(it.documentId, DocumentSearchTextBuilder.build(it, it.receiptInternalId?.let(receiptMap::get)))) }
     }
     suspend fun getDocumentMigrationJournal(): List<DocumentMigrationJournal> = managedDocumentDao?.getMigrationJournal().orEmpty()
@@ -1026,7 +1026,7 @@ class ReceiptRepository(
             localUri = receipt.imageUrl.substringBefore(',').ifBlank { existing?.localUri.orEmpty() },
             driveFileId = receipt.driveFileId ?: existing?.driveFileId,
             driveFolderId = receipt.driveFolderId ?: existing?.driveFolderId,
-            sha256 = existing?.sha256?.takeIf(String::isNotBlank) ?: localBytes?.let { StableDocumentIdentity.sha256(it) }.orEmpty(),
+            sha256 = existing?.sha256?.takeIf(String::isNotBlank) ?: localBytes?.let(StableDocumentIdentity::sha256).orEmpty(),
             fileSizeBytes = receipt.fileSizeBytes ?: existing?.fileSizeBytes?.takeIf { it > 0 } ?: localBytes?.size?.toLong() ?: 0L,
             updatedAt = now
         )
@@ -1046,14 +1046,19 @@ class ReceiptRepository(
     }
 
     suspend fun clearRestoreRelevantTables() {
+        clearCoreRestoreRelevantTables()
+        managedDocumentDao?.clearSearchIndex()
+        managedDocumentDao?.deleteAllDocuments()
+        managedDocumentDao?.clearMigrationJournal()
+    }
+
+    /** Clears only primary restore data; supplemental tables stay untouched until core verification succeeds. */
+    suspend fun clearCoreRestoreRelevantTables() {
         receiptDao.deleteAll()
         receiptEntityDao?.deleteAll()
         belegDao?.deleteAllBelege()
         receiptDocumentDao?.deleteAll()
         exportAuditDao?.deleteAll()
-        managedDocumentDao?.clearSearchIndex()
-        managedDocumentDao?.deleteAllDocuments()
-        managedDocumentDao?.clearMigrationJournal()
     }
 
     suspend fun getPropertyMetadata(): PropertyMetadata? {

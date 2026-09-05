@@ -27,8 +27,7 @@ class ManagedDocumentService(
     private val repository: ReceiptRepository,
     private val ocrService: DocumentOcrService = DocumentOcrService()
 ) {
-    suspend fun prepareImport(uri: Uri, property: PropertyMetadata, unitId: String? = null): ManagedDocumentImportResult {
-        return try {
+    suspend fun prepareImport(uri: Uri, property: PropertyMetadata, unitId: String? = null): ManagedDocumentImportResult = try {
         val resolver = context.contentResolver
         val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
             ?: return ManagedDocumentImportResult.Error("Die ausgewählte Datei konnte nicht gelesen werden.")
@@ -64,22 +63,17 @@ class ManagedDocumentService(
             DocumentDuplicateKind.POSSIBLE -> ManagedDocumentImportResult.PossibleDuplicate(candidate, repository.getManagedDocument(requireNotNull(duplicate.existingDocumentId))!!)
             DocumentDuplicateKind.NONE -> persistPrepared(candidate, bytes)
         }
-        } catch (e: Exception) {
-            ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.")
-        }
+    } catch (e: Exception) {
+        ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.")
     }
 
-    suspend fun persistPossibleDuplicate(candidate: ManagedDocument, uri: Uri): ManagedDocumentImportResult {
-        return try {
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: return ManagedDocumentImportResult.Error("Die ausgewählte Datei konnte nicht erneut gelesen werden.")
-            val id = UUID.randomUUID().toString()
-            val extension = candidate.localUri.substringAfterLast('.', "bin")
-            persistPrepared(candidate.copy(documentId = id, localUri = File(context.filesDir, "managed_documents/$id.$extension").absolutePath), bytes)
-        } catch (e: Exception) {
-            ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.")
-        }
-    }
+    suspend fun persistPossibleDuplicate(candidate: ManagedDocument, uri: Uri): ManagedDocumentImportResult = try {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: return ManagedDocumentImportResult.Error("Die ausgewählte Datei konnte nicht erneut gelesen werden.")
+        val id = UUID.randomUUID().toString()
+        val extension = candidate.localUri.substringAfterLast('.', "bin")
+        persistPrepared(candidate.copy(documentId = id, localUri = File(context.filesDir, "managed_documents/$id.$extension").absolutePath), bytes)
+    } catch (e: Exception) { ManagedDocumentImportResult.Error(e.message ?: "Dokumentimport fehlgeschlagen.") }
 
     suspend fun runOcr(documentId: String): ManagedDocument? {
         val document = repository.getManagedDocument(documentId) ?: return null
@@ -128,14 +122,20 @@ class ManagedDocumentService(
 
     suspend fun confirmReview(document: ManagedDocument, type: ManagedDocumentType, date: String, unitId: String?, fieldsJson: String): ManagedDocument {
         val extension = document.storedFilename.substringAfterLast('.', document.originalFilename.substringAfterLast('.', "bin"))
+        val targetFilename = DocumentFilenameGenerator.document(type, date, document.title, extension, document.documentId)
+        val targetRelevantFieldsChanged = document.documentType != type.name || document.documentDate != date ||
+            document.unitId != unitId || document.storedFilename != targetFilename
         val updated = document.copy(
             documentType = type.name,
             documentCategory = DocumentDrivePathResolver.route(document.propertyId, "", "", type, date, unitId).segments.drop(1).joinToString("/"),
             documentDate = date,
             unitId = unitId,
-            storedFilename = DocumentFilenameGenerator.document(type, date, document.title, extension, document.documentId),
+            storedFilename = targetFilename,
             extractedFieldsJson = fieldsJson,
             reviewStatus = DocumentReviewStatus.GEPRUEFT.name,
+            migrationStatus = ManagedDocumentDriveReorganization.statusAfterConfirmedChange(
+                !document.driveFileId.isNullOrBlank(), targetRelevantFieldsChanged, document.migrationStatus
+            ),
             updatedAt = Instant.now().toString()
         )
         repository.upsertManagedDocument(updated)
