@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -83,11 +82,9 @@ internal object ImmobilienManagerProjection {
                     it.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
             }
         }
-        val unitNames = units.map { it.name }.toSet()
-        return all.filter {
-            it.propertyId == property.propertyId ||
-                (it.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && it.wohneinheit in unitNames)
-        }
+        // Never infer a new property's ownership from a display/unit name. Legacy
+        // receipts remain on property-1 until the user explicitly assigns them.
+        return all.filter { it.propertyId == property.propertyId }
     }
 
     fun documents(property: PropertyMetadata, all: List<ManagedDocument>): List<ManagedDocument> =
@@ -305,7 +302,7 @@ private fun PropertyDashboard(
             Triple(PropertySection.FINANCE, "Finanzierung", Icons.Default.AccountBalance),
             Triple(PropertySection.RENOVATIONS, "Sanierungen", Icons.Default.Build),
             Triple(PropertySection.DOCUMENTS, "Dokumente", Icons.Default.Description),
-            Triple(PropertySection.TASKS, "Aufgaben & Fristen", Icons.Default.TaskAlt),
+            Triple(PropertySection.TASKS, "Aufgaben & Fristen", Icons.Default.CalendarMonth),
             Triple(PropertySection.UTILITIES_PREP, "Nebenkosten", Icons.Default.Payments),
             Triple(PropertySection.TAX, "Steuer & AfA", Icons.Default.Assessment),
             Triple(PropertySection.DATA, "Objektdaten", Icons.Default.HomeWork)
@@ -436,7 +433,7 @@ private fun UnitDetailScreen(
                     items(unitDocs, key = { it.documentId }) { doc ->
                         Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
                             Column(Modifier.fillMaxWidth().padding(10.dp)) {
-                                Text(doc.title.ifBlank { doc.originalFileName }, fontWeight = FontWeight.Bold)
+                                Text(doc.title.ifBlank { doc.originalFilename }, fontWeight = FontWeight.Bold)
                                 Text(doc.documentType, fontSize = 9.sp, color = SlateGray)
                             }
                         }
