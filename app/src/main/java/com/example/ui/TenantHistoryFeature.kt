@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.StableDocumentIdentity
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
@@ -60,34 +61,33 @@ internal data class TenantPeriod(
 internal object TenantHistoryStore {
     private const val PREFS = "tenant_history_prefs"
 
-    fun load(context: Context, unitName: String): List<TenantPeriod> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString("history_$unitName", null) ?: return emptyList()
-        return try {
-            val arr = JSONArray(raw)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    add(
-                        TenantPeriod(
-                            id = o.optLong("id", i.toLong() + 1),
-                            unitName = unitName,
-                            tenantName = o.optString("tenantName"),
-                            startDate = o.optString("startDate"),
-                            endDate = o.optString("endDate"),
-                            kaltmiete = o.optDouble("kaltmiete", 0.0),
-                            nebenkosten = o.optDouble("nebenkosten", 0.0),
-                            sonstige = o.optDouble("sonstige", 0.0)
-                        )
+    private fun legacyKey(unitName: String) = "history_$unitName"
+    private fun scopedKey(propertyId: String, unitId: String) = "history_v2_${propertyId}_$unitId"
+
+    private fun decode(raw: String, unitName: String): List<TenantPeriod> = try {
+        val arr = JSONArray(raw)
+        buildList {
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                add(
+                    TenantPeriod(
+                        id = o.optLong("id", i.toLong() + 1),
+                        unitName = unitName,
+                        tenantName = o.optString("tenantName"),
+                        startDate = o.optString("startDate"),
+                        endDate = o.optString("endDate"),
+                        kaltmiete = o.optDouble("kaltmiete", 0.0),
+                        nebenkosten = o.optDouble("nebenkosten", 0.0),
+                        sonstige = o.optDouble("sonstige", 0.0)
                     )
-                }
-            }.sortedBy { it.startDate }
-        } catch (_: Exception) {
-            emptyList()
-        }
+                )
+            }
+        }.sortedBy { it.startDate }
+    } catch (_: Exception) {
+        emptyList()
     }
 
-    fun save(context: Context, unitName: String, periods: List<TenantPeriod>) {
+    private fun encode(periods: List<TenantPeriod>): String {
         val arr = JSONArray()
         periods.sortedBy { it.startDate }.forEach { p ->
             arr.put(JSONObject().apply {
@@ -100,17 +100,61 @@ internal object TenantHistoryStore {
                 put("sonstige", p.sonstige)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString("history_$unitName", arr.toString()).apply()
+        return arr.toString()
+    }
+
+    fun load(context: Context, propertyId: String, unitId: String, unitName: String): List<TenantPeriod> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
+        val scoped = scopedKey(propertyId, stableUnitId)
+        prefs.getString(scoped, null)?.let { return decode(it, unitName) }
+
+        // Backward-compatible lazy migration only for the historical object.
+        // The legacy entry is copied, never deleted.
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+            prefs.getString(legacyKey(unitName), null)?.let { raw ->
+                prefs.edit().putString(scoped, raw).apply()
+                return decode(raw, unitName)
+            }
+        }
+        return emptyList()
+    }
+
+    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
+        val raw = encode(periods)
+        prefs.edit().putString(scopedKey(propertyId, stableUnitId), raw).apply()
+        // Keep historical readers compatible for property-1, but never create a
+        // name-only key for another property.
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+            prefs.edit().putString(legacyKey(unitName), raw).apply()
+        }
+    }
+
+    /** Compatibility API for existing non-property-aware callers. */
+    fun load(context: Context, unitName: String): List<TenantPeriod> {
+        val propertyId = PropertyUnitScopedData.selectedPropertyId(context)
+        val unitId = StableDocumentIdentity.legacyUnitId(propertyId, unitName)
+        return load(context, propertyId, unitId, unitName)
+    }
+
+    /** Compatibility API for existing non-property-aware callers. */
+    fun save(context: Context, unitName: String, periods: List<TenantPeriod>) {
+        val propertyId = PropertyUnitScopedData.selectedPropertyId(context)
+        val unitId = StableDocumentIdentity.legacyUnitId(propertyId, unitName)
+        save(context, propertyId, unitId, unitName, periods)
     }
 
     fun ensureCurrentPeriod(
         context: Context,
         unit: WohneinheitStatus,
         nebenkosten: Double,
-        sonstige: Double
+        sonstige: Double,
+        propertyId: String = PropertyUnitScopedData.selectedPropertyId(context)
     ): List<TenantPeriod> {
-        val existing = load(context, unit.name)
+        val unitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
+        val existing = load(context, propertyId, unitId, unit.name)
         if (existing.isNotEmpty() || unit.mieter.isBlank() || unit.status != "Vermietet") return existing
         val initial = TenantPeriod(
             id = System.currentTimeMillis(),
@@ -122,7 +166,7 @@ internal object TenantHistoryStore {
             nebenkosten = nebenkosten,
             sonstige = sonstige
         )
-        save(context, unit.name, listOf(initial))
+        save(context, propertyId, unitId, unit.name, listOf(initial))
         return listOf(initial)
     }
 
@@ -169,12 +213,14 @@ internal fun TenantHistoryDialog(
     sonstigeCurrent: Double,
     onDismiss: () -> Unit,
     onCurrentTenantChanged: (TenantPeriod) -> Unit,
-    onHistoryChanged: () -> Unit
+    onHistoryChanged: () -> Unit,
+    propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID
 ) {
     val context = LocalContext.current
+    val unitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
     var version by remember { mutableStateOf(0) }
-    var periods by remember(unit.name, version) {
-        mutableStateOf(TenantHistoryStore.ensureCurrentPeriod(context, unit, nebenkostenCurrent, sonstigeCurrent))
+    var periods by remember(propertyId, unitId, version) {
+        mutableStateOf(TenantHistoryStore.ensureCurrentPeriod(context, unit, nebenkostenCurrent, sonstigeCurrent, propertyId))
     }
     var showChange by remember { mutableStateOf(false) }
 
@@ -233,7 +279,7 @@ internal fun TenantHistoryDialog(
                 val updated = periods.map { p ->
                     if (p.active) p.copy(endDate = exitDate) else p
                 } + newPeriod
-                TenantHistoryStore.save(context, unit.name, updated)
+                TenantHistoryStore.save(context, propertyId, unitId, unit.name, updated)
                 periods = updated
                 version++
                 onCurrentTenantChanged(newPeriod)
