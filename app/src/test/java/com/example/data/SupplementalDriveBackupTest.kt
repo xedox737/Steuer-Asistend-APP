@@ -105,6 +105,31 @@ class SupplementalDriveBackupTest {
         assertEquals(DocumentProcessingStatus.AUSSTEHEND.name, restored.ocrStatus)
     }
 
+    @Test fun providerSecretsAccessTokensOcrTextAndPrivatePathsNeverEnterBackup() = runTest {
+        context.getSharedPreferences("ai_provider_settings", Context.MODE_PRIVATE).edit()
+            .putString("openai_api_key_ciphertext", "OPENAI_SECRET_TEST_SENTINEL")
+            .putString("gemini_api_key_ciphertext", "GEMINI_SECRET_TEST_SENTINEL")
+            .putString("google_routes_key_ciphertext", "ROUTES_SECRET_TEST_SENTINEL")
+            .putString("access_token", "ACCESS_TOKEN_TEST_SENTINEL")
+            .apply()
+        database.managedDocumentDao().upsert(
+            ManagedDocument(
+                documentId = "security-document", propertyId = "property-test",
+                localUri = "/private/device/security-document.pdf",
+                ocrText = "LOCAL_OCR_TEXT_TEST_SENTINEL"
+            )
+        )
+
+        val serialized = SupplementalDriveBackup.createPayload(context, database).toString()
+
+        listOf(
+            "OPENAI_SECRET_TEST_SENTINEL", "GEMINI_SECRET_TEST_SENTINEL",
+            "ROUTES_SECRET_TEST_SENTINEL", "ACCESS_TOKEN_TEST_SENTINEL",
+            "/private/device/security-document.pdf", "LOCAL_OCR_TEXT_TEST_SENTINEL"
+        ).forEach { forbidden -> assertFalse("Backup enthält $forbidden", serialized.contains(forbidden)) }
+        assertTrue(JSONObject(serialized).getJSONArray("managedDocuments").length() == 1)
+    }
+
     @Test fun fullTextSearchFindsVendorReceiptIdAmountOcrAndHonorsFilters() = runTest {
         val repository = ReceiptRepository(
             database.receiptDao(), database.propertyDao(), database.receiptEntityDao(), database.belegDao(),
@@ -159,5 +184,20 @@ class SupplementalDriveBackupTest {
             context, database, JSONObject("""{"schemaVersion":2,"loans":[]}"""), replaceManagedDocuments = true
         )
         assertEquals("doc-existing", database.managedDocumentDao().getAll().single().documentId)
+    }
+
+    @Test fun corruptSupplementalDocumentPayloadRollsBackInsteadOfDestroyingExistingRows() = runTest {
+        database.managedDocumentDao().upsert(ManagedDocument("doc-existing", "property-1"))
+        val corrupt = JSONObject().apply {
+            put("schemaVersion", 3)
+            put("managedDocuments", org.json.JSONArray().put("not-an-object"))
+        }
+
+        val failure = runCatching {
+            SupplementalDriveBackup.restorePayload(context, database, corrupt, replaceManagedDocuments = true)
+        }
+
+        assertTrue(failure.isFailure)
+        assertEquals(listOf("doc-existing"), database.managedDocumentDao().getAll().map { it.documentId })
     }
 }

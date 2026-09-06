@@ -1,10 +1,17 @@
 package com.example.data
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import java.io.File
 
+@RunWith(AndroidJUnit4::class)
 class DocumentOcrIndexTest {
     @Test fun embeddedPdfTextIsReadBeforeOcrWouldBeNeeded() {
         val pdf = "%PDF-1.4\n1 0 obj <<>> stream\nBT (Hornbach Rechnung Nummer AB-12345) Tj ET\nendstream\nendobj\n%%EOF".toByteArray()
@@ -15,6 +22,20 @@ class DocumentOcrIndexTest {
 
     @Test fun invalidPdfDoesNotProduceInventedText() {
         assertEquals("", PdfEmbeddedTextExtractor.extract("not a pdf".toByteArray()))
+    }
+
+    @Test fun unreadableSyntheticImageReturnsControlledFailureWithoutChangingOriginal() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val fixture = SyntheticDocumentFixtureFactory.create().single { it.number == 6 }
+        val file = File(context.cacheDir, "synthetic-unreadable-scan.jpg").apply { writeBytes(fixture.bytes) }
+        val before = StableDocumentIdentity.sha256(file.readBytes())
+
+        val result = DocumentOcrService().extract(file, "image/jpeg")
+
+        assertEquals(DocumentProcessingStatus.FEHLGESCHLAGEN, result.status)
+        assertEquals("OCR", result.source)
+        assertTrue(result.errorMessage.isNotBlank())
+        assertEquals(before, StableDocumentIdentity.sha256(file.readBytes()))
     }
 
     @Test fun searchTextContainsOcrAndReceiptIdentityButNoSecrets() {
