@@ -47,7 +47,9 @@ Es wurde deshalb keine Produktarchitektur verändert. Ergänzt wurden nur Testco
 
 ## Gefundene Bugs
 
-Keine neue produktive Abweichung wurde bei der statischen Ist-Analyse identifiziert. Sollte der finale CI-Lauf einen Fehler zeigen, wird dieser Bericht erst nach Root-Cause-Analyse und gezielter Korrektur als abgeschlossen gewertet.
+Der erste CI-Lauf der Testentwicklung zeigte einen kontrolliert reproduzierbaren Fehler: `DocumentOcrService` initialisierte den ML-Kit-Recognizer bereits im Konstruktor. War `MlKitContext` nicht verfügbar, entstand eine `IllegalStateException` noch vor dem in `extract` vorhandenen Fehlerfang. Dadurch konnte insbesondere ein unlesbarer Bildscan den vorgesehenen kontrollierten Fehlerpfad nicht erreichen.
+
+Minimaler Fix: Der Recognizer wird lazy initialisiert. Für eine ungültige Bilddatei wird er gar nicht benötigt; bei echter OCR erfolgt seine Initialisierung innerhalb des bereits geschützten `try/catch`. Erkennungslogik, OCR-Reihenfolge und Originaldatei bleiben unverändert.
 
 ## Offene Risiken und echte Gerätetests
 
@@ -59,4 +61,3 @@ Keine neue produktive Abweichung wurde bei der statischen Ist-Analyse identifizi
 ## Finale Einschätzung
 
 Die automatisierbare Geschäftslogik ist durch isolierte synthetische Dateien und vorhandene Regressionstests abgedeckt. Produktionsdaten und externe Dienste bleiben unberührt. Die Freigabe dieses Testauftrags setzt einen vollständig erfolgreichen normalen Android-CI-Lauf samt Debug-APK-Artefakt voraus.
-
