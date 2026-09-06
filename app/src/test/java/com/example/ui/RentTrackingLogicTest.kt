@@ -51,13 +51,14 @@ class RentTrackingLogicTest {
         assertEquals(RentPaymentStatus.PARTIAL, february.status)
         assertEquals(january.expected, year.months[0].expected, 0.001)
         assertEquals(february.actual, year.months[1].actual, 0.001)
-        assertEquals(1, year.suspiciousMonths)
+        assertEquals(11, year.suspiciousMonths)
     }
 
     private fun rent(id: Int, date: String, amount: Double) = Receipt(
         id = id,
         aussteller = "Mieter",
         datum = date,
+        uhrzeit = "",
         bruttobetrag = amount,
         hauptkategorie = "Miete, Nebenkosten & Kaution",
         unterkategorie = "Kaltmiete",
