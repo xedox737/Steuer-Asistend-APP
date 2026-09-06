@@ -1,6 +1,5 @@
 package com.example.ui
 
-import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +19,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Receipt
+import com.example.data.StableDocumentIdentity
 import kotlin.math.max
 
 private data class RentPlan(
@@ -76,7 +76,8 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
     val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
     val receipts by receiptFlow.collectAsState()
     val units by viewModel.wohneinheitenStatus.collectAsState()
-    val prefs = remember(context) { context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE) }
+    val metadata by viewModel.propertyMetadata.collectAsState()
+    val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
     var prefsVersion by remember { mutableIntStateOf(0) }
     val availableYears = remember(receipts) {
         receipts.mapNotNull(::receiptYear).distinct().sortedDescending().ifEmpty { listOf(2026) }
@@ -84,12 +85,12 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
     var selectedYear by remember(availableYears) { mutableIntStateOf(availableYears.first()) }
     var editingUnit by remember { mutableStateOf<WohneinheitStatus?>(null) }
 
-    val plans = remember(units, prefsVersion) {
+    val plans = remember(units, propertyId, prefsVersion) {
         units.map { unit ->
             RentPlan(
                 unit = unit,
-                nebenkosten = prefs.getFloat("nk_${unit.name}", 0f).toDouble(),
-                sonstige = prefs.getFloat("other_${unit.name}", 0f).toDouble()
+                nebenkosten = PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk"),
+                sonstige = PropertyUnitScopedData.rentValue(context, propertyId, unit, "other")
             )
         }
     }
@@ -160,7 +161,7 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
 
         item { Text("Wohneinheiten", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
 
-        items(yearRows, key = { it.plan.unit.name }) { row ->
+        items(yearRows, key = { PropertyUnitScopedData.stableUnitId(propertyId, it.plan.unit) }) { row ->
             val unit = row.plan.unit
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { editingUnit = unit },
@@ -204,17 +205,15 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
     }
 
     editingUnit?.let { unit ->
-        val currentPlan = plans.firstOrNull { it.unit.name == unit.name } ?: RentPlan(unit, 0.0, 0.0)
+        val currentPlan = plans.firstOrNull { PropertyUnitScopedData.stableUnitId(propertyId, it.unit) == PropertyUnitScopedData.stableUnitId(propertyId, unit) }
+            ?: RentPlan(unit, 0.0, 0.0)
         RentPlanEditDialog(
             unit = unit,
             nebenkostenInitial = currentPlan.nebenkosten,
             sonstigeInitial = currentPlan.sonstige,
             onDismiss = { editingUnit = null },
             onSave = { kalt, nk, other, start ->
-                prefs.edit()
-                    .putFloat("nk_${unit.name}", nk.toFloat())
-                    .putFloat("other_${unit.name}", other.toFloat())
-                    .apply()
+                PropertyUnitScopedData.setRentValues(context, propertyId, unit, nk, other)
                 viewModel.updateWohneinheit(unit.copy(kaltmiete = kalt, mietvertragsstart = start))
                 prefsVersion++
                 editingUnit = null
