@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -19,12 +21,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -32,7 +36,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,6 +55,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,6 +64,7 @@ import com.example.data.ManagedDocument
 import com.example.data.Loan
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
+import java.time.LocalDate
 import java.time.YearMonth
 
 internal data class PropertyManagerSummary(
@@ -92,8 +101,7 @@ internal object ImmobilienManagerProjection {
     fun summary(units: List<WohneinheitStatus>, receipts: List<Receipt>, month: YearMonth = YearMonth.now()): PropertyManagerSummary {
         val active = units.filter { it.status == "Vermietet" }
         val actual = receipts.filter {
-            it.datum.startsWith(month.toString()) &&
-                isRentalIncomeReceipt(it)
+            it.datum.startsWith(month.toString()) && isRentalIncomeReceipt(it)
         }.sumOf { it.bruttobetrag }
         return PropertyManagerSummary(
             unitCount = units.size,
@@ -105,7 +113,8 @@ internal object ImmobilienManagerProjection {
     }
 }
 
-private enum class PropertySection { DASHBOARD, UNITS, RENT, RECEIPTS, FINANCE, RENOVATIONS, DOCUMENTS, TAX, DATA }
+private enum class PropertySection { DASHBOARD, UNITS, RENT, RENT_MATRIX, RECEIPTS, FINANCE, RENOVATIONS, DOCUMENTS, TAX, TASKS, UTILITIES_PREP, DATA }
+private enum class UnitDetailSection { OVERVIEW, TENANT, RENT, DOCUMENTS, COSTS }
 
 @Composable
 fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
@@ -199,6 +208,7 @@ private fun PropertyDetailHost(
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val propertyReceipts = ImmobilienManagerProjection.receipts(property, units, receipts)
     val propertyDocuments = ImmobilienManagerProjection.documents(property, documents)
+    val propertyLoans = ImmobilienManagerProjection.loans(property, loans)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
@@ -210,26 +220,45 @@ private fun PropertyDetailHost(
             }
         }
         when (section) {
-            PropertySection.DASHBOARD -> PropertyDashboard(
-                property, units, propertyReceipts, propertyDocuments,
-                ImmobilienManagerProjection.loans(property, loans).count { it.aktiv }, onSection
-            )
-            PropertySection.UNITS -> PropertyUnits(units)
+            PropertySection.DASHBOARD -> PropertyDashboard(viewModel, property, units, propertyReceipts, propertyDocuments, propertyLoans, onSection)
+            PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments)
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
+            PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
             PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true) } }
             PropertySection.RENOVATIONS -> PropertyRenovations(propertyReceipts)
             PropertySection.DOCUMENTS -> DocumentManagementScreen(viewModel, propertyScoped = true)
             PropertySection.TAX -> AnnualTaxAssistantScreen(viewModel)
+            PropertySection.TASKS -> PropertyTasksScreen(property.propertyId, units)
+            PropertySection.UTILITIES_PREP -> PropertyUtilitiesPreparation()
             PropertySection.DATA -> PropertyData(viewModel, property)
         }
     }
 }
 
 @Composable
-private fun PropertyDashboard(property: PropertyMetadata, units: List<WohneinheitStatus>, receipts: List<Receipt>, documents: List<ManagedDocument>, activeLoanCount: Int, onSection: (PropertySection) -> Unit) {
+private fun PropertyDashboard(
+    viewModel: ReceiptViewModel,
+    property: PropertyMetadata,
+    units: List<WohneinheitStatus>,
+    receipts: List<Receipt>,
+    documents: List<ManagedDocument>,
+    loans: List<Loan>,
+    onSection: (PropertySection) -> Unit
+) {
+    val context = LocalContext.current
     val summary = ImmobilienManagerProjection.summary(units, receipts)
     val unchecked = receipts.count { it.pruefstatus == "UNGEPRUEFT" || it.exportStatus == "ZU_PRUEFEN" }
+    val year = LocalDate.now().year
+    val yearReceipts = receipts.filter { it.datum.startsWith(year.toString()) }
+    val yearRentIncome = yearReceipts.filter(::isRentalIncomeReceipt).sumOf { it.bruttobetrag }
+    val yearExpenses = yearReceipts.filterNot(::isRentalIncomeReceipt).sumOf { it.bruttobetrag }
+    val annualLoanRates = loans.filter { it.aktiv }.sumOf { it.monatlicheRate * 12.0 }
+    val restDebt = loans.filter { it.aktiv }.sumOf { it.restschuld }
+    val managementCashflow = yearRentIncome - yearExpenses - annualLoanRates
+    val grossYield = if (property.gesamtKaufpreis > 0.0) summary.expectedRent * 12.0 / property.gesamtKaufpreis * 100.0 else null
+    val openTasks = remember(property.propertyId) { PropertyTaskStore.load(context, property.propertyId).count { !it.done } }
+
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
@@ -237,18 +266,47 @@ private fun PropertyDashboard(property: PropertyMetadata, units: List<Wohneinhei
                     Text("Miete aktueller Monat", fontWeight = FontWeight.Bold, color = DarkNavy)
                     LinearProgressIndicator(progress = { if (summary.expectedRent <= 0) 0f else (summary.actualRent / summary.expectedRent).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
                     Text("Soll ${NumberFormatter.format(summary.expectedRent)} · Ist ${NumberFormatter.format(summary.actualRent)} · Offen ${NumberFormatter.format(summary.outstandingRent)}", fontSize = 11.sp)
-                    Text("${summary.vacantCount} freie/zu prüfende Einheiten · $unchecked ungeprüfte Belege · $activeLoanCount aktive Darlehen", fontSize = 10.sp, color = SlateGray)
-                    Text("Steuerjahr ${java.time.LocalDate.now().year} · ${documents.size} Dokumente · ${property.wohneinheiten.split(',').count { it.isNotBlank() }} Einheiten", fontSize = 10.sp, color = SlateGray)
+                    Text("${summary.vacantCount} freie/zu prüfende Einheiten · $unchecked ungeprüfte Belege · ${loans.count { it.aktiv }} aktive Darlehen", fontSize = 10.sp, color = SlateGray)
+                    Text("Steuerjahr $year · ${documents.size} Dokumente · $openTasks offene Aufgaben", fontSize = 10.sp, color = SlateGray)
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.padding(14.dp), Arrangement.spacedBy(6.dp)) {
+                    Text("Schnellaktionen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Button(onClick = { viewModel.setScreen(AppScreen.ADD_RECEIPT) }, modifier = Modifier.fillMaxWidth()) { Text("Beleg hinzufügen") }
+                    OutlinedButton(onClick = { onSection(PropertySection.RENT) }, modifier = Modifier.fillMaxWidth()) { Text("Miete prüfen") }
+                    OutlinedButton(onClick = { onSection(PropertySection.DOCUMENTS) }, modifier = Modifier.fillMaxWidth()) { Text("Dokumente öffnen") }
+                    OutlinedButton(onClick = { onSection(PropertySection.UNITS) }, modifier = Modifier.fillMaxWidth()) { Text("Mieter / Einheit öffnen") }
+                    OutlinedButton(onClick = { onSection(PropertySection.FINANCE) }, modifier = Modifier.fillMaxWidth()) { Text("Darlehen öffnen") }
+                }
+            }
+        }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.padding(14.dp), Arrangement.spacedBy(5.dp)) {
+                    Text("Wirtschaftlichkeit $year", fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text("Mieteinnahmen Ist: ${NumberFormatter.format(yearRentIncome)}", fontSize = 11.sp)
+                    Text("Erfasste Ausgaben: ${NumberFormatter.format(yearExpenses)}", fontSize = 11.sp)
+                    Text("Darlehensraten p.a.: ${NumberFormatter.format(annualLoanRates)}", fontSize = 11.sp)
+                    Text("Restschuld: ${NumberFormatter.format(restDebt)}", fontSize = 11.sp)
+                    Text("Management-Cashflow: ${NumberFormatter.format(managementCashflow)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (managementCashflow >= 0) EmeraldGreen else CrimsonRed)
+                    grossYield?.let { Text("Bruttomietrendite auf Sollbasis: ${"%.2f".format(it)} %", fontSize = 11.sp) }
+                    Text("Managementansicht aus aktuell erfassten App-Daten. Keine steuerliche Gewinnermittlung; Tilgung wird hier nur als Liquiditätsabfluss über die Darlehensrate berücksichtigt.", fontSize = 9.sp, color = SlateGray)
                 }
             }
         }
         val destinations = listOf(
             Triple(PropertySection.UNITS, "Einheiten & Mieter", Icons.Default.Apartment),
             Triple(PropertySection.RENT, "Mieteingänge", Icons.Default.Payments),
+            Triple(PropertySection.RENT_MATRIX, "Miet-Jahresübersicht", Icons.Default.CalendarMonth),
             Triple(PropertySection.RECEIPTS, "Belege & Kosten", Icons.Default.Receipt),
             Triple(PropertySection.FINANCE, "Finanzierung", Icons.Default.AccountBalance),
             Triple(PropertySection.RENOVATIONS, "Sanierungen", Icons.Default.Build),
             Triple(PropertySection.DOCUMENTS, "Dokumente", Icons.Default.Description),
+            Triple(PropertySection.TASKS, "Aufgaben & Fristen", Icons.Default.TaskAlt),
+            Triple(PropertySection.UTILITIES_PREP, "Nebenkosten", Icons.Default.Payments),
             Triple(PropertySection.TAX, "Steuer & AfA", Icons.Default.Assessment),
             Triple(PropertySection.DATA, "Objektdaten", Icons.Default.HomeWork)
         )
@@ -265,17 +323,208 @@ private fun PropertyDashboard(property: PropertyMetadata, units: List<Wohneinhei
     }
 }
 
-@Composable private fun PropertyUnits(units: List<WohneinheitStatus>) = LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    item { Text("Einheiten & Mieter", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
-    items(units, key = { it.unitId }) { unit ->
-        Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
-            Column(Modifier.fillMaxWidth().padding(14.dp), Arrangement.spacedBy(4.dp)) {
-                Text("${unit.name} · ${unit.label}", fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text("Status: ${unit.status}", fontSize = 11.sp, color = if (unit.status == "Vermietet") EmeraldGreen else WarmOrange)
-                Text("Mieter: ${unit.mieter.ifBlank { "–" }}", fontSize = 11.sp)
-                Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)} · Seit: ${unit.mietvertragsstart.ifBlank { "–" }}", fontSize = 10.sp, color = SlateGray)
+@Composable
+private fun PropertyUnits(
+    viewModel: ReceiptViewModel,
+    property: PropertyMetadata,
+    units: List<WohneinheitStatus>,
+    receipts: List<Receipt>,
+    documents: List<ManagedDocument>
+) {
+    var selectedUnitId by remember { mutableStateOf<String?>(null) }
+    val selected = units.firstOrNull { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == selectedUnitId }
+    if (selected != null) {
+        UnitDetailScreen(viewModel, property, selected, receipts, documents) { selectedUnitId = null }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { Text("Einheiten & Mieter", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
+        items(units, key = { PropertyUnitScopedData.stableUnitId(property.propertyId, it) }) { unit ->
+            Card(
+                modifier = Modifier.fillMaxWidth().clickable { selectedUnitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) },
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), Arrangement.spacedBy(4.dp)) {
+                    Text("${unit.name} · ${unit.label}", fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text("Status: ${unit.status}", fontSize = 11.sp, color = if (unit.status == "Vermietet") EmeraldGreen else WarmOrange)
+                    Text("Mieter: ${unit.mieter.ifBlank { "–" }}", fontSize = 11.sp)
+                    Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)} · Seit: ${unit.mietvertragsstart.ifBlank { "–" }}", fontSize = 10.sp, color = SlateGray)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun UnitDetailScreen(
+    viewModel: ReceiptViewModel,
+    property: PropertyMetadata,
+    unit: WohneinheitStatus,
+    receipts: List<Receipt>,
+    documents: List<ManagedDocument>,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    var tab by remember { mutableStateOf(UnitDetailSection.OVERVIEW) }
+    var showHistory by remember { mutableStateOf(false) }
+    var showStatus by remember { mutableStateOf(false) }
+    val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
+    val unitReceipts = receipts.filter { it.wohneinheit == unit.name }
+    val unitDocs = documents.filter { it.unitId == unitId }
+    val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
+    val nk = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")
+    val other = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other")
+
+    if (showHistory) {
+        TenantHistoryDialog(
+            unit = unit,
+            nebenkostenCurrent = nk,
+            sonstigeCurrent = other,
+            onDismiss = { showHistory = false },
+            onCurrentTenantChanged = { newPeriod ->
+                PropertyUnitScopedData.setRentValues(context, property.propertyId, unit, newPeriod.nebenkosten, newPeriod.sonstige)
+                viewModel.updateWohneinheit(unit.copy(status = "Vermietet", mieter = newPeriod.tenantName, kaltmiete = newPeriod.kaltmiete, mietvertragsstart = newPeriod.startDate))
+            },
+            onHistoryChanged = {},
+            propertyId = property.propertyId
+        )
+    }
+    if (showStatus) {
+        UnitStatusDialog(unit, onDismiss = { showStatus = false }) { status ->
+            viewModel.updateWohneinheit(unit.copy(status = status))
+            showStatus = false
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null); Text(" Einheiten") }
+            Column(Modifier.weight(1f)) {
+                Text(unit.label, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(property.name, fontSize = 9.sp, color = SlateGray)
+            }
+        }
+        val tabs = listOf(
+            UnitDetailSection.OVERVIEW to "Übersicht",
+            UnitDetailSection.TENANT to "Mieter",
+            UnitDetailSection.RENT to "Miete",
+            UnitDetailSection.DOCUMENTS to "Dokumente",
+            UnitDetailSection.COSTS to "Kosten"
+        )
+        ScrollableTabRow(selectedTabIndex = tabs.indexOfFirst { it.first == tab }.coerceAtLeast(0)) {
+            tabs.forEach { (value, label) -> Tab(selected = tab == value, onClick = { tab = value }, text = { Text(label) }) }
+        }
+        LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            when (tab) {
+                UnitDetailSection.OVERVIEW -> {
+                    item { UnitInfoCard(unit) }
+                    item { OutlinedButton(onClick = { showStatus = true }, modifier = Modifier.fillMaxWidth()) { Text("Status ändern") } }
+                }
+                UnitDetailSection.TENANT -> {
+                    item { Text("Aktueller Mieter: ${unit.mieter.ifBlank { "–" }}", fontWeight = FontWeight.Bold) }
+                    item { Text("Mietbeginn: ${unit.mietvertragsstart.ifBlank { "–" }}", color = SlateGray) }
+                    item { Button(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) { Text("Mieterverlauf / Mieterwechsel") } }
+                }
+                UnitDetailSection.RENT -> {
+                    item { Text("Aktueller Monat", fontWeight = FontWeight.Bold, color = DarkNavy) }
+                    item { Text("Soll ${NumberFormatter.format(month.expected)} · Ist ${NumberFormatter.format(month.actual)} · Offen ${NumberFormatter.format(month.missing)}") }
+                    item { Text("Kalt ${NumberFormatter.format(unit.kaltmiete)} · NK ${NumberFormatter.format(nk)} · Sonstiges ${NumberFormatter.format(other)}", fontSize = 10.sp, color = SlateGray) }
+                }
+                UnitDetailSection.DOCUMENTS -> {
+                    if (unitDocs.isEmpty()) item { Text("Keine Dokumente dieser Einheit.", color = SlateGray) }
+                    items(unitDocs, key = { it.documentId }) { doc ->
+                        Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                            Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                Text(doc.title.ifBlank { doc.originalFileName }, fontWeight = FontWeight.Bold)
+                                Text(doc.documentType, fontSize = 9.sp, color = SlateGray)
+                            }
+                        }
+                    }
+                }
+                UnitDetailSection.COSTS -> {
+                    if (unitReceipts.isEmpty()) item { Text("Keine Belege dieser Einheit.", color = SlateGray) }
+                    items(unitReceipts, key = { it.id }) { receipt ->
+                        Text("${receipt.datum} · ${receipt.beschreibung.ifBlank { receipt.aussteller }} · ${NumberFormatter.format(receipt.bruttobetrag)}", Modifier.fillMaxWidth().padding(vertical = 6.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun UnitInfoCard(unit: WohneinheitStatus) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), Arrangement.spacedBy(5.dp)) {
+            Text(unit.label, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text("Status: ${unit.status}")
+            Text("Mieter: ${unit.mieter.ifBlank { "–" }}")
+            Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)}")
+            Text("Wohnfläche: ${unit.wohnflaeche} m²")
+            Text("Mietbeginn: ${unit.mietvertragsstart.ifBlank { "–" }}")
+        }
+    }
+}
+
+@Composable private fun UnitStatusDialog(unit: WohneinheitStatus, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    val states = listOf("Vermietet", "Kündigung / Auszug geplant", "Leerstand", "Renovierung", "Vermarktung / Inseriert", "Neuvermietung geplant")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Status · ${unit.name}", fontWeight = FontWeight.Bold) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(5.dp)) { states.forEach { state -> OutlinedButton(onClick = { onSave(state) }, modifier = Modifier.fillMaxWidth()) { Text(state) } } } },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+@Composable
+private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<WohneinheitStatus>, receipts: List<Receipt>) {
+    val context = LocalContext.current
+    var year by remember { mutableIntStateOf(LocalDate.now().year) }
+    val rows = remember(property.propertyId, units, receipts, year) { RentTrackingLogic.year(context, property.propertyId, units, receipts, year) }
+    val totalExpected = rows.sumOf { it.expected }
+    val totalActual = rows.sumOf { it.actual }
+    val totalMissing = rows.sumOf { it.missing }
+    val suspicious = rows.sumOf { it.suspiciousMonths }
+    val monthNames = listOf("Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez")
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
+                OutlinedButton(onClick = { year-- }) { Text("‹") }
+                Text("Miet-Jahresübersicht $year", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = DarkNavy)
+                OutlinedButton(onClick = { year++ }) { Text("›") }
+            }
+        }
+        item { Text("Soll ${NumberFormatter.format(totalExpected)} · Ist ${NumberFormatter.format(totalActual)} · Offen ${NumberFormatter.format(totalMissing)} · $suspicious auffällige Monate", fontSize = 11.sp, color = SlateGray) }
+        items(rows, key = { PropertyUnitScopedData.stableUnitId(property.propertyId, it.unit) }) { row ->
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), Arrangement.spacedBy(6.dp)) {
+                    Text(row.unit.label, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.months.forEachIndexed { index, month ->
+                            val symbol = when (month.status) {
+                                RentPaymentStatus.PAID -> "●"
+                                RentPaymentStatus.PARTIAL -> "◐"
+                                RentPaymentStatus.MISSING -> "●"
+                                RentPaymentStatus.NO_EXPECTATION -> "○"
+                            }
+                            val color = when (month.status) {
+                                RentPaymentStatus.PAID -> EmeraldGreen
+                                RentPaymentStatus.PARTIAL -> WarmOrange
+                                RentPaymentStatus.MISSING -> CrimsonRed
+                                RentPaymentStatus.NO_EXPECTATION -> SlateGray
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(monthNames[index], fontSize = 9.sp, color = SlateGray)
+                                Text(symbol, fontSize = 18.sp, color = color)
+                            }
+                        }
+                    }
+                    Text("Soll ${NumberFormatter.format(row.expected)} · Ist ${NumberFormatter.format(row.actual)} · Offen ${NumberFormatter.format(row.missing)}", fontSize = 10.sp)
+                }
+            }
+        }
+        item { Text("Grün = bezahlt · Gelb = Teilzahlung/prüfen · Rot = offen · Grau = kein Soll", fontSize = 9.sp, color = SlateGray) }
     }
 }
 
@@ -289,26 +538,26 @@ private fun PropertyDashboard(property: PropertyMetadata, units: List<Wohneinhei
             (unit.isBlank() || it.wohneinheit.contains(unit.trim(), ignoreCase = true))
     }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-    item {
-        Text("Belege & Kosten", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-        Text("Bestehende Belege dieses Objekts – ohne Kopien", fontSize = 10.sp, color = SlateGray)
-    }
-    item {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedTextField(year, { year = it.filter(Char::isDigit).take(4) }, label = { Text("Jahr") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(category, { category = it }, label = { Text("Kategorie filtern") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(unit, { unit = it }, label = { Text("Einheit filtern") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        item {
+            Text("Belege & Kosten", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+            Text("Bestehende Belege dieses Objekts – ohne Kopien", fontSize = 10.sp, color = SlateGray)
         }
-    }
-    items(filtered, key = { it.id }) { receipt ->
-        val isIncome = receipt.hauptkategorie in setOf("Miete, Nebenkosten & Kaution", "Sonstige Einnahmen")
-        Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
-            Row(Modifier.fillMaxWidth().padding(12.dp), Arrangement.SpaceBetween) {
-                Column(Modifier.weight(1f)) { Text(receipt.aussteller, fontWeight = FontWeight.Bold); Text("${receipt.datum} · ${receipt.hauptkategorie} · ${receipt.wohneinheit}", fontSize = 10.sp, color = SlateGray) }
-                Text((if (isIncome) "+ " else "− ") + NumberFormatter.format(receipt.bruttobetrag), fontWeight = FontWeight.Bold, color = if (isIncome) EmeraldGreen else CrimsonRed)
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(year, { year = it.filter(Char::isDigit).take(4) }, label = { Text("Jahr") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(category, { category = it }, label = { Text("Kategorie filtern") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(unit, { unit = it }, label = { Text("Einheit filtern") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             }
         }
-    }
+        items(filtered, key = { it.id }) { receipt ->
+            val isIncome = receipt.hauptkategorie in setOf("Miete, Nebenkosten & Kaution", "Sonstige Einnahmen")
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Row(Modifier.fillMaxWidth().padding(12.dp), Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f)) { Text(receipt.aussteller, fontWeight = FontWeight.Bold); Text("${receipt.datum} · ${receipt.hauptkategorie} · ${receipt.wohneinheit}", fontSize = 10.sp, color = SlateGray) }
+                    Text((if (isIncome) "+ " else "− ") + NumberFormatter.format(receipt.bruttobetrag), fontWeight = FontWeight.Bold, color = if (isIncome) EmeraldGreen else CrimsonRed)
+                }
+            }
+        }
     }
 }
 
@@ -317,6 +566,20 @@ private fun PropertyDashboard(property: PropertyMetadata, units: List<Wohneinhei
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Sanierungen", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy); Text("15-%-Bewertung erfolgt unverändert im Steuerbereich.", fontSize = 11.sp, color = SlateGray) }
         items(renovations, key = { it.id }) { Text("${it.datum} · ${it.beschreibung} · ${NumberFormatter.format(it.bruttobetrag)}", Modifier.fillMaxWidth().padding(8.dp)) }
+    }
+}
+
+@Composable private fun PropertyUtilitiesPreparation() {
+    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Nebenkosten", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.padding(14.dp), Arrangement.spacedBy(6.dp)) {
+                    Text("Für spätere Erweiterung vorbereitet", fontWeight = FontWeight.Bold)
+                    Text("In dieser Phase wird bewusst keine Nebenkostenabrechnung, kein Umlageschlüssel und keine Heizkostenberechnung erzeugt. Bestehende Beleg- und Mietlogik bleibt unverändert.", fontSize = 10.sp, color = SlateGray)
+                }
+            }
+        }
     }
 }
 
