@@ -61,7 +61,7 @@ private fun monthsExpected(unit: WohneinheitStatus, year: Int): Int {
     }
 }
 
-private fun isRentalIncome(receipt: Receipt): Boolean {
+internal fun isRentalIncomeReceipt(receipt: Receipt): Boolean {
     val sub = receipt.unterkategorie.trim()
     if (receipt.hauptkategorie == "Miete, Nebenkosten & Kaution") {
         return sub !in setOf("Kaution", "Einzahlung Kaution", "Rückzahlung Kaution")
@@ -71,9 +71,10 @@ private fun isRentalIncome(receipt: Receipt): Boolean {
 }
 
 @Composable
-fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel) {
+fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
-    val receipts by viewModel.receipts.collectAsState()
+    val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
+    val receipts by receiptFlow.collectAsState()
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val prefs = remember(context) { context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE) }
     var prefsVersion by remember { mutableIntStateOf(0) }
@@ -96,7 +97,7 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel) {
     val yearRows = remember(receipts, plans, selectedYear) {
         plans.map { plan ->
             val unitReceipts = receipts.filter {
-                it.wohneinheit == plan.unit.name && receiptYear(it) == selectedYear && isRentalIncome(it)
+                it.wohneinheit == plan.unit.name && receiptYear(it) == selectedYear && isRentalIncomeReceipt(it)
             }
             val ist = unitReceipts.sumOf { it.bruttobetrag }
             val kalt = unitReceipts.filter { it.unterkategorie == "Kaltmiete" }.sumOf { it.bruttobetrag }
@@ -112,7 +113,7 @@ fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel) {
     val totalSoll = yearRows.sumOf { it.soll }
     val totalRueckstand = yearRows.sumOf { it.rueckstand }
     val unattributed = receipts.filter {
-        receiptYear(it) == selectedYear && isRentalIncome(it) &&
+        receiptYear(it) == selectedYear && isRentalIncomeReceipt(it) &&
             (it.wohneinheit.isBlank() || units.none { unit -> unit.name == it.wohneinheit })
     }.sumOf { it.bruttobetrag }
 

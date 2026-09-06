@@ -57,7 +57,7 @@ class SupplementalDriveBackupTest {
             .putString("google_routes_key_ciphertext", "MUST_NOT_LEAVE_DEVICE").apply()
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(3, payload.getInt("schemaVersion"))
+        assertEquals(4, payload.getInt("schemaVersion"))
         assertFalse(payload.toString().contains("MUST_NOT_LEAVE_DEVICE"))
         database.logbookDao().deleteTrip(41)
         database.logbookDao().deleteStandardRoute(17)
@@ -79,6 +79,29 @@ class SupplementalDriveBackupTest {
         assertTrue(csv.contains("A -> B -> C"))
         assertTrue(csv.contains("\"Baustelle; \"\"Süd\"\"\""))
         assertFalse(csv.contains("MUST_NOT_LEAVE_DEVICE"))
+    }
+
+    @Test fun propertyPortfolioAndLoanAssignmentsRestoreIdempotently() = runTest {
+        val second = PropertyMetadata(id = 2, propertyId = "property-2", name = "Zweites Objekt", wohneinheiten = "WE 01")
+        database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 1, propertyId = "property-1", name = "Bestand"))
+        database.propertyDao().insertPropertyMetadata(second)
+        database.loanDao().upsertLoan(Loan(id = 22, bezeichnung = "Objektdarlehen", propertyId = second.propertyId))
+        context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE).edit()
+            .putString("property_property-2_unit_WE 01_label", "OG links")
+            .apply()
+
+        val payload = SupplementalDriveBackup.createPayload(context, database)
+        database.propertyDao().insertPropertyMetadata(second.copy(name = "Zwischenstand"))
+        database.loanDao().deleteLoan(22)
+        context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE).edit().clear().apply()
+
+        SupplementalDriveBackup.restorePayload(context, database, payload)
+        SupplementalDriveBackup.restorePayload(context, database, payload)
+
+        assertEquals("Zweites Objekt", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
+        assertEquals("property-2", database.loanDao().getAllLoans().single { it.id == 22 }.propertyId)
+        assertEquals("OG links", context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+            .getString("property_property-2_unit_WE 01_label", null))
     }
 
     @Test fun managedDocumentsRestoreCompletelyWithoutOcrPayloadAndRemainIdempotent() = runTest {

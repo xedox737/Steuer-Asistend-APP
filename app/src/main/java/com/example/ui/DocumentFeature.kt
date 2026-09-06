@@ -61,7 +61,7 @@ import com.example.data.ManagedDocumentType
 import java.io.File
 
 @Composable
-fun DocumentManagementScreen(viewModel: ReceiptViewModel) {
+fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
     val documents by viewModel.managedDocuments.collectAsState()
     val results by viewModel.documentSearchResults.collectAsState()
@@ -94,13 +94,16 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel) {
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startCameraScan()
     }
-    val shown = if (hasSearched) results else documents
+    val propertyFilter = if (propertyScoped) property?.propertyId.orEmpty() else ""
+    val shown = if (hasSearched) results else documents.filter {
+        propertyFilter.isBlank() || it.propertyId == propertyFilter
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Dokumentenakte", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text(property?.name ?: "Immobilie", fontSize = 11.sp, color = SlateGray)
+                Text(if (propertyScoped) property?.name ?: "Immobilie" else "Alle Immobilien", fontSize = 11.sp, color = SlateGray)
             }
             Button(
                 onClick = { launcher.launch(arrayOf("application/pdf", "image/*", "text/plain")) },
@@ -121,7 +124,7 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel) {
         OutlinedTextField(categoryFilter, { categoryFilter = it }, label = { Text("Dokumentbereich/Kategorie") }, modifier = Modifier.fillMaxWidth())
         Button(onClick = {
             hasSearched = true
-            viewModel.searchDocuments(query, property?.propertyId.orEmpty(), unitFilter, year, typeFilter, categoryFilter)
+            viewModel.searchDocuments(query, propertyFilter, unitFilter, year, typeFilter, categoryFilter)
         }, modifier = Modifier.fillMaxWidth().testTag("document_search_button")) { Text("Suchen") }
         OutlinedButton(onClick = viewModel::previewDocumentStorageMigration, modifier = Modifier.fillMaxWidth().testTag("document_migration_preview")) {
             Text("Bestehende Drive-Ablage prüfen")

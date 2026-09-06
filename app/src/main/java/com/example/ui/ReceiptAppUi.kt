@@ -133,6 +133,8 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Apartment
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.ui.platform.LocalContext
@@ -250,6 +252,14 @@ val CrimsonRed = Color(0xFFDC2626)
 val SoftBackground = Color(0xFFF8FAFC)
 val BorderColor = Color(0xFFE2E8F0)
 
+internal val PRIMARY_NAVIGATION_SCREENS = listOf(
+    AppScreen.DASHBOARD,
+    AppScreen.RECEIPTS_LIST,
+    AppScreen.ADD_RECEIPT,
+    AppScreen.PROPERTIES,
+    AppScreen.MORE
+)
+
 val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
     decimalFormatSymbols = decimalFormatSymbols.apply {
         groupingSeparator = '.'
@@ -275,6 +285,8 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         AppScreen.RENT_OVERVIEW -> "Mieteingänge"
         AppScreen.TAX_CALCULATOR -> "Steuerschätzung"
         AppScreen.DOCUMENTS -> "Dokumentenakte"
+        AppScreen.PROPERTIES -> "Immobilien"
+        AppScreen.MORE -> "Mehr"
     }
 
     var showAccountSettingsDialog by remember { mutableStateOf(false) }
@@ -364,13 +376,16 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                     containerColor = Color.White,
                     modifier = Modifier.testTag("bottom_navigation")
                 ) {
-                    val items = listOf(
-                        Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
-                        Triple(AppScreen.RECEIPTS_LIST, Icons.Default.Receipt, "Belege"),
-                        Triple(AppScreen.ADD_RECEIPT, Icons.Default.AddCircle, "Scannen"),
-                        Triple(AppScreen.LOGBOOK, Icons.Default.DirectionsCar, "Fahrtenbuch"),
-                        Triple(AppScreen.LEDGER, Icons.Default.AccountBalance, "Finanzen")
-                    )
+                    val items = PRIMARY_NAVIGATION_SCREENS.map { screen ->
+                        when (screen) {
+                            AppScreen.DASHBOARD -> Triple(screen, Icons.Default.Home, "Start")
+                            AppScreen.RECEIPTS_LIST -> Triple(screen, Icons.Default.Receipt, "Belege")
+                            AppScreen.ADD_RECEIPT -> Triple(screen, Icons.Default.AddCircle, "Scannen")
+                            AppScreen.PROPERTIES -> Triple(screen, Icons.Default.Apartment, "Immobilien")
+                            AppScreen.MORE -> Triple(screen, Icons.Default.MoreHoriz, "Mehr")
+                            else -> error("Nicht unterstütztes primäres Navigationsziel: $screen")
+                        }
+                    }
 
                     items.forEach { (screen, icon, label) ->
                         val isPrimaryAction = screen == AppScreen.ADD_RECEIPT
@@ -432,6 +447,8 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.RENT_OVERVIEW -> RentOverviewScreen(viewModel)
                 AppScreen.TAX_CALCULATOR -> TaxCalculatorScreen(viewModel)
                 AppScreen.DOCUMENTS -> DocumentManagementScreen(viewModel)
+                AppScreen.PROPERTIES -> ImmobilienManagerScreen(viewModel)
+                AppScreen.MORE -> MoreScreen(viewModel)
             }
             }
         }

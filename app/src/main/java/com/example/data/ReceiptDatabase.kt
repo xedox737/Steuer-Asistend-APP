@@ -72,7 +72,8 @@ object ReceiptItemConverter {
     indices = [
         Index(value = ["internalId"], name = "index_receipts_internalId"),
         Index(value = ["driveFileId"], name = "index_receipts_driveFileId"),
-        Index(value = ["driveMetadataFileId"], name = "index_receipts_driveMetadataFileId")
+        Index(value = ["driveMetadataFileId"], name = "index_receipts_driveMetadataFileId"),
+        Index(value = ["propertyId"], name = "index_receipts_propertyId")
     ]
 )
 data class Receipt(
@@ -118,7 +119,8 @@ data class Receipt(
     val deletedAt: String? = null,
     val deletedBy: String? = null,
     val deletionId: String? = null,
-    val deletionReason: String? = null
+    val deletionReason: String? = null,
+    val propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID
 ) {
     fun getPositionenList(): List<ReceiptItem> = ReceiptItemConverter.parseJson(positionenJson)
 
@@ -175,7 +177,7 @@ interface ReceiptDao {
     suspend fun deleteAll()
 }
 
-@Entity(tableName = "loans")
+@Entity(tableName = "loans", indices = [Index(value = ["propertyId"], name = "index_loans_propertyId")])
 data class Loan(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val bezeichnung: String = "",
@@ -190,7 +192,8 @@ data class Loan(
     val laufzeitBis: String = "",
     val vermietungsanteilProzent: Double = 100.0,
     val notiz: String = "",
-    val aktiv: Boolean = true
+    val aktiv: Boolean = true,
+    val propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID
 )
 
 @Dao
@@ -234,6 +237,18 @@ interface PropertyDao {
 
     @Query("SELECT * FROM property_metadata WHERE id = 1")
     suspend fun getPropertyMetadata(): PropertyMetadata?
+
+    @Query("SELECT * FROM property_metadata ORDER BY id")
+    fun getAllPropertiesFlow(): Flow<List<PropertyMetadata>>
+
+    @Query("SELECT * FROM property_metadata ORDER BY id")
+    suspend fun getAllProperties(): List<PropertyMetadata>
+
+    @Query("SELECT * FROM property_metadata WHERE propertyId = :propertyId LIMIT 1")
+    suspend fun getPropertyByPropertyId(propertyId: String): PropertyMetadata?
+
+    @Query("SELECT COALESCE(MAX(id), 0) + 1 FROM property_metadata")
+    suspend fun nextPropertyId(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPropertyMetadata(metadata: PropertyMetadata)
@@ -521,7 +536,18 @@ val MIGRATION_19_20 = object : androidx.room.migration.Migration(19, 20) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class], version = 20, exportSchema = false)
+val MIGRATION_20_21 = object : androidx.room.migration.Migration(20, 21) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        // Existing rows remain assigned to the legacy property. No receipt or loan is
+        // reclassified automatically; new rows can use a stable explicit propertyId.
+        db.execSQL("ALTER TABLE receipts ADD COLUMN propertyId TEXT NOT NULL DEFAULT 'property-1'")
+        db.execSQL("ALTER TABLE loans ADD COLUMN propertyId TEXT NOT NULL DEFAULT 'property-1'")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_receipts_propertyId ON receipts(propertyId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_loans_propertyId ON loans(propertyId)")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class], version = 21, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -546,7 +572,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
@@ -833,6 +859,7 @@ class ReceiptRepository(
     val allReceipts: Flow<List<Receipt>> = receiptDao.getAllReceipts()
     val deletedReceipts: Flow<List<Receipt>> = receiptDao.getDeletedReceipts()
     val propertyMetadata: Flow<PropertyMetadata?> = propertyDao.getPropertyMetadataFlow()
+    val allProperties: Flow<List<PropertyMetadata>> = propertyDao.getAllPropertiesFlow()
     val allReceiptEntities: Flow<List<ReceiptEntity>> = receiptEntityDao?.getAllEntities() ?: kotlinx.coroutines.flow.flowOf(emptyList())
     val allBelege: Flow<List<Beleg>> = belegDao?.getAllBelege() ?: kotlinx.coroutines.flow.flowOf(emptyList())
     val allAuditRuns: Flow<List<ExportAuditRun>> = exportAuditDao?.getAllRunsFlow() ?: kotlinx.coroutines.flow.flowOf(emptyList())
@@ -1002,7 +1029,7 @@ class ReceiptRepository(
         if (receipt.internalId.isBlank()) return
         val existing = dao.getByReceiptId(receipt.internalId)
         val now = java.time.Instant.now().toString()
-        val propertyId = propertyDao.getPropertyMetadata()?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val propertyId = receipt.propertyId
         val localPath = receipt.imageUrl.substringBefore(',').removePrefix("file://")
         val localFile = java.io.File(localPath)
         val localBytes = if (existing?.sha256.isNullOrBlank() && localFile.isFile) runCatching { localFile.readBytes() }.getOrNull() else null
@@ -1065,6 +1092,13 @@ class ReceiptRepository(
     suspend fun getPropertyMetadata(): PropertyMetadata? {
         return propertyDao.getPropertyMetadata()
     }
+
+    suspend fun getAllProperties(): List<PropertyMetadata> = propertyDao.getAllProperties()
+
+    suspend fun getPropertyByPropertyId(propertyId: String): PropertyMetadata? =
+        propertyDao.getPropertyByPropertyId(propertyId)
+
+    suspend fun nextPropertyId(): Int = propertyDao.nextPropertyId()
 
     suspend fun updatePropertyMetadata(metadata: PropertyMetadata) {
         propertyDao.insertPropertyMetadata(metadata)

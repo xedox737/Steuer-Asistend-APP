@@ -811,6 +811,7 @@ class DrivePersistenceRepository(
             put("hauptkategorie", hauptkategorie ?: JSONObject.NULL)
             put("unterkategorie", unterkategorie ?: JSONObject.NULL)
             put("wohneinheit", wohneinheit ?: JSONObject.NULL)
+            put("propertyId", propertyId)
             put("massnahme", massnahme ?: JSONObject.NULL)
             
             val posArray = JSONArray()
@@ -1065,6 +1066,7 @@ class DrivePersistenceRepository(
             hauptkategorie = if (json.isNull("hauptkategorie")) null else json.getString("hauptkategorie"),
             unterkategorie = if (json.isNull("unterkategorie")) null else json.getString("unterkategorie"),
             wohneinheit = if (json.isNull("wohneinheit")) null else json.getString("wohneinheit"),
+            propertyId = json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
             massnahme = if (json.isNull("massnahme")) null else json.getString("massnahme"),
             positionen = posList,
             allocations = allocationsList,
@@ -1119,6 +1121,7 @@ class DrivePersistenceRepository(
             isEigenleistungSanierung = false,
             imageUrl = mainDoc?.filename ?: "",
             wohneinheit = wohneinheit ?: "",
+            propertyId = propertyId,
             mieter = "",
             zahlungsart = zahlungsart,
             zahlungsartQuelle = zahlungsartQuelle,
@@ -1162,7 +1165,10 @@ class DrivePersistenceRepository(
         context: Context? = null,
         propertyMetadata: PropertyMetadata? = null
     ): String {
-        val property = propertyMetadata ?: localRepository.getPropertyMetadata() ?: PropertyMetadata()
+        val property = propertyMetadata
+            ?: localRepository.getPropertyByPropertyId(receipt.propertyId)
+            ?: localRepository.getPropertyMetadata()
+            ?: PropertyMetadata()
         val route = DocumentDrivePathResolver.route(
             propertyId = property.propertyId,
             propertyName = property.name,
@@ -1777,7 +1783,7 @@ class DrivePersistenceRepository(
             val now = java.time.Instant.now().toString()
             val receiptManagedDocument = ManagedDocument(
                 documentId = StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId),
-                propertyId = (localRepository.getPropertyMetadata() ?: PropertyMetadata()).propertyId,
+                propertyId = currentReceipt.propertyId,
                 receiptInternalId = currentReceipt.internalId,
                 documentType = ManagedDocumentType.RECHNUNG.name,
                 documentCategory = if ((actualDriveFolderId ?: targetFolderId) == targetFolderId) "02_Belege/${currentReceipt.datum.take(4)}" else "LEGACY_BELEGABLAGE",
@@ -1818,6 +1824,7 @@ class DrivePersistenceRepository(
                 hauptkategorie = currentReceipt.hauptkategorie,
                 unterkategorie = currentReceipt.unterkategorie,
                 wohneinheit = currentReceipt.wohneinheit,
+                propertyId = currentReceipt.propertyId,
                 massnahme = "",
                 positionen = currentReceipt.getPositionenList().toPersistedItems(),
                 allocations = AccountingApprovalJson.decodeAllocations(currentReceipt.allocationsJson),
@@ -3404,6 +3411,7 @@ class DrivePersistenceRepository(
                     hauptkategorie = currentReceipt.hauptkategorie,
                     unterkategorie = currentReceipt.unterkategorie,
                     wohneinheit = currentReceipt.wohneinheit,
+                    propertyId = currentReceipt.propertyId,
                     massnahme = "",
                     positionen = currentReceipt.getPositionenList().toPersistedItems(),
                     allocations = AccountingApprovalJson.decodeAllocations(currentReceipt.allocationsJson),
@@ -3889,7 +3897,9 @@ class DrivePersistenceRepository(
         documentId: String
     ): Boolean {
         val document = localRepository.getManagedDocument(documentId) ?: return false
-        val property = localRepository.getPropertyMetadata() ?: PropertyMetadata()
+        val property = localRepository.getPropertyByPropertyId(document.propertyId)
+            ?: localRepository.getPropertyMetadata()
+            ?: PropertyMetadata()
         val type = runCatching { ManagedDocumentType.valueOf(document.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)
         val unit = localRepositoryUnitLabel(document.unitId)
         val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, document.documentDate, document.unitId, unit)
@@ -4275,6 +4285,7 @@ data class PersistedReceipt(
     val hauptkategorie: String?,
     val unterkategorie: String?,
     val wohneinheit: String?,
+    val propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID,
     val massnahme: String?,
     val positionen: List<PersistedReceiptItem>,
     val allocations: List<PersistedAllocation> = emptyList(),

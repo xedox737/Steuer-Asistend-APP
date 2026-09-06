@@ -92,10 +92,11 @@ private fun fallbackPeriod(unit: WohneinheitStatus, nk: Double, other: Double): 
 }
 
 @Composable
-fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel) {
+fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
     val units by viewModel.wohneinheitenStatus.collectAsState()
-    val receipts by viewModel.receipts.collectAsState()
+    val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
+    val receipts by receiptFlow.collectAsState()
     val rentPrefs = remember(context) { context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE) }
     var showUnitPicker by remember { mutableStateOf(false) }
     var showMonthlyCheck by remember { mutableStateOf(false) }
@@ -103,7 +104,7 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel) {
     var historyVersion by remember { mutableIntStateOf(0) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        RentIncomeOverviewScreen(viewModel)
+        RentIncomeOverviewScreen(viewModel, propertyScoped)
 
         Column(
             modifier = Modifier

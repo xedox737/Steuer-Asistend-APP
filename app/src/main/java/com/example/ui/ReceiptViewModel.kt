@@ -47,7 +47,9 @@ enum class AppScreen {
     LEDGER,
     RENT_OVERVIEW,
     TAX_CALCULATOR,
-    DOCUMENTS
+    DOCUMENTS,
+    PROPERTIES,
+    MORE
 }
 
 sealed interface ScanUiState {
@@ -333,20 +335,41 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
-    val propertyMetadata: StateFlow<PropertyMetadata?> = repository.propertyMetadata
+    val properties: StateFlow<List<PropertyMetadata>> = repository.allProperties
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = null
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
         )
 
-    val loans: StateFlow<List<com.example.data.Loan>> =
+    private val _selectedPropertyId = MutableStateFlow(sharedPrefs.getString("selected_property_id", "").orEmpty())
+    val selectedPropertyId: StateFlow<String> = _selectedPropertyId.asStateFlow()
+
+    val propertyMetadata: StateFlow<PropertyMetadata?> = combine(properties, _selectedPropertyId) { all, selectedId ->
+        all.firstOrNull { it.propertyId == selectedId } ?: all.firstOrNull()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    val propertyReceipts: StateFlow<List<Receipt>> = combine(receipts, propertyMetadata) { items, property ->
+        if (property == null) items else items.filter {
+            it.propertyId == property.propertyId ||
+                (property.id == 1 && it.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private val allLoans: StateFlow<List<com.example.data.Loan>> =
         database.loanDao().getAllLoansFlow()
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.Eagerly,
                 initialValue = emptyList()
             )
+
+    val loans: StateFlow<List<com.example.data.Loan>> = combine(allLoans, propertyMetadata) { items, property ->
+        if (property == null) items else items.filter {
+            it.propertyId == property.propertyId ||
+                (property.id == 1 && it.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID)
+        }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
         // Initialize Firestore
@@ -372,7 +395,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             propertyMetadata.collect { meta ->
                 if (meta != null && meta.wohneinheiten.isNotEmpty()) {
-                    _wohneinheitenStatus.value = getWohneinheitenFromPrefs(meta.wohneinheiten)
+                    _wohneinheitenStatus.value = getWohneinheitenForProperty(meta)
                 }
             }
         }
@@ -579,26 +602,61 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun getWohneinheitenForProperty(metadata: PropertyMetadata): List<WohneinheitStatus> {
+        if (metadata.id == 1) return getWohneinheitenFromPrefs(metadata.wohneinheiten)
+        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        return metadata.wohneinheiten.split(',').map(String::trim).filter(String::isNotBlank).mapIndexed { index, name ->
+            val prefix = "property_${metadata.propertyId}_unit_${name}_"
+            val stableId = unitPrefs.getString(prefix + "id", null)
+                ?: com.example.data.StableDocumentIdentity.legacyUnitId(metadata.propertyId, name).also {
+                    unitPrefs.edit().putString(prefix + "id", it).putString("property_${metadata.propertyId}_unit_id_index_$index", it).apply()
+                }
+            WohneinheitStatus(
+                name = name,
+                label = unitPrefs.getString(prefix + "label", name) ?: name,
+                status = unitPrefs.getString(prefix + "status", "Leerstand") ?: "Leerstand",
+                mieter = unitPrefs.getString(prefix + "mieter", "") ?: "",
+                kaltmiete = unitPrefs.getFloat(prefix + "rent", 0f).toDouble(),
+                wohnflaeche = unitPrefs.getFloat(prefix + "area", 0f).toDouble(),
+                mietvertragsstart = unitPrefs.getString(prefix + "start", "") ?: "",
+                unitId = stableId
+            )
+        }
+    }
+
     fun updateWohneinheit(updated: WohneinheitStatus) {
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val selectedProperty = propertyMetadata.value ?: PropertyMetadata()
         val stableId = updated.unitId.ifBlank {
             com.example.data.StableDocumentIdentity.legacyUnitId(
-                propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID,
+                selectedProperty.propertyId,
                 updated.name
             )
         }
         val unitIndex = _wohneinheitenStatus.value.indexOfFirst { it.unitId == updated.unitId || it.name == updated.name }
         unitPrefs.edit().apply {
-            putString("unit_status_${updated.name}", updated.status)
-            putString("unit_label_${updated.name}", updated.label)
-            putString("unit_mieter_${updated.name}", updated.mieter)
-            putFloat("unit_rent_${updated.name}", updated.kaltmiete.toFloat())
-            putFloat("unit_area_${updated.name}", updated.wohnflaeche.toFloat())
-            putString("unit_start_${updated.name}", updated.mietvertragsstart)
-            putString("unit_id_${updated.name}", stableId)
-            if (unitIndex >= 0) putString("unit_id_index_$unitIndex", stableId)
+            if (selectedProperty.id == 1) {
+                putString("unit_status_${updated.name}", updated.status)
+                putString("unit_label_${updated.name}", updated.label)
+                putString("unit_mieter_${updated.name}", updated.mieter)
+                putFloat("unit_rent_${updated.name}", updated.kaltmiete.toFloat())
+                putFloat("unit_area_${updated.name}", updated.wohnflaeche.toFloat())
+                putString("unit_start_${updated.name}", updated.mietvertragsstart)
+                putString("unit_id_${updated.name}", stableId)
+                if (unitIndex >= 0) putString("unit_id_index_$unitIndex", stableId)
+            } else {
+                val prefix = "property_${selectedProperty.propertyId}_unit_${updated.name}_"
+                putString(prefix + "status", updated.status)
+                putString(prefix + "label", updated.label)
+                putString(prefix + "mieter", updated.mieter)
+                putFloat(prefix + "rent", updated.kaltmiete.toFloat())
+                putFloat(prefix + "area", updated.wohnflaeche.toFloat())
+                putString(prefix + "start", updated.mietvertragsstart)
+                putString(prefix + "id", stableId)
+                if (unitIndex >= 0) putString("property_${selectedProperty.propertyId}_unit_id_index_$unitIndex", stableId)
+            }
         }.apply()
-        _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
+        _wohneinheitenStatus.value = getWohneinheitenForProperty(selectedProperty)
 
         if (FirestoreService.isCloudActive()) {
             viewModelScope.launch {
@@ -1687,7 +1745,7 @@ data class AiSearchUiState(
     internal fun buildAdvisorAnnualSummaryForExport(
         context: Context,
         year: Int,
-        currentReceipts: List<Receipt> = receipts.value,
+        currentReceipts: List<Receipt> = propertyReceipts.value,
         currentMetadata: PropertyMetadata = propertyMetadata.value ?: PropertyMetadata(),
         currentLoans: List<com.example.data.Loan> = loans.value,
         currentUnits: List<WohneinheitStatus> = _wohneinheitenStatus.value
@@ -1736,7 +1794,8 @@ data class AiSearchUiState(
                     context = context,
                     year = year,
                     currentReceipts = currentReceipts,
-                    currentMetadata = database.propertyDao().getPropertyMetadata()
+                    currentMetadata = propertyMetadata.value
+                        ?: database.propertyDao().getPropertyMetadata()
                         ?: PropertyMetadata(),
                     currentLoans = database.loanDao().getAllLoans(),
                     currentUnits = _wohneinheitenStatus.value
@@ -2063,6 +2122,36 @@ data class AiSearchUiState(
         _scanState.value = ScanUiState.Idle
     }
 
+    fun selectProperty(propertyId: String) {
+        _selectedPropertyId.value = propertyId
+        sharedPrefs.edit().putString("selected_property_id", propertyId).apply()
+    }
+
+    fun createProperty(metadata: PropertyMetadata, units: List<WohneinheitStatus>, loan: com.example.data.Loan? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val propertyId = metadata.propertyId.ifBlank { java.util.UUID.randomUUID().toString() }
+            val stored = metadata.copy(id = repository.nextPropertyId(), propertyId = propertyId)
+            repository.updatePropertyMetadata(stored)
+            loan?.let { database.loanDao().upsertLoan(it.copy(propertyId = propertyId)) }
+            val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+            units.forEachIndexed { index, unit ->
+                val stableId = unit.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, unit.name) }
+                val prefix = "property_${propertyId}_unit_${unit.name}_"
+                unitPrefs.edit()
+                    .putString(prefix + "id", stableId)
+                    .putString(prefix + "label", unit.label)
+                    .putString(prefix + "status", unit.status)
+                    .putString(prefix + "mieter", unit.mieter)
+                    .putFloat(prefix + "rent", unit.kaltmiete.toFloat())
+                    .putFloat(prefix + "area", unit.wohnflaeche.toFloat())
+                    .putString(prefix + "start", unit.mietvertragsstart)
+                    .putString("property_${propertyId}_unit_id_index_$index", stableId)
+                    .apply()
+            }
+            selectProperty(propertyId)
+        }
+    }
+
     fun importManagedDocument(uri: android.net.Uri, unitId: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _documentOperationStatus.value = "Dokument wird geprüft …"
@@ -2272,7 +2361,7 @@ data class AiSearchUiState(
 
         if (document.documentType == com.example.data.ManagedDocumentType.DARLEHENSVERTRAG.name) {
             val existing = document.loanId?.let { id -> database.loanDao().getAllLoans().firstOrNull { it.id == id } }
-            val loan = (existing ?: com.example.data.Loan()).copy(
+            val loan = (existing ?: com.example.data.Loan(propertyId = document.propertyId)).copy(
                 bank = values["bank"] ?: existing?.bank.orEmpty(),
                 darlehensbetrag = number("darlehensbetrag") ?: existing?.darlehensbetrag ?: 0.0,
                 restschuld = number("restschuld") ?: existing?.restschuld ?: 0.0,
@@ -2741,6 +2830,8 @@ data class AiSearchUiState(
                 isEigenleistungSanierung = isEigenleistung,
                 imageUrl = imageUrl,
                 wohneinheit = wohneinheit,
+                propertyId = propertyMetadata.value?.propertyId
+                    ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID,
                 mieter = mieter,
                 zahlungsart = normalizePaymentMethod(zahlungsart),
                 zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "NUTZER_BESTAETIGT",
@@ -2809,7 +2900,7 @@ data class AiSearchUiState(
     fun updatePropertyMetadata(metadata: PropertyMetadata) {
         viewModelScope.launch(Dispatchers.IO) {
             repository.updatePropertyMetadata(metadata)
-            _wohneinheitenStatus.value = getWohneinheitenFromPrefs(metadata.wohneinheiten)
+            _wohneinheitenStatus.value = getWohneinheitenForProperty(metadata)
 
             // Keep the cloud backup current, but never use it to overwrite existing local metadata.
             if (_isDriveConnected.value && _autoDriveBackup.value) {

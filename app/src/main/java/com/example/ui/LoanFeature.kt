@@ -74,12 +74,16 @@ private fun actualDeductibleInterest(receipts: List<Receipt>, loansById: Map<Int
     }
 
 @Composable
-fun LoanManagementSection(viewModel: ReceiptViewModel) {
+fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val database = remember(context) { AppDatabase.getDatabase(context.applicationContext, scope) }
-    val loans by database.loanDao().getAllLoansFlow().collectAsState(initial = emptyList())
-    val receipts by database.receiptDao().getAllReceipts().collectAsState(initial = emptyList())
+    val allLoans by database.loanDao().getAllLoansFlow().collectAsState(initial = emptyList())
+    val allReceipts by database.receiptDao().getAllReceipts().collectAsState(initial = emptyList())
+    val selectedProperty by viewModel.propertyMetadata.collectAsState()
+    val selectedPropertyId = selectedProperty?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+    val loans = if (propertyScoped && selectedProperty != null) ImmobilienManagerProjection.loans(selectedProperty!!, allLoans) else allLoans
+    val receipts = if (propertyScoped) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts
     val assignmentPrefs = remember(context) { context.getSharedPreferences("loan_interest_assignments", 0) }
 
     var showManager by remember { mutableStateOf(false) }
@@ -319,7 +323,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel) {
 
     if (showNewLoan) {
         LoanEditDialog(
-            initial = Loan(),
+            initial = Loan(propertyId = selectedPropertyId),
             title = "Darlehen hinzufügen",
             onDismiss = { showNewLoan = false },
             onSave = { loan -> scope.launch { database.loanDao().upsertLoan(loan); viewModel.syncAllToDrive() }; showNewLoan = false }

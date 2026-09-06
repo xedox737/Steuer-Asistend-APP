@@ -847,7 +847,7 @@ internal fun buildAdvisorAnnualSummary(
 @Composable
 fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
-    val receipts by viewModel.receipts.collectAsState()
+    val receipts by viewModel.propertyReceipts.collectAsState()
     val propertyState by viewModel.propertyMetadata.collectAsState()
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val loans by viewModel.loans.collectAsState()

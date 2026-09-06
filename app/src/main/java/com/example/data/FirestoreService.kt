@@ -185,6 +185,7 @@ object FirestoreService {
             "isEigenleistungSanierung" to receipt.isEigenleistungSanierung,
             "imageUrl" to receipt.imageUrl,
             "wohneinheit" to receipt.wohneinheit,
+            "propertyId" to receipt.propertyId,
             "mieter" to receipt.mieter,
             "isArchivedToDrive" to receipt.isArchivedToDrive
         )
@@ -204,6 +205,7 @@ object FirestoreService {
             isEigenleistungSanierung = map["isEigenleistungSanierung"] as? Boolean ?: false,
             imageUrl = map["imageUrl"] as? String ?: "",
             wohneinheit = map["wohneinheit"] as? String ?: "",
+            propertyId = map["propertyId"] as? String ?: StableDocumentIdentity.LEGACY_PROPERTY_ID,
             mieter = map["mieter"] as? String ?: "",
             isArchivedToDrive = map["isArchivedToDrive"] as? Boolean ?: false
         )

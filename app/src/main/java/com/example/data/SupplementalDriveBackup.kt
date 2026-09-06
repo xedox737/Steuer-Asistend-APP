@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 3
+    internal const val SCHEMA_VERSION = 4
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -45,6 +45,7 @@ object SupplementalDriveBackup {
     internal suspend fun createPayload(context: Context, database: AppDatabase): JSONObject = JSONObject().apply {
         put("schemaVersion", SCHEMA_VERSION)
         put("loans", JSONArray().apply { database.loanDao().getAllLoans().forEach { put(it.toJson()) } })
+        put("properties", JSONArray().apply { database.propertyDao().getAllProperties().forEach { put(it.toBackupJson()) } })
         put("logbookTrips", JSONArray().apply { database.logbookDao().getAllTrips().forEach { put(it.toJson()) } })
         put("standardRoutes", JSONArray().apply { database.logbookDao().getAllStandardRoutes().forEach { put(it.toJson()) } })
         put("managedDocuments", JSONArray().apply { database.managedDocumentDao().getAll().forEach { put(it.toBackupJson()) } })
@@ -52,6 +53,7 @@ object SupplementalDriveBackup {
         put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
         put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
         put("annualTaxApprovalPrefs", prefsToJson(context, "annual_tax_approval_prefs"))
+        put("propertyUnitPrefs", prefsToJson(context, "wohneinheiten_prefs"))
         // ai_provider_settings is deliberately excluded: no API key may enter Drive backup.
     }
 
@@ -64,6 +66,8 @@ object SupplementalDriveBackup {
         database.withTransaction {
             val loans = root.optJSONArray("loans") ?: JSONArray()
             for (index in 0 until loans.length()) database.loanDao().upsertLoan(loans.getJSONObject(index).toLoan())
+            val properties = root.optJSONArray("properties") ?: JSONArray()
+            for (index in 0 until properties.length()) database.propertyDao().insertPropertyMetadata(properties.getJSONObject(index).toPropertyMetadata())
             val trips = root.optJSONArray("logbookTrips") ?: JSONArray()
             for (index in 0 until trips.length()) database.logbookDao().upsertTrip(trips.getJSONObject(index).toTrip())
             val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
@@ -85,6 +89,7 @@ object SupplementalDriveBackup {
         jsonToPrefs(context, "tenant_history_prefs", root.optJSONObject("tenantHistoryPrefs"))
         jsonToPrefs(context, "loan_interest_assignments", root.optJSONObject("loanInterestAssignments"))
         jsonToPrefs(context, "annual_tax_approval_prefs", root.optJSONObject("annualTaxApprovalPrefs"))
+        jsonToPrefs(context, "wohneinheiten_prefs", root.optJSONObject("propertyUnitPrefs"))
     }
 
     private fun Loan.toJson() = JSONObject().apply {
@@ -94,6 +99,7 @@ object SupplementalDriveBackup {
         put("monatlicheRate", monatlicheRate); put("startDatum", startDatum)
         put("zinsbindungBis", zinsbindungBis); put("laufzeitBis", laufzeitBis)
         put("vermietungsanteilProzent", vermietungsanteilProzent); put("notiz", notiz); put("aktiv", aktiv)
+        put("propertyId", propertyId)
     }
 
     private fun JSONObject.toLoan() = Loan(
@@ -103,7 +109,29 @@ object SupplementalDriveBackup {
         monatlicheRate = optDouble("monatlicheRate", 0.0), startDatum = optString("startDatum", ""),
         zinsbindungBis = optString("zinsbindungBis", ""), laufzeitBis = optString("laufzeitBis", ""),
         vermietungsanteilProzent = optDouble("vermietungsanteilProzent", 100.0),
-        notiz = optString("notiz", ""), aktiv = optBoolean("aktiv", true)
+        notiz = optString("notiz", ""), aktiv = optBoolean("aktiv", true),
+        propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID)
+    )
+
+    private fun PropertyMetadata.toBackupJson() = JSONObject().apply {
+        put("id", id); put("propertyId", propertyId); put("name", name); put("adresse", adresse)
+        put("wohnort", wohnort); put("baujahr", baujahr); put("wohnflaeche", wohnflaeche)
+        put("grundstuecksgroesse", grundstuecksgroesse); put("notariellesKaufdatum", notariellesKaufdatum)
+        put("uebergangNutzenLasten", uebergangNutzenLasten); put("wohneinheiten", wohneinheiten)
+        put("gesamtKaufpreis", gesamtKaufpreis); put("gebaeudewert", gebaeudewert)
+        put("grundUndBodenWert", grundUndBodenWert); put("kaufpreisAufteilungQuelle", kaufpreisAufteilungQuelle)
+    }
+
+    private fun JSONObject.toPropertyMetadata() = PropertyMetadata(
+        id = optInt("id", 1), propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
+        name = optString("name", ""), adresse = optString("adresse", ""), wohnort = optString("wohnort", ""),
+        baujahr = optInt("baujahr", 0), wohnflaeche = optDouble("wohnflaeche", 0.0),
+        grundstuecksgroesse = optDouble("grundstuecksgroesse", 0.0),
+        notariellesKaufdatum = optString("notariellesKaufdatum", ""),
+        uebergangNutzenLasten = optString("uebergangNutzenLasten", ""),
+        wohneinheiten = optString("wohneinheiten", ""), gesamtKaufpreis = optDouble("gesamtKaufpreis", 0.0),
+        gebaeudewert = optDouble("gebaeudewert", 0.0), grundUndBodenWert = optDouble("grundUndBodenWert", 0.0),
+        kaufpreisAufteilungQuelle = optString("kaufpreisAufteilungQuelle", "MANUELL")
     )
 
     private fun LogbookTrip.toJson() = JSONObject().apply {
