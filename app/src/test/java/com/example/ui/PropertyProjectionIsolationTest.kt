@@ -22,6 +22,7 @@ class PropertyProjectionIsolationTest {
         id = id,
         aussteller = "Test",
         datum = "2026-09-01",
+        uhrzeit = "",
         bruttobetrag = 900.0,
         hauptkategorie = "Miete, Nebenkosten & Kaution",
         unterkategorie = "Kaltmiete",
