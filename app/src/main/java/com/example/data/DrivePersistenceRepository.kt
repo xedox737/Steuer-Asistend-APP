@@ -180,7 +180,8 @@ sealed class DriveInitializationResult {
 
 class DrivePersistenceRepository(
     private val context: Context,
-    private val localRepository: ReceiptRepository
+    private val localRepository: ReceiptRepository,
+    private val managedDocumentDriveGateway: ManagedDocumentDriveGateway = GoogleManagedDocumentDriveGateway(context)
 ) {
     private val TAG = "DrivePersistenceRepo"
 
@@ -3847,12 +3848,11 @@ class DrivePersistenceRepository(
         val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, date, unitId, unitLabel)
         var parent = config.rootFolderId
         route.segments.forEachIndexed { index, segment ->
-            parent = GoogleDriveClient.getOrCreateFolder(
+            parent = managedDocumentDriveGateway.getOrCreateFolder(
                 accessToken, segment, parent,
                 canonicalPathKey = if (index == 0) "documents/${property.propertyId}/root"
                     else "documents/${property.propertyId}/${route.segments.drop(1).take(index).joinToString("/") { normalizePathSegment(it) }}",
-                systemFolderId = config.systemFolderId,
-                context = context
+                systemFolderId = config.systemFolderId
             ) ?: return null
         }
         return parent
@@ -3895,8 +3895,8 @@ class DrivePersistenceRepository(
         val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, document.documentDate, document.unitId, unit)
         val existingDriveId = document.driveFileId?.takeIf(String::isNotBlank)
         if (existingDriveId != null) {
-            val metadata = GoogleDriveClient.getFileMetadata(accessToken, existingDriveId)
-            val driveBytes = GoogleDriveClient.downloadFileBytes(accessToken, existingDriveId)
+            val metadata = managedDocumentDriveGateway.getFileMetadata(accessToken, existingDriveId)
+            val driveBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, existingDriveId)
             if (metadata == null || driveBytes == null) {
                 localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_DATEI_NICHT_ERREICHBAR", updatedAt = java.time.Instant.now().toString()))
                 return false
@@ -3929,12 +3929,12 @@ class DrivePersistenceRepository(
                 return false
             }
             if (plan.action != DocumentMigrationAction.UNVERAENDERT &&
-                !GoogleDriveClient.moveAndRenameFile(accessToken, existingDriveId, folderId, metadata.parentIds, targetFilename)) {
+                !managedDocumentDriveGateway.moveAndRenameFile(accessToken, existingDriveId, folderId, metadata.parentIds, targetFilename)) {
                 localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_MOVE_FEHLGESCHLAGEN", updatedAt = java.time.Instant.now().toString()))
                 return false
             }
-            val afterMetadata = GoogleDriveClient.getFileMetadata(accessToken, existingDriveId)
-            val afterBytes = GoogleDriveClient.downloadFileBytes(accessToken, existingDriveId)
+            val afterMetadata = managedDocumentDriveGateway.getFileMetadata(accessToken, existingDriveId)
+            val afterBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, existingDriveId)
             val afterHash = afterBytes?.let { getSha256(it) }.orEmpty()
             val verified = ManagedDocumentDriveReorganization.isSameVerifiedOriginal(
                 expectedDriveFileId = existingDriveId,
@@ -3978,7 +3978,7 @@ class DrivePersistenceRepository(
             ))
             return true
         }
-        val fileId = GoogleDriveClient.uploadFile(
+        val fileId = managedDocumentDriveGateway.uploadFile(
             accessToken, folderId, document.storedFilename, document.mimeType, bytes,
             appProperties = mapOf(
                 "appName" to "ImmobilienBelegApp", "entityType" to "managedDocument",
@@ -3986,7 +3986,7 @@ class DrivePersistenceRepository(
                 "contentSha256" to hash, "schemaVersion" to "1"
             )
         ) ?: return false
-        val uploaded = GoogleDriveClient.downloadFileBytes(accessToken, fileId)
+        val uploaded = managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
         if (uploaded == null || getSha256(uploaded) != hash) return false
         localRepository.upsertManagedDocument(document.copy(
             driveFileId = fileId, driveFolderId = folderId, sha256 = hash,
@@ -4010,7 +4010,13 @@ class DrivePersistenceRepository(
                 }) }
             })
         }
-        return uploadOrUpdateJson(accessToken, config.systemFolderId, "documentIndex", "document-index.json", json.toString(4)).success
+        return managedDocumentDriveGateway.upsertJson(
+            accessToken,
+            config.systemFolderId,
+            "documentIndex",
+            "document-index.json",
+            json.toString(4)
+        ).success
     }
 
     private fun localRepositoryUnitLabel(unitId: String?): String? {
