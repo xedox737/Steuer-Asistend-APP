@@ -1,0 +1,30 @@
+    val bankAccounts: StateFlow<List<com.example.data.BankAccount>> =
+        database.bankDao().observeAccounts().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    val bankTransactions: StateFlow<List<com.example.data.BankTransaction>> =
+        database.bankDao().observeTransactions().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    val bankReceiptLinks: StateFlow<List<com.example.data.BankReceiptLink>> =
+        database.bankDao().observeLinks().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    val bankMatchSuggestions: StateFlow<Map<String, com.example.data.BankMatchSuggestion>> =
+        combine(bankTransactions, receipts, bankReceiptLinks) { transactions, currentReceipts, links ->
+            com.example.data.BankReceiptMatcher.bestSuggestions(transactions, currentReceipts, links)
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyMap()
+        )
+

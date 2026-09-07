@@ -1,0 +1,47 @@
+    private fun BankAccount.toBackupJson() = JSONObject().apply {
+        put("accountId", accountId); put("displayName", displayName); put("bankName", bankName)
+        put("iban", iban); put("currency", currency); put("source", source); put("active", active)
+        put("createdAt", createdAt); put("updatedAt", updatedAt)
+    }
+
+    private fun JSONObject.toBankAccount() = BankAccount(
+        accountId = optString("accountId", ""), displayName = optString("displayName", ""),
+        bankName = optString("bankName", ""), iban = optString("iban", ""),
+        currency = optString("currency", "EUR"), source = optString("source", "CSV"),
+        active = optBoolean("active", true), createdAt = optString("createdAt", ""),
+        updatedAt = optString("updatedAt", "")
+    )
+
+    private fun BankTransaction.toBackupJson() = JSONObject().apply {
+        put("transactionId", transactionId); put("accountId", accountId); put("bookingDate", bookingDate)
+        put("valueDate", valueDate); put("amount", amount); put("currency", currency)
+        put("counterparty", counterparty); put("counterpartyIban", counterpartyIban); put("purpose", purpose)
+        put("bankReference", bankReference); put("source", source)
+        put("reconciliationStatus", reconciliationStatus); put("noReceiptReason", noReceiptReason)
+        put("importedAt", importedAt)
+    }
+
+    private fun JSONObject.toBankTransaction() = BankTransaction(
+        transactionId = optString("transactionId", ""), accountId = optString("accountId", ""),
+        bookingDate = optString("bookingDate", ""), valueDate = optString("valueDate", ""),
+        amount = optDouble("amount", 0.0), currency = optString("currency", "EUR"),
+        counterparty = optString("counterparty", ""), counterpartyIban = optString("counterpartyIban", ""),
+        purpose = optString("purpose", ""), bankReference = optString("bankReference", ""),
+        source = optString("source", "CSV"),
+        reconciliationStatus = optString("reconciliationStatus", BankReconciliationStatus.OPEN),
+        noReceiptReason = optString("noReceiptReason", ""), importedAt = optString("importedAt", "")
+    )
+
+    private fun BankReceiptLink.toBackupJson() = JSONObject().apply {
+        put("linkId", linkId); put("transactionId", transactionId); put("receiptId", receiptId)
+        put("receiptInternalId", receiptInternalId); put("allocatedAmount", allocatedAmount)
+        put("status", status); put("createdAt", createdAt)
+    }
+
+    private fun JSONObject.toBankReceiptLink() = BankReceiptLink(
+        linkId = optString("linkId", ""), transactionId = optString("transactionId", ""),
+        receiptId = optInt("receiptId", 0), receiptInternalId = optString("receiptInternalId", ""),
+        allocatedAmount = optDouble("allocatedAmount", 0.0),
+        status = optString("status", BankLinkStatus.CONFIRMED), createdAt = optString("createdAt", "")
+    )
+
