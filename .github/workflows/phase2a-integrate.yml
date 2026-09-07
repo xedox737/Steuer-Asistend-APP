@@ -33,6 +33,16 @@ jobs:
               raise SystemExit('legacy schema assertion anchor missing')
           p.write_text(s.replace(old, 'assertEquals(8, payload.getInt("schemaVersion"))', 1))
           PY
+      - name: Focused backup acceptance
+        run: |
+          set +e
+          gradle testDebugUnitTest --tests 'com.example.data.BankLearningRulesBackupAcceptanceTest' --stacktrace --no-daemon
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo '--- TEST XML ---'
+            cat app/build/test-results/testDebugUnitTest/TEST-com.example.data.BankLearningRulesBackupAcceptanceTest.xml || true
+            exit $code
+          fi
       - name: Verify
         run: |
           gradle lintDebug --stacktrace --no-daemon
