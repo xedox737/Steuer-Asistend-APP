@@ -42,6 +42,45 @@ class BankBackup7AcceptanceTest {
         assertEquals(1, database.bankDao().getAllTransactions().count { it.transactionId == "t" })
     }
 
+    @Test fun noReceiptRequiredSurvivesDatabaseRestart() = runTest {
+        val databaseName = "bank-no-receipt-restart-${System.nanoTime()}.db"
+        context.deleteDatabase(databaseName)
+        var first: AppDatabase? = null
+        var reopened: AppDatabase? = null
+        try {
+            first = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+                .allowMainThreadQueries()
+                .build()
+            first.bankDao().upsertAccount(BankAccount("restart-account", "Hauskonto", bankName = "Sparkasse"))
+            first.bankDao().upsertTransaction(
+                BankTransaction(
+                    transactionId = "restart-transaction",
+                    accountId = "restart-account",
+                    bookingDate = "2026-09-07",
+                    amount = -7.50,
+                    reconciliationStatus = BankReconciliationStatus.NO_RECEIPT_REQUIRED,
+                    noReceiptReason = "Bankgebühr",
+                    importedAt = "2026-09-07T20:00:00Z",
+                    updatedAt = "2026-09-07T20:01:00Z"
+                )
+            )
+            first.close()
+            first = null
+
+            reopened = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+                .allowMainThreadQueries()
+                .build()
+            val restored = reopened.bankDao().getTransaction("restart-transaction")!!
+            assertEquals(BankReconciliationStatus.NO_RECEIPT_REQUIRED, restored.reconciliationStatus)
+            assertEquals("Bankgebühr", restored.noReceiptReason)
+            assertEquals("2026-09-07T20:01:00Z", restored.updatedAt)
+        } finally {
+            first?.close()
+            reopened?.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
     @Test fun schema6WithoutUpdatedAtStillRestores() = runTest {
         val old = JSONObject("""
             {"schemaVersion":6,
