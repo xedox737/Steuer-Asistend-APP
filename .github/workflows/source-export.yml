@@ -18,9 +18,9 @@ jobs:
         with:
           ref: main
       - name: Package source
-        run: tar --exclude=.git -czf steuer-assistent-source.tar.gz .
+        run: tar --exclude=.git -czf /tmp/steuer-assistent-source.tar.gz .
       - uses: actions/upload-artifact@v4
         with:
           name: steuer-assistent-source
-          path: steuer-assistent-source.tar.gz
+          path: /tmp/steuer-assistent-source.tar.gz
           if-no-files-found: error
