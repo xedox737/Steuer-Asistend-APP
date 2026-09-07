@@ -6,6 +6,7 @@ on:
       - agent/bank-phase1-finalclosure-20260907
     paths:
       - ".github/scripts/bank_phase1_finalclosure.py"
+      - ".github/scripts/bank_phase1_finalclosure_fix1.py"
       - ".github/workflows/bank-phase1-finalclosure.yml"
   workflow_dispatch:
 
@@ -53,18 +54,23 @@ jobs:
       - name: Apply guarded final closure patch
         run: |
           python3 .github/scripts/bank_phase1_finalclosure.py
+          python3 .github/scripts/bank_phase1_finalclosure_fix1.py
           git diff --check
-          git diff --stat
+          git status --short
 
-      - name: lintDebug
-        timeout-minutes: 10
-        run: gradle lintDebug --stacktrace --no-daemon
-
-      - name: testDebugUnitTest
+      - name: Recheck failed testDebugUnitTest step
         timeout-minutes: 12
         run: gradle testDebugUnitTest --stacktrace --no-daemon
 
-      - name: assembleDebug
+      - name: lintDebug full chain
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: testDebugUnitTest full chain
+        timeout-minutes: 12
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: assembleDebug full chain
         timeout-minutes: 10
         run: gradle assembleDebug --stacktrace --no-daemon
 
