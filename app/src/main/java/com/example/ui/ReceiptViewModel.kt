@@ -49,6 +49,7 @@ enum class AppScreen {
     TAX_CALCULATOR,
     DOCUMENTS,
     PROPERTIES,
+    BANK,
     MORE
 }
 
@@ -252,6 +253,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val isMatchingBankStatement = _isMatchingBankStatement.asStateFlow()
     private val _bankStatementResetVersion = MutableStateFlow(0)
     val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
+    private val _bankImportStatus = MutableStateFlow<String?>(null)
+    val bankImportStatus: StateFlow<String?> = _bankImportStatus.asStateFlow()
+    private val _pendingBankTransactionId = MutableStateFlow<String?>(null)
+    val pendingBankTransactionId: StateFlow<String?> = _pendingBankTransactionId.asStateFlow()
 
     // Google Drive Sync State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
@@ -319,6 +324,36 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
+        )
+
+    val bankAccounts: StateFlow<List<com.example.data.BankAccount>> =
+        database.bankDao().observeAccounts().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    val bankTransactions: StateFlow<List<com.example.data.BankTransaction>> =
+        database.bankDao().observeTransactions().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    val bankReceiptLinks: StateFlow<List<com.example.data.BankReceiptLink>> =
+        database.bankDao().observeLinks().stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    val bankMatchSuggestions: StateFlow<Map<String, com.example.data.BankMatchSuggestion>> =
+        combine(bankTransactions, receipts, bankReceiptLinks) { transactions, currentReceipts, links ->
+            com.example.data.BankReceiptMatcher.bestSuggestions(transactions, currentReceipts, links)
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyMap()
         )
 
     val deletedReceipts: StateFlow<List<Receipt>> = repository.deletedReceipts
@@ -1391,7 +1426,146 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun importBankFile(uri: android.net.Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _bankImportStatus.value = "Kontoauszug wird eingelesen …"
+            try {
+                val resolver = getApplication<Application>().contentResolver
+                val displayName = runCatching {
+                    resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                }.getOrNull().orEmpty().ifBlank { "Importiertes Konto" }
+                val text = resolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                    ?: throw IllegalArgumentException("Datei konnte nicht gelesen werden.")
+                val now = java.time.Instant.now().toString()
+                val trimmed = text.trimStart()
+                val batch = if (
+                    displayName.endsWith(".xml", ignoreCase = true) ||
+                    (trimmed.startsWith("<") && (
+                        trimmed.contains("BkToCstmrStmt", ignoreCase = true) ||
+                        trimmed.contains("camt.053", ignoreCase = true)
+                    ))
+                ) {
+                    com.example.data.BankImportParser.parseCamt053(text, displayName.substringBeforeLast('.'), now)
+                } else {
+                    com.example.data.BankImportParser.parseCsv(text, displayName.substringBeforeLast('.'), now)
+                }
+                val dao = database.bankDao()
+                val existingAccount = dao.getAccount(batch.account.accountId)
+                dao.upsertAccount(
+                    batch.account.copy(
+                        displayName = existingAccount?.displayName?.takeIf { it.isNotBlank() } ?: batch.account.displayName,
+                        bankName = existingAccount?.bankName.orEmpty().ifBlank { batch.account.bankName },
+                        createdAt = existingAccount?.createdAt?.takeIf { it.isNotBlank() } ?: batch.account.createdAt,
+                        updatedAt = now
+                    )
+                )
+                val insertResults = dao.insertTransactions(batch.transactions)
+                val inserted = insertResults.count { it != -1L }
+                val duplicates = batch.transactions.size - inserted
+                _bankImportStatus.value =
+                    "${batch.format}: ${batch.transactions.size} Buchungen erkannt • $inserted neu • $duplicates bereits vorhanden."
+            } catch (e: Exception) {
+                Log.e("ReceiptViewModel", "Bank import failed", e)
+                _bankImportStatus.value = "Import fehlgeschlagen: ${e.message ?: "unbekannter Fehler"}"
+            }
+        }
+    }
+
+    fun startReceiptFromBankTransaction(transaction: com.example.data.BankTransaction) {
+        _pendingBankTransactionId.value = transaction.transactionId
+        _scanState.value = ScanUiState.Success(
+            com.example.api.ExtractedReceipt(
+                aussteller = transaction.counterparty,
+                datum = transaction.bookingDate,
+                uhrzeit = "",
+                bruttobetrag = transaction.absoluteAmount,
+                hauptkategorie = "",
+                unterkategorie = "",
+                kontoNr = "",
+                beschreibung = transaction.purpose,
+                isEigenleistungSanierung = false,
+                wohneinheit = "",
+                mieter = "",
+                zahlungsart = "Überweisung",
+                positionen = emptyList()
+            )
+        )
+        _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
+    fun confirmBankReceiptLink(transactionId: String, receiptId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, receipt)
+        }
+    }
+
+    private suspend fun confirmBankReceiptLinkInternal(
+        transaction: com.example.data.BankTransaction,
+        receipt: Receipt
+    ): String {
+        val dao = database.bankDao()
+        val allLinks = dao.getAllLinks()
+        val allocation = com.example.data.BankLinkPolicy.propose(transaction, receipt, allLinks)
+        if (!allocation.allowed) return allocation.reason
+        dao.upsertLink(
+            com.example.data.BankReceiptLink(
+                linkId = com.example.data.BankLinkPolicy.linkId(transaction.transactionId, receipt.id, receipt.internalId),
+                transactionId = transaction.transactionId,
+                receiptId = receipt.id,
+                receiptInternalId = receipt.internalId,
+                allocatedAmount = allocation.amount,
+                status = com.example.data.BankLinkStatus.CONFIRMED,
+                createdAt = java.time.Instant.now().toString()
+            )
+        )
+        refreshBankTransactionStatus(transaction.transactionId)
+        return "Buchung und Beleg wurden bestätigt verbunden."
+    }
+
+    private suspend fun refreshBankTransactionStatus(transactionId: String) {
+        val dao = database.bankDao()
+        val transaction = dao.getTransaction(transactionId) ?: return
+        val allocated = dao.getLinksForTransaction(transactionId)
+            .filter { it.status == com.example.data.BankLinkStatus.CONFIRMED }
+            .sumOf { it.allocatedAmount }
+        val status = when {
+            allocated <= 0.009 -> com.example.data.BankReconciliationStatus.OPEN
+            allocated + 0.01 >= transaction.absoluteAmount -> com.example.data.BankReconciliationStatus.MATCHED
+            else -> com.example.data.BankReconciliationStatus.PARTIAL
+        }
+        dao.updateTransactionStatus(transactionId, status, "")
+    }
+
+    fun markBankTransactionNoReceiptRequired(transactionId: String, reason: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            if (dao.getLinksForTransaction(transactionId).isNotEmpty()) {
+                _bankImportStatus.value =
+                    "Die Buchung ist bereits mit einem Beleg verbunden. Verknüpfung zuerst lösen."
+                return@launch
+            }
+            dao.updateTransactionStatus(
+                transactionId,
+                com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
+                reason.trim()
+            )
+            _bankImportStatus.value = "Als „kein Beleg erforderlich“ markiert: ${reason.trim()}."
+        }
+    }
+
+    fun removeBankReceiptLink(linkId: String, transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.bankDao().deleteLink(linkId)
+            refreshBankTransactionStatus(transactionId)
+        }
+    }
+
     fun resetScanState() {
+        _pendingBankTransactionId.value = null
         _scanState.value = ScanUiState.Idle
     }
     
@@ -2118,6 +2292,9 @@ data class AiSearchUiState(
     )
 
     fun setScreen(screen: AppScreen) {
+        if (screen != AppScreen.ADD_RECEIPT) {
+            _pendingBankTransactionId.value = null
+        }
         _currentScreen.value = screen
         _scanState.value = ScanUiState.Idle
     }
@@ -2841,6 +3018,13 @@ data class AiSearchUiState(
             val newId = repository.insert(newReceipt)
             val savedReceipt = newReceipt.copy(id = newId.toInt())
 
+            _pendingBankTransactionId.value?.let { pendingTransactionId ->
+                database.bankDao().getTransaction(pendingTransactionId)?.let { transaction ->
+                    _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, savedReceipt)
+                }
+                _pendingBankTransactionId.value = null
+            }
+
             if (FirestoreService.isCloudActive()) {
                 FirestoreService.saveReceipt(savedReceipt)
             }
@@ -3188,6 +3372,8 @@ data class AiSearchUiState(
     fun resetLocalReceiptData() {
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearAllData()
+            database.bankDao().clearLinks()
+            database.bankDao().reopenLinkedTransactions()
 
             val editor = learnedRulesPrefs.edit()
             learnedRulesPrefs.all.keys

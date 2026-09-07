@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 4
+    internal const val SCHEMA_VERSION = 5
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -49,6 +49,9 @@ object SupplementalDriveBackup {
         put("logbookTrips", JSONArray().apply { database.logbookDao().getAllTrips().forEach { put(it.toJson()) } })
         put("standardRoutes", JSONArray().apply { database.logbookDao().getAllStandardRoutes().forEach { put(it.toJson()) } })
         put("managedDocuments", JSONArray().apply { database.managedDocumentDao().getAll().forEach { put(it.toBackupJson()) } })
+        put("bankAccounts", JSONArray().apply { database.bankDao().getAllAccounts().forEach { put(it.toBackupJson()) } })
+        put("bankTransactions", JSONArray().apply { database.bankDao().getAllTransactions().forEach { put(it.toBackupJson()) } })
+        put("bankReceiptLinks", JSONArray().apply { database.bankDao().getAllLinks().forEach { put(it.toBackupJson()) } })
         put("rentPlanPrefs", prefsToJson(context, "rent_plan_prefs"))
         put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
         put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
@@ -79,6 +82,18 @@ object SupplementalDriveBackup {
             }
             val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
             for (index in 0 until documents.length()) database.managedDocumentDao().upsert(documents.getJSONObject(index).toManagedDocument())
+            val bankAccounts = root.optJSONArray("bankAccounts") ?: JSONArray()
+            for (index in 0 until bankAccounts.length()) database.bankDao().upsertAccount(bankAccounts.getJSONObject(index).toBankAccount())
+            val bankTransactions = root.optJSONArray("bankTransactions") ?: JSONArray()
+            for (index in 0 until bankTransactions.length()) database.bankDao().upsertTransaction(bankTransactions.getJSONObject(index).toBankTransaction())
+            val bankLinks = root.optJSONArray("bankReceiptLinks") ?: JSONArray()
+            for (index in 0 until bankLinks.length()) {
+                val restored = bankLinks.getJSONObject(index).toBankReceiptLink()
+                val resolvedReceiptId = restored.receiptInternalId.takeIf { it.isNotBlank() }
+                    ?.let { database.receiptDao().getReceiptByInternalId(it)?.id }
+                    ?: restored.receiptId
+                database.bankDao().upsertLink(restored.copy(receiptId = resolvedReceiptId))
+            }
             database.managedDocumentDao().clearSearchIndex()
             database.managedDocumentDao().getAll().forEach { document ->
                 database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
@@ -91,6 +106,53 @@ object SupplementalDriveBackup {
         jsonToPrefs(context, "annual_tax_approval_prefs", root.optJSONObject("annualTaxApprovalPrefs"))
         jsonToPrefs(context, "wohneinheiten_prefs", root.optJSONObject("propertyUnitPrefs"))
     }
+
+    private fun BankAccount.toBackupJson() = JSONObject().apply {
+        put("accountId", accountId); put("displayName", displayName); put("bankName", bankName)
+        put("iban", iban); put("currency", currency); put("source", source); put("active", active)
+        put("createdAt", createdAt); put("updatedAt", updatedAt)
+    }
+
+    private fun JSONObject.toBankAccount() = BankAccount(
+        accountId = optString("accountId", ""), displayName = optString("displayName", ""),
+        bankName = optString("bankName", ""), iban = optString("iban", ""),
+        currency = optString("currency", "EUR"), source = optString("source", "CSV"),
+        active = optBoolean("active", true), createdAt = optString("createdAt", ""),
+        updatedAt = optString("updatedAt", "")
+    )
+
+    private fun BankTransaction.toBackupJson() = JSONObject().apply {
+        put("transactionId", transactionId); put("accountId", accountId); put("bookingDate", bookingDate)
+        put("valueDate", valueDate); put("amount", amount); put("currency", currency)
+        put("counterparty", counterparty); put("counterpartyIban", counterpartyIban); put("purpose", purpose)
+        put("bankReference", bankReference); put("source", source)
+        put("reconciliationStatus", reconciliationStatus); put("noReceiptReason", noReceiptReason)
+        put("importedAt", importedAt)
+    }
+
+    private fun JSONObject.toBankTransaction() = BankTransaction(
+        transactionId = optString("transactionId", ""), accountId = optString("accountId", ""),
+        bookingDate = optString("bookingDate", ""), valueDate = optString("valueDate", ""),
+        amount = optDouble("amount", 0.0), currency = optString("currency", "EUR"),
+        counterparty = optString("counterparty", ""), counterpartyIban = optString("counterpartyIban", ""),
+        purpose = optString("purpose", ""), bankReference = optString("bankReference", ""),
+        source = optString("source", "CSV"),
+        reconciliationStatus = optString("reconciliationStatus", BankReconciliationStatus.OPEN),
+        noReceiptReason = optString("noReceiptReason", ""), importedAt = optString("importedAt", "")
+    )
+
+    private fun BankReceiptLink.toBackupJson() = JSONObject().apply {
+        put("linkId", linkId); put("transactionId", transactionId); put("receiptId", receiptId)
+        put("receiptInternalId", receiptInternalId); put("allocatedAmount", allocatedAmount)
+        put("status", status); put("createdAt", createdAt)
+    }
+
+    private fun JSONObject.toBankReceiptLink() = BankReceiptLink(
+        linkId = optString("linkId", ""), transactionId = optString("transactionId", ""),
+        receiptId = optInt("receiptId", 0), receiptInternalId = optString("receiptInternalId", ""),
+        allocatedAmount = optDouble("allocatedAmount", 0.0),
+        status = optString("status", BankLinkStatus.CONFIRMED), createdAt = optString("createdAt", "")
+    )
 
     private fun Loan.toJson() = JSONObject().apply {
         put("id", id); put("bezeichnung", bezeichnung); put("bank", bank)

@@ -57,7 +57,7 @@ class SupplementalDriveBackupTest {
             .putString("google_routes_key_ciphertext", "MUST_NOT_LEAVE_DEVICE").apply()
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(4, payload.getInt("schemaVersion"))
+        assertEquals(5, payload.getInt("schemaVersion"))
         assertFalse(payload.toString().contains("MUST_NOT_LEAVE_DEVICE"))
         database.logbookDao().deleteTrip(41)
         database.logbookDao().deleteStandardRoute(17)
@@ -176,6 +176,32 @@ class SupplementalDriveBackupTest {
         assertEquals(1, repository.searchManagedDocuments("84.50").size)
         assertEquals(1, repository.searchManagedDocuments("", "property-1", "unit-1", "2026", ManagedDocumentType.RECHNUNG.name, "02_Belege/2026").size)
         assertTrue(repository.searchManagedDocuments("", "other-property").isEmpty())
+    }
+
+    @Test fun bankDataAndConfirmedLinksRestoreIdempotently() = runTest {
+        val receiptId = database.receiptDao().insertReceipt(
+            Receipt(
+                aussteller = "Hornbach", datum = "2026-09-04", uhrzeit = "", bruttobetrag = 247.38,
+                hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800",
+                beschreibung = "Material", internalId = "receipt-bank-test"
+            )
+        ).toInt()
+        val account = BankAccount("bank-1", "Hauskonto", iban = "DE123")
+        val transaction = BankTransaction("tx-1", "bank-1", "2026-09-04", amount = -247.38)
+        val link = BankReceiptLink("link-1", "tx-1", receiptId, "receipt-bank-test", 247.38)
+        database.bankDao().upsertAccount(account)
+        database.bankDao().upsertTransaction(transaction.copy(reconciliationStatus = BankReconciliationStatus.MATCHED))
+        database.bankDao().upsertLink(link)
+
+        val payload = SupplementalDriveBackup.createPayload(context, database)
+        database.bankDao().clearLinks()
+        database.bankDao().upsertTransaction(transaction)
+        SupplementalDriveBackup.restorePayload(context, database, payload)
+        SupplementalDriveBackup.restorePayload(context, database, payload)
+
+        assertEquals("DE123", database.bankDao().getAllAccounts().single { it.accountId == "bank-1" }.iban)
+        assertEquals(BankReconciliationStatus.MATCHED, database.bankDao().getTransaction("tx-1")?.reconciliationStatus)
+        assertEquals(247.38, database.bankDao().getAllLinks().single { it.linkId == "link-1" }.allocatedAmount, 0.001)
     }
 
     @Test fun schemaOneWithoutLogbookArraysStillRestores() = runTest {

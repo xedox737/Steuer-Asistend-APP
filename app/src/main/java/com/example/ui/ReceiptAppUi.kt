@@ -286,6 +286,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         AppScreen.TAX_CALCULATOR -> "Steuerschätzung"
         AppScreen.DOCUMENTS -> "Dokumentenakte"
         AppScreen.PROPERTIES -> "Immobilien"
+        AppScreen.BANK -> "Bank & Belege"
         AppScreen.MORE -> "Mehr"
     }
 
@@ -357,6 +358,12 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                         }
                     }
                     IconButton(
+                        onClick = { viewModel.setScreen(AppScreen.BANK) },
+                        modifier = Modifier.testTag("bank_navigation_button")
+                    ) {
+                        Icon(Icons.Default.AccountBalance, contentDescription = "Bank & Belege", tint = DarkNavy)
+                    }
+                    IconButton(
                         onClick = { showAccountSettingsDialog = true },
                         modifier = Modifier.testTag("account_settings_button")
                     ) {
@@ -393,7 +400,8 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             (screen == AppScreen.DASHBOARD && currentScreen in setOf(
                                 AppScreen.RENT_OVERVIEW,
                                 AppScreen.TAX_CALCULATOR
-                            ))
+                            )) ||
+                            (screen == AppScreen.MORE && currentScreen == AppScreen.BANK)
                         NavigationBarItem(
                             selected = isSelected,
                             onClick = { viewModel.setScreen(screen) },
@@ -448,6 +456,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.TAX_CALCULATOR -> TaxCalculatorScreen(viewModel)
                 AppScreen.DOCUMENTS -> DocumentManagementScreen(viewModel)
                 AppScreen.PROPERTIES -> ImmobilienManagerScreen(viewModel)
+                AppScreen.BANK -> BankScreen(viewModel)
                 AppScreen.MORE -> MoreScreen(viewModel)
             }
             }
