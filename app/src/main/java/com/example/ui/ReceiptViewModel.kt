@@ -347,9 +347,24 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
+    val bankLearningRules: StateFlow<List<com.example.data.BankLearningRule>> =
+        database.bankLearningRuleDao().observeRules().stateIn(
+            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
+        )
+
+    val bankRuleEvaluations: StateFlow<Map<String, com.example.data.BankRuleEvaluation>> =
+        combine(bankTransactions, bankLearningRules) { transactions, rules ->
+            transactions.associate { it.transactionId to com.example.data.BankRuleEngine.evaluate(it, rules) }
+        }.stateIn(scope=viewModelScope, started=SharingStarted.WhileSubscribed(5_000), initialValue=emptyMap())
+
     val bankMatchSuggestions: StateFlow<Map<String, com.example.data.BankMatchSuggestion>> =
-        combine(bankTransactions, receipts, bankReceiptLinks) { transactions, currentReceipts, links ->
-            com.example.data.BankReceiptMatcher.bestSuggestions(transactions, currentReceipts, links)
+        combine(bankTransactions, receipts, bankReceiptLinks, bankLearningRules) { transactions, currentReceipts, links, rules ->
+            val base = com.example.data.BankReceiptMatcher.bestSuggestions(transactions, currentReceipts, links)
+            base.mapValues { (transactionId, suggestion) ->
+                val tx = transactions.firstOrNull { it.transactionId == transactionId }
+                val receipt = currentReceipts.firstOrNull { it.id == suggestion.receiptId }
+                if (tx != null && receipt != null) com.example.data.BankRuleScoring.enhance(suggestion, tx, receipt, rules) else suggestion
+            }
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -1584,8 +1599,18 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
         updateReceiptPaymentFromConfirmedBankMatch(receipt, transaction)
         refreshBankTransactionStatus(transaction.transactionId)
+        val learning = com.example.data.BankLearningService(database.bankLearningRuleDao())
+        learning.recordConfirmed(transaction, receipt)
+        database.bankLearningRuleDao().getActiveRules().filter { com.example.data.BankRuleEngine.score(transaction, it) != null }.forEach { learning.recordRuleSuccess(it.ruleId) }
         return "Buchung und Beleg wurden bestätigt verbunden."
     }
+
+    fun saveBankRule(rule: com.example.data.BankLearningRule) { viewModelScope.launch(Dispatchers.IO) { database.bankLearningRuleDao().upsertRule(rule) } }
+    fun acceptBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).accept(ruleId) } }
+    fun rejectBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).reject(ruleId) } }
+    fun setBankRuleEnabled(ruleId: String, enabled: Boolean) { viewModelScope.launch(Dispatchers.IO) { val dao=database.bankLearningRuleDao(); val r=dao.getRule(ruleId)?:return@launch; dao.upsertRule(r.copy(enabled=enabled, state=com.example.data.BankRuleState.ACTIVE, updatedAt=java.time.Instant.now().toString())) } }
+    fun deleteBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { database.bankLearningRuleDao().deleteRule(ruleId) } }
+    fun rejectBankRuleMatch(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).recordRuleRejection(ruleId) } }
 
     private suspend fun refreshBankTransactionStatus(transactionId: String) {
         val dao = database.bankDao()
