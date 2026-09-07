@@ -14,16 +14,19 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BankMigration24AcceptanceTest {
-    @Test fun migration21To22To23To24PreservesCoreTablesAndCreatesBankSchema() = withDb(21) { db ->
+    @Test fun migration21To25PreservesCoreTablesAndCreatesBankAndRuleSchema() = withDb(21) { db ->
         createCoreSentinels(db)
         MIGRATION_21_22.migrate(db)
         MIGRATION_22_23.migrate(db)
         MIGRATION_23_24.migrate(db)
+        MIGRATION_24_25.migrate(db)
         assertCoreSentinels(db)
         assertTrue(columns(db, "bank_transactions").containsAll(setOf("propertyId", "unitId", "importFileName", "importRunId", "updatedAt")))
+        assertTrue(columns(db, "bank_learning_rules").containsAll(setOf("ruleId", "enabled", "state", "confidence", "accountId", "propertyId", "unitId")))
+        assertTrue(columns(db, "bank_rule_evidence").containsAll(setOf("evidenceId", "candidateKey", "transactionId", "receiptId")))
     }
 
-    @Test fun migration22To23To24PreservesCoreAndBankRows() = withDb(22) { db ->
+    @Test fun migration22To25PreservesCoreAndBankRows() = withDb(22) { db ->
         createCoreSentinels(db)
         createBank22(db)
         db.execSQL("INSERT INTO bank_accounts VALUES ('a','Haus','Sparkasse','DE1','EUR','CSV',1,'c','u')")
@@ -31,6 +34,7 @@ class BankMigration24AcceptanceTest {
         db.execSQL("INSERT INTO bank_receipt_links VALUES ('l','t',1,'r-1',84.5,'CONFIRMED','created')")
         MIGRATION_22_23.migrate(db)
         MIGRATION_23_24.migrate(db)
+        MIGRATION_24_25.migrate(db)
         assertCoreSentinels(db)
         db.query("SELECT bankName FROM bank_accounts WHERE accountId='a'").use {
             assertTrue(it.moveToFirst()); assertEquals("Sparkasse", it.getString(0))
@@ -43,13 +47,14 @@ class BankMigration24AcceptanceTest {
         }
     }
 
-    @Test fun migration23To24IsAdditiveAndPreservesBankRows() = withDb(23) { db ->
+    @Test fun migration23To25IsAdditiveAndPreservesBankRows() = withDb(23) { db ->
         createCoreSentinels(db)
         createBank23(db)
         db.execSQL("INSERT INTO bank_accounts VALUES ('a','Haus','Sparkasse','DE1','EUR','CSV',1,'c','u','Sergej')")
         db.execSQL("INSERT INTO bank_transactions VALUES ('t','a','2026-09-04','',-84.5,'EUR','Hornbach','','Material','R','CSV','OPEN','','import','p','u','konto.csv','run')")
         db.execSQL("INSERT INTO bank_receipt_links VALUES ('l','t',1,'r-1',84.5,'CONFIRMED','created','MANUELL')")
         MIGRATION_23_24.migrate(db)
+        MIGRATION_24_25.migrate(db)
         assertCoreSentinels(db)
         db.query("SELECT propertyId, importFileName, updatedAt FROM bank_transactions WHERE transactionId='t'").use {
             assertTrue(it.moveToFirst()); assertEquals("p", it.getString(0)); assertEquals("konto.csv", it.getString(1)); assertEquals("", it.getString(2))
@@ -59,11 +64,26 @@ class BankMigration24AcceptanceTest {
         }
     }
 
-    @Test fun freshDatabaseIsVersion24() {
+    @Test fun migration24To25PreservesCoreAndBankRowsAndCreatesLearningTables() = withDb(24) { db ->
+        createCoreSentinels(db)
+        createBank24(db)
+        db.execSQL("INSERT INTO bank_accounts VALUES ('a','Haus','Sparkasse','DE1','EUR','CSV',1,'c','u','Sergej')")
+        db.execSQL("INSERT INTO bank_transactions VALUES ('t','a','2026-09-04','',-84.5,'EUR','Hornbach','','Material','R','CSV','OPEN','','import','p','u','konto.csv','run','changed')")
+        db.execSQL("INSERT INTO bank_receipt_links VALUES ('l','t',1,'r-1',84.5,'CONFIRMED','created','MANUELL')")
+        MIGRATION_24_25.migrate(db)
+        assertCoreSentinels(db)
+        db.query("SELECT counterparty, updatedAt FROM bank_transactions WHERE transactionId='t'").use {
+            assertTrue(it.moveToFirst()); assertEquals("Hornbach", it.getString(0)); assertEquals("changed", it.getString(1))
+        }
+        assertTrue(columns(db, "bank_learning_rules").contains("receiptCategoryTarget"))
+        assertTrue(columns(db, "bank_rule_evidence").contains("paymentMethodTarget"))
+    }
+
+    @Test fun freshDatabaseIsVersion25() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         try {
-            assertEquals(24, database.openHelper.writableDatabase.version)
+            assertEquals(25, database.openHelper.writableDatabase.version)
         } finally {
             database.close()
         }
@@ -112,6 +132,11 @@ class BankMigration24AcceptanceTest {
         db.execSQL("CREATE TABLE bank_accounts (accountId TEXT NOT NULL PRIMARY KEY, displayName TEXT NOT NULL, bankName TEXT NOT NULL, iban TEXT NOT NULL, currency TEXT NOT NULL, source TEXT NOT NULL, active INTEGER NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, accountHolder TEXT NOT NULL)")
         db.execSQL("CREATE TABLE bank_transactions (transactionId TEXT NOT NULL PRIMARY KEY, accountId TEXT NOT NULL, bookingDate TEXT NOT NULL, valueDate TEXT NOT NULL, amount REAL NOT NULL, currency TEXT NOT NULL, counterparty TEXT NOT NULL, counterpartyIban TEXT NOT NULL, purpose TEXT NOT NULL, bankReference TEXT NOT NULL, source TEXT NOT NULL, reconciliationStatus TEXT NOT NULL, noReceiptReason TEXT NOT NULL, importedAt TEXT NOT NULL, propertyId TEXT NOT NULL, unitId TEXT NOT NULL, importFileName TEXT NOT NULL, importRunId TEXT NOT NULL)")
         db.execSQL("CREATE TABLE bank_receipt_links (linkId TEXT NOT NULL PRIMARY KEY, transactionId TEXT NOT NULL, receiptId INTEGER NOT NULL, receiptInternalId TEXT NOT NULL, allocatedAmount REAL NOT NULL, status TEXT NOT NULL, createdAt TEXT NOT NULL, source TEXT NOT NULL)")
+    }
+
+    private fun createBank24(db: SupportSQLiteDatabase) {
+        createBank23(db)
+        db.execSQL("ALTER TABLE bank_transactions ADD COLUMN updatedAt TEXT NOT NULL DEFAULT ''")
     }
 
     private fun columns(db: SupportSQLiteDatabase, table: String): Set<String> {
