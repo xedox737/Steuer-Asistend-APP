@@ -57,7 +57,7 @@ class SupplementalDriveBackupTest {
             .putString("google_routes_key_ciphertext", "MUST_NOT_LEAVE_DEVICE").apply()
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(5, payload.getInt("schemaVersion"))
+        assertEquals(6, payload.getInt("schemaVersion"))
         assertFalse(payload.toString().contains("MUST_NOT_LEAVE_DEVICE"))
         database.logbookDao().deleteTrip(41)
         database.logbookDao().deleteStandardRoute(17)
@@ -186,9 +186,15 @@ class SupplementalDriveBackupTest {
                 beschreibung = "Material", internalId = "receipt-bank-test"
             )
         ).toInt()
-        val account = BankAccount("bank-1", "Hauskonto", iban = "DE123")
-        val transaction = BankTransaction("tx-1", "bank-1", "2026-09-04", amount = -247.38)
-        val link = BankReceiptLink("link-1", "tx-1", receiptId, "receipt-bank-test", 247.38)
+        val account = BankAccount("bank-1", "Hauskonto", bankName = "Sparkasse", accountHolder = "Sergej", iban = "DE123")
+        val transaction = BankTransaction(
+            "tx-1", "bank-1", "2026-09-04", amount = -247.38,
+            propertyId = "property-1", unitId = "unit-1", importFileName = "konto.csv", importRunId = "import-1"
+        )
+        val link = BankReceiptLink(
+            "link-1", "tx-1", receiptId, "receipt-bank-test", 247.38,
+            source = BankLinkSource.NUTZER_BESTAETIGT
+        )
         database.bankDao().upsertAccount(account)
         database.bankDao().upsertTransaction(transaction.copy(reconciliationStatus = BankReconciliationStatus.MATCHED))
         database.bankDao().upsertLink(link)
@@ -199,9 +205,35 @@ class SupplementalDriveBackupTest {
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
 
-        assertEquals("DE123", database.bankDao().getAllAccounts().single { it.accountId == "bank-1" }.iban)
-        assertEquals(BankReconciliationStatus.MATCHED, database.bankDao().getTransaction("tx-1")?.reconciliationStatus)
-        assertEquals(247.38, database.bankDao().getAllLinks().single { it.linkId == "link-1" }.allocatedAmount, 0.001)
+        val restoredAccount = database.bankDao().getAllAccounts().single { it.accountId == "bank-1" }
+        val restoredTransaction = database.bankDao().getTransaction("tx-1")
+        val restoredLink = database.bankDao().getAllLinks().single { it.linkId == "link-1" }
+        assertEquals("DE123", restoredAccount.iban)
+        assertEquals("Sergej", restoredAccount.accountHolder)
+        assertEquals(BankReconciliationStatus.MATCHED, restoredTransaction?.reconciliationStatus)
+        assertEquals("property-1", restoredTransaction?.propertyId)
+        assertEquals("unit-1", restoredTransaction?.unitId)
+        assertEquals("konto.csv", restoredTransaction?.importFileName)
+        assertEquals("import-1", restoredTransaction?.importRunId)
+        assertEquals(247.38, restoredLink.allocatedAmount, 0.001)
+        assertEquals(BankLinkSource.NUTZER_BESTAETIGT, restoredLink.source)
+    }
+
+    @Test fun schemaFiveBankBackupWithoutCorrectionFieldsStillRestores() = runTest {
+        val old = JSONObject("""
+            {
+              "schemaVersion":5,
+              "bankAccounts":[{"accountId":"old-a","displayName":"Alt","bankName":"","iban":"DEOLD","currency":"EUR","source":"CSV","active":true,"createdAt":"","updatedAt":""}],
+              "bankTransactions":[{"transactionId":"old-t","accountId":"old-a","bookingDate":"2026-09-01","valueDate":"","amount":-10.0,"currency":"EUR","counterparty":"Alt","counterpartyIban":"","purpose":"","bankReference":"","source":"CSV","reconciliationStatus":"OPEN","noReceiptReason":"","importedAt":""}],
+              "bankReceiptLinks":[]
+            }
+        """.trimIndent())
+        SupplementalDriveBackup.restorePayload(context, database, old)
+        val account = database.bankDao().getAccount("old-a")
+        val transaction = database.bankDao().getTransaction("old-t")
+        assertEquals("", account?.accountHolder)
+        assertEquals("", transaction?.propertyId)
+        assertEquals("", transaction?.importRunId)
     }
 
     @Test fun schemaOneWithoutLogbookArraysStillRestores() = runTest {

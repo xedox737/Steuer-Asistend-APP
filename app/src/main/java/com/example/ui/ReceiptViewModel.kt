@@ -1440,16 +1440,32 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     ?: throw IllegalArgumentException("Datei konnte nicht gelesen werden.")
                 val now = java.time.Instant.now().toString()
                 val trimmed = text.trimStart()
-                val batch = if (
-                    displayName.endsWith(".xml", ignoreCase = true) ||
+                val isCamt = displayName.endsWith(".xml", ignoreCase = true) ||
                     (trimmed.startsWith("<") && (
                         trimmed.contains("BkToCstmrStmt", ignoreCase = true) ||
                         trimmed.contains("camt.053", ignoreCase = true)
                     ))
-                ) {
-                    com.example.data.BankImportParser.parseCamt053(text, displayName.substringBeforeLast('.'), now)
+                val importRunId = com.example.data.BankTransactionIdentity.importRunId(
+                    if (isCamt) "CAMT053" else "CSV",
+                    displayName,
+                    now
+                )
+                val batch = if (isCamt) {
+                    com.example.data.BankImportParser.parseCamt053(
+                        xml = text,
+                        fallbackAccountName = displayName.substringBeforeLast('.'),
+                        importedAt = now,
+                        importFileName = displayName,
+                        importRunId = importRunId
+                    )
                 } else {
-                    com.example.data.BankImportParser.parseCsv(text, displayName.substringBeforeLast('.'), now)
+                    com.example.data.BankImportParser.parseCsv(
+                        text = text,
+                        fallbackAccountName = displayName.substringBeforeLast('.'),
+                        importedAt = now,
+                        importFileName = displayName,
+                        importRunId = importRunId
+                    )
                 }
                 val dao = database.bankDao()
                 val existingAccount = dao.getAccount(batch.account.accountId)
@@ -1457,6 +1473,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     batch.account.copy(
                         displayName = existingAccount?.displayName?.takeIf { it.isNotBlank() } ?: batch.account.displayName,
                         bankName = existingAccount?.bankName.orEmpty().ifBlank { batch.account.bankName },
+                        accountHolder = existingAccount?.accountHolder.orEmpty().ifBlank { batch.account.accountHolder },
                         createdAt = existingAccount?.createdAt?.takeIf { it.isNotBlank() } ?: batch.account.createdAt,
                         updatedAt = now
                     )
@@ -1464,8 +1481,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val insertResults = dao.insertTransactions(batch.transactions)
                 val inserted = insertResults.count { it != -1L }
                 val duplicates = batch.transactions.size - inserted
-                _bankImportStatus.value =
-                    "${batch.format}: ${batch.transactions.size} Buchungen erkannt • $inserted neu • $duplicates bereits vorhanden."
+                val skippedOrInvalid = batch.skippedRows + batch.errorRows
+                _bankImportStatus.value = buildString {
+                    append("${batch.format}: ${batch.transactions.size} gültige Buchungen erkannt • $inserted neu • $duplicates Dubletten")
+                    if (skippedOrInvalid > 0) append(" • $skippedOrInvalid übersprungen/fehlerhaft")
+                    append(".")
+                }
             } catch (e: Exception) {
                 Log.e("ReceiptViewModel", "Bank import failed", e)
                 _bankImportStatus.value = "Import fehlgeschlagen: ${e.message ?: "unbekannter Fehler"}"
@@ -1488,6 +1509,32 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 isEigenleistungSanierung = false,
                 wohneinheit = "",
                 mieter = "",
+                zahlungsart = "Überweisung",
+                positionen = emptyList()
+            )
+        )
+        _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
+    fun startRentReceiptFromBankTransaction(
+        transaction: com.example.data.BankTransaction,
+        unit: WohneinheitStatus,
+        tenantName: String
+    ) {
+        _pendingBankTransactionId.value = transaction.transactionId
+        _scanState.value = ScanUiState.Success(
+            com.example.api.ExtractedReceipt(
+                aussteller = transaction.counterparty.ifBlank { tenantName },
+                datum = transaction.bookingDate,
+                uhrzeit = "",
+                bruttobetrag = transaction.absoluteAmount,
+                hauptkategorie = "Miete, Nebenkosten & Kaution",
+                unterkategorie = "Warmmiete",
+                kontoNr = "",
+                beschreibung = transaction.purpose.ifBlank { "Mietzahlung ${unit.name}" },
+                isEigenleistungSanierung = false,
+                wohneinheit = unit.name,
+                mieter = tenantName,
                 zahlungsart = "Überweisung",
                 positionen = emptyList()
             )
@@ -1519,9 +1566,23 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 receiptInternalId = receipt.internalId,
                 allocatedAmount = allocation.amount,
                 status = com.example.data.BankLinkStatus.CONFIRMED,
+                source = com.example.data.BankLinkSource.NUTZER_BESTAETIGT,
                 createdAt = java.time.Instant.now().toString()
             )
         )
+        val propertyId = receipt.propertyId.takeIf { it.isNotBlank() }.orEmpty()
+        val unitId = _wohneinheitenStatus.value.firstOrNull { unit ->
+            receipt.wohneinheit.isNotBlank() && (unit.name.equals(receipt.wohneinheit, true) || unit.label.equals(receipt.wohneinheit, true))
+        }?.let { unit -> PropertyUnitScopedData.stableUnitId(propertyId.ifBlank { com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID }, unit) }.orEmpty()
+        if ((transaction.propertyId.isBlank() && propertyId.isNotBlank()) || (transaction.unitId.isBlank() && unitId.isNotBlank())) {
+            dao.upsertTransaction(
+                transaction.copy(
+                    propertyId = transaction.propertyId.ifBlank { propertyId },
+                    unitId = transaction.unitId.ifBlank { unitId }
+                )
+            )
+        }
+        updateReceiptPaymentFromConfirmedBankMatch(receipt, transaction)
         refreshBankTransactionStatus(transaction.transactionId)
         return "Buchung und Beleg wurden bestätigt verbunden."
     }
@@ -1529,15 +1590,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun refreshBankTransactionStatus(transactionId: String) {
         val dao = database.bankDao()
         val transaction = dao.getTransaction(transactionId) ?: return
-        val allocated = dao.getLinksForTransaction(transactionId)
-            .filter { it.status == com.example.data.BankLinkStatus.CONFIRMED }
-            .sumOf { it.allocatedAmount }
-        val status = when {
-            allocated <= 0.009 -> com.example.data.BankReconciliationStatus.OPEN
-            allocated + 0.01 >= transaction.absoluteAmount -> com.example.data.BankReconciliationStatus.MATCHED
-            else -> com.example.data.BankReconciliationStatus.PARTIAL
-        }
+        val status = com.example.data.BankLinkPolicy.statusFor(transaction, dao.getLinksForTransaction(transactionId))
         dao.updateTransactionStatus(transactionId, status, "")
+    }
+
+    private suspend fun updateReceiptPaymentFromConfirmedBankMatch(
+        receipt: Receipt,
+        transaction: com.example.data.BankTransaction
+    ) {
+        val decision = com.example.data.BankPaymentMethodPolicy.fromConfirmedBankMatch(transaction, receipt) ?: return
+        repository.insert(
+            receipt.copy(
+                zahlungsart = decision.method,
+                zahlungsartQuelle = decision.source,
+                zahlungsartConfidence = decision.confidence
+            )
+        )
     }
 
     fun markBankTransactionNoReceiptRequired(transactionId: String, reason: String) {
@@ -1559,8 +1627,24 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun removeBankReceiptLink(linkId: String, transactionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            database.bankDao().deleteLink(linkId)
+            val dao = database.bankDao()
+            val link = dao.getLink(linkId)
+            dao.deleteLink(linkId)
             refreshBankTransactionStatus(transactionId)
+            if (link != null) {
+                val receipt = repository.getReceiptById(link.receiptId)
+                val remainingReceiptLinks = dao.getLinksForReceipt(link.receiptId, link.receiptInternalId)
+                if (receipt != null && remainingReceiptLinks.isEmpty() && receipt.zahlungsartQuelle.equals("BANKABGLEICH", true)) {
+                    repository.insert(
+                        receipt.copy(
+                            zahlungsart = "Unbekannt",
+                            zahlungsartQuelle = "UNBEKANNT",
+                            zahlungsartConfidence = 0.0
+                        )
+                    )
+                }
+            }
+            _bankImportStatus.value = "Zuordnung wurde gelöst."
         }
     }
 

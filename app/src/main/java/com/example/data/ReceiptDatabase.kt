@@ -582,7 +582,18 @@ val MIGRATION_21_22 = object : androidx.room.migration.Migration(21, 22) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class], version = 22, exportSchema = false)
+val MIGRATION_22_23 = object : androidx.room.migration.Migration(22, 23) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE bank_accounts ADD COLUMN accountHolder TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE bank_transactions ADD COLUMN propertyId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE bank_transactions ADD COLUMN unitId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE bank_transactions ADD COLUMN importFileName TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE bank_transactions ADD COLUMN importRunId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE bank_receipt_links ADD COLUMN source TEXT NOT NULL DEFAULT 'NUTZER_BESTAETIGT'")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class], version = 23, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -608,7 +619,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
@@ -39,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,19 +50,33 @@ import com.example.data.BankReceiptMatcher
 import com.example.data.BankReconciliationStatus
 import com.example.data.BankTransaction
 import com.example.data.Receipt
+import com.example.data.StableDocumentIdentity
+import java.time.LocalDate
+import java.time.YearMonth
 
 private enum class BankListFilter { REVIEW, MATCHED, ALL }
 
+private data class BankRentHint(
+    val unit: WohneinheitStatus,
+    val tenantName: String,
+    val expected: Double,
+    val score: Int
+)
+
 @Composable
 fun BankScreen(viewModel: ReceiptViewModel) {
+    val context = LocalContext.current
     val transactions by viewModel.bankTransactions.collectAsState()
     val accounts by viewModel.bankAccounts.collectAsState()
     val links by viewModel.bankReceiptLinks.collectAsState()
     val receipts by viewModel.receipts.collectAsState()
     val suggestions by viewModel.bankMatchSuggestions.collectAsState()
     val importStatus by viewModel.bankImportStatus.collectAsState()
+    val units by viewModel.wohneinheitenStatus.collectAsState()
+    val property by viewModel.propertyMetadata.collectAsState()
 
     var filter by remember { mutableStateOf(BankListFilter.REVIEW) }
+    var selectedAccountId by remember { mutableStateOf<String?>(null) }
     var receiptPickerFor by remember { mutableStateOf<BankTransaction?>(null) }
     var noReceiptFor by remember { mutableStateOf<BankTransaction?>(null) }
 
@@ -68,20 +84,30 @@ fun BankScreen(viewModel: ReceiptViewModel) {
         if (uri != null) viewModel.importBankFile(uri)
     }
 
-    val reviewCount = transactions.count {
-        it.reconciliationStatus in setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.PARTIAL, BankReconciliationStatus.REVIEW)
+    val filteredTransactions = remember(transactions, selectedAccountId) {
+        selectedAccountId?.let { accountId -> transactions.filter { it.accountId == accountId } } ?: transactions
     }
-    val matchedCount = transactions.count { it.reconciliationStatus == BankReconciliationStatus.MATCHED }
-    val noReceiptCount = transactions.count { it.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED }
+    val propertyId = property?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
+    val rentHints = remember(filteredTransactions, receipts, units, propertyId) {
+        filteredTransactions.filter { it.amount > 0 && it.reconciliationStatus in setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.REVIEW) }
+            .mapNotNull { tx -> bestRentHint(context, propertyId, tx, units, receipts)?.let { tx.transactionId to it } }
+            .toMap()
+    }
+    val reviewStates = setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.PARTIAL, BankReconciliationStatus.REVIEW)
+    val reviewCount = filteredTransactions.count { it.reconciliationStatus in reviewStates }
+    val matchedCount = filteredTransactions.count { it.reconciliationStatus == BankReconciliationStatus.MATCHED }
+    val missingReceiptCount = filteredTransactions.count { transaction ->
+        transaction.amount < 0 && transaction.reconciliationStatus in reviewStates &&
+            (transaction.reconciliationStatus == BankReconciliationStatus.PARTIAL || suggestions[transaction.transactionId] == null)
+    }
+    val noReceiptCount = filteredTransactions.count { it.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED }
     val shown = when (filter) {
-        BankListFilter.REVIEW -> transactions.filter {
-            it.reconciliationStatus in setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.PARTIAL, BankReconciliationStatus.REVIEW)
-        }
-        BankListFilter.MATCHED -> transactions.filter {
+        BankListFilter.REVIEW -> filteredTransactions.filter { it.reconciliationStatus in reviewStates }
+        BankListFilter.MATCHED -> filteredTransactions.filter {
             it.reconciliationStatus == BankReconciliationStatus.MATCHED ||
                 it.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED
         }
-        BankListFilter.ALL -> transactions
+        BankListFilter.ALL -> filteredTransactions
     }
 
     LazyColumn(
@@ -111,6 +137,32 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                         fontSize = 13.sp,
                         color = SlateGray
                     )
+                    if (accounts.isNotEmpty()) {
+                        Text("Konto", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            item {
+                                FilterChip(
+                                    selected = selectedAccountId == null,
+                                    onClick = { selectedAccountId = null },
+                                    label = { Text("Alle Konten") }
+                                )
+                            }
+                            items(accounts, key = { it.accountId }) { account ->
+                                FilterChip(
+                                    selected = selectedAccountId == account.accountId,
+                                    onClick = { selectedAccountId = account.accountId },
+                                    label = {
+                                        Text(
+                                            buildString {
+                                                append(account.displayName.ifBlank { "Bankkonto" })
+                                                maskedIban(account.iban).takeIf { it.isNotBlank() }?.let { append(" • ").append(it) }
+                                            }
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
                     Button(
                         onClick = {
                             importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/octet-stream", "text/plain"))
@@ -128,10 +180,15 @@ fun BankScreen(viewModel: ReceiptViewModel) {
         }
 
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BankSummaryCard("Zu prüfen", reviewCount.toString(), Modifier.weight(1f))
-                BankSummaryCard("Zugeordnet", matchedCount.toString(), Modifier.weight(1f))
-                BankSummaryCard("Ohne Beleg", noReceiptCount.toString(), Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BankSummaryCard("Zu prüfen", reviewCount.toString(), Modifier.weight(1f))
+                    BankSummaryCard("Beleg fehlt", missingReceiptCount.toString(), Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BankSummaryCard("Zugeordnet", matchedCount.toString(), Modifier.weight(1f))
+                    BankSummaryCard("Kein Beleg nötig", noReceiptCount.toString(), Modifier.weight(1f))
+                }
             }
         }
 
@@ -150,7 +207,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     border = BorderStroke(1.dp, BorderColor)
                 ) {
                     Text(
-                        if (transactions.isEmpty()) "Importiere zuerst einen CSV- oder CAMT.053-Kontoauszug." else "Hier ist aktuell nichts zu prüfen.",
+                        if (transactions.isEmpty()) "Importiere zuerst einen CSV- oder CAMT.053-Kontoauszug." else "Für die aktuelle Kontoauswahl ist hier nichts zu prüfen.",
                         modifier = Modifier.padding(16.dp),
                         color = SlateGray
                     )
@@ -162,12 +219,17 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     transaction = transaction,
                     suggestion = suggestions[transaction.transactionId],
                     receipt = suggestions[transaction.transactionId]?.receiptId?.let { id -> receipts.firstOrNull { it.id == id } },
+                    linkedLinks = links.filter { it.transactionId == transaction.transactionId },
+                    receipts = receipts,
+                    rentHint = rentHints[transaction.transactionId],
                     onConfirmSuggestion = { suggestion ->
                         viewModel.confirmBankReceiptLink(transaction.transactionId, suggestion.receiptId)
                     },
                     onCreateReceipt = { viewModel.startReceiptFromBankTransaction(transaction) },
+                    onCreateRentReceipt = { hint -> viewModel.startRentReceiptFromBankTransaction(transaction, hint.unit, hint.tenantName) },
                     onPickReceipt = { receiptPickerFor = transaction },
-                    onNoReceipt = { noReceiptFor = transaction }
+                    onNoReceipt = { noReceiptFor = transaction },
+                    onUnlink = { link -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }
                 )
             }
         }
@@ -175,18 +237,18 @@ fun BankScreen(viewModel: ReceiptViewModel) {
         val unlinkedReceipts = receipts.filter { receipt ->
             links.none { it.receiptId == receipt.id || (receipt.internalId.isNotBlank() && it.receiptInternalId == receipt.internalId) }
         }
-        if (transactions.isNotEmpty() && unlinkedReceipts.isNotEmpty()) {
+        if (filteredTransactions.isNotEmpty() && unlinkedReceipts.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(4.dp))
                 Text("Belege ohne Bankzuordnung", fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text("Auch andersherum: vom Beleg zur passenden Buchung.", fontSize = 12.sp, color = SlateGray)
             }
             items(unlinkedReceipts.take(20), key = { "receipt-${it.id}" }) { receipt ->
-                val reverse = BankReceiptMatcher.bestForReceipt(receipt, transactions, links)
+                val reverse = BankReceiptMatcher.bestForReceipt(receipt, filteredTransactions, links)
                 ReverseReceiptCard(
                     receipt = receipt,
                     suggestion = reverse,
-                    transaction = reverse?.transactionId?.let { txId -> transactions.firstOrNull { it.transactionId == txId } },
+                    transaction = reverse?.transactionId?.let { txId -> filteredTransactions.firstOrNull { it.transactionId == txId } },
                     onConfirm = { txId -> viewModel.confirmBankReceiptLink(txId, receipt.id) }
                 )
             }
@@ -219,6 +281,46 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     }
 }
 
+private fun bestRentHint(
+    context: android.content.Context,
+    propertyId: String,
+    transaction: BankTransaction,
+    units: List<WohneinheitStatus>,
+    receipts: List<Receipt>
+): BankRentHint? {
+    if (transaction.amount <= 0) return null
+    val month = runCatching { YearMonth.from(LocalDate.parse(transaction.bookingDate)) }.getOrNull() ?: return null
+    return units.mapNotNull { unit ->
+        val projection = RentTrackingLogic.month(context, propertyId, unit, receipts, month)
+        if (projection.expected <= 0.01) return@mapNotNull null
+        var score = 0
+        val amountDiff = kotlin.math.abs(transaction.amount - projection.expected)
+        score += when {
+            amountDiff <= 0.01 -> 55
+            amountDiff <= 5.0 -> 35
+            amountDiff / projection.expected <= 0.05 -> 20
+            else -> 0
+        }
+        val bankText = normalizeRentText("${transaction.counterparty} ${transaction.purpose}")
+        val tenantText = normalizeRentText(projection.tenantNames)
+        if (tenantText.isNotBlank() && tenantText.split(' ').filter { it.length >= 3 }.any { it in bankText }) score += 25
+        val unitTokens = normalizeRentText("${unit.name} ${unit.label}").split(' ').filter { it.length >= 2 }
+        if (unitTokens.any { it in bankText }) score += 10
+        if ("miete" in bankText) score += 10
+        BankRentHint(unit, projection.tenantNames, projection.expected, score.coerceAtMost(100)).takeIf { score >= 60 }
+    }.maxByOrNull { it.score }
+}
+
+private fun normalizeRentText(value: String): String = value.lowercase(java.util.Locale.GERMANY)
+    .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    .replace(Regex("[^a-z0-9]+"), " ").trim()
+
+private fun maskedIban(iban: String): String {
+    val compact = iban.replace(" ", "").trim()
+    if (compact.length <= 8) return compact
+    return compact.take(4) + "••••" + compact.takeLast(4)
+}
+
 @Composable
 private fun BankSummaryCard(title: String, value: String, modifier: Modifier = Modifier) {
     Card(
@@ -238,10 +340,15 @@ private fun BankTransactionCard(
     transaction: BankTransaction,
     suggestion: BankMatchSuggestion?,
     receipt: Receipt?,
+    linkedLinks: List<BankReceiptLink>,
+    receipts: List<Receipt>,
+    rentHint: BankRentHint?,
     onConfirmSuggestion: (BankMatchSuggestion) -> Unit,
     onCreateReceipt: () -> Unit,
+    onCreateRentReceipt: (BankRentHint) -> Unit,
     onPickReceipt: () -> Unit,
-    onNoReceipt: () -> Unit
+    onNoReceipt: () -> Unit,
+    onUnlink: (BankReceiptLink) -> Unit
 ) {
     val statusText = when (transaction.reconciliationStatus) {
         BankReconciliationStatus.MATCHED -> "Zugeordnet"
@@ -271,6 +378,21 @@ private fun BankTransactionCard(
             }
             Text(statusText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
 
+            if (linkedLinks.isNotEmpty()) {
+                HorizontalDivider()
+                Text("Bestätigte Zuordnungen", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                linkedLinks.forEach { link ->
+                    val linkedReceipt = receipts.firstOrNull { it.id == link.receiptId || (link.receiptInternalId.isNotBlank() && it.internalId == link.receiptInternalId) }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(linkedReceipt?.aussteller?.ifBlank { "Beleg ${link.receiptId}" } ?: "Beleg ${link.receiptId}", fontSize = 12.sp)
+                            Text("${NumberFormatter.format(link.allocatedAmount)} zugeordnet", fontSize = 11.sp, color = SlateGray)
+                        }
+                        TextButton(onClick = { onUnlink(link) }) { Text("Zuordnung lösen") }
+                    }
+                }
+            }
+
             if (transaction.reconciliationStatus !in setOf(BankReconciliationStatus.MATCHED, BankReconciliationStatus.NO_RECEIPT_REQUIRED)) {
                 if (suggestion != null && receipt != null) {
                     HorizontalDivider()
@@ -288,6 +410,19 @@ private fun BankTransactionCard(
                         Text("  Beleg zuordnen")
                     }
                 }
+                if (rentHint != null && suggestion == null) {
+                    HorizontalDivider()
+                    Text(
+                        "Mögliche Mietzahlung ${rentHint.score}% • ${rentHint.unit.label.ifBlank { rentHint.unit.name }} • Soll ${NumberFormatter.format(rentHint.expected)}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DarkNavy
+                    )
+                    Text("Mieter: ${rentHint.tenantName.ifBlank { "nicht hinterlegt" }}", fontSize = 11.sp, color = SlateGray)
+                    Button(onClick = { onCreateRentReceipt(rentHint) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Als Mietbeleg prüfen und anlegen")
+                    }
+                }
                 OutlinedButton(onClick = onPickReceipt, modifier = Modifier.fillMaxWidth()) {
                     Text("Vorhandenen Beleg suchen")
                 }
@@ -301,7 +436,7 @@ private fun BankTransactionCard(
             } else if (transaction.reconciliationStatus == BankReconciliationStatus.MATCHED) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldGreen)
-                    Text("  Bestätigt verbunden", fontSize = 12.sp, color = EmeraldGreen)
+                    Text("  Vollständig zugeordnet", fontSize = 12.sp, color = EmeraldGreen)
                 }
             } else {
                 Text(transaction.noReceiptReason, fontSize = 12.sp, color = SlateGray)
