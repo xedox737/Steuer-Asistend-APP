@@ -145,7 +145,7 @@ replace_once(
 # Guardrails before Gradle sees the result.
 required = {
     "app/src/main/java/com/example/data/ReceiptDatabase.kt": ["version = 22", "MIGRATION_21_22", "abstract fun bankDao(): BankDao"],
-    "app/src/main/java/com/example/ui/ReceiptViewModel.kt": ["AppScreen.BANK", "fun importBankFile", "fun startReceiptFromBankTransaction"],
+    "app/src/main/java/com/example/ui/ReceiptViewModel.kt": ["    BANK,", "fun importBankFile", "fun startReceiptFromBankTransaction"],
     "app/src/main/java/com/example/ui/ReceiptAppUi.kt": ["AppScreen.BANK -> BankScreen(viewModel)", 'contentDescription = "Bank & Belege"'],
     "app/src/main/java/com/example/data/SupplementalDriveBackup.kt": ["SCHEMA_VERSION = 5", '"bankTransactions"', '"bankReceiptLinks"'],
 }
