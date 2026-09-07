@@ -34,6 +34,19 @@ jobs:
               raise SystemExit('legacy schema assertion anchor missing')
           p.write_text(s.replace(old, 'assertEquals(8, payload.getInt("schemaVersion"))', 1))
           PY
+      - name: Create local debug keystore
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
       - name: Focused backup acceptance
         run: |
           set +e
@@ -52,6 +65,7 @@ jobs:
       - name: Commit verified product patch
         run: |
           rm .github/scripts/phase2a_apply.py .github/scripts/phase2a_fix_restore.py .github/workflows/phase2a-integrate.yml
+          rm -f debug.keystore
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
