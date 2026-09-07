@@ -27,6 +27,19 @@ jobs:
           git apply --check /tmp/bank-phase1.patch
           git apply /tmp/bank-phase1.patch
 
+      - name: Apply verified CAMT call correction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/example/ui/ReceiptViewModel.kt')
+          text = path.read_text()
+          old = '''com.example.data.BankImportParser.parseCamt053(\n                        text = text,'''
+          new = '''com.example.data.BankImportParser.parseCamt053(\n                        xml = text,'''
+          if old not in text:
+              raise SystemExit('Expected CAMT parser call not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
