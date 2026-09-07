@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 5
+    internal const val SCHEMA_VERSION = 6
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -109,13 +109,13 @@ object SupplementalDriveBackup {
 
     private fun BankAccount.toBackupJson() = JSONObject().apply {
         put("accountId", accountId); put("displayName", displayName); put("bankName", bankName)
-        put("iban", iban); put("currency", currency); put("source", source); put("active", active)
+        put("accountHolder", accountHolder); put("iban", iban); put("currency", currency); put("source", source); put("active", active)
         put("createdAt", createdAt); put("updatedAt", updatedAt)
     }
 
     private fun JSONObject.toBankAccount() = BankAccount(
         accountId = optString("accountId", ""), displayName = optString("displayName", ""),
-        bankName = optString("bankName", ""), iban = optString("iban", ""),
+        bankName = optString("bankName", ""), accountHolder = optString("accountHolder", ""), iban = optString("iban", ""),
         currency = optString("currency", "EUR"), source = optString("source", "CSV"),
         active = optBoolean("active", true), createdAt = optString("createdAt", ""),
         updatedAt = optString("updatedAt", "")
@@ -126,6 +126,8 @@ object SupplementalDriveBackup {
         put("valueDate", valueDate); put("amount", amount); put("currency", currency)
         put("counterparty", counterparty); put("counterpartyIban", counterpartyIban); put("purpose", purpose)
         put("bankReference", bankReference); put("source", source)
+        put("propertyId", propertyId); put("unitId", unitId)
+        put("importFileName", importFileName); put("importRunId", importRunId)
         put("reconciliationStatus", reconciliationStatus); put("noReceiptReason", noReceiptReason)
         put("importedAt", importedAt)
     }
@@ -136,7 +138,9 @@ object SupplementalDriveBackup {
         amount = optDouble("amount", 0.0), currency = optString("currency", "EUR"),
         counterparty = optString("counterparty", ""), counterpartyIban = optString("counterpartyIban", ""),
         purpose = optString("purpose", ""), bankReference = optString("bankReference", ""),
-        source = optString("source", "CSV"),
+        source = optString("source", "CSV"), propertyId = optString("propertyId", ""),
+        unitId = optString("unitId", ""), importFileName = optString("importFileName", ""),
+        importRunId = optString("importRunId", ""),
         reconciliationStatus = optString("reconciliationStatus", BankReconciliationStatus.OPEN),
         noReceiptReason = optString("noReceiptReason", ""), importedAt = optString("importedAt", "")
     )
@@ -144,14 +148,15 @@ object SupplementalDriveBackup {
     private fun BankReceiptLink.toBackupJson() = JSONObject().apply {
         put("linkId", linkId); put("transactionId", transactionId); put("receiptId", receiptId)
         put("receiptInternalId", receiptInternalId); put("allocatedAmount", allocatedAmount)
-        put("status", status); put("createdAt", createdAt)
+        put("status", status); put("source", source); put("createdAt", createdAt)
     }
 
     private fun JSONObject.toBankReceiptLink() = BankReceiptLink(
         linkId = optString("linkId", ""), transactionId = optString("transactionId", ""),
         receiptId = optInt("receiptId", 0), receiptInternalId = optString("receiptInternalId", ""),
         allocatedAmount = optDouble("allocatedAmount", 0.0),
-        status = optString("status", BankLinkStatus.CONFIRMED), createdAt = optString("createdAt", "")
+        status = optString("status", BankLinkStatus.CONFIRMED),
+        source = optString("source", BankLinkSource.NUTZER_BESTAETIGT), createdAt = optString("createdAt", "")
     )
 
     private fun Loan.toJson() = JSONObject().apply {

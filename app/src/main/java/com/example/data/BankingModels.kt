@@ -26,11 +26,19 @@ object BankLinkStatus {
     const val CONFIRMED = "CONFIRMED"
 }
 
+object BankLinkSource {
+    const val AUTO_VORSCHLAG = "AUTO_VORSCHLAG"
+    const val KI_VORSCHLAG = "KI_VORSCHLAG"
+    const val NUTZER_BESTAETIGT = "NUTZER_BESTAETIGT"
+    const val MANUELL = "MANUELL"
+}
+
 @Entity(tableName = "bank_accounts")
 data class BankAccount(
     @PrimaryKey val accountId: String,
     val displayName: String,
     val bankName: String = "",
+    val accountHolder: String = "",
     val iban: String = "",
     val currency: String = "EUR",
     val source: String = "CSV",
@@ -59,6 +67,10 @@ data class BankTransaction(
     val purpose: String = "",
     val bankReference: String = "",
     val source: String = "CSV",
+    val propertyId: String = "",
+    val unitId: String = "",
+    val importFileName: String = "",
+    val importRunId: String = "",
     val reconciliationStatus: String = BankReconciliationStatus.OPEN,
     val noReceiptReason: String = "",
     val importedAt: String = ""
@@ -82,6 +94,7 @@ data class BankReceiptLink(
     val receiptInternalId: String = "",
     val allocatedAmount: Double,
     val status: String = BankLinkStatus.CONFIRMED,
+    val source: String = BankLinkSource.NUTZER_BESTAETIGT,
     val createdAt: String = ""
 )
 
@@ -129,6 +142,9 @@ interface BankDao {
     @Query("SELECT * FROM bank_receipt_links WHERE receiptId = :receiptId OR (:receiptInternalId != '' AND receiptInternalId = :receiptInternalId)")
     suspend fun getLinksForReceipt(receiptId: Int, receiptInternalId: String = ""): List<BankReceiptLink>
 
+    @Query("SELECT * FROM bank_receipt_links WHERE linkId = :linkId LIMIT 1")
+    suspend fun getLink(linkId: String): BankReceiptLink?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertLink(link: BankReceiptLink)
 
@@ -145,7 +161,9 @@ interface BankDao {
 data class BankImportBatch(
     val account: BankAccount,
     val transactions: List<BankTransaction>,
-    val format: String
+    val format: String,
+    val skippedRows: Int = 0,
+    val errorRows: Int = 0
 )
 
 data class BankMatchSuggestion(
@@ -163,6 +181,9 @@ object BankTransactionIdentity {
 
     fun accountId(source: String, iban: String, fallbackName: String): String =
         "bank-" + sha256("${source.trim().uppercase()}|${normalize(iban)}|${normalize(fallbackName)}").take(24)
+
+    fun importRunId(source: String, fileName: String, importedAt: String): String =
+        "import-" + sha256("${source.trim().uppercase()}|${normalize(fileName)}|${importedAt.trim()}").take(24)
 
     fun transactionId(
         accountId: String,
@@ -213,7 +234,15 @@ object BankImportParser {
     private val referenceAliases = listOf("referenz", "kundenreferenz", "end-to-end-referenz", "endtoendid", "bankreferenz")
     private val ownIbanAliases = listOf("konto iban", "kontonummer/iban", "eigene iban")
 
-    fun parseCsv(text: String, fallbackAccountName: String = "Importiertes Konto", importedAt: String = ""): BankImportBatch {
+    fun parseCsv(
+        text: String,
+        fallbackAccountName: String = "Importiertes Konto",
+        importedAt: String = "",
+        importFileName: String = "",
+        importRunId: String = "",
+        propertyId: String = "",
+        unitId: String = ""
+    ): BankImportBatch {
         val lines = text.replace("\r\n", "\n").replace('\r', '\n').lines().filter { it.isNotBlank() }
         require(lines.size >= 2) { "CSV enthält keine Buchungen." }
         val delimiter = detectDelimiter(lines.first())
@@ -241,11 +270,18 @@ object BankImportParser {
         }.orEmpty()
         val accountId = BankTransactionIdentity.accountId("CSV", ownIban, fallbackAccountName)
         val seenCanonical = mutableMapOf<String, Int>()
+        var errorRows = 0
+        val effectiveRunId = importRunId.ifBlank {
+            BankTransactionIdentity.importRunId("CSV", importFileName.ifBlank { fallbackAccountName }, importedAt)
+        }
         val transactions = rows.drop(1).mapNotNull { row ->
             val rawAmount = row.getOrNull(amountIdx).orEmpty()
-            val amount = parseAmount(rawAmount) ?: return@mapNotNull null
+            val amount = parseAmount(rawAmount)
             val bookingDate = normalizeDate(row.getOrNull(bookingIdx).orEmpty())
-            if (bookingDate.isBlank()) return@mapNotNull null
+            if (amount == null || bookingDate.isBlank()) {
+                errorRows++
+                return@mapNotNull null
+            }
             val valueDate = normalizeDate(row.getOrNull(valueIdx).orEmpty())
             val counterparty = row.getOrNull(counterpartyIdx).orEmpty().trim()
             val purpose = row.getOrNull(purposeIdx).orEmpty().trim()
@@ -269,6 +305,10 @@ object BankImportParser {
                 purpose = purpose,
                 bankReference = reference,
                 source = "CSV",
+                propertyId = propertyId,
+                unitId = unitId,
+                importFileName = importFileName,
+                importRunId = effectiveRunId,
                 importedAt = importedAt
             )
         }
@@ -284,11 +324,21 @@ object BankImportParser {
                 updatedAt = importedAt
             ),
             transactions = transactions,
-            format = "CSV"
+            format = "CSV",
+            skippedRows = 0,
+            errorRows = errorRows
         )
     }
 
-    fun parseCamt053(xml: String, fallbackAccountName: String = "Importiertes Konto", importedAt: String = ""): BankImportBatch {
+    fun parseCamt053(
+        xml: String,
+        fallbackAccountName: String = "Importiertes Konto",
+        importedAt: String = "",
+        importFileName: String = "",
+        importRunId: String = "",
+        propertyId: String = "",
+        unitId: String = ""
+    ): BankImportBatch {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isNamespaceAware = true
         runCatching { factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
@@ -300,18 +350,34 @@ object BankImportParser {
         val doc = factory.newDocumentBuilder().parse(xml.byteInputStream())
         val accountIban = firstText(doc.documentElement, "IBAN")
         val currency = firstText(doc.documentElement, "Ccy").ifBlank { "EUR" }
+        val accountHolder = firstText(doc.documentElement, "Ownr").trim()
         val accountId = BankTransactionIdentity.accountId("CAMT053", accountIban, fallbackAccountName)
         val nodes = doc.getElementsByTagNameNS("*", "Ntry")
         val seenCanonical = mutableMapOf<String, Int>()
+        var errorRows = 0
+        val effectiveRunId = importRunId.ifBlank {
+            BankTransactionIdentity.importRunId("CAMT053", importFileName.ifBlank { fallbackAccountName }, importedAt)
+        }
         val transactions = buildList {
             for (index in 0 until nodes.length) {
-                val entry = nodes.item(index) as? Element ?: continue
-                val amountElement = entry.getElementsByTagNameNS("*", "Amt").item(0) as? Element ?: continue
-                val rawAmount = amountElement.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: continue
+                val entry = nodes.item(index) as? Element
+                if (entry == null) {
+                    errorRows++
+                    continue
+                }
+                val amountElement = entry.getElementsByTagNameNS("*", "Amt").item(0) as? Element
+                val rawAmount = amountElement?.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull()
+                if (amountElement == null || rawAmount == null) {
+                    errorRows++
+                    continue
+                }
                 val creditDebit = firstText(entry, "CdtDbtInd").uppercase()
                 val signedAmount = if (creditDebit == "DBIT") -kotlin.math.abs(rawAmount) else kotlin.math.abs(rawAmount)
                 val bookingDate = firstDate(entry, "BookgDt")
-                if (bookingDate.isBlank()) continue
+                if (bookingDate.isBlank()) {
+                    errorRows++
+                    continue
+                }
                 val valueDate = firstDate(entry, "ValDt")
                 val reference = firstNonBlank(
                     firstText(entry, "AcctSvcrRef"),
@@ -343,6 +409,10 @@ object BankImportParser {
                         purpose = purpose,
                         bankReference = reference,
                         source = "CAMT053",
+                        propertyId = propertyId,
+                        unitId = unitId,
+                        importFileName = importFileName,
+                        importRunId = effectiveRunId,
                         importedAt = importedAt
                     )
                 )
@@ -353,6 +423,7 @@ object BankImportParser {
             account = BankAccount(
                 accountId = accountId,
                 displayName = fallbackAccountName,
+                accountHolder = accountHolder,
                 iban = accountIban,
                 currency = currency,
                 source = "CAMT053",
@@ -360,7 +431,9 @@ object BankImportParser {
                 updatedAt = importedAt
             ),
             transactions = transactions,
-            format = "CAMT.053"
+            format = "CAMT.053",
+            skippedRows = 0,
+            errorRows = errorRows
         )
     }
 
@@ -469,7 +542,7 @@ object BankReceiptMatcher {
             .filterNot { it.id in linkedReceiptIds }
             .filter { receiptDirectionMatches(transaction, it) }
             .map { score(transaction, it) }
-            .filter { it.score >= 35 }
+            .filter { it.score >= 45 }
             .maxWithOrNull(compareBy<BankMatchSuggestion> { it.score }.thenByDescending { it.receiptId })
     }
 
@@ -485,7 +558,7 @@ object BankReceiptMatcher {
             .filter { it.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED }
             .filter { receiptDirectionMatches(it, receipt) }
             .map { score(it, receipt) }
-            .filter { it.score >= 35 }
+            .filter { it.score >= 45 }
             .maxWithOrNull(compareBy<BankMatchSuggestion> { it.score }.thenBy { it.transactionId })
     }
 
@@ -520,9 +593,39 @@ object BankReceiptMatcher {
         val receiptTokens = normalize(listOf(receipt.beschreibung, receipt.aussteller, receipt.displayId.orEmpty(), receipt.internalId).joinToString(" "))
             .split(" ").filter { it.length >= 4 }.toSet()
         val purposeTokens = purposeNorm.split(" ").filter { it.length >= 4 }.toSet()
-        if (purposeTokens.intersect(receiptTokens).size >= 2) { score += 7; reasons += "Verwendungszweck passt" }
+        val purposeOverlap = purposeTokens.intersect(receiptTokens).size
+        if (purposeOverlap >= 2) { score += 7; reasons += "Verwendungszweck passt" }
+        if (transaction.counterparty.isNotBlank() && receipt.aussteller.isNotBlank() && partyScore < 0.25 && purposeOverlap == 0) {
+            score -= 35
+            reasons += "Zahlungspartner weicht ab"
+        }
         if (receipt.displayId?.takeIf { it.isNotBlank() }?.let { normalize(transaction.purpose).contains(normalize(it)) } == true) {
             score += 10; reasons += "Belegnummer im Verwendungszweck"
+        }
+        if (transaction.isIncome && isIncomeReceipt(receipt)) {
+            val tenant = receipt.mieter.ifBlank { receipt.aussteller }
+            val tenantSimilarity = tokenSimilarity(transaction.counterparty, tenant)
+            if (tenantSimilarity >= 0.75) {
+                score += 12
+                reasons += "Mietername passt"
+            } else if (tenantSimilarity >= 0.45) {
+                score += 6
+                reasons += "Mietername ähnlich"
+            }
+            val normalizedPurpose = normalize(transaction.purpose)
+            val normalizedUnit = normalize(receipt.wohneinheit)
+            if (normalizedUnit.isNotBlank() && normalizedPurpose.contains(normalizedUnit)) {
+                score += 8
+                reasons += "Wohneinheit im Verwendungszweck"
+            }
+            if (transaction.propertyId.isNotBlank() && transaction.propertyId == receipt.propertyId) {
+                score += 5
+                reasons += "Immobilie passt"
+            }
+            if (rentPeriodMatches(transaction.purpose, receipt.beschreibung, transaction.bookingDate, receipt.datum)) {
+                score += 5
+                reasons += "Mietmonat passt"
+            }
         }
         val confidence = when {
             score >= 85 -> "HOCH"
@@ -533,9 +636,25 @@ object BankReceiptMatcher {
     }
 
     private fun receiptDirectionMatches(transaction: BankTransaction, receipt: Receipt): Boolean {
-        val incomeReceipt = receipt.hauptkategorie.equals("Miete, Nebenkosten & Kaution", true) ||
-            receipt.hauptkategorie.equals("Sonstige Einnahmen", true)
+        val incomeReceipt = isIncomeReceipt(receipt)
         return if (transaction.isIncome) incomeReceipt else !incomeReceipt
+    }
+
+    private fun isIncomeReceipt(receipt: Receipt): Boolean =
+        receipt.hauptkategorie.equals("Miete, Nebenkosten & Kaution", true) ||
+            receipt.hauptkategorie.equals("Sonstige Einnahmen", true)
+
+    private fun rentPeriodMatches(purpose: String, description: String, bookingDate: String, receiptDate: String): Boolean {
+        val monthTokens = listOf(
+            "januar", "februar", "maerz", "märz", "april", "mai", "juni",
+            "juli", "august", "september", "oktober", "november", "dezember"
+        )
+        val left = normalize(purpose)
+        val right = normalize(description)
+        if (monthTokens.any { token -> normalize(token).let { it in left && it in right } }) return true
+        val bookingMonth = runCatching { LocalDate.parse(bookingDate).monthValue }.getOrNull()
+        val receiptMonth = runCatching { LocalDate.parse(receiptDate).monthValue }.getOrNull()
+        return bookingMonth != null && bookingMonth == receiptMonth
     }
 
     private fun dateDistance(a: String, b: String): Long? = runCatching {
@@ -552,6 +671,17 @@ object BankReceiptMatcher {
     private fun normalize(value: String): String = value.lowercase(java.util.Locale.GERMANY)
         .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
         .replace(Regex("[^a-z0-9]+"), " ").trim()
+}
+
+object BankPaymentMethodPolicy {
+    data class Decision(val method: String, val source: String = "BANKABGLEICH", val confidence: Double = 1.0)
+
+    fun fromConfirmedBankMatch(transaction: BankTransaction, receipt: Receipt): Decision? {
+        if (receipt.zahlungsartQuelle.equals("NUTZER_BESTAETIGT", true)) return null
+        val text = "${transaction.purpose} ${transaction.counterparty}".lowercase(java.util.Locale.GERMANY)
+        val method = if (text.contains("lastschrift")) "Lastschrift" else "Überweisung"
+        return Decision(method)
+    }
 }
 
 object BankLinkPolicy {
@@ -575,6 +705,17 @@ object BankLinkPolicy {
         val amount = minOf(txRemaining, receiptRemaining)
         return if (amount > 0.009) Allocation(true, amount, txRemaining, receiptRemaining)
         else Allocation(false, 0.0, txRemaining, receiptRemaining, "Buchung oder Beleg ist bereits vollständig zugeordnet.")
+    }
+
+    fun statusFor(transaction: BankTransaction, existingLinks: List<BankReceiptLink>): String {
+        val allocated = existingLinks
+            .filter { it.transactionId == transaction.transactionId && it.status == BankLinkStatus.CONFIRMED }
+            .sumOf { it.allocatedAmount }
+        return when {
+            allocated <= 0.009 -> BankReconciliationStatus.OPEN
+            allocated + 0.01 >= transaction.absoluteAmount -> BankReconciliationStatus.MATCHED
+            else -> BankReconciliationStatus.PARTIAL
+        }
     }
 
     fun linkId(transactionId: String, receiptId: Int, receiptInternalId: String): String =
