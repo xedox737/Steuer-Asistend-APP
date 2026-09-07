@@ -51,6 +51,7 @@ import com.example.data.BankMatchSuggestion
 import com.example.data.BankReceiptLink
 import com.example.data.BankReceiptMatcher
 import com.example.data.BankReconciliationStatus
+import com.example.data.BankReviewUiPolicy
 import com.example.data.BankTransaction
 import com.example.data.Receipt
 import com.example.data.StableDocumentIdentity
@@ -105,20 +106,16 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             .mapNotNull { tx -> bestRentHint(context, propertyId, tx, units, receipts)?.let { tx.transactionId to it } }
             .toMap()
     }
-    val reviewStates = setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.PARTIAL, BankReconciliationStatus.REVIEW)
-    val reviewCount = filteredTransactions.count { it.reconciliationStatus in reviewStates }
-    val matchedCount = filteredTransactions.count { it.reconciliationStatus == BankReconciliationStatus.MATCHED }
+    val reviewCount = filteredTransactions.count { BankReviewUiPolicy.isReviewQueue(it.reconciliationStatus) }
+    val matchedCount = filteredTransactions.count { BankReviewUiPolicy.isMatched(it.reconciliationStatus) }
     val missingReceiptCount = filteredTransactions.count { transaction ->
-        transaction.amount < 0 && transaction.reconciliationStatus in reviewStates &&
+        transaction.amount < 0 && BankReviewUiPolicy.isReviewQueue(transaction.reconciliationStatus) &&
             (transaction.reconciliationStatus == BankReconciliationStatus.PARTIAL || suggestions[transaction.transactionId] == null)
     }
-    val noReceiptCount = filteredTransactions.count { it.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED }
+    val noReceiptCount = filteredTransactions.count { BankReviewUiPolicy.isNoReceiptRequired(it.reconciliationStatus) }
     val shown = when (filter) {
-        BankListFilter.REVIEW -> filteredTransactions.filter { it.reconciliationStatus in reviewStates }
-        BankListFilter.MATCHED -> filteredTransactions.filter {
-            it.reconciliationStatus == BankReconciliationStatus.MATCHED ||
-                it.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED
-        }
+        BankListFilter.REVIEW -> filteredTransactions.filter { BankReviewUiPolicy.isReviewQueue(it.reconciliationStatus) }
+        BankListFilter.MATCHED -> filteredTransactions.filter { BankReviewUiPolicy.isCompleted(it.reconciliationStatus) }
         BankListFilter.ALL -> filteredTransactions
     }
 
@@ -243,6 +240,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     onCreateRentReceipt = { hint -> viewModel.startRentReceiptFromBankTransaction(transaction, hint.unit, hint.tenantName) },
                     onPickReceipt = { receiptPickerFor = transaction },
                     onNoReceipt = { noReceiptFor = transaction },
+                    onManualReview = { viewModel.markBankTransactionForReview(transaction.transactionId) },
                     onReopen = { viewModel.reopenBankTransaction(transaction.transactionId) },
                     onUnlink = { link -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }
                 )
@@ -382,6 +380,7 @@ private fun BankTransactionCard(
     onCreateRentReceipt: (BankRentHint) -> Unit,
     onPickReceipt: () -> Unit,
     onNoReceipt: () -> Unit,
+    onManualReview: () -> Unit,
     onReopen: () -> Unit,
     onUnlink: (BankReceiptLink) -> Unit
 ) {
@@ -486,8 +485,19 @@ private fun BankTransactionCard(
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text("  Beleg aus Buchung anlegen")
                 }
-                TextButton(onClick = onNoReceipt, modifier = Modifier.align(Alignment.End)) {
-                    Text("Kein Beleg erforderlich")
+                if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN && linkedLinks.isEmpty()) {
+                    OutlinedButton(onClick = onManualReview, modifier = Modifier.fillMaxWidth()) {
+                        Text("Manuell prüfen")
+                    }
+                } else if (transaction.reconciliationStatus == BankReconciliationStatus.REVIEW && linkedLinks.isEmpty()) {
+                    OutlinedButton(onClick = onReopen, modifier = Modifier.fillMaxWidth()) {
+                        Text("Wieder auf offen setzen")
+                    }
+                }
+                if (transaction.reconciliationStatus != BankReconciliationStatus.REVIEW) {
+                    TextButton(onClick = onNoReceipt, modifier = Modifier.align(Alignment.End)) {
+                        Text("Kein Beleg erforderlich")
+                    }
                 }
             } else if (transaction.reconciliationStatus == BankReconciliationStatus.MATCHED) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -1626,20 +1626,30 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun markBankTransactionForReview(transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val status = com.example.data.BankReviewStatusService(database.bankDao())
+                .markForReview(transactionId)
+            _bankImportStatus.value = when (status) {
+                com.example.data.BankReconciliationStatus.REVIEW -> "Buchung wurde zur manuellen Prüfung markiert."
+                com.example.data.BankReconciliationStatus.PARTIAL,
+                com.example.data.BankReconciliationStatus.MATCHED -> "Buchung bleibt gemäß bestehender Zuordnung verknüpft."
+                com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED -> "Buchung zuerst wieder öffnen, bevor sie manuell geprüft wird."
+                else -> "Bankstatus blieb unverändert."
+            }
+        }
+    }
+
     fun reopenBankTransaction(transactionId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val dao = database.bankDao()
-            if (dao.getLinksForTransaction(transactionId).isNotEmpty()) {
-                refreshBankTransactionStatus(transactionId)
-            } else {
-                dao.updateTransactionStatus(
-                    transactionId,
-                    com.example.data.BankReconciliationStatus.OPEN,
-                    "",
-                    java.time.Instant.now().toString()
-                )
+            val status = com.example.data.BankReviewStatusService(database.bankDao())
+                .reopen(transactionId)
+            _bankImportStatus.value = when (status) {
+                com.example.data.BankReconciliationStatus.OPEN -> "Buchung wurde wieder zur Prüfung geöffnet."
+                com.example.data.BankReconciliationStatus.PARTIAL,
+                com.example.data.BankReconciliationStatus.MATCHED -> "Buchung bleibt gemäß bestehender Zuordnung verknüpft."
+                else -> "Bankstatus blieb unverändert."
             }
-            _bankImportStatus.value = "Buchung wurde wieder zur Prüfung geöffnet."
         }
     }
 
