@@ -22,7 +22,17 @@ jobs:
         with:
           gradle-version: "9.3.1"
       - name: Apply guarded patch
-        run: python3 .github/scripts/phase2a_apply.py
+        run: |
+          python3 .github/scripts/phase2a_apply.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt')
+          s=p.read_text()
+          old='assertEquals(7, payload.getInt("schemaVersion"))'
+          if old not in s:
+              raise SystemExit('legacy schema assertion anchor missing')
+          p.write_text(s.replace(old, 'assertEquals(8, payload.getInt("schemaVersion"))', 1))
+          PY
       - name: Verify
         run: |
           gradle lintDebug --stacktrace --no-daemon
@@ -35,5 +45,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "Implement Bank Phase 2A learning rules core"
+          git commit -m "Implement Bank Phase 2A learning rules"
           git push origin HEAD:agent/bank-phase2a-learning-rules
