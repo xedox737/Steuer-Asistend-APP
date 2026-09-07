@@ -296,8 +296,8 @@ object BankImportParser {
         runCatching { factory.setFeature("http://xml.org/sax/features/external-general-entities", false) }
         runCatching { factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
         runCatching { factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
-        runCatching { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-        runCatching { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
+        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
         val doc = factory.newDocumentBuilder().parse(xml.byteInputStream())
         val accountIban = firstText(doc.documentElement, "IBAN")
         val currency = firstText(doc.documentElement, "Ccy").ifBlank { "EUR" }
