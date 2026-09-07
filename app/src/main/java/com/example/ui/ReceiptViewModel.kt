@@ -1591,7 +1591,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val dao = database.bankDao()
         val transaction = dao.getTransaction(transactionId) ?: return
         val status = com.example.data.BankLinkPolicy.statusFor(transaction, dao.getLinksForTransaction(transactionId))
-        dao.updateTransactionStatus(transactionId, status, "")
+        dao.updateTransactionStatus(transactionId, status, "", java.time.Instant.now().toString())
     }
 
     private suspend fun updateReceiptPaymentFromConfirmedBankMatch(
@@ -1619,9 +1619,27 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             dao.updateTransactionStatus(
                 transactionId,
                 com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
-                reason.trim()
+                reason.trim(),
+                java.time.Instant.now().toString()
             )
             _bankImportStatus.value = "Als „kein Beleg erforderlich“ markiert: ${reason.trim()}."
+        }
+    }
+
+    fun reopenBankTransaction(transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            if (dao.getLinksForTransaction(transactionId).isNotEmpty()) {
+                refreshBankTransactionStatus(transactionId)
+            } else {
+                dao.updateTransactionStatus(
+                    transactionId,
+                    com.example.data.BankReconciliationStatus.OPEN,
+                    "",
+                    java.time.Instant.now().toString()
+                )
+            }
+            _bankImportStatus.value = "Buchung wurde wieder zur Prüfung geöffnet."
         }
     }
 
@@ -3457,7 +3475,7 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) {
             repository.clearAllData()
             database.bankDao().clearLinks()
-            database.bankDao().reopenLinkedTransactions()
+            database.bankDao().reopenLinkedTransactions(java.time.Instant.now().toString())
 
             val editor = learnedRulesPrefs.edit()
             learnedRulesPrefs.all.keys

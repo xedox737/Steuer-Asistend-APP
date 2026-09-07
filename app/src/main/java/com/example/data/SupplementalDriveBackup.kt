@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 6
+    internal const val SCHEMA_VERSION = 7
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -129,7 +129,7 @@ object SupplementalDriveBackup {
         put("propertyId", propertyId); put("unitId", unitId)
         put("importFileName", importFileName); put("importRunId", importRunId)
         put("reconciliationStatus", reconciliationStatus); put("noReceiptReason", noReceiptReason)
-        put("importedAt", importedAt)
+        put("importedAt", importedAt); put("updatedAt", updatedAt)
     }
 
     private fun JSONObject.toBankTransaction() = BankTransaction(
@@ -142,7 +142,8 @@ object SupplementalDriveBackup {
         unitId = optString("unitId", ""), importFileName = optString("importFileName", ""),
         importRunId = optString("importRunId", ""),
         reconciliationStatus = optString("reconciliationStatus", BankReconciliationStatus.OPEN),
-        noReceiptReason = optString("noReceiptReason", ""), importedAt = optString("importedAt", "")
+        noReceiptReason = optString("noReceiptReason", ""), importedAt = optString("importedAt", ""),
+        updatedAt = optString("updatedAt", "")
     )
 
     private fun BankReceiptLink.toBackupJson() = JSONObject().apply {
