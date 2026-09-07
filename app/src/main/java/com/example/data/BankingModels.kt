@@ -73,7 +73,8 @@ data class BankTransaction(
     val importRunId: String = "",
     val reconciliationStatus: String = BankReconciliationStatus.OPEN,
     val noReceiptReason: String = "",
-    val importedAt: String = ""
+    val importedAt: String = "",
+    val updatedAt: String = ""
 ) {
     val isIncome: Boolean get() = amount > 0.0
     val absoluteAmount: Double get() = kotlin.math.abs(amount)
@@ -127,8 +128,8 @@ interface BankDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTransaction(transaction: BankTransaction)
 
-    @Query("UPDATE bank_transactions SET reconciliationStatus = :status, noReceiptReason = :reason WHERE transactionId = :transactionId")
-    suspend fun updateTransactionStatus(transactionId: String, status: String, reason: String = "")
+    @Query("UPDATE bank_transactions SET reconciliationStatus = :status, noReceiptReason = :reason, updatedAt = :updatedAt WHERE transactionId = :transactionId")
+    suspend fun updateTransactionStatus(transactionId: String, status: String, reason: String = "", updatedAt: String)
 
     @Query("SELECT * FROM bank_receipt_links ORDER BY createdAt DESC, linkId")
     fun observeLinks(): Flow<List<BankReceiptLink>>
@@ -154,8 +155,8 @@ interface BankDao {
     @Query("DELETE FROM bank_receipt_links")
     suspend fun clearLinks()
 
-    @Query("UPDATE bank_transactions SET reconciliationStatus = 'OPEN', noReceiptReason = '' WHERE reconciliationStatus IN ('MATCHED','PARTIAL')")
-    suspend fun reopenLinkedTransactions()
+    @Query("UPDATE bank_transactions SET reconciliationStatus = 'OPEN', noReceiptReason = '', updatedAt = :updatedAt WHERE reconciliationStatus IN ('MATCHED','PARTIAL')")
+    suspend fun reopenLinkedTransactions(updatedAt: String)
 }
 
 data class BankImportBatch(
@@ -229,6 +230,8 @@ object BankImportParser {
     )
     private val purposeAliases = listOf("verwendungszweck", "buchungstext", "text", "purpose", "umsatztext")
     private val amountAliases = listOf("betrag", "umsatz", "amount")
+    private val debitAliases = listOf("soll", "belastung", "debit")
+    private val creditAliases = listOf("haben", "gutschrift", "credit")
     private val currencyAliases = listOf("waehrung", "währung", "currency")
     private val ibanAliases = listOf("iban", "gegenkonto iban", "empfaenger iban", "empfänger iban")
     private val referenceAliases = listOf("referenz", "kundenreferenz", "end-to-end-referenz", "endtoendid", "bankreferenz")
@@ -258,12 +261,14 @@ object BankImportParser {
         val counterpartyIdx = indexOf(counterpartyAliases)
         val purposeIdx = indexOf(purposeAliases)
         val amountIdx = indexOf(amountAliases)
+        val debitIdx = indexOf(debitAliases)
+        val creditIdx = indexOf(creditAliases)
         val currencyIdx = indexOf(currencyAliases)
         val ibanIdx = indexOf(ibanAliases)
         val refIdx = indexOf(referenceAliases)
         val ownIbanIdx = indexOf(ownIbanAliases)
         require(bookingIdx >= 0) { "CSV-Spalte für Buchungsdatum wurde nicht erkannt." }
-        require(amountIdx >= 0) { "CSV-Spalte für Betrag wurde nicht erkannt." }
+        require(amountIdx >= 0 || debitIdx >= 0 || creditIdx >= 0) { "CSV-Spalte für Betrag bzw. Soll/Haben wurde nicht erkannt." }
 
         val ownIban = rows.drop(1).firstNotNullOfOrNull { row ->
             row.getOrNull(ownIbanIdx).orEmpty().trim().takeIf { ownIbanIdx >= 0 && it.isNotBlank() }
@@ -275,8 +280,7 @@ object BankImportParser {
             BankTransactionIdentity.importRunId("CSV", importFileName.ifBlank { fallbackAccountName }, importedAt)
         }
         val transactions = rows.drop(1).mapNotNull { row ->
-            val rawAmount = row.getOrNull(amountIdx).orEmpty()
-            val amount = parseAmount(rawAmount)
+            val amount = parseCsvAmount(row, amountIdx, debitIdx, creditIdx)
             val bookingDate = normalizeDate(row.getOrNull(bookingIdx).orEmpty())
             if (amount == null || bookingDate.isBlank()) {
                 errorRows++
@@ -309,7 +313,8 @@ object BankImportParser {
                 unitId = unitId,
                 importFileName = importFileName,
                 importRunId = effectiveRunId,
-                importedAt = importedAt
+                importedAt = importedAt,
+                updatedAt = importedAt
             )
         }
         require(transactions.isNotEmpty()) { "Keine gültigen CSV-Buchungen erkannt." }
@@ -413,7 +418,8 @@ object BankImportParser {
                         unitId = unitId,
                         importFileName = importFileName,
                         importRunId = effectiveRunId,
-                        importedAt = importedAt
+                        importedAt = importedAt,
+                        updatedAt = importedAt
                     )
                 )
             }
@@ -435,6 +441,23 @@ object BankImportParser {
             skippedRows = 0,
             errorRows = errorRows
         )
+    }
+
+    private fun parseCsvAmount(row: List<String>, amountIdx: Int, debitIdx: Int, creditIdx: Int): Double? {
+        // A populated normal amount column remains authoritative. Soll/Haben is only
+        // used when no normal amount is present on that row, preventing double booking.
+        if (amountIdx >= 0) {
+            val rawAmount = row.getOrNull(amountIdx).orEmpty().trim()
+            if (rawAmount.isNotBlank()) return parseAmount(rawAmount)
+        }
+        val debit = if (debitIdx >= 0) parseAmount(row.getOrNull(debitIdx).orEmpty()) else null
+        val credit = if (creditIdx >= 0) parseAmount(row.getOrNull(creditIdx).orEmpty()) else null
+        return when {
+            debit != null && credit == null -> -kotlin.math.abs(debit)
+            credit != null && debit == null -> kotlin.math.abs(credit)
+            debit == null && credit == null -> null
+            else -> null // ambiguous row: never create two or guessed bookings
+        }
     }
 
     private fun detectDelimiter(line: String): Char =
@@ -565,10 +588,24 @@ object BankReceiptMatcher {
     fun rankReceipts(transaction: BankTransaction, receipts: List<Receipt>, links: List<BankReceiptLink>): List<BankMatchSuggestion> =
         receipts.asSequence()
             .filter { receiptDirectionMatches(transaction, it) }
+            .filter { BankLinkPolicy.propose(transaction, it, links).allowed }
             .map { score(transaction, it) }
             .sortedByDescending { it.score }
             .take(30)
             .toList()
+
+    fun rankTransactionsForReceipt(
+        receipt: Receipt,
+        transactions: List<BankTransaction>,
+        links: List<BankReceiptLink>
+    ): List<BankMatchSuggestion> = transactions.asSequence()
+        .filter { it.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED }
+        .filter { receiptDirectionMatches(it, receipt) }
+        .filter { BankLinkPolicy.propose(it, receipt, links).allowed }
+        .map { score(it, receipt) }
+        .sortedWith(compareByDescending<BankMatchSuggestion> { it.score }.thenBy { it.transactionId })
+        .take(50)
+        .toList()
 
     fun score(transaction: BankTransaction, receipt: Receipt): BankMatchSuggestion {
         var score = 0
@@ -627,12 +664,15 @@ object BankReceiptMatcher {
                 reasons += "Mietmonat passt"
             }
         }
+        val paymentAdjustment = BankPaymentMatchScore.adjustment(transaction, receipt)
+        score += paymentAdjustment.points
+        reasons += paymentAdjustment.reasons
         val confidence = when {
             score >= 85 -> "HOCH"
             score >= 65 -> "MITTEL"
             else -> "NIEDRIG"
         }
-        return BankMatchSuggestion(transaction.transactionId, receipt.id, score.coerceAtMost(100), confidence, reasons)
+        return BankMatchSuggestion(transaction.transactionId, receipt.id, score.coerceIn(0, 100), confidence, reasons)
     }
 
     private fun receiptDirectionMatches(transaction: BankTransaction, receipt: Receipt): Boolean {

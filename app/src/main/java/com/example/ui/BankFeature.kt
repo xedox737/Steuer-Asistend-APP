@@ -30,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +45,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.BankLoanMatcher
+import com.example.data.BankLoanSuggestion
 import com.example.data.BankMatchSuggestion
 import com.example.data.BankReceiptLink
 import com.example.data.BankReceiptMatcher
@@ -74,10 +77,12 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     val importStatus by viewModel.bankImportStatus.collectAsState()
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val property by viewModel.propertyMetadata.collectAsState()
+    val loans by viewModel.loans.collectAsState()
 
     var filter by remember { mutableStateOf(BankListFilter.REVIEW) }
     var selectedAccountId by remember { mutableStateOf<String?>(null) }
     var receiptPickerFor by remember { mutableStateOf<BankTransaction?>(null) }
+    var bankPickerForReceipt by remember { mutableStateOf<Receipt?>(null) }
     var noReceiptFor by remember { mutableStateOf<BankTransaction?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -88,6 +93,13 @@ fun BankScreen(viewModel: ReceiptViewModel) {
         selectedAccountId?.let { accountId -> transactions.filter { it.accountId == accountId } } ?: transactions
     }
     val propertyId = property?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
+    val accountsById = remember(accounts) { accounts.associateBy { it.accountId } }
+    val loanSuggestions = remember(filteredTransactions, loans, accounts) {
+        filteredTransactions.mapNotNull { tx ->
+            BankLoanMatcher.suggestions(tx, loans, accountsById[tx.accountId], filteredTransactions)
+                .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
+        }.toMap()
+    }
     val rentHints = remember(filteredTransactions, receipts, units, propertyId) {
         filteredTransactions.filter { it.amount > 0 && it.reconciliationStatus in setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.REVIEW) }
             .mapNotNull { tx -> bestRentHint(context, propertyId, tx, units, receipts)?.let { tx.transactionId to it } }
@@ -222,6 +234,8 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     linkedLinks = links.filter { it.transactionId == transaction.transactionId },
                     receipts = receipts,
                     rentHint = rentHints[transaction.transactionId],
+                    loanSuggestions = loanSuggestions[transaction.transactionId].orEmpty(),
+                    loans = loans,
                     onConfirmSuggestion = { suggestion ->
                         viewModel.confirmBankReceiptLink(transaction.transactionId, suggestion.receiptId)
                     },
@@ -229,27 +243,32 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     onCreateRentReceipt = { hint -> viewModel.startRentReceiptFromBankTransaction(transaction, hint.unit, hint.tenantName) },
                     onPickReceipt = { receiptPickerFor = transaction },
                     onNoReceipt = { noReceiptFor = transaction },
+                    onReopen = { viewModel.reopenBankTransaction(transaction.transactionId) },
                     onUnlink = { link -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }
                 )
             }
         }
 
-        val unlinkedReceipts = receipts.filter { receipt ->
-            links.none { it.receiptId == receipt.id || (receipt.internalId.isNotBlank() && it.receiptInternalId == receipt.internalId) }
-        }
-        if (filteredTransactions.isNotEmpty() && unlinkedReceipts.isNotEmpty()) {
+        if (filteredTransactions.isNotEmpty() && receipts.isNotEmpty()) {
             item {
                 Spacer(Modifier.height(4.dp))
-                Text("Belege ohne Bankzuordnung", fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text("Auch andersherum: vom Beleg zur passenden Buchung.", fontSize = 12.sp, color = SlateGray)
+                Text("Bankabgleich aus Belegen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("Beste Buchung bestätigen, eine andere offene Buchung auswählen oder einzelne Zuordnungen lösen.", fontSize = 12.sp, color = SlateGray)
             }
-            items(unlinkedReceipts.take(20), key = { "receipt-${it.id}" }) { receipt ->
+            items(receipts.take(30), key = { "receipt-${it.id}" }) { receipt ->
+                val receiptLinks = links.filter {
+                    it.receiptId == receipt.id || (receipt.internalId.isNotBlank() && it.receiptInternalId == receipt.internalId)
+                }
                 val reverse = BankReceiptMatcher.bestForReceipt(receipt, filteredTransactions, links)
                 ReverseReceiptCard(
                     receipt = receipt,
                     suggestion = reverse,
                     transaction = reverse?.transactionId?.let { txId -> filteredTransactions.firstOrNull { it.transactionId == txId } },
-                    onConfirm = { txId -> viewModel.confirmBankReceiptLink(txId, receipt.id) }
+                    linkedLinks = receiptLinks,
+                    transactions = filteredTransactions,
+                    onConfirm = { txId -> viewModel.confirmBankReceiptLink(txId, receipt.id) },
+                    onChooseOther = { bankPickerForReceipt = receipt },
+                    onUnlink = { link -> viewModel.removeBankReceiptLink(link.linkId, link.transactionId) }
                 )
             }
         }
@@ -266,6 +285,19 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             onSelect = { receipt ->
                 viewModel.confirmBankReceiptLink(transaction.transactionId, receipt.id)
                 receiptPickerFor = null
+            }
+        )
+    }
+
+    bankPickerForReceipt?.let { receipt ->
+        BankTransactionPickerDialog(
+            receipt = receipt,
+            transactions = filteredTransactions,
+            links = links,
+            onDismiss = { bankPickerForReceipt = null },
+            onSelect = { transaction ->
+                viewModel.confirmBankReceiptLink(transaction.transactionId, receipt.id)
+                bankPickerForReceipt = null
             }
         )
     }
@@ -343,11 +375,14 @@ private fun BankTransactionCard(
     linkedLinks: List<BankReceiptLink>,
     receipts: List<Receipt>,
     rentHint: BankRentHint?,
+    loanSuggestions: List<BankLoanSuggestion>,
+    loans: List<com.example.data.Loan>,
     onConfirmSuggestion: (BankMatchSuggestion) -> Unit,
     onCreateReceipt: () -> Unit,
     onCreateRentReceipt: (BankRentHint) -> Unit,
     onPickReceipt: () -> Unit,
     onNoReceipt: () -> Unit,
+    onReopen: () -> Unit,
     onUnlink: (BankReceiptLink) -> Unit
 ) {
     val statusText = when (transaction.reconciliationStatus) {
@@ -394,6 +429,27 @@ private fun BankTransactionCard(
             }
 
             if (transaction.reconciliationStatus !in setOf(BankReconciliationStatus.MATCHED, BankReconciliationStatus.NO_RECEIPT_REQUIRED)) {
+                if (loanSuggestions.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text("Mögliche Darlehensrate", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                    loanSuggestions.take(3).forEach { loanSuggestion ->
+                        val loan = loans.firstOrNull { it.id == loanSuggestion.loanId }
+                        if (loan != null) {
+                            Text(
+                                "${loan.bezeichnung.ifBlank { "Darlehen ${loan.id}" }} • ${loan.bank.ifBlank { "Bank nicht hinterlegt" }} • ${loanSuggestion.score}% ${loanSuggestion.confidence}",
+                                fontSize = 12.sp, color = DarkNavy
+                            )
+                            Text(
+                                "Soll ${NumberFormatter.format(loan.monatlicheRate)} • Ist ${NumberFormatter.format(transaction.absoluteAmount)}" +
+                                    loan.propertyId.takeIf { it.isNotBlank() }?.let { " • Objekt $it" }.orEmpty(),
+                                fontSize = 11.sp, color = SlateGray
+                            )
+                        }
+                    }
+                    if (loanSuggestions.size > 1) {
+                        Text("Mehrere Darlehen passen – bitte selbst auswählen/prüfen. Keine automatische Verbuchung.", fontSize = 11.sp, color = SlateGray)
+                    }
+                }
                 if (suggestion != null && receipt != null) {
                     HorizontalDivider()
                     Text(
@@ -440,6 +496,9 @@ private fun BankTransactionCard(
                 }
             } else {
                 Text(transaction.noReceiptReason, fontSize = 12.sp, color = SlateGray)
+                OutlinedButton(onClick = onReopen, modifier = Modifier.fillMaxWidth()) {
+                    Text("Zustand wieder öffnen")
+                }
             }
         }
     }
@@ -450,13 +509,20 @@ private fun ReverseReceiptCard(
     receipt: Receipt,
     suggestion: BankMatchSuggestion?,
     transaction: BankTransaction?,
-    onConfirm: (String) -> Unit
+    linkedLinks: List<BankReceiptLink>,
+    transactions: List<BankTransaction>,
+    onConfirm: (String) -> Unit,
+    onChooseOther: () -> Unit,
+    onUnlink: (BankReceiptLink) -> Unit
 ) {
+    val allocated = linkedLinks.sumOf { it.allocatedAmount }
+    val remaining = (receipt.bruttobetrag - allocated).coerceAtLeast(0.0)
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Bankabgleich", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text(receipt.aussteller, fontWeight = FontWeight.SemiBold, color = DarkNavy)
@@ -464,17 +530,37 @@ private fun ReverseReceiptCard(
                 }
                 Text(NumberFormatter.format(receipt.bruttobetrag), fontWeight = FontWeight.SemiBold)
             }
-            if (suggestion != null && transaction != null) {
-                Text(
-                    "Passende Buchung: ${transaction.counterparty.ifBlank { transaction.purpose }} • ${suggestion.score}%",
-                    fontSize = 12.sp,
-                    color = SlateGray
-                )
-                OutlinedButton(onClick = { onConfirm(transaction.transactionId) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Buchung zuordnen")
+            if (linkedLinks.isNotEmpty()) {
+                Text("Bereits mit Bankbuchung verbunden", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                linkedLinks.forEach { link ->
+                    val linkedTransaction = transactions.firstOrNull { it.transactionId == link.transactionId }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(linkedTransaction?.counterparty?.ifBlank { linkedTransaction.purpose } ?: link.transactionId, fontSize = 12.sp)
+                            if (linkedTransaction != null) {
+                                Text("${linkedTransaction.bookingDate} • ${NumberFormatter.format(linkedTransaction.amount)} • ${NumberFormatter.format(link.allocatedAmount)} zugeordnet", fontSize = 11.sp, color = SlateGray)
+                            }
+                        }
+                        TextButton(onClick = { onUnlink(link) }) { Text("Zuordnung lösen") }
+                    }
                 }
-            } else {
-                Text("Noch keine passende Buchung gefunden.", fontSize = 11.sp, color = SlateGray)
+            }
+            if (remaining > 0.009) {
+                if (suggestion != null && transaction != null) {
+                    Text("Passende Bankbuchung gefunden", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                    Text(
+                        "${transaction.bookingDate} • ${transaction.counterparty.ifBlank { transaction.purpose }} • ${NumberFormatter.format(transaction.amount)} • Score ${suggestion.score}%",
+                        fontSize = 12.sp, color = SlateGray
+                    )
+                    OutlinedButton(onClick = { onConfirm(transaction.transactionId) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Treffer bestätigen")
+                    }
+                } else {
+                    Text("Keine passende Bankbuchung gefunden", fontSize = 12.sp, color = SlateGray)
+                }
+                OutlinedButton(onClick = onChooseOther, modifier = Modifier.fillMaxWidth()) {
+                    Text("Andere Buchung auswählen")
+                }
             }
         }
     }
@@ -511,6 +597,94 @@ private fun BankReceiptPickerDialog(
                                     Text(receipt.aussteller, fontWeight = FontWeight.SemiBold)
                                     Text("${receipt.datum} • ${NumberFormatter.format(receipt.bruttobetrag)} • ${suggestion.score}%", fontSize = 12.sp)
                                     TextButton(onClick = { onSelect(receipt) }) { Text("Zuordnen") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
+    )
+}
+
+@Composable
+private fun BankTransactionPickerDialog(
+    receipt: Receipt,
+    transactions: List<BankTransaction>,
+    links: List<BankReceiptLink>,
+    onDismiss: () -> Unit,
+    onSelect: (BankTransaction) -> Unit
+) {
+    val ranked = remember(receipt.id, transactions, links) {
+        BankReceiptMatcher.rankTransactionsForReceipt(receipt, transactions, links)
+    }
+    var query by remember(receipt.id) { mutableStateOf("") }
+    val visible = remember(ranked, query) {
+        val needle = query.trim().lowercase(java.util.Locale.GERMANY)
+        if (needle.isBlank()) ranked else ranked.filter { suggestion ->
+            transactions.firstOrNull { it.transactionId == suggestion.transactionId }?.let { transaction ->
+                listOf(
+                    transaction.bookingDate,
+                    transaction.counterparty,
+                    transaction.purpose,
+                    transaction.bankReference,
+                    transaction.amount.toString()
+                ).any { it.lowercase(java.util.Locale.GERMANY).contains(needle) }
+            } == true
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Andere Buchung auswählen") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Offene Bankbuchungen durchsuchen") }
+                )
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (visible.isEmpty()) {
+                        item {
+                            Text(
+                                if (query.isBlank()) "Keine offene Bankbuchung ist für diesen Beleg verfügbar."
+                                else "Keine Buchung passt zur Suche."
+                            )
+                        }
+                    } else {
+                        items(visible, key = { it.transactionId }) { suggestion ->
+                            val transaction = transactions.firstOrNull { it.transactionId == suggestion.transactionId }
+                            if (transaction != null) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    border = BorderStroke(1.dp, BorderColor),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    Column(Modifier.padding(10.dp)) {
+                                        Text(
+                                            transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } },
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            "${transaction.bookingDate} • ${NumberFormatter.format(transaction.amount)} • Score ${suggestion.score}%",
+                                            fontSize = 12.sp
+                                        )
+                                        if (suggestion.reasons.isNotEmpty()) {
+                                            Text(
+                                                suggestion.reasons.take(3).joinToString(" • "),
+                                                fontSize = 11.sp,
+                                                color = SlateGray
+                                            )
+                                        }
+                                        TextButton(onClick = { onSelect(transaction) }) { Text("Zuordnen") }
+                                    }
                                 }
                             }
                         }
