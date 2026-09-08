@@ -21,6 +21,7 @@ import com.example.data.AppDatabase
 import com.example.data.Receipt
 import com.example.data.ReceiptRepository
 import com.example.data.PropertyMetadata
+import com.example.data.toEntity
 import com.example.util.PdfExporter
 import java.io.File
 import java.text.SimpleDateFormat
@@ -1956,6 +1957,53 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao())
                 .updateSplit(transactionId, interest, principal, accept, edited)
             _bankImportStatus.value = if (accept) "Zins-/Tilgungsvorschlag aktualisiert." else "Zins-/Tilgungsvorschlag abgelehnt."
+        }
+    }
+
+    fun proposeBankRuleFromRecurringPattern(patternId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val pattern = bankRecurringAnalysis.value.patterns.firstOrNull { it.patternId == patternId } ?: return@launch
+            if (pattern.occurrenceCount < com.example.data.BankRecurringThresholds.MIN_OCCURRENCES_FOR_PATTERN) {
+                _bankImportStatus.value = "Für einen Regelvorschlag fehlen noch bestätigende Vorkommen."
+                return@launch
+            }
+            val dao = database.bankLearningRuleDao()
+            val ruleId = "rule-rec-" + com.example.data.BankTransactionIdentity.sha256(pattern.patternId).take(24)
+            val existing = dao.getRule(ruleId)
+            if (existing?.state == com.example.data.BankRuleState.ACTIVE) {
+                _bankImportStatus.value = "Die passende Bankregel ist bereits aktiv."
+                return@launch
+            }
+            val now = java.time.Instant.now().toString()
+            val iban = pattern.normalizedCounterparty.removePrefix("iban:").takeIf { pattern.normalizedCounterparty.startsWith("iban:") }.orEmpty()
+            val counterparty = pattern.normalizedCounterparty.takeUnless { it.startsWith("iban:") }.orEmpty()
+            val terms = pattern.purposeFingerprint.split(' ').filter { it.length >= 3 }.take(6).joinToString("|")
+            val direction = if (pattern.direction == com.example.data.RecurringDirection.INCOME)
+                com.example.data.BankRuleDirection.INCOME else com.example.data.BankRuleDirection.EXPENSE
+            dao.upsertRule(
+                com.example.data.BankLearningRule(
+                    ruleId = ruleId,
+                    displayName = "Wiederkehrend: ${pattern.normalizedCounterparty.ifBlank { pattern.purposeFingerprint.ifBlank { "Bankzahlung" } }}",
+                    enabled = false,
+                    state = com.example.data.BankRuleState.PROPOSED,
+                    ruleType = com.example.data.BankRuleType.COMBINED,
+                    transactionDirection = direction,
+                    counterpartyPattern = counterparty,
+                    counterpartyIbanPattern = iban,
+                    purposeTerms = terms,
+                    amountMin = (pattern.typicalAmount - pattern.amountTolerance).coerceAtLeast(0.0),
+                    amountMax = pattern.typicalAmount + pattern.amountTolerance,
+                    currency = "EUR",
+                    accountId = pattern.accountId,
+                    propertyId = pattern.propertyId,
+                    evidenceCount = pattern.occurrenceCount,
+                    confidence = pattern.confidence,
+                    source = com.example.data.BankRuleSource.USER_CREATED,
+                    createdAt = existing?.createdAt?.ifBlank { now } ?: now,
+                    updatedAt = now
+                )
+            )
+            _bankImportStatus.value = "Regelvorschlag erstellt. Er ist deaktiviert und muss in Bankregeln ausdrücklich aktiviert werden."
         }
     }
 
