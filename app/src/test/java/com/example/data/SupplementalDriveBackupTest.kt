@@ -57,7 +57,7 @@ class SupplementalDriveBackupTest {
             .putString("google_routes_key_ciphertext", "MUST_NOT_LEAVE_DEVICE").apply()
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(9, payload.getInt("schemaVersion"))
+        assertEquals(10, payload.getInt("schemaVersion"))
         assertFalse(payload.toString().contains("MUST_NOT_LEAVE_DEVICE"))
         database.logbookDao().deleteTrip(41)
         database.logbookDao().deleteStandardRoute(17)
