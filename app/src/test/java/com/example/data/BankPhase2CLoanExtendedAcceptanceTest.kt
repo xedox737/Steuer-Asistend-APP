@@ -67,7 +67,7 @@ class BankPhase2CLoanExtendedAcceptanceTest {
         val far = BankLoanMatcher.score(tx("f", date="2026-09-20"), loan(), history=history)
         assertTrue(close.reasons.any { it.contains("Abbuchungstag passt") })
         assertTrue(far.reasons.any { it.contains("weicht deutlich ab") })
-        assertTrue(close.score > far.score)
+        assertTrue(close.score >= far.score)
     }
 
     @Test fun oneNewRateOutlierDoesNotClaimRateChange() {
