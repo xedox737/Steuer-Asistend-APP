@@ -613,7 +613,16 @@ val MIGRATION_24_25 = object : androidx.room.migration.Migration(24, 25) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class, BankLearningRule::class, BankRuleEvidence::class], version = 25, exportSchema = false)
+val MIGRATION_25_26 = object : androidx.room.migration.Migration(25, 26) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS bank_rent_assignments (assignmentId TEXT NOT NULL PRIMARY KEY, transactionId TEXT NOT NULL, propertyId TEXT NOT NULL, unitId TEXT NOT NULL, rentMonth TEXT NOT NULL, tenantReference TEXT NOT NULL, allocatedAmount REAL NOT NULL, paymentType TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, receiptId INTEGER, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_rent_assignments_transactionId ON bank_rent_assignments(transactionId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_rent_assignments_rent_scope ON bank_rent_assignments(propertyId, unitId, rentMonth)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_rent_assignments_tenantReference ON bank_rent_assignments(tenantReference)")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class, BankLearningRule::class, BankRuleEvidence::class, BankRentAssignment::class], version = 26, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -626,6 +635,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun managedDocumentDao(): ManagedDocumentDao
     abstract fun bankDao(): BankDao
     abstract fun bankLearningRuleDao(): BankLearningRuleDao
+    abstract fun bankRentAssignmentDao(): BankRentAssignmentDao
 
     companion object {
         @Volatile
@@ -640,7 +650,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

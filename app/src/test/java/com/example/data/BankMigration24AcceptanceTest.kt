@@ -79,11 +79,11 @@ class BankMigration24AcceptanceTest {
         assertTrue(columns(db, "bank_rule_evidence").contains("paymentMethodTarget"))
     }
 
-    @Test fun freshDatabaseIsVersion25() {
+    @Test fun freshDatabaseIsVersion26() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         try {
-            assertEquals(25, database.openHelper.writableDatabase.version)
+            assertEquals(26, database.openHelper.writableDatabase.version)
         } finally {
             database.close()
         }
