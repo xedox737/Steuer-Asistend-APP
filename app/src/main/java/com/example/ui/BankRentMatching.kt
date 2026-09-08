@@ -55,7 +55,9 @@ data class RentCandidateContext(
     val rentMonth: YearMonth,
     val expectedAmount: Double,
     val alreadyConfirmedAmount: Double,
-    val accountId: String = ""
+    val accountId: String = "",
+    val knownDayOfMonth: Int? = null,
+    val existingRentalReceiptLink: Boolean = false
 ) {
     val remainingAmount: Double get() = (expectedAmount - alreadyConfirmedAmount).coerceAtLeast(0.0)
     val fullyPaid: Boolean get() = expectedAmount > 0.01 && remainingAmount <= 0.01
@@ -207,6 +209,16 @@ object BankRentMatcher {
         }
         if (c.accountId.isNotBlank() && tx.accountId == c.accountId) {
             score += 5; reasons += "Konto passt"
+        }
+        if (c.existingRentalReceiptLink) {
+            score += 7; reasons += "Bestehender bestätigter Mietbeleg-Link passt"
+        }
+        BankRentCandidateFactory.rhythmDistanceDays(tx, c)?.let { distance ->
+            when {
+                distance <= 2 -> { score += 6; reasons += "Bekannter Zahlungsrhythmus passt" }
+                distance <= 5 -> { score += 3; reasons += "Zahlung liegt nahe am bekannten Rhythmus" }
+                else -> reasons += "Zahlung weicht vom bekannten Rhythmus ab"
+            }
         }
 
         val monthMatches = monthDetection.month == c.rentMonth

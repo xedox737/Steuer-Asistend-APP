@@ -81,6 +81,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     val loans by viewModel.loans.collectAsState()
     val learningRules by viewModel.bankLearningRules.collectAsState()
     val ruleEvaluations by viewModel.bankRuleEvaluations.collectAsState()
+    val rentSuggestions by viewModel.bankRentSuggestions.collectAsState()
 
     var filter by remember { mutableStateOf(BankListFilter.REVIEW) }
     var selectedAccountId by remember { mutableStateOf<String?>(null) }
@@ -88,6 +89,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     var bankPickerForReceipt by remember { mutableStateOf<Receipt?>(null) }
     var noReceiptFor by remember { mutableStateOf<BankTransaction?>(null) }
     var showBankRules by remember { mutableStateOf(false) }
+    var showRentMatching by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -104,10 +106,13 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                 .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
         }.toMap()
     }
-    val rentHints = remember(filteredTransactions, receipts, units, propertyId) {
-        filteredTransactions.filter { it.amount > 0 && it.reconciliationStatus in setOf(BankReconciliationStatus.OPEN, BankReconciliationStatus.REVIEW) }
-            .mapNotNull { tx -> bestRentHint(context, propertyId, tx, units, receipts)?.let { tx.transactionId to it } }
-            .toMap()
+    val rentHints = remember(rentSuggestions, units, propertyId) {
+        rentSuggestions.mapNotNull { (transactionId, candidates) ->
+            val top = candidates.firstOrNull { it.propertyId == propertyId } ?: candidates.firstOrNull() ?: return@mapNotNull null
+            val unit = units.firstOrNull { PropertyUnitScopedData.stableUnitId(top.propertyId, it) == top.unitId }
+                ?: return@mapNotNull null
+            transactionId to BankRentHint(unit, top.tenantName, top.expectedAmount, top.score)
+        }.toMap()
     }
     val reviewCount = filteredTransactions.count { BankReviewUiPolicy.isReviewQueue(it.reconciliationStatus) }
     val matchedCount = filteredTransactions.count { BankReviewUiPolicy.isMatched(it.reconciliationStatus) }
@@ -211,8 +216,10 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                 FilterChip(selected = filter == BankListFilter.ALL, onClick = { filter = BankListFilter.ALL }, label = { Text("Alle") })
             }
             OutlinedButton(onClick={ showBankRules = !showBankRules }, modifier=Modifier.fillMaxWidth()) { Text(if(showBankRules) "Bankregeln ausblenden" else "Bankregeln") }
+            OutlinedButton(onClick={ showRentMatching = !showRentMatching }, modifier=Modifier.fillMaxWidth()) { Text(if(showRentMatching) "Mietabgleich ausblenden" else "Mietabgleich") }
         }
         if (showBankRules) { item { BankRulesPanel(viewModel, learningRules) } }
+        if (showRentMatching) { item { BankRentPanel(viewModel) } }
 
         if (shown.isEmpty()) {
             item {
