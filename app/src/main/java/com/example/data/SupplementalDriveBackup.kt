@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 8
+    internal const val SCHEMA_VERSION = 9
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -54,6 +54,7 @@ object SupplementalDriveBackup {
         put("bankReceiptLinks", JSONArray().apply { database.bankDao().getAllLinks().forEach { put(it.toBackupJson()) } })
         put("bankLearningRules", JSONArray().apply { database.bankLearningRuleDao().getAllRules().forEach { put(it.toBackupJson()) } })
         put("bankRuleEvidence", JSONArray().apply { database.bankLearningRuleDao().getAllEvidence().forEach { put(it.toBackupJson()) } })
+        put("bankRentAssignments", JSONArray().apply { database.bankRentAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })
         put("rentPlanPrefs", prefsToJson(context, "rent_plan_prefs"))
         put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
         put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
@@ -102,6 +103,8 @@ object SupplementalDriveBackup {
             for (index in 0 until learningRules.length()) database.bankLearningRuleDao().upsertRule(learningRules.getJSONObject(index).toBankLearningRule())
             val learningEvidence = root.optJSONArray("bankRuleEvidence") ?: JSONArray()
             for (index in 0 until learningEvidence.length()) database.bankLearningRuleDao().insertEvidence(learningEvidence.getJSONObject(index).toBankRuleEvidence())
+            val rentAssignments = root.optJSONArray("bankRentAssignments") ?: JSONArray()
+            for (index in 0 until rentAssignments.length()) database.bankRentAssignmentDao().upsert(rentAssignments.getJSONObject(index).toBankRentAssignment())
             database.managedDocumentDao().clearSearchIndex()
             database.managedDocumentDao().getAll().forEach { document ->
                 database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
@@ -160,6 +163,23 @@ object SupplementalDriveBackup {
     private fun JSONObject.toBankLearningRule() = BankLearningRule(ruleId=optString("ruleId",""),displayName=optString("displayName","Bankregel"),enabled=optBoolean("enabled",false),state=optString("state",BankRuleState.PROPOSED),ruleType=optString("ruleType",BankRuleType.COMBINED),transactionDirection=optString("transactionDirection",BankRuleDirection.ANY),counterpartyPattern=optString("counterpartyPattern",""),counterpartyIbanPattern=optString("counterpartyIbanPattern",""),purposeTerms=optString("purposeTerms",""),amountMin=if(has("amountMin"))optDouble("amountMin") else null,amountMax=if(has("amountMax"))optDouble("amountMax") else null,currency=optString("currency","EUR"),accountId=optString("accountId",""),propertyId=optString("propertyId",""),unitId=optString("unitId",""),receiptVendorTarget=optString("receiptVendorTarget",""),receiptCategoryTarget=optString("receiptCategoryTarget",""),receiptSubcategoryTarget=optString("receiptSubcategoryTarget",""),paymentMethodTarget=optString("paymentMethodTarget",""),evidenceCount=optInt("evidenceCount",0),successCount=optInt("successCount",0),rejectionCount=optInt("rejectionCount",0),confidence=optInt("confidence",0),source=optString("source",BankRuleSource.LEARNED_FROM_CONFIRMATIONS),createdAt=optString("createdAt",""),updatedAt=optString("updatedAt",""),lastMatchedAt=optString("lastMatchedAt",""))
     private fun BankRuleEvidence.toBackupJson() = JSONObject().apply { put("evidenceId",evidenceId);put("candidateKey",candidateKey);put("ruleId",ruleId);put("transactionId",transactionId);put("receiptId",receiptId);put("confirmed",confirmed);put("counterparty",counterparty);put("direction",direction);put("purposeTerms",purposeTerms);put("accountId",accountId);put("propertyId",propertyId);put("unitId",unitId);put("vendorTarget",vendorTarget);put("categoryTarget",categoryTarget);put("subcategoryTarget",subcategoryTarget);put("paymentMethodTarget",paymentMethodTarget);put("createdAt",createdAt) }
     private fun JSONObject.toBankRuleEvidence() = BankRuleEvidence(evidenceId=optString("evidenceId",""),candidateKey=optString("candidateKey",""),ruleId=optString("ruleId",""),transactionId=optString("transactionId",""),receiptId=optInt("receiptId",0),confirmed=optBoolean("confirmed",true),counterparty=optString("counterparty",""),direction=optString("direction",BankRuleDirection.ANY),purposeTerms=optString("purposeTerms",""),accountId=optString("accountId",""),propertyId=optString("propertyId",""),unitId=optString("unitId",""),vendorTarget=optString("vendorTarget",""),categoryTarget=optString("categoryTarget",""),subcategoryTarget=optString("subcategoryTarget",""),paymentMethodTarget=optString("paymentMethodTarget",""),createdAt=optString("createdAt",""))
+
+    private fun BankRentAssignment.toBackupJson() = JSONObject().apply {
+        put("assignmentId", assignmentId); put("transactionId", transactionId); put("propertyId", propertyId)
+        put("unitId", unitId); put("rentMonth", rentMonth); put("tenantReference", tenantReference)
+        put("allocatedAmount", allocatedAmount); put("paymentType", paymentType); put("status", status)
+        put("source", source); receiptId?.let { put("receiptId", it) }; put("createdAt", createdAt); put("updatedAt", updatedAt)
+    }
+
+    private fun JSONObject.toBankRentAssignment() = BankRentAssignment(
+        assignmentId = optString("assignmentId", ""), transactionId = optString("transactionId", ""),
+        propertyId = optString("propertyId", ""), unitId = optString("unitId", ""), rentMonth = optString("rentMonth", ""),
+        tenantReference = optString("tenantReference", ""), allocatedAmount = optDouble("allocatedAmount", 0.0),
+        paymentType = optString("paymentType", "UNKLAR"), status = optString("status", BankRentAssignmentStatus.CONFIRMED),
+        source = optString("source", BankRentAssignmentSource.USER_CONFIRMED),
+        receiptId = if (has("receiptId") && !isNull("receiptId")) optInt("receiptId") else null,
+        createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")
+    )
 
     private fun BankReceiptLink.toBackupJson() = JSONObject().apply {
         put("linkId", linkId); put("transactionId", transactionId); put("receiptId", receiptId)

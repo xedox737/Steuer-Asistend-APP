@@ -269,7 +269,11 @@ object BankRentMatcher {
             RentPaymentType.UNKLAR -> { score -= 4; reasons += "Zahlungstyp unklar" }
         }
 
-        val ruleEval = BankRuleEngine.evaluate(tx, rules)
+        val ruleScopedTransaction = tx.copy(
+            propertyId = tx.propertyId.ifBlank { c.propertyId },
+            unitId = tx.unitId.ifBlank { c.unitId }
+        )
+        val ruleEval = BankRuleEngine.evaluate(ruleScopedTransaction, rules)
         if (!ruleEval.hasConflict) {
             val matchingRule = ruleEval.suggestions.firstOrNull { suggestion ->
                 val rule = rules.firstOrNull { it.ruleId == suggestion.ruleId }
