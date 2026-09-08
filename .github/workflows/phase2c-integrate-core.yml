@@ -1,0 +1,206 @@
+name: Phase 2C core integration
+
+on:
+  push:
+    branches:
+      - agent/bank-phase2c-loans-recurring
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bank-phase2c-loans-recurring
+          fetch-depth: 0
+      - name: Integrate ViewModel and backup schema 10
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          vm = Path('app/src/main/java/com/example/ui/ReceiptViewModel.kt')
+          s = vm.read_text()
+          if 'val bankLoanAssignments: StateFlow' not in s:
+              marker = '''    val bankRentAssignments: StateFlow<List<com.example.data.BankRentAssignment>> =
+                  database.bankRentAssignmentDao().observeAll().stateIn(
+                      scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
+                  )
+          '''
+              insert = marker + '''
+              val bankLoanAssignments: StateFlow<List<com.example.data.BankLoanAssignment>> =
+                  database.bankLoanAssignmentDao().observeAll().stateIn(
+                      scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
+                  )
+
+              val bankRecurringPatterns: StateFlow<List<com.example.data.BankRecurringPattern>> =
+                  database.bankRecurringPatternDao().observeAll().stateIn(
+                      scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
+                  )
+
+              val bankRecurringAnalysis: StateFlow<com.example.data.RecurringPaymentAnalysis> =
+                  bankTransactions.map { transactions ->
+                      com.example.data.BankRecurringPaymentDetector.detect(transactions, java.time.LocalDate.now())
+                  }.flowOn(Dispatchers.Default).stateIn(
+                      scope = viewModelScope,
+                      started = SharingStarted.WhileSubscribed(5_000),
+                      initialValue = com.example.data.RecurringPaymentAnalysis(emptyList(), emptySet(), emptySet())
+                  )
+              private val _dismissedBankLoanTransactions = MutableStateFlow<Set<String>>(emptySet())
+          '''
+              if marker not in s: raise SystemExit('VM assignment marker missing')
+              s = s.replace(marker, insert, 1)
+
+          if 'val bankLoanSuggestions: StateFlow' not in s:
+              marker = '''    val loans: StateFlow<List<com.example.data.Loan>> = combine(allLoans, propertyMetadata) { items, property ->
+                  if (property == null) items else items.filter {
+                      it.propertyId == property.propertyId ||
+                          (property.id == 1 && it.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID)
+                  }
+              }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+          '''
+              insert = marker + '''
+
+              val bankLoanSuggestions: StateFlow<Map<String, List<com.example.data.BankLoanSuggestion>>> =
+                  combine(bankTransactions, allLoans, bankAccounts, bankLearningRules, _dismissedBankLoanTransactions) { transactions, currentLoans, accounts, rules, dismissed ->
+                      val accountsById = accounts.associateBy { it.accountId }
+                      transactions.asSequence()
+                          .filterNot { it.transactionId in dismissed }
+                          .filterNot { tx -> bankLoanAssignments.value.any { it.transactionId == tx.transactionId } }
+                          .mapNotNull { tx ->
+                              com.example.data.BankLoanMatcher.suggestions(tx, currentLoans, accountsById[tx.accountId], transactions, rules)
+                                  .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
+                          }.toMap()
+                  }.flowOn(Dispatchers.Default).stateIn(
+                      scope = viewModelScope,
+                      started = SharingStarted.WhileSubscribed(5_000),
+                      initialValue = emptyMap()
+                  )
+          '''
+              if marker not in s: raise SystemExit('VM loans marker missing')
+              s = s.replace(marker, insert, 1)
+
+          if 'fun confirmBankLoanAssignment(' not in s:
+              marker = '''    fun resetScanState() {
+          '''
+              methods = '''    fun confirmBankLoanAssignment(transactionId: String, loanId: Int, paymentType: String? = null) {
+                  viewModelScope.launch(Dispatchers.IO) {
+                      val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
+                      val loan = database.loanDao().getAllLoans().firstOrNull { it.id == loanId } ?: return@launch
+                      val account = database.bankDao().getAccount(transaction.accountId)
+                      val rules = database.bankLearningRuleDao().getAllRules()
+                      val history = database.bankDao().getAllTransactions()
+                      val suggestion = com.example.data.BankLoanMatcher.score(transaction, loan, account, history, rules)
+                      val effectiveType = paymentType ?: suggestion.paymentType
+                      val split = if (effectiveType == com.example.data.BankLoanPaymentType.REGULAERE_RATE)
+                          com.example.data.BankLoanSplitProposer.propose(loan, transaction.absoluteAmount, suggestion.period)
+                      else null
+                      com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao())
+                          .confirm(transaction, loan, suggestion, effectiveType, split)
+                      _dismissedBankLoanTransactions.value = _dismissedBankLoanTransactions.value - transactionId
+                      _bankImportStatus.value = if (suggestion.conflictState == com.example.data.BankLoanConflictState.NONE)
+                          "Darlehenszuordnung bestätigt. Zins/Tilgung bleibt ein prüfbarer Vorschlag."
+                      else "Darlehenszuordnung gespeichert und wegen Konflikt zur Prüfung markiert."
+                  }
+              }
+
+              fun markBankLoanAsSpecialRepayment(transactionId: String, loanId: Int) =
+                  confirmBankLoanAssignment(transactionId, loanId, com.example.data.BankLoanPaymentType.SONDERTILGUNG)
+
+              fun dismissBankLoanSuggestion(transactionId: String) {
+                  _dismissedBankLoanTransactions.value = _dismissedBankLoanTransactions.value + transactionId
+                  _bankImportStatus.value = "Buchung wird nicht als Darlehen vorgeschlagen; Bank-/Beleglinks bleiben unverändert."
+              }
+
+              fun unlinkBankLoanAssignment(transactionId: String) {
+                  viewModelScope.launch(Dispatchers.IO) {
+                      com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao()).unlink(transactionId)
+                      _bankImportStatus.value = "Darlehenszuordnung gelöst; bestehende Beleglinks wurden nicht verändert."
+                  }
+              }
+
+              fun updateBankLoanSplit(transactionId: String, interest: Double?, principal: Double?, accept: Boolean, edited: Boolean = false) {
+                  viewModelScope.launch(Dispatchers.IO) {
+                      com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao())
+                          .updateSplit(transactionId, interest, principal, accept, edited)
+                      _bankImportStatus.value = if (accept) "Zins-/Tilgungsvorschlag aktualisiert." else "Zins-/Tilgungsvorschlag abgelehnt."
+                  }
+              }
+
+              fun saveRecurringPattern(patternId: String) {
+                  viewModelScope.launch(Dispatchers.IO) {
+                      val detected = bankRecurringAnalysis.value.patterns.firstOrNull { it.patternId == patternId } ?: return@launch
+                      val existing = database.bankRecurringPatternDao().get(patternId)
+                      val now = java.time.Instant.now().toString()
+                      database.bankRecurringPatternDao().upsert(detected.toEntity(now).copy(createdAt = existing?.createdAt ?: now, enabled = existing?.enabled ?: true))
+                      _bankImportStatus.value = "Wiederkehrendes Muster gespeichert. Es erzeugt keine Buchung und keine Zahlung."
+                  }
+              }
+
+              fun setRecurringPatternEnabled(patternId: String, enabled: Boolean) {
+                  viewModelScope.launch(Dispatchers.IO) {
+                      database.bankRecurringPatternDao().setEnabled(patternId, enabled, java.time.Instant.now().toString())
+                  }
+              }
+
+          '''
+              if marker not in s: raise SystemExit('VM method marker missing')
+              s = s.replace(marker, methods + marker, 1)
+          vm.write_text(s)
+
+          backup = Path('app/src/main/java/com/example/data/SupplementalDriveBackup.kt')
+          b = backup.read_text()
+          b = b.replace('internal const val SCHEMA_VERSION = 9', 'internal const val SCHEMA_VERSION = 10')
+          if 'put("bankLoanAssignments"' not in b:
+              b = b.replace(
+                  'put("bankRentAssignments", JSONArray().apply { database.bankRentAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })',
+                  'put("bankRentAssignments", JSONArray().apply { database.bankRentAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })\n        put("bankLoanAssignments", JSONArray().apply { database.bankLoanAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })\n        put("bankRecurringPatterns", JSONArray().apply { database.bankRecurringPatternDao().getAll().forEach { put(it.toBackupJson()) } })', 1)
+              b = b.replace(
+                  'for (index in 0 until rentAssignments.length()) database.bankRentAssignmentDao().upsert(rentAssignments.getJSONObject(index).toBankRentAssignment())',
+                  'for (index in 0 until rentAssignments.length()) database.bankRentAssignmentDao().upsert(rentAssignments.getJSONObject(index).toBankRentAssignment())\n            val loanAssignments = root.optJSONArray("bankLoanAssignments") ?: JSONArray()\n            for (index in 0 until loanAssignments.length()) database.bankLoanAssignmentDao().upsert(loanAssignments.getJSONObject(index).toBankLoanAssignment())\n            val recurringPatterns = root.optJSONArray("bankRecurringPatterns") ?: JSONArray()\n            for (index in 0 until recurringPatterns.length()) database.bankRecurringPatternDao().upsert(recurringPatterns.getJSONObject(index).toBankRecurringPattern())', 1)
+              serializers = '''
+              private fun BankLoanAssignment.toBackupJson() = JSONObject().apply {
+                  put("assignmentId", assignmentId); put("transactionId", transactionId); put("loanId", loanId); put("propertyId", propertyId)
+                  put("allocatedAmount", allocatedAmount); put("paymentType", paymentType); put("period", period); put("status", status); put("source", source)
+                  put("splitStatus", splitStatus); proposedInterest?.let { put("proposedInterest", it) }; proposedPrincipal?.let { put("proposedPrincipal", it) }
+                  put("interestBasis", interestBasis); put("createdAt", createdAt); put("updatedAt", updatedAt)
+              }
+              private fun JSONObject.toBankLoanAssignment() = BankLoanAssignment(
+                  assignmentId=optString("assignmentId",""), transactionId=optString("transactionId",""), loanId=optInt("loanId",0), propertyId=optString("propertyId",""),
+                  allocatedAmount=optDouble("allocatedAmount",0.0), paymentType=optString("paymentType",BankLoanPaymentType.UNKLAR), period=optString("period",""),
+                  status=optString("status",BankLoanAssignmentStatus.CONFIRMED), source=optString("source",BankLoanAssignmentSource.USER_CONFIRMED),
+                  splitStatus=optString("splitStatus",BankLoanSplitStatus.NONE), proposedInterest=if(has("proposedInterest")&&!isNull("proposedInterest"))optDouble("proposedInterest") else null,
+                  proposedPrincipal=if(has("proposedPrincipal")&&!isNull("proposedPrincipal"))optDouble("proposedPrincipal") else null,
+                  interestBasis=optString("interestBasis",""), createdAt=optString("createdAt",""), updatedAt=optString("updatedAt","")
+              )
+
+              private fun BankRecurringPattern.toBackupJson() = JSONObject().apply {
+                  put("patternId",patternId);put("enabled",enabled);put("direction",direction);put("normalizedCounterparty",normalizedCounterparty);put("purposeFingerprint",purposeFingerprint)
+                  put("typicalAmount",typicalAmount);put("amountTolerance",amountTolerance);put("cadence",cadence);put("typicalDay",typicalDay);put("accountId",accountId);put("propertyId",propertyId)
+                  put("occurrenceCount",occurrenceCount);put("confidence",confidence);put("lastOccurrence",lastOccurrence);put("nextExpectedStart",nextExpectedStart);put("nextExpectedEnd",nextExpectedEnd)
+                  put("reasonsText",reasonsText);put("createdAt",createdAt);put("updatedAt",updatedAt)
+              }
+              private fun JSONObject.toBankRecurringPattern() = BankRecurringPattern(
+                  patternId=optString("patternId",""),enabled=optBoolean("enabled",true),direction=optString("direction",RecurringDirection.EXPENSE),
+                  normalizedCounterparty=optString("normalizedCounterparty",""),purposeFingerprint=optString("purposeFingerprint",""),typicalAmount=optDouble("typicalAmount",0.0),
+                  amountTolerance=optDouble("amountTolerance",0.0),cadence=optString("cadence",RecurringCadence.IRREGULAR),typicalDay=optInt("typicalDay",1),
+                  accountId=optString("accountId",""),propertyId=optString("propertyId",""),occurrenceCount=optInt("occurrenceCount",0),confidence=optInt("confidence",0),
+                  lastOccurrence=optString("lastOccurrence",""),nextExpectedStart=optString("nextExpectedStart",""),nextExpectedEnd=optString("nextExpectedEnd",""),
+                  reasonsText=optString("reasonsText",""),createdAt=optString("createdAt",""),updatedAt=optString("updatedAt","")
+              )
+
+          '''
+              marker = '    private fun BankReceiptLink.toBackupJson()'
+              if marker not in b: raise SystemExit('backup serializer marker missing')
+              b = b.replace(marker, serializers + marker, 1)
+          backup.write_text(b)
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name xedox737
+          git config user.email sergej-gerweck@web.de
+          git add app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/data/SupplementalDriveBackup.kt
+          git commit -m '[phase2c-core] Integrate loan workflow and backup schema 10'
+          git push origin HEAD:agent/bank-phase2c-loans-recurring
