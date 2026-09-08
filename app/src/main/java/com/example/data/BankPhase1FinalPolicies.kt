@@ -89,11 +89,12 @@ object BankLoanMatcher {
         loans: List<Loan>,
         account: BankAccount? = null,
         history: List<BankTransaction> = emptyList(),
-        rules: List<BankLearningRule> = emptyList()
+        rules: List<BankLearningRule> = emptyList(),
+        confirmedLoanTransactionIds: Set<String> = emptySet()
     ): List<BankLoanSuggestion> {
         val ranked = loans.asSequence()
             .filter { it.aktiv && it.monatlicheRate > 0.0 }
-            .map { score(transaction, it, account, history, rules) }
+            .map { score(transaction, it, account, history, rules, confirmedLoanTransactionIds) }
             .filter { it.score >= BankLoanThresholds.MIN_SUGGESTION_SCORE }
             .sortedWith(compareByDescending<BankLoanSuggestion> { it.score }.thenBy { it.loanId })
             .toList()
@@ -114,7 +115,8 @@ object BankLoanMatcher {
         loan: Loan,
         account: BankAccount? = null,
         history: List<BankTransaction> = emptyList(),
-        rules: List<BankLearningRule> = emptyList()
+        rules: List<BankLearningRule> = emptyList(),
+        confirmedLoanTransactionIds: Set<String> = emptySet()
     ): BankLoanSuggestion {
         var score = 0
         val reasons = mutableListOf<String>()
@@ -189,6 +191,12 @@ object BankLoanMatcher {
         if (recurrenceEvidence >= 2) {
             score += 10
             reasons += "Bestätigbare wiederkehrende Rate (${recurrenceEvidence + 1} Vorkommen)"
+        }
+        val confirmedHistoryCount = relevantHistory.count { it.transactionId in confirmedLoanTransactionIds }
+        if (confirmedHistoryCount > 0) {
+            val bonus = (confirmedHistoryCount * 4).coerceAtMost(10)
+            score += bonus
+            reasons += "Bestätigte Darlehenshistorie ($confirmedHistoryCount) +$bonus"
         }
 
         typicalBookingDay(relevantHistory)?.let { typicalDay ->
