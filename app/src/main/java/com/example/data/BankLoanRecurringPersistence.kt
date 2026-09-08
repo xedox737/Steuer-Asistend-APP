@@ -139,11 +139,7 @@ data class LoanSplitProposal(
     val period: String
 )
 
-/**
- * Analysis-only split. It never changes Loan, Receipt or DATEV state.
- * A proposal is only emitted when existing Loan data contains a positive balance,
- * positive interest rate, a known period and a positive allocated amount.
- */
+/** Analysis-only split; never changes Loan, Receipt or DATEV state. */
 object BankLoanSplitProposer {
     fun propose(loan: Loan, allocatedAmount: Double, period: String): LoanSplitProposal? {
         if (loan.restschuld <= 0.0 || loan.sollzinsProzent <= 0.0 || allocatedAmount <= 0.0) return null
@@ -165,6 +161,7 @@ object BankLoanSplitProposer {
 }
 
 object BankPhase2CPriority {
+    const val MIN_RECURRING_CONFIDENCE = 55
     enum class Classification { RENT, LOAN, RECURRING, NONE }
 
     fun classify(
@@ -177,7 +174,7 @@ object BankPhase2CPriority {
     ): Classification {
         if (alreadyRentAssigned || (transaction.isIncome && hasHighRentSuggestion)) return Classification.RENT
         if (alreadyLoanAssigned || loanSuggestions.any { it.score >= BankLoanThresholds.MIN_SUGGESTION_SCORE }) return Classification.LOAN
-        if (recurringPatterns.any { it.confidence >= BankRecurringThresholds.MIN_PATTERN_CONFIDENCE }) return Classification.RECURRING
+        if (recurringPatterns.any { it.confidence >= MIN_RECURRING_CONFIDENCE }) return Classification.RECURRING
         return Classification.NONE
     }
 }
@@ -218,7 +215,6 @@ class BankLoanAssignmentService(
             updatedAt = now()
         )
         dao.upsert(assignment)
-        // Keep the shared Phase-1 review/status world. Do not create a second transaction status.
         val status = if (assignment.status == BankLoanAssignmentStatus.REVIEW) BankReconciliationStatus.REVIEW else BankReconciliationStatus.MATCHED
         bankDao.updateTransactionStatus(transaction.transactionId, status, updatedAt = now())
         return assignment
@@ -238,7 +234,6 @@ class BankLoanAssignmentService(
 
     suspend fun unlink(transactionId: String) {
         dao.deleteForTransaction(transactionId)
-        // Do not touch receipt links. Re-open only the shared transaction status.
         bankDao.updateTransactionStatus(transactionId, BankReconciliationStatus.OPEN, updatedAt = now())
     }
 }
@@ -253,13 +248,13 @@ fun RecurringPaymentPattern.toEntity(now: String = Instant.now().toString()): Ba
     amountTolerance = amountTolerance,
     cadence = cadence,
     typicalDay = typicalDay,
-    accountId = accountId.orEmpty(),
-    propertyId = propertyId.orEmpty(),
+    accountId = accountId,
+    propertyId = propertyId,
     occurrenceCount = occurrenceCount,
     confidence = confidence,
     lastOccurrence = lastOccurrence,
-    nextExpectedStart = nextExpectedWindow?.start.orEmpty(),
-    nextExpectedEnd = nextExpectedWindow?.end.orEmpty(),
+    nextExpectedStart = nextExpectedWindow?.fromDate.orEmpty(),
+    nextExpectedEnd = nextExpectedWindow?.toDate.orEmpty(),
     reasonsText = reasons.joinToString(" | "),
     createdAt = now,
     updatedAt = now
