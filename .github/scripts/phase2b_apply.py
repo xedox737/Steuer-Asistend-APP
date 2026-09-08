@@ -86,3 +86,24 @@ for test in [
         t=t.replace('assertEquals(8, payload.getInt("schemaVersion"))', 'assertEquals(9, payload.getInt("schemaVersion"))')
         t=t.replace('assertEquals(8, SupplementalDriveBackup.SCHEMA_VERSION)', 'assertEquals(9, SupplementalDriveBackup.SCHEMA_VERSION)')
         p.write_text(t)
+
+# Existing fresh-database regression must follow the additive Room bump.
+migration_test = root / 'app/src/test/java/com/example/data/BankMigration24AcceptanceTest.kt'
+if migration_test.exists():
+    t = migration_test.read_text()
+    t = t.replace('@Test fun freshDatabaseIsVersion25()', '@Test fun freshDatabaseIsVersion26()')
+    t = t.replace('assertEquals(25, database.openHelper.writableDatabase.version)', 'assertEquals(26, database.openHelper.writableDatabase.version)')
+    migration_test.write_text(t)
+
+# Evaluate Phase-2A scoped rules against the candidate scope when an imported transaction
+# does not yet carry property/unit metadata. A rule still cannot invent a candidate.
+matcher = 'app/src/main/java/com/example/ui/BankRentMatching.kt'
+patch(matcher,
+'''        val ruleEval = BankRuleEngine.evaluate(tx, rules)
+''',
+'''        val ruleScopedTransaction = tx.copy(
+            propertyId = tx.propertyId.ifBlank { c.propertyId },
+            unitId = tx.unitId.ifBlank { c.unitId }
+        )
+        val ruleEval = BankRuleEngine.evaluate(ruleScopedTransaction, rules)
+''')
