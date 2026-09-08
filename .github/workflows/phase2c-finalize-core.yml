@@ -1,0 +1,99 @@
+name: Phase 2C finalize core
+
+on:
+  push:
+    branches:
+      - agent/bank-phase2c-loans-recurring
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bank-phase2c-loans-recurring
+          fetch-depth: 0
+      - name: Patch confirmed history and reactive assignments
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          matcher = Path('app/src/main/java/com/example/data/BankPhase1FinalPolicies.kt')
+          m = matcher.read_text()
+          if 'confirmedLoanTransactionIds: Set<String>' not in m:
+              m = m.replace(
+                  'rules: List<BankLearningRule> = emptyList()\n    ): List<BankLoanSuggestion>',
+                  'rules: List<BankLearningRule> = emptyList(),\n        confirmedLoanTransactionIds: Set<String> = emptySet()\n    ): List<BankLoanSuggestion>', 1)
+              m = m.replace(
+                  '.map { score(transaction, it, account, history, rules) }',
+                  '.map { score(transaction, it, account, history, rules, confirmedLoanTransactionIds) }', 1)
+              m = m.replace(
+                  'rules: List<BankLearningRule> = emptyList()\n    ): BankLoanSuggestion',
+                  'rules: List<BankLearningRule> = emptyList(),\n        confirmedLoanTransactionIds: Set<String> = emptySet()\n    ): BankLoanSuggestion', 1)
+              needle = '        if (recurrenceEvidence >= 2) {\n            score += 10\n            reasons += "Bestätigbare wiederkehrende Rate (${recurrenceEvidence + 1} Vorkommen)"\n        }\n'
+              replacement = needle + '        val confirmedHistoryCount = relevantHistory.count { it.transactionId in confirmedLoanTransactionIds }\n        if (confirmedHistoryCount > 0) {\n            val bonus = (confirmedHistoryCount * 4).coerceAtMost(10)\n            score += bonus\n            reasons += "Bestätigte Darlehenshistorie ($confirmedHistoryCount) +$bonus"\n        }\n'
+              if needle not in m: raise SystemExit('recurrence marker missing')
+              m = m.replace(needle, replacement, 1)
+              matcher.write_text(m)
+
+          vm = Path('app/src/main/java/com/example/ui/ReceiptViewModel.kt')
+          s = vm.read_text()
+          old = '''    val bankLoanSuggestions: StateFlow<Map<String, List<com.example.data.BankLoanSuggestion>>> =
+        combine(bankTransactions, allLoans, bankAccounts, bankLearningRules, _dismissedBankLoanTransactions) { transactions, currentLoans, accounts, rules, dismissed ->
+            val accountsById = accounts.associateBy { it.accountId }
+            transactions.asSequence()
+                .filterNot { it.transactionId in dismissed }
+                .filterNot { tx -> bankLoanAssignments.value.any { it.transactionId == tx.transactionId } }
+                .mapNotNull { tx ->
+                    com.example.data.BankLoanMatcher.suggestions(tx, currentLoans, accountsById[tx.accountId], transactions, rules)
+                        .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
+                }.toMap()
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyMap()
+        )
+'''
+          new = '''    val bankLoanSuggestions: StateFlow<Map<String, List<com.example.data.BankLoanSuggestion>>> =
+        combine(
+            combine(bankTransactions, allLoans, bankAccounts) { transactions, currentLoans, accounts -> Triple(transactions, currentLoans, accounts) },
+            combine(bankLearningRules, bankLoanAssignments, _dismissedBankLoanTransactions) { rules, assignments, dismissed -> Triple(rules, assignments, dismissed) }
+        ) { bankCore, reviewCore ->
+            val (transactions, currentLoans, accounts) = bankCore
+            val (rules, assignments, dismissed) = reviewCore
+            val accountsById = accounts.associateBy { it.accountId }
+            val assignedIds = assignments.map { it.transactionId }.toSet()
+            val confirmedIds = assignments.filter { it.status == com.example.data.BankLoanAssignmentStatus.CONFIRMED }.map { it.transactionId }.toSet()
+            transactions.asSequence()
+                .filterNot { it.transactionId in dismissed || it.transactionId in assignedIds }
+                .mapNotNull { tx ->
+                    com.example.data.BankLoanMatcher.suggestions(tx, currentLoans, accountsById[tx.accountId], transactions, rules, confirmedIds)
+                        .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
+                }.toMap()
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyMap()
+        )
+'''
+          if old in s:
+              s = s.replace(old, new, 1)
+              vm.write_text(s)
+          elif 'val assignedIds = assignments.map' not in s:
+              raise SystemExit('ViewModel loan suggestion block not found')
+
+          test = Path('app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt')
+          t = test.read_text()
+          t = t.replace('assertEquals(9, payload.getInt("schemaVersion"))', 'assertEquals(10, payload.getInt("schemaVersion"))')
+          test.write_text(t)
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name xedox737
+          git config user.email sergej-gerweck@web.de
+          git add app/src/main/java/com/example/data/BankPhase1FinalPolicies.kt app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt
+          git commit -m '[phase2c-finalize] Reactive loan assignments and confirmed history'
+          git push origin HEAD:agent/bank-phase2c-loans-recurring
