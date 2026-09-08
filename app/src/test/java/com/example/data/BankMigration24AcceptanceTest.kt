@@ -79,11 +79,17 @@ class BankMigration24AcceptanceTest {
         assertTrue(columns(db, "bank_rule_evidence").contains("paymentMethodTarget"))
     }
 
-    @Test fun freshDatabaseIsVersion26() {
+    @Test fun migration26To27CreatesLoanAndRecurringTables() = withDb(26) { db ->
+        MIGRATION_26_27.migrate(db)
+        assertTrue(columns(db, "bank_loan_assignments").containsAll(setOf("assignmentId", "transactionId", "loanId", "paymentType", "period", "splitStatus")))
+        assertTrue(columns(db, "bank_recurring_patterns").containsAll(setOf("patternId", "enabled", "cadence", "typicalAmount", "confidence", "nextExpectedStart", "nextExpectedEnd")))
+    }
+
+    @Test fun freshDatabaseIsVersion27() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         try {
-            assertEquals(26, database.openHelper.writableDatabase.version)
+            assertEquals(27, database.openHelper.writableDatabase.version)
         } finally {
             database.close()
         }
