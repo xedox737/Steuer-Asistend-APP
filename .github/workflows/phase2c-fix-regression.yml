@@ -1,0 +1,49 @@
+name: Phase 2C regression fix
+
+on:
+  push:
+    branches:
+      - agent/bank-phase2c-loans-recurring
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[phase2c-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bank-phase2c-loans-recurring
+          fetch-depth: 0
+      - name: Apply compatibility-safe matcher fix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/data/BankPhase1FinalPolicies.kt')
+          s = p.read_text()
+          old = '''        } else {
+            score -= 40
+            conflict = BankLoanConflictState.POSITIVE_LOAN_MOVEMENT
+            paymentType = BankLoanPaymentType.KORREKTUR_ERSTATTUNG
+            reasons += "Positive Bewegung ist keine normale Darlehensrate"
+        }'''
+          new = '''        } else {
+            // Positive movements are never normal loan instalments, but a strong loan context
+            // may still surface them for explicit user review as correction/refund.
+            score -= 20
+            conflict = BankLoanConflictState.POSITIVE_LOAN_MOVEMENT
+            paymentType = BankLoanPaymentType.KORREKTUR_ERSTATTUNG
+            reasons += "Positive Bewegung ist keine normale Darlehensrate; als Korrektur/Erstattung prüfen"
+        }'''
+          if old not in s:
+              raise SystemExit('expected matcher block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git config user.name xedox737
+          git config user.email sergej-gerweck@web.de
+          git add app/src/main/java/com/example/data/BankPhase1FinalPolicies.kt
+          git commit -m '[phase2c-fix] Preserve positive loan review suggestion'
+          git push origin HEAD:agent/bank-phase2c-loans-recurring
