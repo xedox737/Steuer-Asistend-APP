@@ -44,3 +44,4 @@ jobs:
           git add -A
           git commit -m "Integrate Phase 2B rent assignment persistence"
           git push origin HEAD:agent/bank-phase2b-rent-matching
+# rerun after acceptance fixes
