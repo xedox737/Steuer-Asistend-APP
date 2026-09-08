@@ -24,14 +24,14 @@ class BankBackup7AcceptanceTest {
     }
     @After fun close() = database.close()
 
-    @Test fun schema8PreservesAuditNoReceiptReasonAndIsIdempotent() = runTest {
+    @Test fun currentSchemaPreservesAuditNoReceiptReasonAndIsIdempotent() = runTest {
         database.bankDao().upsertAccount(BankAccount("a", "Haus", bankName = "Sparkasse", accountHolder = "Sergej"))
         database.bankDao().upsertTransaction(BankTransaction(
             "t", "a", "2026-09-04", amount = -5.0, reconciliationStatus = BankReconciliationStatus.NO_RECEIPT_REQUIRED,
             noReceiptReason = "Bankgebühr", importedAt = "import", updatedAt = "status-change"
         ))
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(9, payload.getInt("schemaVersion"))
+        assertEquals(10, payload.getInt("schemaVersion"))
         database.bankDao().upsertTransaction(database.bankDao().getTransaction("t")!!.copy(reconciliationStatus = BankReconciliationStatus.OPEN, noReceiptReason = "", updatedAt = "other"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
