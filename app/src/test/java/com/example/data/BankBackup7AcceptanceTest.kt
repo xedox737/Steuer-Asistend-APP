@@ -24,14 +24,14 @@ class BankBackup7AcceptanceTest {
     }
     @After fun close() = database.close()
 
-    @Test fun schema7PreservesAuditNoReceiptReasonAndIsIdempotent() = runTest {
+    @Test fun schema8PreservesAuditNoReceiptReasonAndIsIdempotent() = runTest {
         database.bankDao().upsertAccount(BankAccount("a", "Haus", bankName = "Sparkasse", accountHolder = "Sergej"))
         database.bankDao().upsertTransaction(BankTransaction(
             "t", "a", "2026-09-04", amount = -5.0, reconciliationStatus = BankReconciliationStatus.NO_RECEIPT_REQUIRED,
             noReceiptReason = "Bankgebühr", importedAt = "import", updatedAt = "status-change"
         ))
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(7, payload.getInt("schemaVersion"))
+        assertEquals(8, payload.getInt("schemaVersion"))
         database.bankDao().upsertTransaction(database.bankDao().getTransaction("t")!!.copy(reconciliationStatus = BankReconciliationStatus.OPEN, noReceiptReason = "", updatedAt = "other"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
@@ -79,6 +79,20 @@ class BankBackup7AcceptanceTest {
             reopened?.close()
             context.deleteDatabase(databaseName)
         }
+    }
+
+    @Test fun schema7WithoutRuleArraysStillRestores() = runTest {
+        val old = JSONObject("""
+            {"schemaVersion":7,
+             "bankAccounts":[{"accountId":"a","displayName":"Alt","bankName":"Sparkasse","accountHolder":"","iban":"DE","currency":"EUR","source":"CSV","active":true,"createdAt":"","updatedAt":""}],
+             "bankTransactions":[{"transactionId":"t","accountId":"a","bookingDate":"2026-09-01","valueDate":"","amount":-10.0,"currency":"EUR","counterparty":"Alt","counterpartyIban":"","purpose":"","bankReference":"","source":"CSV","propertyId":"p","unitId":"","importFileName":"old.csv","importRunId":"run","reconciliationStatus":"OPEN","noReceiptReason":"","importedAt":"import","updatedAt":""}],
+             "bankReceiptLinks":[]}
+        """.trimIndent())
+        SupplementalDriveBackup.restorePayload(context, database, old)
+        assertEquals("", database.bankDao().getTransaction("t")?.updatedAt)
+        assertEquals("old.csv", database.bankDao().getTransaction("t")?.importFileName)
+        assertEquals(0, database.bankLearningRuleDao().getAllRules().size)
+        assertEquals(0, database.bankLearningRuleDao().getAllEvidence().size)
     }
 
     @Test fun schema6WithoutUpdatedAtStillRestores() = runTest {

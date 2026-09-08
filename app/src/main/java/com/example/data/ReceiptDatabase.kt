@@ -599,7 +599,21 @@ val MIGRATION_23_24 = object : androidx.room.migration.Migration(23, 24) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class], version = 24, exportSchema = false)
+val MIGRATION_24_25 = object : androidx.room.migration.Migration(24, 25) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("""CREATE TABLE IF NOT EXISTS bank_learning_rules (ruleId TEXT NOT NULL PRIMARY KEY, displayName TEXT NOT NULL, enabled INTEGER NOT NULL, state TEXT NOT NULL, ruleType TEXT NOT NULL, transactionDirection TEXT NOT NULL, counterpartyPattern TEXT NOT NULL, counterpartyIbanPattern TEXT NOT NULL, purposeTerms TEXT NOT NULL, amountMin REAL, amountMax REAL, currency TEXT NOT NULL, accountId TEXT NOT NULL, propertyId TEXT NOT NULL, unitId TEXT NOT NULL, receiptVendorTarget TEXT NOT NULL, receiptCategoryTarget TEXT NOT NULL, receiptSubcategoryTarget TEXT NOT NULL, paymentMethodTarget TEXT NOT NULL, evidenceCount INTEGER NOT NULL, successCount INTEGER NOT NULL, rejectionCount INTEGER NOT NULL, confidence INTEGER NOT NULL, source TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, lastMatchedAt TEXT NOT NULL)""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_learning_rules_enabled ON bank_learning_rules(enabled)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_learning_rules_accountId ON bank_learning_rules(accountId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_learning_rules_propertyId ON bank_learning_rules(propertyId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_learning_rules_unitId ON bank_learning_rules(unitId)")
+        db.execSQL("""CREATE TABLE IF NOT EXISTS bank_rule_evidence (evidenceId TEXT NOT NULL PRIMARY KEY, candidateKey TEXT NOT NULL, ruleId TEXT NOT NULL, transactionId TEXT NOT NULL, receiptId INTEGER NOT NULL, confirmed INTEGER NOT NULL, counterparty TEXT NOT NULL, direction TEXT NOT NULL, purposeTerms TEXT NOT NULL, accountId TEXT NOT NULL, propertyId TEXT NOT NULL, unitId TEXT NOT NULL, vendorTarget TEXT NOT NULL, categoryTarget TEXT NOT NULL, subcategoryTarget TEXT NOT NULL, paymentMethodTarget TEXT NOT NULL, createdAt TEXT NOT NULL)""")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_rule_evidence_candidateKey ON bank_rule_evidence(candidateKey)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_rule_evidence_transactionId ON bank_rule_evidence(transactionId)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_rule_evidence_ruleId ON bank_rule_evidence(ruleId)")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class, BankLearningRule::class, BankRuleEvidence::class], version = 25, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -611,6 +625,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun logbookDao(): LogbookDao
     abstract fun managedDocumentDao(): ManagedDocumentDao
     abstract fun bankDao(): BankDao
+    abstract fun bankLearningRuleDao(): BankLearningRuleDao
 
     companion object {
         @Volatile
@@ -625,7 +640,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance

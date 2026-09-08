@@ -79,12 +79,15 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val property by viewModel.propertyMetadata.collectAsState()
     val loans by viewModel.loans.collectAsState()
+    val learningRules by viewModel.bankLearningRules.collectAsState()
+    val ruleEvaluations by viewModel.bankRuleEvaluations.collectAsState()
 
     var filter by remember { mutableStateOf(BankListFilter.REVIEW) }
     var selectedAccountId by remember { mutableStateOf<String?>(null) }
     var receiptPickerFor by remember { mutableStateOf<BankTransaction?>(null) }
     var bankPickerForReceipt by remember { mutableStateOf<Receipt?>(null) }
     var noReceiptFor by remember { mutableStateOf<BankTransaction?>(null) }
+    var showBankRules by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -207,7 +210,9 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                 FilterChip(selected = filter == BankListFilter.MATCHED, onClick = { filter = BankListFilter.MATCHED }, label = { Text("Erledigt") })
                 FilterChip(selected = filter == BankListFilter.ALL, onClick = { filter = BankListFilter.ALL }, label = { Text("Alle") })
             }
+            OutlinedButton(onClick={ showBankRules = !showBankRules }, modifier=Modifier.fillMaxWidth()) { Text(if(showBankRules) "Bankregeln ausblenden" else "Bankregeln") }
         }
+        if (showBankRules) { item { BankRulesPanel(viewModel, learningRules) } }
 
         if (shown.isEmpty()) {
             item {
@@ -241,6 +246,9 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     onPickReceipt = { receiptPickerFor = transaction },
                     onNoReceipt = { noReceiptFor = transaction },
                     onManualReview = { viewModel.markBankTransactionForReview(transaction.transactionId) },
+                    ruleEvaluation = ruleEvaluations[transaction.transactionId],
+                    learningRules = learningRules,
+                    onRuleRejected = { ruleId -> viewModel.rejectBankRuleMatch(ruleId) },
                     onReopen = { viewModel.reopenBankTransaction(transaction.transactionId) },
                     onUnlink = { link -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }
                 )
@@ -381,6 +389,9 @@ private fun BankTransactionCard(
     onPickReceipt: () -> Unit,
     onNoReceipt: () -> Unit,
     onManualReview: () -> Unit,
+    ruleEvaluation: com.example.data.BankRuleEvaluation?,
+    learningRules: List<com.example.data.BankLearningRule>,
+    onRuleRejected: (String) -> Unit,
     onReopen: () -> Unit,
     onUnlink: (BankReceiptLink) -> Unit
 ) {
@@ -411,6 +422,14 @@ private fun BankTransactionCard(
                 Text(transaction.purpose, fontSize = 12.sp, color = SlateGray, maxLines = 3)
             }
             Text(statusText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+            ruleEvaluation?.let { evaluation ->
+                if (evaluation.hasConflict) Text("Mehrere Regeln passen – bitte selbst entscheiden.", fontSize=11.sp, color=SlateGray)
+                evaluation.suggestions.firstOrNull()?.let { rs ->
+                    val ruleName=learningRules.firstOrNull{it.ruleId==rs.ruleId}?.displayName ?: rs.ruleId
+                    Text("Regel „$ruleName“ • ${rs.confidence}% • ${rs.reasons.take(3).joinToString(" • ")}", fontSize=11.sp, color=SlateGray)
+                    TextButton(onClick={onRuleRejected(rs.ruleId)}) { Text("Regel passt hier nicht") }
+                }
+            }
 
             if (linkedLinks.isNotEmpty()) {
                 HorizontalDivider()
