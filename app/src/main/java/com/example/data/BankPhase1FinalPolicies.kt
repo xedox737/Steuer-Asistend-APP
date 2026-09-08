@@ -128,10 +128,10 @@ object BankLoanMatcher {
             score += 15
             reasons += "Belastung ist für Darlehensrate plausibel"
         } else {
-            score -= 40
+            score -= 20
             conflict = BankLoanConflictState.POSITIVE_LOAN_MOVEMENT
             paymentType = BankLoanPaymentType.KORREKTUR_ERSTATTUNG
-            reasons += "Positive Bewegung ist keine normale Darlehensrate"
+            reasons += "Positive Bewegung ist keine normale Darlehensrate; als Korrektur/Erstattung prüfen"
         }
 
         when {
