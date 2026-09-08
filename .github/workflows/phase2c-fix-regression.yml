@@ -23,24 +23,12 @@ jobs:
           from pathlib import Path
           p = Path('app/src/main/java/com/example/data/BankPhase1FinalPolicies.kt')
           s = p.read_text()
-          old = '''        } else {
-            score -= 40
-            conflict = BankLoanConflictState.POSITIVE_LOAN_MOVEMENT
-            paymentType = BankLoanPaymentType.KORREKTUR_ERSTATTUNG
-            reasons += "Positive Bewegung ist keine normale Darlehensrate"
-        }'''
-          new = '''        } else {
-            // Positive movements are never normal loan instalments, but a strong loan context
-            // may still surface them for explicit user review as correction/refund.
-            score -= 20
-            conflict = BankLoanConflictState.POSITIVE_LOAN_MOVEMENT
-            paymentType = BankLoanPaymentType.KORREKTUR_ERSTATTUNG
-            reasons += "Positive Bewegung ist keine normale Darlehensrate; als Korrektur/Erstattung prüfen"
-        }'''
-          if old not in s:
-              print('matcher block already patched; nothing to do')
+          if 'score -= 40' not in s:
+              print('matcher already patched; nothing to do')
               raise SystemExit(0)
-          p.write_text(s.replace(old, new, 1))
+          s = s.replace('score -= 40', 'score -= 20', 1)
+          s = s.replace('Positive Bewegung ist keine normale Darlehensrate', 'Positive Bewegung ist keine normale Darlehensrate; als Korrektur/Erstattung prüfen', 1)
+          p.write_text(s)
           PY
           if git diff --quiet; then exit 0; fi
           git config user.name xedox737
