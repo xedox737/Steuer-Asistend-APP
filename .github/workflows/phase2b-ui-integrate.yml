@@ -27,7 +27,9 @@ jobs:
         with:
           gradle-version: '9.3.1'
       - name: Apply Phase 2B workflow patch
-        run: python3 .github/scripts/phase2b_ui_apply.py
+        run: |
+          python3 .github/scripts/phase2b_ui_apply.py
+          python3 .github/scripts/phase2b_ui_fix.py
       - name: Create local debug keystore
         run: |
           keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
@@ -40,7 +42,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm -f .github/scripts/phase2b_ui_apply.py .github/workflows/phase2b-ui-integrate.yml
+          rm -f .github/scripts/phase2b_ui_apply.py .github/scripts/phase2b_ui_fix.py .github/workflows/phase2b-ui-integrate.yml
           git add -A
           git commit -m "Integrate Phase 2B rent reconciliation workflow"
           git push origin HEAD:agent/bank-phase2b-rent-matching
