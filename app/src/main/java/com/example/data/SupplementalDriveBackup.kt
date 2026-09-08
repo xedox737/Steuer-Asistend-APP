@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 9
+    internal const val SCHEMA_VERSION = 10
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -55,6 +55,8 @@ object SupplementalDriveBackup {
         put("bankLearningRules", JSONArray().apply { database.bankLearningRuleDao().getAllRules().forEach { put(it.toBackupJson()) } })
         put("bankRuleEvidence", JSONArray().apply { database.bankLearningRuleDao().getAllEvidence().forEach { put(it.toBackupJson()) } })
         put("bankRentAssignments", JSONArray().apply { database.bankRentAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })
+        put("bankLoanAssignments", JSONArray().apply { database.bankLoanAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })
+        put("bankRecurringPatterns", JSONArray().apply { database.bankRecurringPatternDao().getAll().forEach { put(it.toBackupJson()) } })
         put("rentPlanPrefs", prefsToJson(context, "rent_plan_prefs"))
         put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
         put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
@@ -105,6 +107,10 @@ object SupplementalDriveBackup {
             for (index in 0 until learningEvidence.length()) database.bankLearningRuleDao().insertEvidence(learningEvidence.getJSONObject(index).toBankRuleEvidence())
             val rentAssignments = root.optJSONArray("bankRentAssignments") ?: JSONArray()
             for (index in 0 until rentAssignments.length()) database.bankRentAssignmentDao().upsert(rentAssignments.getJSONObject(index).toBankRentAssignment())
+            val loanAssignments = root.optJSONArray("bankLoanAssignments") ?: JSONArray()
+            for (index in 0 until loanAssignments.length()) database.bankLoanAssignmentDao().upsert(loanAssignments.getJSONObject(index).toBankLoanAssignment())
+            val recurringPatterns = root.optJSONArray("bankRecurringPatterns") ?: JSONArray()
+            for (index in 0 until recurringPatterns.length()) database.bankRecurringPatternDao().upsert(recurringPatterns.getJSONObject(index).toBankRecurringPattern())
             database.managedDocumentDao().clearSearchIndex()
             database.managedDocumentDao().getAll().forEach { document ->
                 database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
@@ -179,6 +185,37 @@ object SupplementalDriveBackup {
         source = optString("source", BankRentAssignmentSource.USER_CONFIRMED),
         receiptId = if (has("receiptId") && !isNull("receiptId")) optInt("receiptId") else null,
         createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")
+    )
+
+
+    private fun BankLoanAssignment.toBackupJson() = JSONObject().apply {
+        put("assignmentId", assignmentId); put("transactionId", transactionId); put("loanId", loanId); put("propertyId", propertyId)
+        put("allocatedAmount", allocatedAmount); put("paymentType", paymentType); put("period", period); put("status", status); put("source", source)
+        put("splitStatus", splitStatus); proposedInterest?.let { put("proposedInterest", it) }; proposedPrincipal?.let { put("proposedPrincipal", it) }
+        put("interestBasis", interestBasis); put("createdAt", createdAt); put("updatedAt", updatedAt)
+    }
+    private fun JSONObject.toBankLoanAssignment() = BankLoanAssignment(
+        assignmentId=optString("assignmentId",""), transactionId=optString("transactionId",""), loanId=optInt("loanId",0), propertyId=optString("propertyId",""),
+        allocatedAmount=optDouble("allocatedAmount",0.0), paymentType=optString("paymentType",BankLoanPaymentType.UNKLAR), period=optString("period",""),
+        status=optString("status",BankLoanAssignmentStatus.CONFIRMED), source=optString("source",BankLoanAssignmentSource.USER_CONFIRMED),
+        splitStatus=optString("splitStatus",BankLoanSplitStatus.NONE), proposedInterest=if(has("proposedInterest")&&!isNull("proposedInterest"))optDouble("proposedInterest") else null,
+        proposedPrincipal=if(has("proposedPrincipal")&&!isNull("proposedPrincipal"))optDouble("proposedPrincipal") else null,
+        interestBasis=optString("interestBasis",""), createdAt=optString("createdAt",""), updatedAt=optString("updatedAt","")
+    )
+
+    private fun BankRecurringPattern.toBackupJson() = JSONObject().apply {
+        put("patternId",patternId);put("enabled",enabled);put("direction",direction);put("normalizedCounterparty",normalizedCounterparty);put("purposeFingerprint",purposeFingerprint)
+        put("typicalAmount",typicalAmount);put("amountTolerance",amountTolerance);put("cadence",cadence);put("typicalDay",typicalDay);put("accountId",accountId);put("propertyId",propertyId)
+        put("occurrenceCount",occurrenceCount);put("confidence",confidence);put("lastOccurrence",lastOccurrence);put("nextExpectedStart",nextExpectedStart);put("nextExpectedEnd",nextExpectedEnd)
+        put("reasonsText",reasonsText);put("createdAt",createdAt);put("updatedAt",updatedAt)
+    }
+    private fun JSONObject.toBankRecurringPattern() = BankRecurringPattern(
+        patternId=optString("patternId",""),enabled=optBoolean("enabled",true),direction=optString("direction",RecurringDirection.EXPENSE),
+        normalizedCounterparty=optString("normalizedCounterparty",""),purposeFingerprint=optString("purposeFingerprint",""),typicalAmount=optDouble("typicalAmount",0.0),
+        amountTolerance=optDouble("amountTolerance",0.0),cadence=optString("cadence",RecurringCadence.IRREGULAR),typicalDay=optInt("typicalDay",1),
+        accountId=optString("accountId",""),propertyId=optString("propertyId",""),occurrenceCount=optInt("occurrenceCount",0),confidence=optInt("confidence",0),
+        lastOccurrence=optString("lastOccurrence",""),nextExpectedStart=optString("nextExpectedStart",""),nextExpectedEnd=optString("nextExpectedEnd",""),
+        reasonsText=optString("reasonsText",""),createdAt=optString("createdAt",""),updatedAt=optString("updatedAt","")
     )
 
     private fun BankReceiptLink.toBackupJson() = JSONObject().apply {

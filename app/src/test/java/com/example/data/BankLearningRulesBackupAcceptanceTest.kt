@@ -23,7 +23,7 @@ class BankLearningRulesBackupAcceptanceTest {
     }
     @After fun close() = db.close()
 
-    @Test fun schema8BacksUpAndRestoresRulesAndEvidenceIdempotently() = runTest {
+    @Test fun currentSchemaBacksUpAndRestoresRulesAndEvidenceIdempotently() = runTest {
         val dao = db.bankLearningRuleDao()
         dao.upsertRule(BankLearningRule(
             ruleId = "r1", displayName = "Hornbach", enabled = true, state = BankRuleState.ACTIVE,
@@ -39,7 +39,7 @@ class BankLearningRulesBackupAcceptanceTest {
             subcategoryTarget = "Material", paymentMethodTarget = "Überweisung", createdAt = "c"
         ))
         val payload = SupplementalDriveBackup.createPayload(context, db)
-        assertEquals(9, payload.getInt("schemaVersion"))
+        assertEquals(10, payload.getInt("schemaVersion"))
         assertEquals(1, payload.getJSONArray("bankLearningRules").length())
         assertEquals(1, payload.getJSONArray("bankRuleEvidence").length())
 

@@ -82,6 +82,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     val learningRules by viewModel.bankLearningRules.collectAsState()
     val ruleEvaluations by viewModel.bankRuleEvaluations.collectAsState()
     val rentSuggestions by viewModel.bankRentSuggestions.collectAsState()
+    val phase2CLoanSuggestions by viewModel.bankLoanSuggestions.collectAsState()
 
     var filter by remember { mutableStateOf(BankListFilter.REVIEW) }
     var selectedAccountId by remember { mutableStateOf<String?>(null) }
@@ -90,6 +91,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     var noReceiptFor by remember { mutableStateOf<BankTransaction?>(null) }
     var showBankRules by remember { mutableStateOf(false) }
     var showRentMatching by remember { mutableStateOf(false) }
+    var showPhase2C by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -99,13 +101,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
         selectedAccountId?.let { accountId -> transactions.filter { it.accountId == accountId } } ?: transactions
     }
     val propertyId = property?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
-    val accountsById = remember(accounts) { accounts.associateBy { it.accountId } }
-    val loanSuggestions = remember(filteredTransactions, loans, accounts) {
-        filteredTransactions.mapNotNull { tx ->
-            BankLoanMatcher.suggestions(tx, loans, accountsById[tx.accountId], filteredTransactions)
-                .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
-        }.toMap()
-    }
+    val loanSuggestions = phase2CLoanSuggestions
     val rentHints = remember(rentSuggestions, units, propertyId) {
         rentSuggestions.mapNotNull { (transactionId, candidates) ->
             val top = candidates.firstOrNull { it.propertyId == propertyId } ?: candidates.firstOrNull() ?: return@mapNotNull null
@@ -217,9 +213,11 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             }
             OutlinedButton(onClick={ showBankRules = !showBankRules }, modifier=Modifier.fillMaxWidth()) { Text(if(showBankRules) "Bankregeln ausblenden" else "Bankregeln") }
             OutlinedButton(onClick={ showRentMatching = !showRentMatching }, modifier=Modifier.fillMaxWidth()) { Text(if(showRentMatching) "Mietabgleich ausblenden" else "Mietabgleich") }
+            OutlinedButton(onClick={ showPhase2C = !showPhase2C }, modifier=Modifier.fillMaxWidth()) { Text(if(showPhase2C) "Darlehen & Wiederkehrend ausblenden" else "Darlehen & Wiederkehrend") }
         }
         if (showBankRules) { item { BankRulesPanel(viewModel, learningRules) } }
         if (showRentMatching) { item { BankRentPanel(viewModel) } }
+        if (showPhase2C) { item { BankPhase2CPanel(viewModel) } }
 
         if (shown.isEmpty()) {
             item {
