@@ -357,6 +357,26 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         database.bankRentAssignmentDao().observeAll().stateIn(
             scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
         )
+
+    val bankLoanAssignments: StateFlow<List<com.example.data.BankLoanAssignment>> =
+        database.bankLoanAssignmentDao().observeAll().stateIn(
+            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
+        )
+
+    val bankRecurringPatterns: StateFlow<List<com.example.data.BankRecurringPattern>> =
+        database.bankRecurringPatternDao().observeAll().stateIn(
+            scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = emptyList()
+        )
+
+    val bankRecurringAnalysis: StateFlow<com.example.data.RecurringPaymentAnalysis> =
+        bankTransactions.map { transactions ->
+            com.example.data.BankRecurringPaymentDetector.detect(transactions, java.time.LocalDate.now())
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = com.example.data.RecurringPaymentAnalysis(emptyList(), emptySet(), emptySet())
+        )
+    private val _dismissedBankLoanTransactions = MutableStateFlow<Set<String>>(emptySet())
     private val _dismissedBankRentTransactions = MutableStateFlow<Set<String>>(emptySet())
 
     val bankRuleEvaluations: StateFlow<Map<String, com.example.data.BankRuleEvaluation>> =
@@ -455,6 +475,23 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 (property.id == 1 && it.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID)
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+
+    val bankLoanSuggestions: StateFlow<Map<String, List<com.example.data.BankLoanSuggestion>>> =
+        combine(bankTransactions, allLoans, bankAccounts, bankLearningRules, _dismissedBankLoanTransactions) { transactions, currentLoans, accounts, rules, dismissed ->
+            val accountsById = accounts.associateBy { it.accountId }
+            transactions.asSequence()
+                .filterNot { it.transactionId in dismissed }
+                .filterNot { tx -> bankLoanAssignments.value.any { it.transactionId == tx.transactionId } }
+                .mapNotNull { tx ->
+                    com.example.data.BankLoanMatcher.suggestions(tx, currentLoans, accountsById[tx.accountId], transactions, rules)
+                        .takeIf { it.isNotEmpty() }?.let { tx.transactionId to it }
+                }.toMap()
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyMap()
+        )
 
     init {
         // Initialize Firestore
@@ -1875,6 +1912,66 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             _bankImportStatus.value = "Zuordnung wurde gelöst."
+        }
+    }
+
+    fun confirmBankLoanAssignment(transactionId: String, loanId: Int, paymentType: String? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
+            val loan = database.loanDao().getAllLoans().firstOrNull { it.id == loanId } ?: return@launch
+            val account = database.bankDao().getAccount(transaction.accountId)
+            val rules = database.bankLearningRuleDao().getAllRules()
+            val history = database.bankDao().getAllTransactions()
+            val suggestion = com.example.data.BankLoanMatcher.score(transaction, loan, account, history, rules)
+            val effectiveType = paymentType ?: suggestion.paymentType
+            val split = if (effectiveType == com.example.data.BankLoanPaymentType.REGULAERE_RATE)
+                com.example.data.BankLoanSplitProposer.propose(loan, transaction.absoluteAmount, suggestion.period)
+            else null
+            com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao())
+                .confirm(transaction, loan, suggestion, effectiveType, split)
+            _dismissedBankLoanTransactions.value = _dismissedBankLoanTransactions.value - transactionId
+            _bankImportStatus.value = if (suggestion.conflictState == com.example.data.BankLoanConflictState.NONE)
+                "Darlehenszuordnung bestätigt. Zins/Tilgung bleibt ein prüfbarer Vorschlag."
+            else "Darlehenszuordnung gespeichert und wegen Konflikt zur Prüfung markiert."
+        }
+    }
+
+    fun markBankLoanAsSpecialRepayment(transactionId: String, loanId: Int) =
+        confirmBankLoanAssignment(transactionId, loanId, com.example.data.BankLoanPaymentType.SONDERTILGUNG)
+
+    fun dismissBankLoanSuggestion(transactionId: String) {
+        _dismissedBankLoanTransactions.value = _dismissedBankLoanTransactions.value + transactionId
+        _bankImportStatus.value = "Buchung wird nicht als Darlehen vorgeschlagen; Bank-/Beleglinks bleiben unverändert."
+    }
+
+    fun unlinkBankLoanAssignment(transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao()).unlink(transactionId)
+            _bankImportStatus.value = "Darlehenszuordnung gelöst; bestehende Beleglinks wurden nicht verändert."
+        }
+    }
+
+    fun updateBankLoanSplit(transactionId: String, interest: Double?, principal: Double?, accept: Boolean, edited: Boolean = false) {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao())
+                .updateSplit(transactionId, interest, principal, accept, edited)
+            _bankImportStatus.value = if (accept) "Zins-/Tilgungsvorschlag aktualisiert." else "Zins-/Tilgungsvorschlag abgelehnt."
+        }
+    }
+
+    fun saveRecurringPattern(patternId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val detected = bankRecurringAnalysis.value.patterns.firstOrNull { it.patternId == patternId } ?: return@launch
+            val existing = database.bankRecurringPatternDao().get(patternId)
+            val now = java.time.Instant.now().toString()
+            database.bankRecurringPatternDao().upsert(detected.toEntity(now).copy(createdAt = existing?.createdAt ?: now, enabled = existing?.enabled ?: true))
+            _bankImportStatus.value = "Wiederkehrendes Muster gespeichert. Es erzeugt keine Buchung und keine Zahlung."
+        }
+    }
+
+    fun setRecurringPatternEnabled(patternId: String, enabled: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.bankRecurringPatternDao().setEnabled(patternId, enabled, java.time.Instant.now().toString())
         }
     }
 
