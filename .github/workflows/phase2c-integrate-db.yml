@@ -1,0 +1,59 @@
+name: Phase 2C database integration
+
+on:
+  push:
+    branches:
+      - agent/bank-phase2c-loans-recurring
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bank-phase2c-loans-recurring
+          fetch-depth: 0
+      - name: Integrate Room 27
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/data/ReceiptDatabase.kt')
+          s = p.read_text()
+          if 'MIGRATION_26_27' in s:
+              print('Room 27 already integrated')
+              raise SystemExit(0)
+          migration = '''
+          val MIGRATION_26_27 = object : androidx.room.migration.Migration(26, 27) {
+              override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                  db.execSQL("CREATE TABLE IF NOT EXISTS bank_loan_assignments (assignmentId TEXT NOT NULL PRIMARY KEY, transactionId TEXT NOT NULL, loanId INTEGER NOT NULL, propertyId TEXT NOT NULL, allocatedAmount REAL NOT NULL, paymentType TEXT NOT NULL, period TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, splitStatus TEXT NOT NULL, proposedInterest REAL, proposedPrincipal REAL, interestBasis TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)")
+                  db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_bank_loan_assignments_transactionId ON bank_loan_assignments(transactionId)")
+                  db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_loan_assignments_loan_period ON bank_loan_assignments(loanId, period)")
+                  db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_loan_assignments_propertyId ON bank_loan_assignments(propertyId)")
+                  db.execSQL("CREATE TABLE IF NOT EXISTS bank_recurring_patterns (patternId TEXT NOT NULL PRIMARY KEY, enabled INTEGER NOT NULL, direction TEXT NOT NULL, normalizedCounterparty TEXT NOT NULL, purposeFingerprint TEXT NOT NULL, typicalAmount REAL NOT NULL, amountTolerance REAL NOT NULL, cadence TEXT NOT NULL, typicalDay INTEGER NOT NULL, accountId TEXT NOT NULL, propertyId TEXT NOT NULL, occurrenceCount INTEGER NOT NULL, confidence INTEGER NOT NULL, lastOccurrence TEXT NOT NULL, nextExpectedStart TEXT NOT NULL, nextExpectedEnd TEXT NOT NULL, reasonsText TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL)")
+                  db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_recurring_patterns_accountId ON bank_recurring_patterns(accountId)")
+                  db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_recurring_patterns_propertyId ON bank_recurring_patterns(propertyId)")
+                  db.execSQL("CREATE INDEX IF NOT EXISTS index_bank_recurring_patterns_enabled ON bank_recurring_patterns(enabled)")
+              }
+          }
+
+          '''
+          s = s.replace('@Database(entities = [', migration + '@Database(entities = [', 1)
+          s = s.replace('BankRuleEvidence::class, BankRentAssignment::class], version = 26', 'BankRuleEvidence::class, BankRentAssignment::class, BankLoanAssignment::class, BankRecurringPattern::class], version = 27', 1)
+          s = s.replace('abstract fun bankRentAssignmentDao(): BankRentAssignmentDao', 'abstract fun bankRentAssignmentDao(): BankRentAssignmentDao\n    abstract fun bankLoanAssignmentDao(): BankLoanAssignmentDao\n    abstract fun bankRecurringPatternDao(): BankRecurringPatternDao', 1)
+          s = s.replace('MIGRATION_24_25, MIGRATION_25_26)', 'MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)', 1)
+          required = ['version = 27', 'BankLoanAssignment::class', 'BankRecurringPattern::class', 'bankLoanAssignmentDao()', 'bankRecurringPatternDao()', 'MIGRATION_26_27)']
+          missing = [x for x in required if x not in s]
+          if missing:
+              raise SystemExit('database integration failed: ' + ', '.join(missing))
+          p.write_text(s)
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name xedox737
+          git config user.email sergej-gerweck@web.de
+          git add app/src/main/java/com/example/data/ReceiptDatabase.kt
+          git commit -m '[phase2c-db] Add Room 27 loan and recurring persistence'
+          git push origin HEAD:agent/bank-phase2c-loans-recurring
