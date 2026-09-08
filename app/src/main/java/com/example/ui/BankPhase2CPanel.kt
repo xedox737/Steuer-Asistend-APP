@@ -29,7 +29,6 @@ import com.example.data.BankLoanPaymentType
 import com.example.data.BankLoanSplitStatus
 import com.example.data.BankLoanSuggestion
 import com.example.data.BankRecurringPattern
-import com.example.data.BankReconciliationStatus
 import com.example.data.BankTransaction
 import com.example.data.Loan
 import com.example.data.RecurringCadence
@@ -120,7 +119,11 @@ private fun LoanSuggestionCard(
                 fontSize = 12.sp,
                 color = DarkNavy
             )
-            Text("${top.score}% ${top.confidence} • ${cadenceLabel(top.recurrenceEvidence)} • ${top.paymentType}", fontSize = 11.sp, color = SlateGray)
+            Text(
+                "${top.score}% ${top.confidence} • Rhythmus-Evidenz ${top.recurrenceEvidence + 1} Vorkommen • ${top.paymentType}",
+                fontSize = 11.sp,
+                color = SlateGray
+            )
             if (top.conflictState != "NONE") Text("Konflikt: ${top.conflictState}", fontSize = 11.sp, color = SlateGray)
             if (top.reasons.isNotEmpty()) Text(top.reasons.take(5).joinToString(" • "), fontSize = 11.sp, color = SlateGray)
             Button(
@@ -169,7 +172,8 @@ private fun LoanAssignmentCard(
         colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface)
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(loan?.bezeichnung?.ifBlank { null } ?: "Darlehen ${assignment.loanId}", fontWeight = FontWeight.Bold, color = DarkNavy)
+            val loanName = loan?.bezeichnung?.takeIf { it.isNotBlank() } ?: "Darlehen ${assignment.loanId}"
+            Text(loanName, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text("${assignment.paymentType} • Periode ${assignment.period.ifBlank { "unklar" }} • ${assignment.status}", fontSize = 11.sp, color = SlateGray)
             Text("Zugeordnet ${NumberFormatter.format(assignment.allocatedAmount)}", fontSize = 12.sp, color = DarkNavy)
             transaction?.let { Text("Bank: ${it.bookingDate} • ${it.counterparty.ifBlank { it.purpose }}", fontSize = 11.sp, color = SlateGray) }
@@ -243,4 +247,8 @@ private fun cadenceLabel(value: String): String = when (value) {
     else -> value.ifBlank { "Rhythmus unklar" }
 }
 
-private fun parseMoney(value: String): Double? = value.trim().replace(".", "").replace(',', '.').toDoubleOrNull()
+private fun parseMoney(value: String): Double? {
+    val raw = value.trim()
+    if (raw.isBlank()) return null
+    return if (raw.contains(',')) raw.replace(".", "").replace(',', '.').toDoubleOrNull() else raw.toDoubleOrNull()
+}
