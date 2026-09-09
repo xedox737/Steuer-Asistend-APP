@@ -101,8 +101,6 @@ object BankPhase2DReviewQueue {
                 item.type !in setOf(BankReviewType.RENT_REVIEW, BankReviewType.LOAN_REVIEW)
         }
 
-        // Phase 2C remains authoritative for classified loan transactions. A REVIEW assignment
-        // must stay visible in the central Phase 2D queue even when the generic bank status is OPEN.
         loanAssignments.filter { it.status == BankLoanAssignmentStatus.REVIEW }.forEach { assignment ->
             val tx = transactionsById[assignment.transactionId] ?: return@forEach
             replaceTxItem(base, tx.transactionId, BankReviewItem(
@@ -120,7 +118,6 @@ object BankPhase2DReviewQueue {
                 explanation = "Die Phase-2C-Darlehensklassifizierung benötigt eine Nutzerprüfung und wird nicht als normale Belegkombination behandelt.",
                 reasons = listOf("Bestehende Phase-2C-Darlehenszuordnung im Status REVIEW."),
                 conflicts = listOf(BankCombinationConflict.SPECIAL_CLASSIFICATION),
-                availableActions = listOf("OPEN_DETAILS", "MANUAL_REVIEW"),
                 bookingDate = tx.bookingDate
             ))
         }
@@ -169,7 +166,6 @@ object BankPhase2DReviewQueue {
                     title = "Mögliche Bank-Dublette",
                     explanation = "Mehrere Buchungen besitzen dieselben wesentlichen Importmerkmale. Keine automatische Zuordnung.",
                     conflicts = listOf("POSSIBLE_BANK_DUPLICATE"),
-                    availableActions = listOf("OPEN_DETAILS", "MANUAL_REVIEW"),
                     bookingDate = tx.bookingDate
                 ))
             }
@@ -191,7 +187,10 @@ object BankPhase2DReviewQueue {
             }
         }
 
-        return base.values.distinctBy { it.stableKey }
+        return base.values.map { item ->
+            val hasExistingLinks = links.any { link -> link.transactionId in item.transactionIds || link.receiptId in item.receiptIds }
+            item.copy(availableActions = BankPhase2DReviewActionPolicy.actionsFor(item.type, hasExistingLinks))
+        }.distinctBy { it.stableKey }
             .sortedWith(compareByDescending<BankReviewItem> { it.priority }.thenByDescending { it.bookingDate }.thenBy { it.stableKey })
     }
 
@@ -217,7 +216,6 @@ object BankPhase2DReviewQueue {
         title = title,
         explanation = explanation,
         conflicts = conflicts,
-        availableActions = listOf("OPEN_DETAILS", "CHOOSE_RECEIPT", "MANUAL_REVIEW"),
         bookingDate = tx.bookingDate
     )
 
