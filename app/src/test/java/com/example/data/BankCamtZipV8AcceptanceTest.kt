@@ -96,6 +96,52 @@ class BankCamtZipV8AcceptanceTest {
         assertEquals(1, BankZipImportParser.parse(zipOf("only.xml" to camt053().toByteArray()), "two.zip").supportedCamtFiles)
     }
 
+    @Test fun zipSafetyLimitsBlockLargeXmlTotalSizeAndImplausibleCompression() {
+        val xml = camt052().toByteArray()
+        val one = zipOf("large.xml" to xml)
+        assertTrue(runCatching {
+            BankZipImportParser.parse(
+                one, "large.zip",
+                limits = BankZipSafetyLimits(maxXmlBytes = (xml.size - 1).toLong())
+            )
+        }.isFailure)
+
+        val two = zipOf("a.xml" to xml, "b.xml" to xml)
+        assertTrue(runCatching {
+            BankZipImportParser.parse(
+                two, "total.zip",
+                limits = BankZipSafetyLimits(maxTotalUncompressedBytes = (xml.size + 10).toLong())
+            )
+        }.isFailure)
+
+        assertTrue(runCatching {
+            BankZipImportParser.parse(
+                one, "ratio.zip",
+                limits = BankZipSafetyLimits(maxCompressionRatio = 1.01)
+            )
+        }.isFailure)
+    }
+
+    @Test fun camt052MalformedRowsAreReportedWithoutInventingTransactions() {
+        val malformed = camt052().replace(
+            "<Ntry><Amt Ccy=\"EUR\">50.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>PDNG</Cd></Sts><BookgDt><Dt>2026-09-09</Dt></BookgDt></Ntry>",
+            "<Ntry><Amt Ccy=\"EUR\">not-a-number</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-09-09</Dt></BookgDt></Ntry>" +
+            "<Ntry><Amt Ccy=\"EUR\">10.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts></Ntry>"
+        )
+        val batch = BankImportParser.parseCamtV8(malformed, "SYNTHETIC")
+        assertEquals(2, batch.transactions.size)
+        assertEquals(2, batch.errorRows)
+    }
+
+    @Test fun duplicateSupportedXmlInsideOneZipProducesStableDuplicateIdentities() {
+        val parsed = BankZipImportParser.parse(
+            zipOf("a.xml" to camt052().toByteArray(), "b.xml" to camt052().toByteArray()),
+            "duplicates.zip"
+        )
+        assertEquals(2, parsed.batches.size)
+        assertEquals(parsed.batches[0].transactions.map { it.transactionId }, parsed.batches[1].transactions.map { it.transactionId })
+    }
+
     @Test fun zipPathTraversalIsBlockedAndNestedZipIsNeverImported() {
         val traversal = zipOf("../evil.xml" to camt052().toByteArray())
         assertTrue(runCatching { BankZipImportParser.parse(traversal, "bad.zip") }.isFailure)

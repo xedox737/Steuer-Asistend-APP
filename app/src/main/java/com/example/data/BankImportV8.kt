@@ -87,7 +87,11 @@ fun BankImportParser.parseCamtV8(
     var errorRows = 0
     val transactions = buildList {
         for (entryIndex in 0 until entries.length) {
-            val entry = entries.item(entryIndex) as? Element ?: run { errorRows++; continue }
+            val entry = entries.item(entryIndex) as? Element
+            if (entry == null) {
+                errorRows++
+                continue
+            }
             val status = entryStatus(entry)
             if (format == BankCamtFormat.CAMT_052_001_08 && status != "BOOK") {
                 skippedRows++
@@ -98,7 +102,11 @@ fun BankImportParser.parseCamtV8(
                 continue
             }
             val entryAmountElement = directOrFirstElement(entry, "Amt")
-            val entryRaw = entryAmountElement?.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull()
+            if (entryAmountElement == null) {
+                errorRows++
+                continue
+            }
+            val entryRaw = entryAmountElement.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull()
             val bookingDate = firstDate(entry, "BookgDt")
             if (entryRaw == null || bookingDate.isBlank()) {
                 errorRows++
@@ -322,6 +330,15 @@ object BankZipImportLimits {
     const val MAX_COMPRESSION_RATIO = 200.0
 }
 
+/** Production defaults plus injectable limits for deterministic safety tests. */
+data class BankZipSafetyLimits(
+    val maxZipBytes: Long = BankZipImportLimits.MAX_ZIP_BYTES,
+    val maxEntries: Int = BankZipImportLimits.MAX_ENTRIES,
+    val maxTotalUncompressedBytes: Long = BankZipImportLimits.MAX_TOTAL_UNCOMPRESSED_BYTES,
+    val maxXmlBytes: Long = BankZipImportLimits.MAX_XML_BYTES,
+    val maxCompressionRatio: Double = BankZipImportLimits.MAX_COMPRESSION_RATIO
+)
+
 object BankZipImportParser {
     fun looksLikeZip(bytes: ByteArray): Boolean = bytes.size >= 4 &&
         bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte() &&
@@ -334,9 +351,10 @@ object BankZipImportParser {
         zipFileName: String,
         importedAt: String = Instant.now().toString(),
         propertyId: String = "",
-        unitId: String = ""
+        unitId: String = "",
+        limits: BankZipSafetyLimits = BankZipSafetyLimits()
     ): BankZipParsedImport {
-        require(zipBytes.size.toLong() <= BankZipImportLimits.MAX_ZIP_BYTES) { "ZIP-Datei überschreitet die zulässige Maximalgröße." }
+        require(zipBytes.size.toLong() <= limits.maxZipBytes) { "ZIP-Datei überschreitet die zulässige Maximalgröße." }
         require(looksLikeZip(zipBytes)) { "Datei ist kein gültiges ZIP-Archiv." }
         val reports = mutableListOf<BankZipEntryReport>()
         val batches = mutableListOf<BankImportBatch>()
@@ -352,7 +370,7 @@ object BankZipImportParser {
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     totalEntries++
-                    require(totalEntries <= BankZipImportLimits.MAX_ENTRIES) { "ZIP enthält zu viele Einträge." }
+                    require(totalEntries <= limits.maxEntries) { "ZIP enthält zu viele Einträge." }
                     val name = entry.name.orEmpty()
                     if (entry.isDirectory) {
                         reports += BankZipEntryReport(name, "IGNORED", "Verzeichniseintrag ignoriert.")
@@ -378,12 +396,12 @@ object BankZipImportParser {
                         if (read <= 0) break
                         entryBytes += read
                         totalUncompressed += read
-                        require(totalUncompressed <= BankZipImportLimits.MAX_TOTAL_UNCOMPRESSED_BYTES) { "ZIP überschreitet die zulässige entpackte Gesamtgröße." }
-                        if (isXmlByName) require(entryBytes <= BankZipImportLimits.MAX_XML_BYTES) { "XML-Datei im ZIP ist zu groß." }
+                        require(totalUncompressed <= limits.maxTotalUncompressedBytes) { "ZIP überschreitet die zulässige entpackte Gesamtgröße." }
+                        if (isXmlByName) require(entryBytes <= limits.maxXmlBytes) { "XML-Datei im ZIP ist zu groß." }
                         if (isXmlByName) output.write(buffer, 0, read)
                     }
                     val compressedSize = entry.compressedSize
-                    if (isXmlByName && compressedSize > 0 && entryBytes / compressedSize.toDouble() > BankZipImportLimits.MAX_COMPRESSION_RATIO) {
+                    if (isXmlByName && compressedSize > 0 && entryBytes / compressedSize.toDouble() > limits.maxCompressionRatio) {
                         throw IllegalArgumentException("ZIP-Eintrag weist ein unplausibles Kompressionsverhältnis auf.")
                     }
                     if (!isXmlByName) {
