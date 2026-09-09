@@ -494,6 +494,43 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyMap()
         )
 
+
+    val bankPhase2DAnalysis: StateFlow<com.example.data.BankPhase2DAnalysis> =
+        combine(
+            combine(bankTransactions, receipts, bankReceiptLinks, bankLearningRules) { txs, currentReceipts, links, rules ->
+                arrayOf(txs, currentReceipts, links, rules)
+            },
+            combine(bankMatchSuggestions, bankRentAssignments, bankLoanAssignments, bankRecurringPatterns) { one, rent, loan, recurring ->
+                arrayOf(one, rent, loan, recurring)
+            }
+        ) { base, classified ->
+            @Suppress("UNCHECKED_CAST")
+            com.example.data.BankPhase2DEngine.analyze(
+                transactions = base[0] as List<com.example.data.BankTransaction>,
+                receipts = base[1] as List<Receipt>,
+                links = base[2] as List<com.example.data.BankReceiptLink>,
+                rules = base[3] as List<com.example.data.BankLearningRule>,
+                oneToOne = classified[0] as Map<String, com.example.data.BankMatchSuggestion>,
+                rentAssignments = classified[1] as List<com.example.data.BankRentAssignment>,
+                loanAssignments = classified[2] as List<com.example.data.BankLoanAssignment>,
+                recurringPatterns = classified[3] as List<com.example.data.BankRecurringPattern>
+            )
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = com.example.data.BankPhase2DAnalysis(emptyList(), emptyList())
+        )
+
+    val bankPhase2DCombinations: StateFlow<List<com.example.data.BankCombinationSuggestion>> =
+        bankPhase2DAnalysis.map { it.combinations }.stateIn(
+            scope = viewModelScope, started = SharingStarted.WhileSubscribed(5_000), initialValue = emptyList()
+        )
+
+    val bankPhase2DReviewQueue: StateFlow<List<com.example.data.BankReviewItem>> =
+        bankPhase2DAnalysis.map { it.queue }.stateIn(
+            scope = viewModelScope, started = SharingStarted.WhileSubscribed(5_000), initialValue = emptyList()
+        )
+
     init {
         // Initialize Firestore
         FirestoreService.initialize(application)
@@ -1676,6 +1713,40 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         learning.recordConfirmed(transaction, receipt)
         database.bankLearningRuleDao().getActiveRules().filter { com.example.data.BankRuleEngine.score(transaction, it) != null }.forEach { learning.recordRuleSuccess(it.ruleId) }
         return "Buchung und Beleg wurden bestätigt verbunden."
+    }
+
+
+    fun confirmPhase2DCombination(suggestionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val suggestion = bankPhase2DCombinations.value.firstOrNull { it.suggestionId == suggestionId }
+            if (suggestion == null) {
+                _bankImportStatus.value = "Kombinationsvorschlag ist nicht mehr aktuell."
+                return@launch
+            }
+            _bankImportStatus.value = com.example.data.BankPhase2DService(database)
+                .confirmCombination(suggestion, explicitlyConfirmed = true).message
+        }
+    }
+
+    fun executePhase2DSafeBatch(stableKeys: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val selected = bankPhase2DReviewQueue.value.filter { it.stableKey in stableKeys }
+            _bankImportStatus.value = com.example.data.BankPhase2DService(database)
+                .executeSafeBatch(selected, explicitlyConfirmed = true).message
+        }
+    }
+
+    fun changePhase2DAllocation(linkId: String, amount: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _bankImportStatus.value = com.example.data.BankPhase2DService(database)
+                .changeAllocation(linkId, amount, explicitlyConfirmed = true).message
+        }
+    }
+
+    fun unlinkPhase2DLink(linkId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _bankImportStatus.value = com.example.data.BankPhase2DService(database).unlink(linkId).message
+        }
     }
 
     fun confirmBankRentSuggestion(
