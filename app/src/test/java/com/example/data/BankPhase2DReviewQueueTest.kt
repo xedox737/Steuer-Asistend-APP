@@ -60,7 +60,12 @@ class BankPhase2DReviewQueueTest {
     @Test fun rentReviewAndLoanReviewReuseExistingAssignments() {
         val rentTx = tx("rent", 500.0, BankReconciliationStatus.REVIEW)
         val loanTx = tx("loan", -445.0, BankReconciliationStatus.REVIEW)
-        val rent = BankRentAssignment("ra","rent","p","u","2026-09","tenant",500.0,"MIETE",BankRentAssignmentStatus.CONFIRMED,"MANUAL","","c","u")
+        val rent = BankRentAssignment(
+            assignmentId="ra", transactionId="rent", propertyId="p", unitId="u", rentMonth="2026-09",
+            tenantReference="tenant", allocatedAmount=500.0, paymentType="MIETE",
+            status=BankRentAssignmentStatus.CONFIRMED, source=BankRentAssignmentSource.MANUAL,
+            createdAt="c", updatedAt="u"
+        )
         val loan = BankLoanAssignment("la","loan",1,"p",445.0,BankLoanPaymentType.REGULAERE_RATE,"2026-09",BankLoanAssignmentStatus.REVIEW,"MANUAL",createdAt="c",updatedAt="u")
         val queue = BankReviewQueueBuilder.build(listOf(rentTx,loanTx), emptyList(), emptyList(), emptyMap(), emptyList(), listOf(rent), listOf(loan))
         assertTrue(queue.any { it.type == BankReviewType.RENT_REVIEW })
