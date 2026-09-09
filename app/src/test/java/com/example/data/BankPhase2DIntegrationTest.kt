@@ -36,7 +36,12 @@ class BankPhase2DIntegrationTest {
         val transaction = tx("rent", 500.0)
         val rentReceipt = receipt(1,250.0).copy(hauptkategorie="Miete, Nebenkosten & Kaution")
         val rentReceipt2 = receipt(2,250.0).copy(hauptkategorie="Miete, Nebenkosten & Kaution")
-        val assignment = BankRentAssignment("ra","rent","p1","u1","2026-09","tenant",500.0,"MIETE",BankRentAssignmentStatus.CONFIRMED,"MANUAL","","c","u")
+        val assignment = BankRentAssignment(
+            assignmentId="ra", transactionId="rent", propertyId="p1", unitId="u1", rentMonth="2026-09",
+            tenantReference="tenant", allocatedAmount=500.0, paymentType="MIETE",
+            status=BankRentAssignmentStatus.CONFIRMED, source=BankRentAssignmentSource.MANUAL,
+            createdAt="c", updatedAt="u"
+        )
         val analysis = BankPhase2DEngine.analyze(listOf(transaction),listOf(rentReceipt,rentReceipt2),emptyList(),emptyMap(),rentAssignments=listOf(assignment))
         assertTrue(analysis.combinations.none { "rent" in it.transactionIds })
         assertTrue(analysis.queue.none { "rent" in it.transactionIds && it.type !in setOf(BankReviewType.RENT_REVIEW) })
