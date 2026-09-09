@@ -12,7 +12,7 @@ Eine `Ntry` mit höchstens einem `TxDtls` behält die bestehende Ntry-Semantik. 
 
 ZIPs werden lokal per `ZipInputStream` gestreamt und nicht auf das Dateisystem entpackt. Verzeichnisse werden ignoriert, verschachtelte ZIPs nicht importiert und unsichere Pfade (`..`, absolute Pfade, Laufwerkspfade) blockiert. Produktionsgrenzen: maximal 20 MiB ZIP, 50 Einträge, 50 MiB entpackte Gesamtdaten, 10 MiB pro XML und maximal 200:1 Kompressionsverhältnis.
 
-Jeder XML-Eintrag wird separat per Namespace geprüft. Unterstützte CAMT-Dateien werden über die bestehenden `BankAccount`-/`BankTransaction`-Modelle und die vorhandene DAO-Deduplizierung importiert. Der Importbericht bleibt UI-/Domainzustand; dafür gibt es keine neue Tabelle.
+Jeder XML-Eintrag wird separat per Namespace geprüft. Unterstützte CAMT-Dateien werden über die bestehenden `BankAccount`-/`BankTransaction`-Modelle und die vorhandene DAO-Deduplizierung importiert. Der Importbericht bleibt UI-/Domainzustand; dafür gibt es keine neue Tabelle. Für die Kontoidentität verwendet ein ZIP-Import den ursprünglichen XML-Entry-Namen als Fallback statt des äußeren ZIP-Dateinamens. Dadurch bleibt dieselbe CAMT-Datei beim direkten Import und beim ZIP-Import identisch, ohne bestehende `BankTransactionIdentity`-Semantik umzubauen.
 
 ## Idempotenz
 
