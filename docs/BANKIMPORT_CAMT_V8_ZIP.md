@@ -2,7 +2,7 @@
 
 ## Format-Erkennung
 
-XML wird anhand des Root-Namespace erkannt. Unterstützt werden ausschließlich `camt.052.001.08` und `camt.053.001.08`. Eine `.xml`-Dateiendung allein gilt nicht als Formatnachweis. Der XML-Parser ist namespace-aware und deaktiviert DOCTYPE, externe Entities und externes DTD-/Schema-Laden.
+XML wird anhand des Root-Namespace erkannt. Unterstützt werden ausschließlich `camt.052.001.08` und `camt.053.001.08`. Eine `.xml`-Dateiendung allein gilt nicht als Formatnachweis. Der XML-Parser ist namespace-aware und deaktiviert DOCTYPE, externe Entities und externes DTD-/Schema-Laden. Die JAXP-Attribute für `accessExternalDTD` und `accessExternalSchema` werden als standardisierte Property-URIs gesetzt, damit die Absicherung auch mit dem Android/JVM-Compile-Target verfügbar bleibt.
 
 ## Multi-TxDtls-Entscheidung
 
