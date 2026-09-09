@@ -28,7 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.BankBatchEligibility
+import com.example.data.BankBatchPreviewBuilder
+import com.example.data.BankLinkStatus
+import com.example.data.BankPhase2DReviewAction
+import com.example.data.BankPhase2DReviewActionPolicy
 import com.example.data.BankReviewItem
 import com.example.data.BankReviewType
 
@@ -46,14 +49,20 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
     val transactions by viewModel.bankTransactions.collectAsState()
     val receipts by viewModel.receipts.collectAsState()
     val links by viewModel.bankReceiptLinks.collectAsState()
+    val rentAssignments by viewModel.bankRentAssignments.collectAsState()
+    val loanAssignments by viewModel.bankLoanAssignments.collectAsState()
+    val loans by viewModel.loans.collectAsState()
+    val recurringPatterns by viewModel.bankRecurringPatterns.collectAsState()
     var filter by remember { mutableStateOf(Phase2DReviewFilter.ALL) }
     var sort by remember { mutableStateOf(Phase2DReviewSort.PRIORITY) }
     var expandedKey by remember { mutableStateOf<String?>(null) }
     var showBatchPreview by remember { mutableStateOf(false) }
-    var missingReceiptItem by remember { mutableStateOf<BankReviewItem?>(null) }
+    var receiptPickerItem by remember { mutableStateOf<BankReviewItem?>(null) }
     var noReceiptItem by remember { mutableStateOf<BankReviewItem?>(null) }
     var editLinkId by remember { mutableStateOf<String?>(null) }
     var editAmount by remember { mutableStateOf("") }
+    var showRentWorkflow by remember { mutableStateOf(false) }
+    var showPhase2CWorkflow by remember { mutableStateOf(false) }
 
     val filtered = remember(queue, filter, sort) {
         val base = queue.filter { item ->
@@ -77,16 +86,18 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
             Phase2DReviewSort.CONFIDENCE -> base.sortedWith(compareByDescending<BankReviewItem> { it.score }.thenByDescending { it.priority })
         }
     }
-    val preview = remember(queue) { BankBatchEligibility.preview(queue) }
+    val preview = remember(queue, transactions, receipts, links) {
+        BankBatchPreviewBuilder.build(queue, transactions, receipts, links)
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("Intelligente Prüfwarteschlange", fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text("Sammelzahlungen, Teilzahlungen und Konflikte werden transparent aus bestehenden Bank-/Belegdaten abgeleitet.", fontSize = 12.sp, color = SlateGray)
-                Text("${queue.size} Prüfpunkt(e) • ${preview.eligibleKeys.size} sicher batchfähig", fontSize = 12.sp)
+                Text("${queue.size} Prüfpunkt(e) • ${preview.caseCount} sicher batchfähig", fontSize = 12.sp)
                 Text("Keine automatische DATEV-, Steuer- oder Zahlungsaktion.", fontSize = 11.sp, color = SlateGray)
-                Button(onClick = { showBatchPreview = true }, enabled = preview.eligibleKeys.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { showBatchPreview = true }, enabled = preview.caseCount > 0, modifier = Modifier.fillMaxWidth()) {
                     Text("Sichere Fälle als Batch prüfen")
                 }
             }
@@ -105,6 +116,8 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
 
         filtered.forEach { item ->
             val expanded = expandedKey == item.stableKey
+            val existing = links.filter { it.transactionId in item.transactionIds || it.receiptId in item.receiptIds }
+            val actions = BankPhase2DReviewActionPolicy.actionsFor(item.type, existing.isNotEmpty())
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text(item.title, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -115,41 +128,123 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
                     TextButton(onClick = { expandedKey = if (expanded) null else item.stableKey }) { Text(if (expanded) "Details schließen" else "Details") }
                     if (expanded) {
                         Text(item.explanation, fontSize = 12.sp)
-                        val txLabels = item.transactionIds.mapNotNull { id -> transactions.firstOrNull { it.transactionId == id }?.let { "${it.bookingDate} • ${it.counterparty.ifBlank { it.purpose }} • ${NumberFormatter.format(it.amount)}" } }
-                        if (txLabels.isNotEmpty()) Text("Bank: ${txLabels.joinToString(" | ")}", fontSize = 11.sp)
-                        val receiptLabels = item.receiptIds.mapNotNull { id -> receipts.firstOrNull { it.id == id }?.let { "${it.aussteller} • ${NumberFormatter.format(it.bruttobetrag)}" } }
-                        if (receiptLabels.isNotEmpty()) Text("Beleg(e): ${receiptLabels.joinToString(" | ")}", fontSize = 11.sp)
+                        Text("Fall: ${item.stableKey}", fontSize = 10.sp, color = SlateGray)
+                        val txObjects = item.transactionIds.mapNotNull { id -> transactions.firstOrNull { it.transactionId == id } }
+                        txObjects.forEach { tx ->
+                            Text("Bank: ${tx.bookingDate} • ${tx.counterparty.ifBlank { tx.purpose }} • ${NumberFormatter.format(tx.amount)}", fontSize = 11.sp)
+                            if (tx.propertyId.isNotBlank()) Text("Bank-Property: ${tx.propertyId}", fontSize = 10.sp, color = SlateGray)
+                        }
+                        val receiptObjects = item.receiptIds.mapNotNull { id -> receipts.firstOrNull { it.id == id } }
+                        receiptObjects.forEach { receipt ->
+                            Text("Beleg ${receipt.id}: ${receipt.aussteller} • ${NumberFormatter.format(receipt.bruttobetrag)}", fontSize = 11.sp)
+                            if (receipt.propertyId.isNotBlank()) Text("Beleg-Property: ${receipt.propertyId}", fontSize = 10.sp, color = SlateGray)
+                        }
+                        if (item.type == BankReviewType.RENT_REVIEW) {
+                            rentAssignments.firstOrNull { it.transactionId in item.transactionIds }?.let { assignment ->
+                                Text("Mietprüfung: Objekt ${assignment.propertyId} • Einheit ${assignment.unitId} • Monat ${assignment.rentMonth}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                if (assignment.tenantReference.isNotBlank()) Text("Mietverhältnis: ${assignment.tenantReference}", fontSize = 10.sp, color = SlateGray)
+                            }
+                        }
+                        if (item.type == BankReviewType.LOAN_REVIEW) {
+                            loanAssignments.firstOrNull { it.transactionId in item.transactionIds }?.let { assignment ->
+                                val loan = loans.firstOrNull { it.id == assignment.loanId }
+                                Text("Darlehen: ${loan?.bezeichnung?.ifBlank { "Darlehen ${assignment.loanId}" } ?: "Darlehen ${assignment.loanId}"}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Bank ${loan?.bank?.ifBlank { "nicht hinterlegt" } ?: "nicht hinterlegt"} • Property ${assignment.propertyId} • ${NumberFormatter.format(assignment.allocatedAmount)}", fontSize = 10.sp, color = SlateGray)
+                                Text("Typ ${assignment.paymentType} • Status ${assignment.status}", fontSize = 10.sp, color = SlateGray)
+                            }
+                        }
+                        if (item.type == BankReviewType.RECURRING_REVIEW) {
+                            recurringPatterns.firstOrNull { "review-rec-${it.patternId}" == item.stableKey }?.let { pattern ->
+                                Text("Muster: ${pattern.normalizedCounterparty.ifBlank { "Wiederkehrende Zahlung" }}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Typisch ${NumberFormatter.format(pattern.typicalAmount)} • ${pattern.cadence} • Confidence ${pattern.confidence}%", fontSize = 10.sp, color = SlateGray)
+                                if (pattern.reasonsText.isNotBlank()) Text("Gründe: ${pattern.reasonsText}", fontSize = 10.sp, color = SlateGray)
+                            }
+                        }
+                        if (item.type == BankReviewType.AMOUNT_CONFLICT && txObjects.size == 1 && receiptObjects.size == 1) {
+                            val diff = kotlin.math.abs(txObjects.single().absoluteAmount - receiptObjects.single().bruttobetrag)
+                            Text("Betragsdifferenz: ${NumberFormatter.format(diff)}", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                        }
                         if (item.reasons.isNotEmpty()) Text("Gründe: ${item.reasons.joinToString(" • ")}", fontSize = 11.sp)
-                        val existing = links.filter { it.transactionId in item.transactionIds || it.receiptId in item.receiptIds }
                         if (existing.isNotEmpty()) {
                             Text("Bestehende Links", fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
                             existing.forEach { link ->
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("${link.transactionId.take(8)} → Beleg ${link.receiptId}: ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 11.sp)
-                                    TextButton(onClick = { viewModel.unlinkPhase2DLink(link.linkId) }) { Text("Lösen") }
+                                    if (BankPhase2DReviewAction.UNLINK in actions) {
+                                        TextButton(onClick = { viewModel.unlinkPhase2DLink(link.linkId) }) { Text("Lösen") }
+                                    }
                                 }
-                                TextButton(onClick = { editLinkId = link.linkId; editAmount = link.allocatedAmount.toString() }) { Text("Teilbetrag ändern") }
+                                if (BankPhase2DReviewAction.EDIT_ALLOCATION in actions) {
+                                    TextButton(onClick = { editLinkId = link.linkId; editAmount = link.allocatedAmount.toString() }) { Text("Teilbetrag ändern") }
+                                }
                             }
                         }
-                        when (item.type) {
-                            BankReviewType.COMBINATION_SUGGESTION -> {
-                                val suggestion = combinations.firstOrNull { it.transactionIds.toSet() == item.transactionIds.toSet() && it.receiptIds.toSet() == item.receiptIds.toSet() && it.conflicts.isEmpty() }
-                                if (suggestion != null) {
-                                    Text("Vorgeschlagene Allocations: ${suggestion.allocations.joinToString { "${it.transactionId.take(8)}→${it.receiptId}: ${NumberFormatter.format(it.amount)}" }}", fontSize = 11.sp)
-                                    Button(onClick = { viewModel.confirmPhase2DCombination(suggestion.suggestionId) }) { Text("Kombination bestätigen") }
-                                }
+
+                        if (BankPhase2DReviewAction.CONFIRM_COMBINATION in actions) {
+                            val suggestion = combinations.firstOrNull { it.transactionIds.toSet() == item.transactionIds.toSet() && it.receiptIds.toSet() == item.receiptIds.toSet() && it.conflicts.isEmpty() }
+                            if (suggestion != null) {
+                                Text("Allocations: ${suggestion.allocations.joinToString { "${it.transactionId.take(8)}→${it.receiptId}: ${NumberFormatter.format(it.amount)}" }}", fontSize = 11.sp)
+                                Text("Confidence ${suggestion.confidence} • Score ${suggestion.score}%", fontSize = 11.sp)
+                                if (suggestion.reasons.isNotEmpty()) Text("Vorschlagsgründe: ${suggestion.reasons.joinToString(" • ")}", fontSize = 11.sp)
+                                Button(onClick = { viewModel.confirmPhase2DCombination(suggestion.suggestionId) }) { Text("Kombination ausdrücklich bestätigen") }
+                            } else if (item.type == BankReviewType.COMBINATION_SUGGESTION) {
+                                Text("Konfliktbehaftete oder nicht eindeutige Kombination kann nicht direkt bestätigt werden.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
                             }
-                            BankReviewType.SAFE_SUGGESTION -> if (item.transactionIds.size == 1 && item.receiptIds.size == 1) {
-                                Button(onClick = { viewModel.confirmBankReceiptLink(item.transactionIds.single(), item.receiptIds.single()) }) { Text("Vorschlag bestätigen") }
+                        }
+                        if (BankPhase2DReviewAction.CONFIRM_SAFE in actions && item.transactionIds.size == 1 && item.receiptIds.size == 1) {
+                            Button(onClick = { viewModel.confirmBankReceiptLink(item.transactionIds.single(), item.receiptIds.single()) }) { Text("Vorschlag bestätigen") }
+                        }
+                        if (BankPhase2DReviewAction.CREATE_RECEIPT in actions) {
+                            val tx = txObjects.firstOrNull()
+                            if (tx != null) Button(onClick = { viewModel.startReceiptFromBankTransaction(tx) }) { Text("Beleg scannen/importieren") }
+                        }
+                        if (BankPhase2DReviewAction.OPEN_RECEIPT_PICKER in actions && item.transactionIds.isNotEmpty()) {
+                            OutlinedButton(onClick = { receiptPickerItem = item }) { Text(if (item.type == BankReviewType.PARTIAL_PAYMENT) "Weiteren Beleg hinzufügen/auswählen" else "Anderen Beleg wählen") }
+                        }
+                        if (BankPhase2DReviewAction.NO_RECEIPT_REQUIRED in actions) {
+                            TextButton(onClick = { noReceiptItem = item }) { Text("Kein Beleg erforderlich …") }
+                        }
+                        if (BankPhase2DReviewAction.OPEN_RENT_WORKFLOW in actions) {
+                            OutlinedButton(onClick = { showRentWorkflow = true }) { Text("Im bestehenden Mietabgleich prüfen") }
+                        }
+                        if (BankPhase2DReviewAction.OPEN_LOAN_WORKFLOW in actions) {
+                            OutlinedButton(onClick = { showPhase2CWorkflow = true }) { Text("Im bestehenden Darlehensworkflow prüfen") }
+                        }
+                        if (BankPhase2DReviewAction.OPEN_RECURRING_WORKFLOW in actions) {
+                            OutlinedButton(onClick = { showPhase2CWorkflow = true }) { Text("Im bestehenden Recurring-Workflow prüfen") }
+                        }
+                        if (BankPhase2DReviewAction.MARK_MANUAL_REVIEW in actions) {
+                            item.transactionIds.firstOrNull()?.let { txId ->
+                                TextButton(onClick = { viewModel.markBankTransactionForReview(txId) }) { Text("Manuell prüfen / zurückstellen") }
                             }
-                            BankReviewType.MISSING_RECEIPT -> {
-                                val tx = transactions.firstOrNull { it.transactionId == item.transactionIds.firstOrNull() }
-                                if (tx != null) Button(onClick = { viewModel.startReceiptFromBankTransaction(tx) }) { Text("Beleg scannen/importieren") }
-                                OutlinedButton(onClick = { missingReceiptItem = item }) { Text("Vorhandenen Beleg wählen") }
-                                TextButton(onClick = { noReceiptItem = item }) { Text("Kein Beleg erforderlich …") }
-                            }
+                        }
+                        if (item.type == BankReviewType.POSSIBLE_DUPLICATE) {
+                            Text("Keine automatische Löschung, Zusammenführung oder Batch-Bestätigung.", fontSize = 11.sp, color = SlateGray)
                         }
                     }
+                }
+            }
+        }
+
+        if (showRentWorkflow) {
+            Card(border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Bestehender Phase-2B-Mietworkflow", fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { showRentWorkflow = false }) { Text("Schließen") }
+                    }
+                    BankRentPanel(viewModel)
+                }
+            }
+        }
+        if (showPhase2CWorkflow) {
+            Card(border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Bestehender Phase-2C-Workflow", fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { showPhase2CWorkflow = false }) { Text("Schließen") }
+                    }
+                    BankPhase2CPanel(viewModel)
                 }
             }
         }
@@ -161,36 +256,67 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
             title = { Text("Batch-Vorschau") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Sichere Fälle: ${preview.eligibleKeys.size}")
-                    Text("Transaktionen: ${preview.transactionIds.size} • Belege: ${preview.receiptIds.size}")
-                    Text("Gesamtbetrag: ${NumberFormatter.format(preview.totalAmount)}")
-                    if (preview.excludedKeys.isNotEmpty()) Text("Ausgeschlossen: ${preview.excludedKeys.size}")
-                    if (preview.warnings.isNotEmpty()) Text(preview.warnings.take(5).joinToString("\n"), fontSize = 11.sp, color = SlateGray)
-                    Text("Nur die oben als sicher ausgewiesenen 1:1-Zuordnungen werden verknüpft. Keine DATEV-Freigabe.", fontSize = 11.sp)
+                    Text("${preview.caseCount} sichere Fälle • ${preview.transactionCount} Transaktionen • ${preview.receiptCount} Belege")
+                    Text("Gesamtbetrag: ${NumberFormatter.format(preview.totalAmount)}", fontWeight = FontWeight.Bold)
+                    preview.cases.forEach { row ->
+                        Card(border = BorderStroke(1.dp, BorderColor)) {
+                            Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Fall ${row.stableKey}", fontSize = 10.sp, color = SlateGray)
+                                Text("${row.bookingDate} • ${row.counterpartyOrPurpose}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Transaktion ${row.transactionId.take(12)} • ${NumberFormatter.format(row.transactionAmount)} • offen ${NumberFormatter.format(row.transactionRemaining)}", fontSize = 10.sp)
+                                Text("Beleg ${row.receiptId} • ${row.receiptIssuer} • ${NumberFormatter.format(row.receiptAmount)} • offen ${NumberFormatter.format(row.receiptRemaining)}", fontSize = 10.sp)
+                                Text("Allocation ${NumberFormatter.format(row.allocationAmount)} • ${row.confidence} • Score ${row.score}%", fontSize = 10.sp)
+                            }
+                        }
+                    }
+                    if (preview.excludedCases.isNotEmpty()) {
+                        Text("Ausgeschlossen (${preview.excludedCases.size})", fontWeight = FontWeight.SemiBold)
+                        preview.excludedCases.forEach { row ->
+                            val refs = buildList {
+                                if (row.transactionIds.isNotEmpty()) add("Transaktion ${row.transactionIds.joinToString { it.take(12) }}")
+                                if (row.receiptIds.isNotEmpty()) add("Beleg ${row.receiptIds.joinToString()}")
+                            }.joinToString(" • ")
+                            Text("• ${row.stableKey}${if (refs.isNotBlank()) " • $refs" else ""}: ${row.reason} [${row.confidence}, Score ${row.score}%]${if (row.conflicts.isNotEmpty()) " • ${row.conflicts.joinToString()}" else ""}", fontSize = 10.sp, color = SlateGray)
+                        }
+                    }
+                    Text("Ausgeschlossene Fälle werden nicht ausgeführt. Die Eligibility wird unmittelbar vor Ausführung erneut domainseitig geprüft. Keine DATEV-Freigabe.", fontSize = 10.sp)
                 }
             },
-            confirmButton = { Button(onClick = { viewModel.executePhase2DSafeBatch(preview.eligibleKeys); showBatchPreview = false }) { Text("Jetzt ausdrücklich bestätigen") } },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.executePhase2DSafeBatch(preview.eligibleKeys); showBatchPreview = false },
+                    enabled = preview.eligibleKeys.isNotEmpty()
+                ) { Text("Jetzt ausdrücklich bestätigen") }
+            },
             dismissButton = { TextButton(onClick = { showBatchPreview = false }) { Text("Abbrechen") } }
         )
     }
 
-    missingReceiptItem?.let { item ->
-        val candidates = receipts.filter { receipt -> links.none { it.receiptId == receipt.id && it.status == com.example.data.BankLinkStatus.CONFIRMED } }.take(30)
+    receiptPickerItem?.let { item ->
+        val txId = item.transactionIds.firstOrNull()
+        val tx = txId?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+        val candidates = if (tx == null) emptyList() else receipts.filter { receipt ->
+            val hasRoom = links.filter { it.receiptId == receipt.id && it.status == BankLinkStatus.CONFIRMED }.sumOf { it.allocatedAmount } < receipt.bruttobetrag - 0.01
+            val propertyCompatible = tx.propertyId.isBlank() || receipt.propertyId.isBlank() || tx.propertyId == receipt.propertyId
+            hasRoom && propertyCompatible
+        }.take(30)
         AlertDialog(
-            onDismissRequest = { missingReceiptItem = null },
-            title = { Text("Vorhandenen Beleg wählen") },
+            onDismissRequest = { receiptPickerItem = null },
+            title = { Text("Passenden Beleg wählen") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (candidates.isEmpty()) Text("Keine offenen Belege vorhanden.")
+                    if (candidates.isEmpty()) Text("Keine passenden offenen Belege vorhanden.")
                     candidates.take(12).forEach { receipt ->
                         TextButton(onClick = {
-                            item.transactionIds.firstOrNull()?.let { viewModel.confirmBankReceiptLink(it, receipt.id) }
-                            missingReceiptItem = null
-                        }, modifier = Modifier.fillMaxWidth()) { Text("${receipt.aussteller} • ${NumberFormatter.format(receipt.bruttobetrag)}") }
+                            txId?.let { viewModel.confirmBankReceiptLink(it, receipt.id) }
+                            receiptPickerItem = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("${receipt.aussteller} • ${NumberFormatter.format(receipt.bruttobetrag)} • ${receipt.datum}")
+                        }
                     }
                 }
             },
-            confirmButton = {}, dismissButton = { TextButton(onClick = { missingReceiptItem = null }) { Text("Schließen") } }
+            confirmButton = {}, dismissButton = { TextButton(onClick = { receiptPickerItem = null }) { Text("Schließen") } }
         )
     }
 

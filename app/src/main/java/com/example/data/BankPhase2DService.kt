@@ -38,16 +38,34 @@ class BankPhase2DService(
     ): BankCombinationApplyResult {
         if (!explicitlyConfirmed) return BankCombinationApplyResult(false, message = "Batch-Vorschau wurde nicht final bestätigt.")
         if (selected.isEmpty()) return BankCombinationApplyResult(false, message = "Keine Fälle ausgewählt.")
-        val ineligible = selected.filterNot { BankBatchEligibility.evaluate(it).eligible }
-        if (ineligible.isNotEmpty()) {
+
+        // Stable keys are the batch identity. Recomposition/repeated selection must never duplicate work.
+        val unique = selected.distinctBy { it.stableKey }
+        val invalid = unique.filterNot { BankBatchEligibility.evaluate(it).eligible }
+        if (invalid.isNotEmpty()) {
             return BankCombinationApplyResult(false, message = "Batch enthält nicht sichere oder konfliktbehaftete Fälle.")
         }
-        val allocations = selected.mapNotNull { item ->
-            val transactionId = item.transactionIds.singleOrNull() ?: return@mapNotNull null
-            val receiptId = item.receiptIds.singleOrNull() ?: return@mapNotNull null
-            BankProposedAllocation(transactionId, receiptId, amount = minOf(item.remainingAmount, item.amount))
+        if (unique.any { it.transactionIds.size != 1 || it.receiptIds.size != 1 }) {
+            return BankCombinationApplyResult(false, message = "Batch enthält keinen eindeutigen 1:1-Fall.")
         }
-        if (allocations.size != selected.size) return BankCombinationApplyResult(false, message = "Batch enthält keinen eindeutigen 1:1-Fall.")
+        val transactionIds = unique.map { it.transactionIds.single() }
+        val receiptIds = unique.map { it.receiptIds.single() }
+        if (transactionIds.distinct().size != transactionIds.size) {
+            return BankCombinationApplyResult(false, message = "Eine Banktransaktion darf im selben Batch nicht mehrfach verwendet werden.")
+        }
+        if (receiptIds.distinct().size != receiptIds.size) {
+            return BankCombinationApplyResult(false, message = "Ein Beleg darf im selben Batch nicht widersprüchlich mehrfach verwendet werden.")
+        }
+
+        val allocations = unique.map { item ->
+            BankProposedAllocation(
+                transactionId = item.transactionIds.single(),
+                receiptId = item.receiptIds.single(),
+                amount = minOf(item.remainingAmount, item.amount)
+            )
+        }
+        // applyAllocations runs in one Room transaction and re-checks current DB state, property,
+        // NO_RECEIPT_REQUIRED, existing user links and over-allocation immediately before write.
         return applyAllocations(allocations)
     }
 
@@ -121,6 +139,8 @@ class BankPhase2DService(
             affected += transaction.transactionId
         }
 
+        // No write happens before every allocation has passed all guards. A failure therefore rolls
+        // the Room transaction back without a partially applied batch.
         planned.forEach { bankDao.upsertLink(it) }
         affected.forEach { refreshStatus(bankDao, it) }
         BankCombinationApplyResult(
