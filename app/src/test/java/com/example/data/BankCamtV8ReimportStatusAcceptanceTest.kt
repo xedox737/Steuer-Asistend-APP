@@ -29,7 +29,7 @@ class BankCamtV8ReimportStatusAcceptanceTest {
 
     @Test fun directAndZipReimportPreserveMatchedLinkAndSingleTransaction() = runTest {
         val xml = synthetic052()
-        val first = BankImportParser.parseCamtV8(xml, "SYNTHETIC", "first", "direct.xml")
+        val first = BankImportParser.parseCamtV8(xml, "inside", "first", "inside.xml")
         val tx = first.transactions.single()
         val dao = database.bankDao()
         dao.upsertAccount(first.account)
@@ -48,7 +48,7 @@ class BankCamtV8ReimportStatusAcceptanceTest {
         ))
         dao.updateTransactionStatus(tx.transactionId, BankReconciliationStatus.MATCHED, "", "matched")
 
-        val directAgain = BankImportParser.parseCamtV8(xml, "SYNTHETIC", "second", "again.xml")
+        val directAgain = BankImportParser.parseCamtV8(xml, "inside", "second", "inside.xml")
         dao.upsertAccount(directAgain.account)
         dao.insertTransactions(directAgain.transactions)
 

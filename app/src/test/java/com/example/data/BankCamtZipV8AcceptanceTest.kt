@@ -160,7 +160,7 @@ class BankCamtZipV8AcceptanceTest {
     }
 
     @Test fun sameTransactionsFromDirectAndZipKeepSameIds() {
-        val direct = BankImportParser.parseCamtV8(camt052(), "SYNTHETIC", "first", "direct.xml")
+        val direct = BankImportParser.parseCamtV8(camt052(), "inside", "first", "inside.xml")
         val zipped = BankZipImportParser.parse(zipOf("inside.xml" to camt052().toByteArray()), "bundle.zip", "later").batches.single()
         assertEquals(direct.account.accountId, zipped.account.accountId)
         assertEquals(direct.transactions.map { it.transactionId }, zipped.transactions.map { it.transactionId })

@@ -419,7 +419,7 @@ object BankZipImportParser {
                         } else {
                             val batch = BankImportParser.parseCamtV8(
                                 xml = xml,
-                                fallbackAccountName = zipFileName.substringBeforeLast('.'),
+                                fallbackAccountName = name.substringAfterLast('/').substringBeforeLast('.').ifBlank { "Importiertes Konto" },
                                 importedAt = importedAt,
                                 importFileName = "$zipFileName!/$name",
                                 importRunId = runId,
