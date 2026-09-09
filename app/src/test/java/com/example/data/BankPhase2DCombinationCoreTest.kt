@@ -37,6 +37,16 @@ class BankPhase2DCombinationCoreTest {
         assertEquals("HOCH", exact.confidence)
     }
 
+    @Test fun manyToOneExact1000Equals400Plus600() {
+        val r = receipt(11, 1000.0)
+        val suggestions = BankCombinationMatcher.manyTransactionsToOneReceipt(r, listOf(tx("a400", -400.0), tx("b600", -600.0)), emptyList())
+        val exact = suggestions.single()
+        assertEquals(setOf("a400", "b600"), exact.transactionIds.toSet())
+        assertEquals(1000.0, exact.matchedAmount, 0.001)
+        assertEquals(0.0, exact.difference, 0.001)
+        assertEquals("HOCH", exact.confidence)
+    }
+
     @Test fun receipt1000WithExisting400Leaves600AndNextPaymentUsesRest() {
         val r = receipt(10, 1000.0)
         val existing = BankReceiptLink("l1", "old", 10, "r-10", 400.0)
@@ -116,5 +126,14 @@ class BankPhase2DCombinationCoreTest {
         val transaction = tx("t", -500.0)
         val receipts = (1..5).map { receipt(it, 100.0) }
         assertTrue(BankCombinationMatcher.oneTransactionToManyReceipts(transaction, receipts, emptyList()).none { it.receiptIds.size > 4 })
+    }
+
+    @Test(timeout = 5000) fun largerCandidateSetStaysBoundedAndCompletes() {
+        val transaction = tx("large", -400.0)
+        val receipts = (1..20).map { receipt(it, 100.0) }
+        val suggestions = BankCombinationMatcher.oneTransactionToManyReceipts(transaction, receipts, emptyList())
+        assertTrue(suggestions.isNotEmpty())
+        assertTrue(suggestions.none { it.receiptIds.size > BankCombinationThresholds.MAX_COMBINATION_SIZE })
+        assertTrue(suggestions.any { it.receiptIds.size == 4 && it.difference <= 0.001 })
     }
 }
