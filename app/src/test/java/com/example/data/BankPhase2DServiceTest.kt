@@ -31,6 +31,10 @@ class BankPhase2DServiceTest {
         id=id, aussteller="Vendor", datum="2026-09-04", uhrzeit="", bruttobetrag=amount,
         hauptkategorie="Kosten", unterkategorie="Material", kontoNr="", beschreibung="Invoice", internalId="r$id", propertyId=property
     )
+    private fun safe(key: String, txId: String, receiptId: Int, amount: Double = 100.0) = BankReviewItem(
+        key, BankReviewType.SAFE_SUGGESTION, 30, listOf(txId), listOf(receiptId), amount=amount, remainingAmount=amount,
+        score=95, confidence="HOCH", title="Safe", explanation=""
+    )
 
     @Test fun combinationRequiresExplicitUserConfirmation() = runTest {
         val transaction = tx("t")
@@ -122,7 +126,7 @@ class BankPhase2DServiceTest {
     @Test fun safeBatchRequiresFinalConfirmationAndIsIdempotent() = runTest {
         database.bankDao().insertTransactions(listOf(tx("t",-100.0)))
         database.receiptDao().insertAll(listOf(receipt(1,100.0)))
-        val item = BankReviewItem("safe",BankReviewType.SAFE_SUGGESTION,30,listOf("t"),listOf(1),amount=100.0,remainingAmount=100.0,score=95,confidence="HOCH",title="Safe",explanation="")
+        val item = safe("safe", "t", 1)
         val service = BankPhase2DService(database) { "now" }
         assertFalse(service.executeSafeBatch(listOf(item), false).success)
         assertTrue(service.executeSafeBatch(listOf(item), true).success)
@@ -130,11 +134,79 @@ class BankPhase2DServiceTest {
         assertEquals(1, database.bankDao().getAllLinks().size)
     }
 
+    @Test fun emptyBatchChangesNothing() = runTest {
+        val result = BankPhase2DService(database).executeSafeBatch(emptyList(), true)
+        assertFalse(result.success)
+        assertTrue(database.bankDao().getAllLinks().isEmpty())
+    }
+
+    @Test fun severalSafeCasesAreAppliedAtomically() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("t1",-100.0), tx("t2",-80.0)))
+        database.receiptDao().insertAll(listOf(receipt(1,100.0), receipt(2,80.0)))
+        val result = BankPhase2DService(database) { "now" }.executeSafeBatch(
+            listOf(safe("s1","t1",1,100.0), safe("s2","t2",2,80.0)), true
+        )
+        assertTrue(result.success)
+        assertEquals(2, database.bankDao().getAllLinks().size)
+        assertEquals(180.0, database.bankDao().getAllLinks().sumOf { it.allocatedAmount }, 0.001)
+    }
+
+    @Test fun duplicateStableKeyDoesNotCreateDuplicateLink() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("t",-100.0)))
+        database.receiptDao().insertAll(listOf(receipt(1,100.0)))
+        val item = safe("same","t",1)
+        val result = BankPhase2DService(database) { "now" }.executeSafeBatch(listOf(item,item), true)
+        assertTrue(result.success)
+        assertEquals(1, database.bankDao().getAllLinks().size)
+    }
+
+    @Test fun sameTransactionTwiceInBatchIsRejectedBeforeAnyWrite() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("t",-100.0)))
+        database.receiptDao().insertAll(listOf(receipt(1,100.0), receipt(2,100.0)))
+        val result = BankPhase2DService(database).executeSafeBatch(
+            listOf(safe("a","t",1), safe("b","t",2)), true
+        )
+        assertFalse(result.success)
+        assertTrue(database.bankDao().getAllLinks().isEmpty())
+    }
+
+    @Test fun sameReceiptTwiceInBatchIsRejectedBeforeAnyWrite() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("t1",-100.0), tx("t2",-100.0)))
+        database.receiptDao().insertAll(listOf(receipt(1,100.0)))
+        val result = BankPhase2DService(database).executeSafeBatch(
+            listOf(safe("a","t1",1), safe("b","t2",1)), true
+        )
+        assertFalse(result.success)
+        assertTrue(database.bankDao().getAllLinks().isEmpty())
+    }
+
+    @Test fun unsafeCaseRejectsWholeBatchWithoutPartialWrite() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("t1",-100.0), tx("t2",-100.0)))
+        database.receiptDao().insertAll(listOf(receipt(1,100.0), receipt(2,100.0)))
+        val safe = safe("s","t1",1)
+        val unsafe = safe("u","t2",2).copy(type=BankReviewType.PROPERTY_CONFLICT, conflicts=listOf(BankCombinationConflict.PROPERTY_CONFLICT))
+        val result = BankPhase2DService(database).executeSafeBatch(listOf(safe,unsafe), true)
+        assertFalse(result.success)
+        assertTrue(database.bankDao().getAllLinks().isEmpty())
+    }
+
+    @Test fun currentDatabasePropertyGuardRollsBackWholeBatch() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("t1",-100.0), tx("t2",-100.0, property="p1")))
+        database.receiptDao().insertAll(listOf(receipt(1,100.0), receipt(2,100.0, property="p2")))
+        val result = BankPhase2DService(database).executeSafeBatch(
+            listOf(safe("s1","t1",1), safe("s2","t2",2)), true
+        )
+        assertFalse(result.success)
+        assertTrue(database.bankDao().getAllLinks().isEmpty())
+    }
+
     @Test fun batchRejectsMissingReceiptAndLoanSpecialCasesByType() = runTest {
-        val base = BankReviewItem("x",BankReviewType.SAFE_SUGGESTION,30,listOf("t"),listOf(1),amount=100.0,remainingAmount=100.0,score=95,confidence="HOCH",title="",explanation="")
+        val base = safe("x","t",1)
         assertFalse(BankBatchEligibility.evaluate(base.copy(type=BankReviewType.MISSING_RECEIPT)).eligible)
         assertFalse(BankBatchEligibility.evaluate(base.copy(type=BankReviewType.LOAN_REVIEW)).eligible)
         assertFalse(BankBatchEligibility.evaluate(base.copy(type=BankReviewType.RENT_REVIEW)).eligible)
         assertFalse(BankBatchEligibility.evaluate(base.copy(type=BankReviewType.PARTIAL_PAYMENT)).eligible)
+        assertFalse(BankBatchEligibility.evaluate(base.copy(type=BankReviewType.RECURRING_REVIEW)).eligible)
+        assertFalse(BankBatchEligibility.evaluate(base.copy(type=BankReviewType.POSSIBLE_DUPLICATE)).eligible)
     }
 }
