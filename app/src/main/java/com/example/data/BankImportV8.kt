@@ -417,15 +417,30 @@ object BankZipImportParser {
                             unsupported++
                             reports += BankZipEntryReport(name, "UNSUPPORTED", "XML ist kein unterstütztes CAMT.052/053 V8.")
                         } else {
-                            val batch = BankImportParser.parseCamtV8(
+                            val entryFallbackName = name.substringAfterLast('/').substringBeforeLast('.').ifBlank { "Importiertes Konto" }
+                            var batch = BankImportParser.parseCamtV8(
                                 xml = xml,
-                                fallbackAccountName = name.substringAfterLast('/').substringBeforeLast('.').ifBlank { "Importiertes Konto" },
+                                fallbackAccountName = entryFallbackName,
                                 importedAt = importedAt,
                                 importFileName = "$zipFileName!/$name",
                                 importRunId = runId,
                                 propertyId = propertyId,
                                 unitId = unitId
                             )
+                            val existingSameIban = batch.account.iban.takeIf { it.isNotBlank() }?.let { iban ->
+                                batches.firstOrNull { it.account.iban.equals(iban, ignoreCase = true) }
+                            }
+                            if (existingSameIban != null && existingSameIban.account.accountId != batch.account.accountId) {
+                                batch = BankImportParser.parseCamtV8(
+                                    xml = xml,
+                                    fallbackAccountName = existingSameIban.account.displayName,
+                                    importedAt = importedAt,
+                                    importFileName = "$zipFileName!/$name",
+                                    importRunId = runId,
+                                    propertyId = propertyId,
+                                    unitId = unitId
+                                )
+                            }
                             batches += batch
                             supported++
                             reports += BankZipEntryReport(name, "PARSED", "${batch.transactions.size} Buchungen gelesen.", batch.format, batch.transactions.size, batch.errorRows)
