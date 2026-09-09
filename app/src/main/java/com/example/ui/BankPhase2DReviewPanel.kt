@@ -49,6 +49,10 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
     val transactions by viewModel.bankTransactions.collectAsState()
     val receipts by viewModel.receipts.collectAsState()
     val links by viewModel.bankReceiptLinks.collectAsState()
+    val rentAssignments by viewModel.bankRentAssignments.collectAsState()
+    val loanAssignments by viewModel.bankLoanAssignments.collectAsState()
+    val loans by viewModel.loans.collectAsState()
+    val recurringPatterns by viewModel.bankRecurringPatterns.collectAsState()
     var filter by remember { mutableStateOf(Phase2DReviewFilter.ALL) }
     var sort by remember { mutableStateOf(Phase2DReviewSort.PRIORITY) }
     var expandedKey by remember { mutableStateOf<String?>(null) }
@@ -134,6 +138,27 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
                         receiptObjects.forEach { receipt ->
                             Text("Beleg ${receipt.id}: ${receipt.aussteller} • ${NumberFormatter.format(receipt.bruttobetrag)}", fontSize = 11.sp)
                             if (receipt.propertyId.isNotBlank()) Text("Beleg-Property: ${receipt.propertyId}", fontSize = 10.sp, color = SlateGray)
+                        }
+                        if (item.type == BankReviewType.RENT_REVIEW) {
+                            rentAssignments.firstOrNull { it.transactionId in item.transactionIds }?.let { assignment ->
+                                Text("Mietprüfung: Objekt ${assignment.propertyId} • Einheit ${assignment.unitId} • Monat ${assignment.rentMonth}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                if (assignment.tenantReference.isNotBlank()) Text("Mietverhältnis: ${assignment.tenantReference}", fontSize = 10.sp, color = SlateGray)
+                            }
+                        }
+                        if (item.type == BankReviewType.LOAN_REVIEW) {
+                            loanAssignments.firstOrNull { it.transactionId in item.transactionIds }?.let { assignment ->
+                                val loan = loans.firstOrNull { it.id == assignment.loanId }
+                                Text("Darlehen: ${loan?.bezeichnung?.ifBlank { "Darlehen ${assignment.loanId}" } ?: "Darlehen ${assignment.loanId}"}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Bank ${loan?.bank?.ifBlank { "nicht hinterlegt" } ?: "nicht hinterlegt"} • Property ${assignment.propertyId} • ${NumberFormatter.format(assignment.allocatedAmount)}", fontSize = 10.sp, color = SlateGray)
+                                Text("Typ ${assignment.paymentType} • Status ${assignment.status}", fontSize = 10.sp, color = SlateGray)
+                            }
+                        }
+                        if (item.type == BankReviewType.RECURRING_REVIEW) {
+                            recurringPatterns.firstOrNull { "review-rec-${it.patternId}" == item.stableKey }?.let { pattern ->
+                                Text("Muster: ${pattern.normalizedCounterparty.ifBlank { "Wiederkehrende Zahlung" }}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Typisch ${NumberFormatter.format(pattern.typicalAmount)} • ${pattern.cadence} • Confidence ${pattern.confidence}%", fontSize = 10.sp, color = SlateGray)
+                                if (pattern.reasonsText.isNotBlank()) Text("Gründe: ${pattern.reasonsText}", fontSize = 10.sp, color = SlateGray)
+                            }
                         }
                         if (item.type == BankReviewType.AMOUNT_CONFLICT && txObjects.size == 1 && receiptObjects.size == 1) {
                             val diff = kotlin.math.abs(txObjects.single().absoluteAmount - receiptObjects.single().bruttobetrag)
@@ -247,7 +272,11 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
                     if (preview.excludedCases.isNotEmpty()) {
                         Text("Ausgeschlossen (${preview.excludedCases.size})", fontWeight = FontWeight.SemiBold)
                         preview.excludedCases.forEach { row ->
-                            Text("• ${row.stableKey}: ${row.reason} [${row.confidence}, Score ${row.score}%]${if (row.conflicts.isNotEmpty()) " • ${row.conflicts.joinToString()}" else ""}", fontSize = 10.sp, color = SlateGray)
+                            val refs = buildList {
+                                if (row.transactionIds.isNotEmpty()) add("Transaktion ${row.transactionIds.joinToString { it.take(12) }}")
+                                if (row.receiptIds.isNotEmpty()) add("Beleg ${row.receiptIds.joinToString()}")
+                            }.joinToString(" • ")
+                            Text("• ${row.stableKey}${if (refs.isNotBlank()) " • $refs" else ""}: ${row.reason} [${row.confidence}, Score ${row.score}%]${if (row.conflicts.isNotEmpty()) " • ${row.conflicts.joinToString()}" else ""}", fontSize = 10.sp, color = SlateGray)
                         }
                     }
                     Text("Ausgeschlossene Fälle werden nicht ausgeführt. Die Eligibility wird unmittelbar vor Ausführung erneut domainseitig geprüft. Keine DATEV-Freigabe.", fontSize = 10.sp)
