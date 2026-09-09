@@ -179,7 +179,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     }
                     Button(
                         onClick = {
-                            importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/octet-stream", "text/plain"))
+                            importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/zip", "application/x-zip-compressed", "application/octet-stream", "text/plain"))
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -229,7 +229,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     border = BorderStroke(1.dp, BorderColor)
                 ) {
                     Text(
-                        if (transactions.isEmpty()) "Importiere zuerst einen CSV- oder CAMT.053-Kontoauszug." else "Für die aktuelle Kontoauswahl ist hier nichts zu prüfen.",
+                        if (transactions.isEmpty()) "Importiere zuerst CSV, CAMT.052/053 V8 oder ein ZIP mit CAMT-Dateien." else "Für die aktuelle Kontoauswahl ist hier nichts zu prüfen.",
                         modifier = Modifier.padding(16.dp),
                         color = SlateGray
                     )
