@@ -13,9 +13,10 @@ object BankPhase2DRulePolicy {
         transactionIds.forEach { id ->
             val tx = byId[id] ?: return@forEach
             val evaluation = BankRuleEngine.evaluate(tx, rules)
-            val points = evaluation.appliedRules.maxOfOrNull { it.scoreBonus } ?: 0
+            if (evaluation.hasConflict) return@forEach
+            val points = evaluation.suggestions.firstOrNull()?.score?.div(12)?.coerceIn(1, MAX_RULE_BONUS) ?: 0
             if (points > 0) {
-                best = maxOf(best, points.coerceAtMost(MAX_RULE_BONUS))
+                best = maxOf(best, points)
                 reasons += "Aktive Phase-2A-Regel liefert begrenzte Zusatz-Evidenz."
             }
         }
@@ -93,7 +94,6 @@ object BankPhase2DReviewQueue {
         val rentTx = rentAssignments.filter { it.status == BankRentAssignmentStatus.CONFIRMED }.map { it.transactionId }.toSet()
         val loanTx = loanAssignments.map { it.transactionId }.toSet()
 
-        // Confirmed Phase-2B/2C classifications stay in their source domain unless they explicitly need REVIEW.
         base.entries.removeAll { (_, item) ->
             val txId = item.transactionIds.singleOrNull()
             txId != null && (txId in rentTx || txId in loanTx) &&
@@ -129,8 +129,8 @@ object BankPhase2DReviewQueue {
         }
 
         duplicateGroups(transactions).forEach { group ->
-            group.forEach { tx ->
-                if (tx.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED) return@forEach
+            group.forEach duplicateTx@{ tx ->
+                if (tx.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED) return@duplicateTx
                 replaceTxItem(base, tx.transactionId, BankReviewItem(
                     stableKey = stable(BankReviewType.POSSIBLE_DUPLICATE, listOf(tx.transactionId), emptyList()),
                     type = BankReviewType.POSSIBLE_DUPLICATE,
@@ -150,7 +150,7 @@ object BankPhase2DReviewQueue {
         }
 
         duplicateReceipts(receipts).forEach { duplicateIds ->
-            base.values.filter { item -> item.receiptIds.any { it in duplicateIds } }.forEach { item ->
+            base.values.toList().filter { item -> item.receiptIds.any { it in duplicateIds } }.forEach { item ->
                 val changed = item.copy(
                     stableKey = stable(BankReviewType.POSSIBLE_DUPLICATE, item.transactionIds, item.receiptIds),
                     type = BankReviewType.POSSIBLE_DUPLICATE,
