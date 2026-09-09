@@ -1,5 +1,6 @@
 package com.example.ui
 
+import com.example.data.parseCamtV8
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap

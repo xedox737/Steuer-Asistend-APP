@@ -8,7 +8,6 @@ import java.time.Instant
 import java.util.Locale
 import java.util.zip.ZipException
 import java.util.zip.ZipInputStream
-import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.abs
 
@@ -39,8 +38,8 @@ object BankCamtV8Xml {
         factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
         factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
         factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-        runCatching { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-        runCatching { factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
+        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
         return factory.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
     }
 }
