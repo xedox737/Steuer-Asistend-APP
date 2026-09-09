@@ -91,6 +91,7 @@ object BankPhase2DReviewQueue {
         ).associateBy { it.stableKey }.toMutableMap()
 
         val receiptById = receipts.associateBy { it.id }
+        val transactionsById = transactions.associateBy { it.transactionId }
         val rentTx = rentAssignments.filter { it.status == BankRentAssignmentStatus.CONFIRMED }.map { it.transactionId }.toSet()
         val loanTx = loanAssignments.map { it.transactionId }.toSet()
 
@@ -98,6 +99,30 @@ object BankPhase2DReviewQueue {
             val txId = item.transactionIds.singleOrNull()
             txId != null && (txId in rentTx || txId in loanTx) &&
                 item.type !in setOf(BankReviewType.RENT_REVIEW, BankReviewType.LOAN_REVIEW)
+        }
+
+        // Phase 2C remains authoritative for classified loan transactions. A REVIEW assignment
+        // must stay visible in the central Phase 2D queue even when the generic bank status is OPEN.
+        loanAssignments.filter { it.status == BankLoanAssignmentStatus.REVIEW }.forEach { assignment ->
+            val tx = transactionsById[assignment.transactionId] ?: return@forEach
+            replaceTxItem(base, tx.transactionId, BankReviewItem(
+                stableKey = stable(BankReviewType.LOAN_REVIEW, listOf(tx.transactionId), emptyList()),
+                type = BankReviewType.LOAN_REVIEW,
+                priority = 85,
+                transactionIds = listOf(tx.transactionId),
+                receiptIds = emptyList(),
+                propertyId = assignment.propertyId.ifBlank { tx.propertyId },
+                amount = tx.absoluteAmount,
+                remainingAmount = BankAllocationPolicy.transactionRemaining(tx, links).remainingAmount,
+                score = 0,
+                confidence = "NIEDRIG",
+                title = "Darlehenszahlung prüfen",
+                explanation = "Die Phase-2C-Darlehensklassifizierung benötigt eine Nutzerprüfung und wird nicht als normale Belegkombination behandelt.",
+                reasons = listOf("Bestehende Phase-2C-Darlehenszuordnung im Status REVIEW."),
+                conflicts = listOf(BankCombinationConflict.SPECIAL_CLASSIFICATION),
+                availableActions = listOf("OPEN_DETAILS", "MANUAL_REVIEW"),
+                bookingDate = tx.bookingDate
+            ))
         }
 
         transactions.forEach { tx ->
@@ -131,6 +156,7 @@ object BankPhase2DReviewQueue {
         duplicateGroups(transactions).forEach { group ->
             group.forEach duplicateTx@{ tx ->
                 if (tx.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED) return@duplicateTx
+                if (tx.transactionId in rentTx || tx.transactionId in loanTx) return@duplicateTx
                 replaceTxItem(base, tx.transactionId, BankReviewItem(
                     stableKey = stable(BankReviewType.POSSIBLE_DUPLICATE, listOf(tx.transactionId), emptyList()),
                     type = BankReviewType.POSSIBLE_DUPLICATE,
