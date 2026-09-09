@@ -92,6 +92,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     var showBankRules by remember { mutableStateOf(false) }
     var showRentMatching by remember { mutableStateOf(false) }
     var showPhase2C by remember { mutableStateOf(false) }
+    var showPhase2D by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -214,10 +215,12 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             OutlinedButton(onClick={ showBankRules = !showBankRules }, modifier=Modifier.fillMaxWidth()) { Text(if(showBankRules) "Bankregeln ausblenden" else "Bankregeln") }
             OutlinedButton(onClick={ showRentMatching = !showRentMatching }, modifier=Modifier.fillMaxWidth()) { Text(if(showRentMatching) "Mietabgleich ausblenden" else "Mietabgleich") }
             OutlinedButton(onClick={ showPhase2C = !showPhase2C }, modifier=Modifier.fillMaxWidth()) { Text(if(showPhase2C) "Darlehen & Wiederkehrend ausblenden" else "Darlehen & Wiederkehrend") }
+            OutlinedButton(onClick={ showPhase2D = !showPhase2D }, modifier=Modifier.fillMaxWidth()) { Text(if(showPhase2D) "Prüfwarteschlange ausblenden" else "Prüfwarteschlange & Sammelzahlungen") }
         }
         if (showBankRules) { item { BankRulesPanel(viewModel, learningRules) } }
         if (showRentMatching) { item { BankRentPanel(viewModel) } }
         if (showPhase2C) { item { BankPhase2CPanel(viewModel) } }
+        if (showPhase2D) { item { BankPhase2DReviewPanel(viewModel) } }
 
         if (shown.isEmpty()) {
             item {
