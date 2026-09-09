@@ -29,7 +29,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/ui/BankFeature.kt
+          git add app/src/main/java/com/example/data/BankImportV8.kt app/src/test/java/com/example/data/BankCamtZipV8AcceptanceTest.kt
           git diff --cached --quiet && exit 0
-          git commit -m "Integrate CAMT V8 ZIP import into existing UI [camt-v8-applied]"
+          git commit -m "Harden CAMT V8 ZIP import limits [camt-v8-applied]"
           git push origin HEAD:agent/camt052-053-v8-zip-import
