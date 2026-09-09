@@ -1,0 +1,142 @@
+name: Phase2D integrate UI
+on:
+  push:
+    branches: [agent/bank-phase2d-combinations-review-queue]
+    paths: [.github/workflows/phase2d-integrate-ui.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bank-phase2d-combinations-review-queue
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch ViewModel and Bank UI
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          vm = Path('app/src/main/java/com/example/ui/ReceiptViewModel.kt')
+          text = vm.read_text()
+          state = r'''
+
+    val bankPhase2DCombinations: StateFlow<List<com.example.data.BankCombinationSuggestion>> =
+        combine(bankTransactions, receipts, bankReceiptLinks) { transactions, currentReceipts, links ->
+            val suggestions = mutableListOf<com.example.data.BankCombinationSuggestion>()
+            transactions.forEach { tx ->
+                suggestions += com.example.data.BankCombinationMatcher.oneTransactionToManyReceipts(tx, currentReceipts, links)
+                com.example.data.BankReceiptMatcher.rankReceipts(tx, currentReceipts, links).take(4).forEach { candidate ->
+                    val receipt = currentReceipts.firstOrNull { it.id == candidate.receiptId } ?: return@forEach
+                    com.example.data.BankCombinationMatcher.partialSuggestion(tx, receipt, links)?.let(suggestions::add)
+                }
+            }
+            currentReceipts.forEach { receipt ->
+                suggestions += com.example.data.BankCombinationMatcher.manyTransactionsToOneReceipt(receipt, transactions, links)
+            }
+            suggestions.distinctBy { it.suggestionId }
+                .sortedWith(compareByDescending<com.example.data.BankCombinationSuggestion> { it.score }.thenBy { it.difference }.thenBy { it.suggestionId })
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
+    val bankPhase2DReviewQueue: StateFlow<List<com.example.data.BankReviewItem>> =
+        combine(
+            combine(bankTransactions, receipts, bankReceiptLinks) { txs, currentReceipts, links -> Triple(txs, currentReceipts, links) },
+            combine(bankMatchSuggestions, bankPhase2DCombinations) { oneToOne, combinations -> oneToOne to combinations },
+            combine(bankRentAssignments, bankLoanAssignments, bankRecurringPatterns) { rent, loan, recurring -> Triple(rent, loan, recurring) }
+        ) { base, suggestions, classifications ->
+            val (txs, currentReceipts, links) = base
+            val (oneToOne, combinations) = suggestions
+            val (rent, loan, recurring) = classifications
+            com.example.data.BankReviewQueueBuilder.build(
+                transactions = txs,
+                receipts = currentReceipts,
+                links = links,
+                oneToOne = oneToOne,
+                combinations = combinations,
+                rentAssignments = rent,
+                loanAssignments = loan,
+                recurringPatterns = recurring
+            )
+        }.flowOn(Dispatchers.Default).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+'''
+          marker = '\n    init {\n'
+          if 'val bankPhase2DCombinations:' not in text:
+              if marker not in text: raise SystemExit('ViewModel init marker missing')
+              text = text.replace(marker, state + marker, 1)
+
+          methods = r'''
+
+    fun confirmPhase2DCombination(suggestionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val suggestion = bankPhase2DCombinations.value.firstOrNull { it.suggestionId == suggestionId }
+            if (suggestion == null) {
+                _bankImportStatus.value = "Kombinationsvorschlag ist nicht mehr aktuell."
+                return@launch
+            }
+            val result = com.example.data.BankPhase2DService(database).confirmCombination(suggestion, explicitlyConfirmed = true)
+            _bankImportStatus.value = result.message
+        }
+    }
+
+    fun executePhase2DSafeBatch(stableKeys: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val selected = bankPhase2DReviewQueue.value.filter { it.stableKey in stableKeys }
+            val result = com.example.data.BankPhase2DService(database).executeSafeBatch(selected, explicitlyConfirmed = true)
+            _bankImportStatus.value = result.message
+        }
+    }
+
+    fun changePhase2DAllocation(linkId: String, amount: Double) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _bankImportStatus.value = com.example.data.BankPhase2DService(database)
+                .changeAllocation(linkId, amount, explicitlyConfirmed = true).message
+        }
+    }
+
+    fun unlinkPhase2DLink(linkId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _bankImportStatus.value = com.example.data.BankPhase2DService(database).unlink(linkId).message
+        }
+    }
+'''
+          method_marker = '\n    fun confirmBankRentSuggestion(\n'
+          if 'fun confirmPhase2DCombination(' not in text:
+              if method_marker not in text: raise SystemExit('ViewModel method marker missing')
+              text = text.replace(method_marker, methods + method_marker, 1)
+          vm.write_text(text)
+
+          bank = Path('app/src/main/java/com/example/ui/BankFeature.kt')
+          text = bank.read_text()
+          old = '    var showPhase2C by remember { mutableStateOf(false) }\n'
+          if 'showPhase2D' not in text:
+              if old not in text: raise SystemExit('BankFeature state marker missing')
+              text = text.replace(old, old + '    var showPhase2D by remember { mutableStateOf(false) }\n', 1)
+          old_button = '            OutlinedButton(onClick={ showPhase2C = !showPhase2C }, modifier=Modifier.fillMaxWidth()) { Text(if(showPhase2C) "Darlehen & Wiederkehrend ausblenden" else "Darlehen & Wiederkehrend") }\n'
+          if 'Prüfwarteschlange ausblenden' not in text:
+              if old_button not in text: raise SystemExit('BankFeature button marker missing')
+              text = text.replace(old_button, old_button + '            OutlinedButton(onClick={ showPhase2D = !showPhase2D }, modifier=Modifier.fillMaxWidth()) { Text(if(showPhase2D) "Prüfwarteschlange ausblenden" else "Prüfwarteschlange & Sammelzahlungen") }\n', 1)
+          old_panel = '        if (showPhase2C) { item { BankPhase2CPanel(viewModel) } }\n'
+          if 'BankPhase2DReviewPanel(viewModel)' not in text:
+              if old_panel not in text: raise SystemExit('BankFeature panel marker missing')
+              text = text.replace(old_panel, old_panel + '        if (showPhase2D) { item { BankPhase2DReviewPanel(viewModel) } }\n', 1)
+          bank.write_text(text)
+          PY
+      - name: Commit integration
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app/src/main/java/com/example/ui/ReceiptViewModel.kt app/src/main/java/com/example/ui/BankFeature.kt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "[phase2d-ui] Wire review queue and combination workflow"
+          git push origin HEAD:agent/bank-phase2d-combinations-review-queue
