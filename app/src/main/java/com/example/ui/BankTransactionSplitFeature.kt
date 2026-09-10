@@ -1,20 +1,25 @@
 package com.example.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,9 +31,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.BankAllocationPolicy
 import com.example.data.BankManualSplitPosition
 import com.example.data.BankReconciliationStatus
@@ -52,7 +60,13 @@ private data class BankSplitDraft(
 )
 
 @Composable
-fun BankTransactionSplitActions(viewModel: ReceiptViewModel, transaction: BankTransaction) {
+fun BankTransactionSplitActions(
+    viewModel: ReceiptViewModel,
+    transaction: BankTransaction,
+    compactTrigger: Boolean = false,
+    showTrigger: Boolean = true,
+    showAssignments: Boolean = true
+) {
     val links by viewModel.bankReceiptLinks.collectAsState()
     val assignments by viewModel.bankRentAssignments.collectAsState()
     val receipts by viewModel.receipts.collectAsState()
@@ -65,11 +79,28 @@ fun BankTransactionSplitActions(viewModel: ReceiptViewModel, transaction: BankTr
     val scope = rememberCoroutineScope()
     val euro = remember { NumberFormat.getCurrencyInstance(Locale.GERMANY) }
 
-    if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN || transaction.reconciliationStatus == BankReconciliationStatus.PARTIAL) {
-        OutlinedButton(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Buchung aufteilen") }
+    if (showTrigger && (transaction.reconciliationStatus == BankReconciliationStatus.OPEN || transaction.reconciliationStatus == BankReconciliationStatus.PARTIAL)) {
+        if (compactTrigger) {
+            Card(
+                modifier = Modifier.fillMaxWidth().height(78.dp).clickable { showDialog = true },
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(
+                    Modifier.fillMaxSize().padding(5.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Default.CallSplit, contentDescription = "Buchung aufteilen", tint = AccentBlue, modifier = Modifier.size(21.dp))
+                    Text("Buchung\naufteilen", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = TextAlign.Center)
+                }
+            }
+        } else {
+            OutlinedButton(onClick = { showDialog = true }, modifier = Modifier.fillMaxWidth()) { Text("Buchung aufteilen") }
+        }
     }
 
-    if (transactionAssignments.isNotEmpty()) {
+    if (showAssignments && transactionAssignments.isNotEmpty()) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
