@@ -292,6 +292,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
 
     var showAccountSettingsDialog by remember { mutableStateOf(false) }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
+    var bankDetailsOpen by remember { mutableStateOf(false) }
 
     if (showAccountSettingsDialog) {
         AccountSettingsDialog(
@@ -309,6 +310,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
 
     Scaffold(
         topBar = {
+            if (!(currentScreen == AppScreen.BANK && bankDetailsOpen)) {
             TopAppBar(
                 title = {
                     Row(
@@ -375,6 +377,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                     scrolledContainerColor = Color.White
                 )
             )
+            }
         },
         bottomBar = {
             Column {
@@ -456,7 +459,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.TAX_CALCULATOR -> TaxCalculatorScreen(viewModel)
                 AppScreen.DOCUMENTS -> DocumentManagementScreen(viewModel)
                 AppScreen.PROPERTIES -> ImmobilienManagerScreen(viewModel)
-                AppScreen.BANK -> BankScreen(viewModel)
+                AppScreen.BANK -> BankScreen(viewModel, onDetailVisibilityChanged = { bankDetailsOpen = it })
                 AppScreen.MORE -> MoreScreen(viewModel)
             }
             }

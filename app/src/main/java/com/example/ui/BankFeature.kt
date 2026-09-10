@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -55,6 +57,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,7 +86,7 @@ import java.util.Locale
 private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT }
 
 @Composable
-fun BankScreen(viewModel: ReceiptViewModel) {
+fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean) -> Unit = {}) {
     val transactions by viewModel.bankTransactions.collectAsState()
     val accounts by viewModel.bankAccounts.collectAsState()
     val links by viewModel.bankReceiptLinks.collectAsState()
@@ -126,6 +129,10 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     val receiptById = remember(receipts) { receipts.associateBy { it.id } }
     val accountById = remember(accounts) { accounts.associateBy { it.accountId } }
     val selectedTransaction = selectedTransactionId?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+
+    LaunchedEffect(selectedTransaction != null) {
+        onDetailVisibilityChanged(selectedTransaction != null)
+    }
 
     BackHandler(enabled = selectedTransaction != null) { selectedTransactionId = null }
 
@@ -172,6 +179,9 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                             DropdownMenuItem(text = { Text("Darlehen & Wiederkehrend") }, onClick = { toolsMode = BankToolsMode.LOAN_RECURRING; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Prüfwarteschlange & Sammelzahlungen") }, onClick = { toolsMode = BankToolsMode.REVIEW_COMBINATIONS; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Beleg → Bank-Zuordnung") }, onClick = { toolsMode = BankToolsMode.REVERSE_RECEIPT; toolsMenuOpen = false })
+                            if (!importStatus.isNullOrBlank()) {
+                                DropdownMenuItem(text = { Text("Importdetails") }, onClick = { showImportDetails = true; toolsMenuOpen = false })
+                            }
                             DropdownMenuItem(text = { Text("Kontoauszug importieren") }, onClick = {
                                 toolsMenuOpen = false
                                 importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/zip", "application/x-zip-compressed", "application/octet-stream", "text/plain"))
@@ -234,25 +244,6 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     BankMoneySummaryCard("Eingänge", summary.incoming, true, Modifier.weight(1f))
                     BankMoneySummaryCard("Ausgänge", summary.outgoing, false, Modifier.weight(1f))
                     BankMoneySummaryCard("Saldo", summary.balance, summary.balance >= 0, Modifier.weight(1f))
-                }
-                if (!importStatus.isNullOrBlank()) {
-                    val headline = importStatus.orEmpty().lineSequence().firstOrNull().orEmpty()
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 3.dp).clickable { showImportDetails = true },
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("✓", color = EmeraldGreen, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.size(5.dp))
-                        Text(
-                            headline,
-                            modifier = Modifier.weight(1f),
-                            fontSize = 10.sp,
-                            color = SlateGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text("Importdetails", fontSize = 10.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
-                    }
                 }
             }
 
@@ -467,7 +458,7 @@ private fun BankTransactionDetailsScreen(
 ) {
     val linkedReceipts = linkedLinks.mapNotNull { link -> receiptById[link.receiptId]?.let { link to it } }
     var detailMenuOpen by remember(transaction.transactionId) { mutableStateOf(false) }
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
@@ -509,14 +500,14 @@ private fun BankTransactionDetailsScreen(
                         Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy)
                     }
                     HorizontalDivider()
-                    BankDetailLine("Buchungsdatum", formatDate(transaction.bookingDate))
-                    if (transaction.valueDate.isNotBlank()) BankDetailLine("Valutadatum", formatDate(transaction.valueDate))
-                    if (transaction.purpose.isNotBlank()) BankDetailLine("Verwendungszweck", transaction.purpose)
-                    if (transaction.bankReference.isNotBlank()) BankDetailLine("Referenz", transaction.bankReference)
+                    BankDetailLine("Buchungsdatum", formatDate(transaction.bookingDate), Icons.Default.CalendarMonth)
+                    if (transaction.valueDate.isNotBlank()) BankDetailLine("Valutadatum", formatDate(transaction.valueDate), Icons.Default.CalendarMonth)
+                    if (transaction.purpose.isNotBlank()) BankDetailLine("Verwendungszweck", transaction.purpose, Icons.Default.Description)
+                    if (transaction.bankReference.isNotBlank()) BankDetailLine("Referenz", transaction.bankReference, Icons.Default.Description)
                     BankDetailLine("Konto", buildString {
                         append(account?.displayName?.ifBlank { "Bankkonto" } ?: "Bankkonto")
                         account?.iban?.takeIf { it.isNotBlank() }?.let { append("\n").append(maskedIban(it)) }
-                    })
+                    }, Icons.Default.AccountBalance)
                 }
             }
         }
@@ -671,10 +662,12 @@ private fun BankMoneySummaryCard(title: String, amount: Double, positiveStyle: B
 }
 
 @Composable
-private fun BankDetailLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-        Text(label, modifier = Modifier.weight(0.38f), fontSize = 11.sp, color = SlateGray)
-        Text(value, modifier = Modifier.weight(0.62f), fontSize = 12.sp, color = DarkNavy)
+private fun BankDetailLine(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(10.dp))
+        Text(label, modifier = Modifier.weight(0.34f), fontSize = 11.sp, color = SlateGray)
+        Text(value, modifier = Modifier.weight(0.66f), fontSize = 12.sp, color = DarkNavy)
     }
 }
 
