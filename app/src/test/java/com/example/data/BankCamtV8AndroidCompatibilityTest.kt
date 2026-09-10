@@ -40,7 +40,7 @@ class BankCamtV8AndroidCompatibilityTest {
 
     @Test
     fun camt053DirectAndZipRemainStableOnAndroidCompatibleRuntime() {
-        val direct = BankImportParser.parseCamtV8(camt053(), "SYNTHETIC", "2026-09-10T03:00:00Z", "statement.xml")
+        val direct = BankImportParser.parseCamtV8(camt053(), "statement", "2026-09-10T03:00:00Z", "statement.xml")
         val zipped = BankZipImportParser.parse(
             zipOf("statement.xml" to camt053().toByteArray()),
             "synthetic-053.zip",
