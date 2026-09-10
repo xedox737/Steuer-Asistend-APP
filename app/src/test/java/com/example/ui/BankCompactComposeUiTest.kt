@@ -3,7 +3,6 @@ package com.example.ui
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -41,11 +40,11 @@ class BankCompactComposeUiTest {
             }
         }
 
-        composeRule.onNodeWithText("Synthetic Tenant").assertExists()
-        composeRule.onNodeWithText("Miete September").assertExists()
-        composeRule.onNodeWithText(NumberFormatter.format(tx.amount)).assertExists()
-        composeRule.onNodeWithText("Teilweise").assertExists()
-        composeRule.onNodeWithText("10.09.2026").assertExists()
+        composeRule.onNodeWithText("Synthetic Tenant").fetchSemanticsNode()
+        composeRule.onNodeWithText("Miete September").fetchSemanticsNode()
+        composeRule.onNodeWithText(NumberFormatter.format(tx.amount)).fetchSemanticsNode()
+        composeRule.onNodeWithText("Teilweise").fetchSemanticsNode()
+        composeRule.onNodeWithText("10.09.2026").fetchSemanticsNode()
         composeRule.onNodeWithText("Synthetic Tenant").performClick()
         composeRule.runOnIdle { assertEquals(1, taps) }
     }
@@ -58,7 +57,8 @@ class BankCompactComposeUiTest {
             }
         }
 
-        composeRule.onNodeWithText("Beleg\nsuchen").assertExists().performClick()
+        composeRule.onNodeWithText("Beleg\nsuchen").fetchSemanticsNode()
+        composeRule.onNodeWithText("Beleg\nsuchen").performClick()
         composeRule.runOnIdle { assertEquals(1, actions) }
     }
 }
