@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
-import javax.xml.parsers.DocumentBuilderFactory
 import org.w3c.dom.Element
 
 object BankReconciliationStatus {
@@ -344,15 +343,7 @@ object BankImportParser {
         propertyId: String = "",
         unitId: String = ""
     ): BankImportBatch {
-        val factory = DocumentBuilderFactory.newInstance()
-        factory.isNamespaceAware = true
-        runCatching { factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
-        runCatching { factory.setFeature("http://xml.org/sax/features/external-general-entities", false) }
-        runCatching { factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
-        runCatching { factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
-        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
-        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
-        val doc = factory.newDocumentBuilder().parse(xml.byteInputStream())
+        val doc = BankCamtV8Xml.parseSecure(xml)
         val accountIban = firstText(doc.documentElement, "IBAN")
         val currency = firstText(doc.documentElement, "Ccy").ifBlank { "EUR" }
         val accountHolder = firstText(doc.documentElement, "Ownr").trim()
@@ -761,3 +752,4 @@ object BankLinkPolicy {
     fun linkId(transactionId: String, receiptId: Int, receiptInternalId: String): String =
         "link-" + BankTransactionIdentity.sha256("$transactionId|$receiptId|$receiptInternalId").take(32)
 }
+
