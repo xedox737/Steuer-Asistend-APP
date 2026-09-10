@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 10
+    internal const val SCHEMA_VERSION = 11
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -174,7 +174,7 @@ object SupplementalDriveBackup {
         put("assignmentId", assignmentId); put("transactionId", transactionId); put("propertyId", propertyId)
         put("unitId", unitId); put("rentMonth", rentMonth); put("tenantReference", tenantReference)
         put("allocatedAmount", allocatedAmount); put("paymentType", paymentType); put("status", status)
-        put("source", source); receiptId?.let { put("receiptId", it) }; put("createdAt", createdAt); put("updatedAt", updatedAt)
+        put("source", source); receiptId?.let { put("receiptId", it) }; put("createdAt", createdAt); put("updatedAt", updatedAt); put("note", note)
     }
 
     private fun JSONObject.toBankRentAssignment() = BankRentAssignment(
@@ -184,7 +184,7 @@ object SupplementalDriveBackup {
         paymentType = optString("paymentType", "UNKLAR"), status = optString("status", BankRentAssignmentStatus.CONFIRMED),
         source = optString("source", BankRentAssignmentSource.USER_CONFIRMED),
         receiptId = if (has("receiptId") && !isNull("receiptId")) optInt("receiptId") else null,
-        createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")
+        createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", ""), note = optString("note", "")
     )
 
 

@@ -260,6 +260,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     onReopen = { viewModel.reopenBankTransaction(transaction.transactionId) },
                     onUnlink = { link -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }
                 )
+                BankTransactionSplitActions(viewModel = viewModel, transaction = transaction)
             }
         }
 

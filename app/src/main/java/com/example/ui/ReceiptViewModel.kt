@@ -91,6 +91,7 @@ data class LearnedVendorRule(
 
 class ReceiptViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application, viewModelScope)
+    internal fun bankPhase2DServiceForUi(): com.example.data.BankPhase2DService = com.example.data.BankPhase2DService(database)
     private val repository = ReceiptRepository(
         database.receiptDao(),
         database.propertyDao(),
@@ -1945,7 +1946,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun refreshBankTransactionStatus(transactionId: String) {
         val dao = database.bankDao()
         val transaction = dao.getTransaction(transactionId) ?: return
-        val status = com.example.data.BankLinkPolicy.statusFor(transaction, dao.getLinksForTransaction(transactionId))
+        val status = com.example.data.BankTransactionSplitPolicy.statusFor(transaction, dao.getLinksForTransaction(transactionId), database.bankRentAssignmentDao().getForTransaction(transactionId))
         dao.updateTransactionStatus(transactionId, status, "", java.time.Instant.now().toString())
     }
 
