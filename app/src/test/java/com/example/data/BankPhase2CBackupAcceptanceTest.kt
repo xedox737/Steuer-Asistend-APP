@@ -46,7 +46,7 @@ class BankPhase2CBackupAcceptanceTest {
         database.bankRecurringPatternDao().upsert(pattern)
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(10, payload.getInt("schemaVersion"))
+        assertEquals(11, payload.getInt("schemaVersion"))
         assertEquals(1, payload.getJSONArray("bankLoanAssignments").length())
         assertEquals(1, payload.getJSONArray("bankRecurringPatterns").length())
         database.bankLoanAssignmentDao().deleteForTransaction("tx-1")

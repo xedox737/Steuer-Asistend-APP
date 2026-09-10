@@ -85,11 +85,11 @@ class BankMigration24AcceptanceTest {
         assertTrue(columns(db, "bank_recurring_patterns").containsAll(setOf("patternId", "enabled", "cadence", "typicalAmount", "confidence", "nextExpectedStart", "nextExpectedEnd")))
     }
 
-    @Test fun freshDatabaseIsVersion27() {
+    @Test fun freshDatabaseIsVersion28() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         try {
-            assertEquals(27, database.openHelper.writableDatabase.version)
+            assertEquals(28, database.openHelper.writableDatabase.version)
         } finally {
             database.close()
         }
