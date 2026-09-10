@@ -33,7 +33,10 @@ object BankCamtV8Xml {
     fun parseSecure(xml: String): Document {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isNamespaceAware = true
-        factory.isXIncludeAware = false
+        // Android's DocumentBuilderFactory may reject XInclude configuration with
+        // "This parser does not support specification Unknown version 0.0".
+        // XInclude is not enabled by default; defensively request disabled only when supported.
+        runCatching { factory.isXIncludeAware = false }
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
         factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
         factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
