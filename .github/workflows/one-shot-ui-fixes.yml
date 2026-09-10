@@ -37,9 +37,9 @@ jobs:
             keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           fi
 
-      - name: Apply reference UI
+      - name: Apply Bank detail reference chrome
         run: |
-          python3 .github/scripts/apply_bank_reference_ui.py
+          python3 .github/scripts/apply_bank_reference_detail_chrome.py
           git diff --check
 
       - name: Lint
@@ -55,6 +55,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/example/ui/BankFeature.kt
-          git commit -m "Bank & Belege: Referenzdesign und Buchungsicons final angleichen"
+          git add app/src/main/java/com/example/ui/BankFeature.kt app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git commit -m "Bank & Belege: Detailansicht exakt an Referenzdesign angleichen"
           git push origin HEAD:main
