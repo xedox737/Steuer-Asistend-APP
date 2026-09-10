@@ -1,0 +1,36 @@
+name: Apply Bank Transaction Split Patch
+
+on:
+  push:
+    branches:
+      - agent/bank-transaction-split
+    paths:
+      - .github/scripts/apply_bank_transaction_split.py
+      - .github/workflows/temp-bank-transaction-split.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/bank-transaction-split
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply product patch
+        run: python .github/scripts/apply_bank_transaction_split.py
+      - name: Remove temporary helpers
+        run: git rm .github/scripts/apply_bank_transaction_split.py .github/workflows/temp-bank-transaction-split.yml
+      - name: Commit product changes
+        run: |
+          git config user.name "xedox737"
+          git config user.email "sergej-gerweck@web.de"
+          git add app
+          git diff --cached --check
+          git commit -m "Add manual bank transaction split workflow"
+          git push origin HEAD:agent/bank-transaction-split
