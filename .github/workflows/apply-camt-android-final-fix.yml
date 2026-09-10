@@ -1,0 +1,34 @@
+name: Apply CAMT Android final fix
+
+on:
+  push:
+    branches:
+      - agent/camt-v8-android-final-fix
+    paths:
+      - .github/scripts/apply_camt_android_final_fix.py
+      - .github/workflows/apply-camt-android-final-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[camt-android-fixed]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/camt-v8-android-final-fix
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python .github/scripts/apply_camt_android_final_fix.py
+      - name: Commit Android compatibility fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/BankImportV8.kt app/src/test/java/com/example/data/BankCamtV8AndroidCompatibilityTest.kt
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix CAMT V8 Android XInclude compatibility [camt-android-fixed]"
+          git push origin HEAD:agent/camt-v8-android-final-fix
