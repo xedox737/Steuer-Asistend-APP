@@ -30,20 +30,75 @@ object BankCamtV8FormatDetector {
 }
 
 object BankCamtV8Xml {
+    internal const val DOCTYPE_ERROR = "XML mit DOCTYPE wird aus Sicherheitsgründen nicht unterstützt."
+    internal const val EXTERNAL_ENTITY_ERROR = "Externe XML-Inhalte werden aus Sicherheitsgründen nicht unterstützt."
+
+    // Never include parser messages, system identifiers or document content in UI errors/logs.
     fun parseSecure(xml: String): Document {
-        val factory = DocumentBuilderFactory.newInstance()
-        factory.isNamespaceAware = true
-        // Android's DocumentBuilderFactory may reject XInclude configuration with
-        // "This parser does not support specification Unknown version 0.0".
-        // XInclude is not enabled by default; defensively request disabled only when supported.
-        runCatching { factory.isXIncludeAware = false }
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
-        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
-        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
-        return factory.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
+        require(!xml.contains("<!DOCTYPE", ignoreCase = true)) { DOCTYPE_ERROR }
+        try {
+            val factory = DocumentBuilderFactory.newInstance()
+            factory.isNamespaceAware = true
+            factory.isValidating = false
+            tryOptional { factory.isXIncludeAware = false }
+            tryOptional { factory.isExpandEntityReferences = false }
+            trySetFeature(factory, "http://apache.org/xml/features/disallow-doctype-decl", true)
+            trySetFeature(factory, "http://xml.org/sax/features/external-general-entities", false)
+            trySetFeature(factory, "http://xml.org/sax/features/external-parameter-entities", false)
+            trySetFeature(factory, "http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+            trySetAttribute(factory, "http://javax.xml.XMLConstants/property/accessExternalDTD", "")
+            trySetAttribute(factory, "http://javax.xml.XMLConstants/property/accessExternalSchema", "")
+            val builder = factory.newDocumentBuilder()
+            builder.setEntityResolver(blockingEntityResolver)
+            builder.setErrorHandler(object : org.xml.sax.ErrorHandler {
+                override fun warning(exception: org.xml.sax.SAXParseException) = Unit
+                override fun error(exception: org.xml.sax.SAXParseException): Nothing = throw exception
+                override fun fatalError(exception: org.xml.sax.SAXParseException): Nothing = throw exception
+            })
+            // Parse the same characters that were checked above; an encoding declaration must
+            // never reinterpret bytes differently and bypass the parser-independent DTD guard.
+            return builder.parse(org.xml.sax.InputSource(java.io.StringReader(xml.removePrefix("\uFEFF"))))
+        } catch (_: javax.xml.parsers.ParserConfigurationException) {
+            throw IllegalArgumentException("Der XML-Parser konnte nicht sicher eingerichtet werden.")
+        } catch (_: javax.xml.parsers.FactoryConfigurationError) {
+            throw IllegalArgumentException("Der XML-Parser konnte nicht sicher eingerichtet werden.")
+        } catch (_: org.xml.sax.SAXException) {
+            throw IllegalArgumentException("XML ist ungültig oder enthält nicht unterstützte externe Inhalte.")
+        } catch (_: java.io.IOException) {
+            throw IllegalArgumentException("XML konnte nicht gelesen werden.")
+        } catch (_: RuntimeException) {
+            throw IllegalArgumentException("XML konnte nicht sicher verarbeitet werden.")
+        }
+    }
+
+    // These settings are defense in depth, not the security boundary. The character-level
+    // DOCTYPE rejection and fail-closed resolver remain mandatory even if all are unsupported.
+    private fun tryOptional(setting: () -> Unit): Boolean = try {
+        setting()
+        true
+    } catch (_: javax.xml.parsers.ParserConfigurationException) {
+        false
+    } catch (_: RuntimeException) {
+        false
+    } catch (_: AbstractMethodError) {
+        false
+    }
+
+    private fun trySetFeature(factory: DocumentBuilderFactory, name: String, value: Boolean): Boolean =
+        tryOptional { factory.setFeature(name, value) }
+
+    private fun trySetAttribute(factory: DocumentBuilderFactory, name: String, value: String): Boolean =
+        tryOptional { factory.setAttribute(name, value) }
+
+    internal val blockingEntityResolver = object : org.xml.sax.ext.EntityResolver2 {
+        override fun getExternalSubset(name: String?, baseURI: String?): org.xml.sax.InputSource =
+            throw org.xml.sax.SAXException(EXTERNAL_ENTITY_ERROR)
+
+        override fun resolveEntity(publicId: String?, systemId: String?): org.xml.sax.InputSource =
+            throw org.xml.sax.SAXException(EXTERNAL_ENTITY_ERROR)
+
+        override fun resolveEntity(name: String?, publicId: String?, baseURI: String?, systemId: String?): org.xml.sax.InputSource =
+            throw org.xml.sax.SAXException(EXTERNAL_ENTITY_ERROR)
     }
 }
 
@@ -469,3 +524,4 @@ object BankZipImportParser {
         return normalized.split('/').none { it == ".." }
     }
 }
+

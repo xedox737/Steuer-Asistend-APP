@@ -84,6 +84,53 @@ class BankCamtV8ReimportStatusAcceptanceTest {
         }
     }
 
+    @Test fun bothFormatsPreserveEveryStatusAndLinkThroughRealDirectAndZipReimport() = runTest {
+        val dao = database.bankDao()
+        val statuses = listOf(
+            BankReconciliationStatus.MATCHED, BankReconciliationStatus.PARTIAL,
+            BankReconciliationStatus.REVIEW, BankReconciliationStatus.NO_RECEIPT_REQUIRED
+        )
+        val formats = listOf(synthetic052(), synthetic052()
+            .replace("camt.052.001.08", "camt.053.001.08")
+            .replace("BkToCstmrAcctRpt", "BkToCstmrStmt").replace("Rpt>", "Stmt>"))
+        var count = 0
+        formats.forEachIndexed { formatIndex, template ->
+            statuses.forEachIndexed { statusIndex, status ->
+                val key = "synthetic-$formatIndex-$statusIndex"
+                val xml = template.replace("SYNTH-REF", key)
+                val batch = BankImportParser.parseCamtV8(xml, "inside", "first")
+                val tx = batch.transactions.single()
+                dao.upsertAccount(batch.account)
+                dao.insertTransactions(batch.transactions)
+                count++
+                database.receiptDao().insertAll(listOf(Receipt(
+                    id = count, aussteller = "SYNTHETIC", datum = tx.bookingDate, uhrzeit = "",
+                    bruttobetrag = tx.absoluteAmount, hauptkategorie = "Kosten", unterkategorie = "Test",
+                    kontoNr = "", beschreibung = "Synthetic", internalId = key
+                )))
+                val link = BankReceiptLink(
+                    linkId = key, transactionId = tx.transactionId, receiptId = count,
+                    receiptInternalId = key, allocatedAmount = 10.0,
+                    status = BankLinkStatus.CONFIRMED, source = BankLinkSource.NUTZER_BESTAETIGT,
+                    createdAt = "first"
+                )
+                dao.upsertLink(link)
+                dao.updateTransactionStatus(tx.transactionId, status, "synthetic", "changed")
+                dao.insertTransactions(BankImportParser.parseCamtV8(xml, "inside", "second").transactions)
+                val zipped = BankZipImportParser.parse(
+                    zipOf("inside.xml" to xml.toByteArray(), "duplicate.xml" to xml.toByteArray()),
+                    "synthetic.zip", "third"
+                )
+                zipped.batches.forEach { dao.insertTransactions(it.transactions) }
+                assertEquals(count, dao.getAllTransactions().size)
+                assertEquals(status, dao.getTransaction(tx.transactionId)?.reconciliationStatus)
+                assertEquals(link, dao.getAllLinks().single { it.linkId == key })
+            }
+        }
+        assertEquals(8, dao.getAllTransactions().size)
+        assertEquals(8, dao.getAllLinks().size)
+    }
+
     private fun zipOf(vararg entries: Pair<String, ByteArray>): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
@@ -105,3 +152,4 @@ class BankCamtV8ReimportStatusAcceptanceTest {
         </Document>
     """.trimIndent()
 }
+
