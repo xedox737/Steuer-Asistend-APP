@@ -128,7 +128,6 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             suggestion = suggestions[selectedTransaction.transactionId],
             linkedLinks = linksByTransaction[selectedTransaction.transactionId].orEmpty(),
             assignments = assignmentsByTransaction[selectedTransaction.transactionId].orEmpty(),
-            receipts = receipts,
             receiptById = receiptById,
             rentSuggestion = rentSuggestions[selectedTransaction.transactionId].orEmpty().firstOrNull(),
             units = units,
@@ -153,19 +152,21 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                         placeholder = { Text("Buchungen durchsuchen …") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suche") }
                     )
-                    IconButton(onClick = { toolsMenuOpen = true }) {
-                        Icon(Icons.Default.MoreHoriz, contentDescription = "Filter und Werkzeuge")
-                    }
-                    DropdownMenu(expanded = toolsMenuOpen, onDismissRequest = { toolsMenuOpen = false }) {
-                        DropdownMenuItem(text = { Text("Bankregeln") }, onClick = { toolsMode = BankToolsMode.RULES; toolsMenuOpen = false })
-                        DropdownMenuItem(text = { Text("Mietabgleich") }, onClick = { toolsMode = BankToolsMode.RENT; toolsMenuOpen = false })
-                        DropdownMenuItem(text = { Text("Darlehen & Wiederkehrend") }, onClick = { toolsMode = BankToolsMode.LOAN_RECURRING; toolsMenuOpen = false })
-                        DropdownMenuItem(text = { Text("Prüfwarteschlange & Sammelzahlungen") }, onClick = { toolsMode = BankToolsMode.REVIEW_COMBINATIONS; toolsMenuOpen = false })
-                        DropdownMenuItem(text = { Text("Beleg → Bank-Zuordnung") }, onClick = { toolsMode = BankToolsMode.REVERSE_RECEIPT; toolsMenuOpen = false })
-                        DropdownMenuItem(text = { Text("Kontoauszug importieren") }, onClick = {
-                            toolsMenuOpen = false
-                            importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/zip", "application/x-zip-compressed", "application/octet-stream", "text/plain"))
-                        })
+                    Box {
+                        IconButton(onClick = { toolsMenuOpen = true }) {
+                            Icon(Icons.Default.MoreHoriz, contentDescription = "Filter und Werkzeuge")
+                        }
+                        DropdownMenu(expanded = toolsMenuOpen, onDismissRequest = { toolsMenuOpen = false }) {
+                            DropdownMenuItem(text = { Text("Bankregeln") }, onClick = { toolsMode = BankToolsMode.RULES; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("Mietabgleich") }, onClick = { toolsMode = BankToolsMode.RENT; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("Darlehen & Wiederkehrend") }, onClick = { toolsMode = BankToolsMode.LOAN_RECURRING; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("Prüfwarteschlange & Sammelzahlungen") }, onClick = { toolsMode = BankToolsMode.REVIEW_COMBINATIONS; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("Beleg → Bank-Zuordnung") }, onClick = { toolsMode = BankToolsMode.REVERSE_RECEIPT; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("Kontoauszug importieren") }, onClick = {
+                                toolsMenuOpen = false
+                                importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/zip", "application/x-zip-compressed", "application/octet-stream", "text/plain"))
+                            })
+                        }
                     }
                 }
             }
@@ -298,11 +299,13 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             }
         )
     }
-    receiptDetails?.let { receipt -> ReceiptMiniDetailsDialog(receipt = receipt, onDismiss = { receiptDetails = null }) }
+    receiptDetails?.let { receipt ->
+        ReceiptDetailDialog(receipt = receipt, viewModel = viewModel, onDismiss = { receiptDetails = null })
+    }
 }
 
 @Composable
-private fun BankCompactTransactionRow(transaction: BankTransaction, onClick: () -> Unit) {
+internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -338,7 +341,6 @@ private fun BankTransactionDetailsScreen(
     suggestion: BankMatchSuggestion?,
     linkedLinks: List<BankReceiptLink>,
     assignments: List<com.example.data.BankRentAssignment>,
-    receipts: List<Receipt>,
     receiptById: Map<Int, Receipt>,
     rentSuggestion: com.example.data.BankRentSuggestion?,
     units: List<WohneinheitStatus>,
@@ -348,12 +350,31 @@ private fun BankTransactionDetailsScreen(
     onReceiptDetails: (Receipt) -> Unit
 ) {
     val linkedReceipts = linkedLinks.mapNotNull { link -> receiptById[link.receiptId]?.let { link to it } }
+    var detailMenuOpen by remember(transaction.transactionId) { mutableStateOf(false) }
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
                 Text("Buchungsdetails", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 19.sp, modifier = Modifier.weight(1f))
-                Icon(Icons.Default.MoreHoriz, contentDescription = "Weitere Buchungsdaten", tint = SlateGray)
+                Box {
+                    IconButton(onClick = { detailMenuOpen = true }) {
+                        Icon(Icons.Default.MoreHoriz, contentDescription = "Weitere Buchungsaktionen", tint = SlateGray)
+                    }
+                    DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {
+                        if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
+                            DropdownMenuItem(text = { Text("Manuell prüfen") }, onClick = {
+                                viewModel.markBankTransactionForReview(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                        }
+                        if (transaction.reconciliationStatus != BankReconciliationStatus.OPEN) {
+                            DropdownMenuItem(text = { Text("Buchung wieder öffnen") }, onClick = {
+                                viewModel.reopenBankTransaction(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                        }
+                    }
+                }
             }
         }
         item {
@@ -387,7 +408,7 @@ private fun BankTransactionDetailsScreen(
                 BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
                 BankQuickAction("Beleg\nanlegen", Icons.Default.Add, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
                 Column(Modifier.weight(1f)) {
-                    BankTransactionSplitActions(viewModel = viewModel, transaction = transaction)
+                    BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
                 }
                 BankQuickAction("Kein Beleg\nerforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt)
             }
@@ -415,6 +436,12 @@ private fun BankTransactionDetailsScreen(
                         Text("Gesamt zugeordnet: ${NumberFormatter.format(allocated)} • Rest: ${NumberFormatter.format((transaction.absoluteAmount - allocated).coerceAtLeast(0.0))}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = SlateGray)
                     }
                 }
+            }
+        }
+
+        if (assignments.isNotEmpty()) {
+            item {
+                BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, showTrigger = false, showAssignments = true)
             }
         }
 
@@ -473,17 +500,13 @@ private fun BankTransactionDetailsScreen(
                     }
                 }
             }
-        } else {
-            item {
-                OutlinedButton(onClick = onNoReceipt, modifier = Modifier.fillMaxWidth()) { Text("Kein Beleg erforderlich") }
-            }
         }
         item { Spacer(Modifier.height(20.dp)) }
     }
 }
 
 @Composable
-private fun BankQuickAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun BankQuickAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Card(
         modifier = modifier.height(78.dp).clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -497,7 +520,7 @@ private fun BankQuickAction(label: String, icon: androidx.compose.ui.graphics.ve
 }
 
 @Composable
-private fun BankStatusBadge(status: String) {
+internal fun BankStatusBadge(status: String) {
     val (background, foreground) = when (status) {
         BankReconciliationStatus.MATCHED -> Color(0xFFDCFCE7) to Color(0xFF166534)
         BankReconciliationStatus.PARTIAL -> Color(0xFFFFEDD5) to Color(0xFF9A3412)
@@ -672,23 +695,6 @@ private fun NoReceiptReasonDialog(onDismiss: () -> Unit, onSelect: (String) -> U
         } },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
-    )
-}
-
-@Composable
-private fun ReceiptMiniDetailsDialog(receipt: Receipt, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(receipt.getEffectiveDisplayId()) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(receipt.aussteller.ifBlank { "Unbekannter Aussteller" }, fontWeight = FontWeight.Bold)
-                Text("Datum: ${formatDate(receipt.datum)}")
-                Text("Betrag: ${NumberFormatter.format(receipt.bruttobetrag)}")
-                if (receipt.beschreibung.isNotBlank()) Text(receipt.beschreibung)
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
     )
 }
 
