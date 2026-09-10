@@ -16,10 +16,14 @@ import org.xml.sax.SAXException
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class BankCamtV8HardeningTest {
+    companion object {
+        private var backingFactory: DocumentBuilderFactory? = null
+    }
+
     // JAXP provider substitution exercises the actual detector/direct/ZIP call chain without
     // a mutable factory hook in production. Always restore the process property in finally.
     class RejectingFactory : DocumentBuilderFactory() {
-        private val delegate = newDefaultInstance()
+        private val delegate = requireNotNull(backingFactory)
         override fun setFeature(name: String, value: Boolean) { throw ParserConfigurationException(name) }
         override fun getFeature(name: String): Boolean = throw ParserConfigurationException(name)
         override fun setAttribute(name: String, value: Any?) { throw IllegalArgumentException(name) }
@@ -45,12 +49,15 @@ class BankCamtV8HardeningTest {
     private fun withFactory(type: Class<out DocumentBuilderFactory>, block: () -> Unit) {
         val key = "javax.xml.parsers.DocumentBuilderFactory"
         val previous = System.getProperty(key)
+        val previousBackingFactory = backingFactory
         try {
+            backingFactory = DocumentBuilderFactory.newInstance()
             System.setProperty(key, type.name)
             assertEquals(type, DocumentBuilderFactory.newInstance().javaClass)
             block()
         } finally {
             if (previous == null) System.clearProperty(key) else System.setProperty(key, previous)
+            backingFactory = previousBackingFactory
         }
     }
 
