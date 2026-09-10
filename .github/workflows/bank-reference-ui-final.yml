@@ -1,0 +1,287 @@
+name: Bank Reference UI Final Patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bank-reference-ui-final.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Create local debug keystore
+        shell: bash
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Apply approved Bank and Belege reference design
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('app/src/main/java/com/example/ui/BankFeature.kt')
+          s = p.read_text(encoding='utf-8')
+          original = s
+
+          def once(old, new, label):
+              global s
+              c = s.count(old)
+              if c != 1:
+                  raise SystemExit(f'{label}: expected 1 occurrence, got {c}')
+              s = s.replace(old, new, 1)
+              print(label, 'ok')
+
+          once('import androidx.compose.foundation.rememberScrollState\n', 'import androidx.compose.foundation.rememberScrollState\nimport androidx.compose.foundation.verticalScroll\n', 'vertical scroll import')
+          once('import androidx.compose.material.icons.filled.Search\n', '''import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.CalendarMonth
+''', 'icons')
+          once('import androidx.compose.material3.FilterChip\n', 'import androidx.compose.material3.FilterChip\nimport androidx.compose.material3.FilterChipDefaults\n', 'filter colors import')
+          once('    var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }\n', '    var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }\n    var showImportDetails by remember { mutableStateOf(false) }\n', 'import details state')
+
+          once('''                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        placeholder = { Text("Buchungen durchsuchen …") },''', '''                        modifier = Modifier.weight(1f).height(52.dp),
+                        singleLine = true,
+                        shape = RoundedCornerShape(26.dp),
+                        placeholder = { Text("Buchungen durchsuchen …") },''', 'rounded search')
+          once('Icon(Icons.Default.MoreHoriz, contentDescription = "Filter und Werkzeuge")', 'Icon(Icons.Default.Tune, contentDescription = "Filter und Werkzeuge", tint = DarkNavy)', 'filter icon')
+
+          once('''                        FilterChip(
+                            selected = filter == item,
+                            onClick = { filter = item },
+                            label = { Text("${BankCompactUiPolicy.filterLabel(item)} (${BankCompactUiPolicy.countFor(counts, item)})", maxLines = 1) }
+                        )''', '''                        FilterChip(
+                            selected = filter == item,
+                            onClick = { filter = item },
+                            label = { Text("${BankCompactUiPolicy.filterLabel(item)} (${BankCompactUiPolicy.countFor(counts, item)})", maxLines = 1) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color.White,
+                                labelColor = SlateGray,
+                                selectedContainerColor = Color(0xFF3B82F6),
+                                selectedLabelColor = Color.White
+                            )
+                        )''', 'blue chips')
+
+          once('''                if (!importStatus.isNullOrBlank()) Text(importStatus.orEmpty(), fontSize = 11.sp, color = SlateGray, modifier = Modifier.padding(top = 4.dp))''', '''                if (!importStatus.isNullOrBlank()) {
+                    val headline = importStatus.orEmpty().lineSequence().firstOrNull().orEmpty()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 3.dp).clickable { showImportDetails = true },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("✓", color = EmeraldGreen, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.size(5.dp))
+                        Text(headline, modifier = Modifier.weight(1f), fontSize = 10.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("Importdetails", fontSize = 10.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
+                    }
+                }''', 'collapse import log')
+
+          once('''                groups.forEach { group ->
+                    item(key = "date-${group.key}") {
+                        Text(group.label, fontWeight = FontWeight.Bold, color = SlateGray, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
+                    }
+                    items(group.transactions, key = { it.transactionId }) { transaction ->
+                        BankCompactTransactionRow(transaction = transaction, onClick = { selectedTransactionId = transaction.transactionId })
+                    }
+                }''', '''                groups.forEach { group ->
+                    item(key = "date-${group.key}") {
+                        Text(group.label, fontWeight = FontWeight.Bold, color = SlateGray, fontSize = 13.sp, modifier = Modifier.padding(top = 7.dp, bottom = 2.dp))
+                    }
+                    item(key = "group-${group.key}") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, BorderColor),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column {
+                                group.transactions.forEachIndexed { index, transaction ->
+                                    BankCompactTransactionRow(transaction = transaction, onClick = { selectedTransactionId = transaction.transactionId })
+                                    if (index < group.transactions.lastIndex) HorizontalDivider(color = BorderColor)
+                                }
+                            }
+                        }
+                    }
+                }''', 'grouped rows')
+
+          start = s.index('@Composable\ninternal fun BankCompactTransactionRow')
+          end = s.index('\n@Composable\nprivate fun BankTransactionDetailsScreen', start)
+          new_row = '''private data class BankTransactionVisual(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val background: Color,
+    val foreground: Color
+)
+
+private fun bankTransactionVisual(transaction: BankTransaction): BankTransactionVisual {
+    val text = "${transaction.counterparty} ${transaction.purpose}".lowercase(Locale.GERMANY)
+    return when {
+        listOf("miete", "mieter", "kaution", "nebenkosten").any { it in text } || transaction.amount > 0 ->
+            BankTransactionVisual(Icons.Default.Home, Color(0xFFDCFCE7), Color(0xFF16A34A))
+        listOf("baumarkt", "hornbach", "obi", "toom", "bauhaus", "handwerk", "werkzeug").any { it in text } ->
+            BankTransactionVisual(Icons.Default.Build, Color(0xFFEFF3F8), Color(0xFF64748B))
+        listOf("stadtwerk", "strom", "gas", "wasser", "energie").any { it in text } ->
+            BankTransactionVisual(Icons.Default.Person, Color(0xFFEFF3F8), Color(0xFF64748B))
+        listOf("telekom", "vodafone", "telefon", "internet", "mobilfunk").any { it in text } ->
+            BankTransactionVisual(Icons.Default.Description, Color(0xFFEFF3F8), Color(0xFF64748B))
+        transaction.amount < 0 ->
+            BankTransactionVisual(Icons.Default.ShoppingCart, Color(0xFFFEE2E2), Color(0xFFEF4444))
+        else -> BankTransactionVisual(Icons.Default.AccountBalance, Color(0xFFEFF3F8), Color(0xFF64748B))
+    }
+}
+
+@Composable
+internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: () -> Unit) {
+    val visual = bankTransactionVisual(transaction)
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(42.dp).clip(CircleShape).background(visual.background), contentAlignment = Alignment.Center) {
+            Icon(visual.icon, contentDescription = null, tint = visual.foreground, modifier = Modifier.size(23.dp))
+        }
+        Spacer(Modifier.size(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" }, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(BankCompactUiPolicy.compactSubtitle(transaction), fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            BankStatusBadge(transaction.reconciliationStatus)
+        }
+        Spacer(Modifier.size(6.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy, maxLines = 1)
+            Text(formatDate(transaction.bookingDate), fontSize = 10.sp, color = SlateGray)
+            Text("›", fontSize = 21.sp, color = if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) AccentBlue else Color(0xFF94A3B8))
+        }
+    }
+}
+'''
+          s = s[:start] + new_row + s[end:]
+          print('transaction rows/icons ok')
+
+          once('''                        Box(Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.AccountBalance, contentDescription = null, tint = SlateGray)
+                        }''', '''                        val visual = bankTransactionVisual(transaction)
+                        Box(Modifier.size(54.dp).clip(CircleShape).background(visual.background), contentAlignment = Alignment.Center) {
+                            Icon(visual.icon, contentDescription = null, tint = visual.foreground, modifier = Modifier.size(28.dp))
+                        }''', 'detail icon')
+
+          once('BankDetailLine("Buchungsdatum", formatDate(transaction.bookingDate))', 'BankDetailLine("Buchungsdatum", formatDate(transaction.bookingDate), Icons.Default.CalendarMonth)', 'booking icon')
+          once('if (transaction.valueDate.isNotBlank()) BankDetailLine("Valutadatum", formatDate(transaction.valueDate))', 'if (transaction.valueDate.isNotBlank()) BankDetailLine("Valutadatum", formatDate(transaction.valueDate), Icons.Default.CalendarMonth)', 'value icon')
+          once('if (transaction.purpose.isNotBlank()) BankDetailLine("Verwendungszweck", transaction.purpose)', 'if (transaction.purpose.isNotBlank()) BankDetailLine("Verwendungszweck", transaction.purpose, Icons.Default.Description)', 'purpose icon')
+          once('if (transaction.bankReference.isNotBlank()) BankDetailLine("Referenz", transaction.bankReference)', 'if (transaction.bankReference.isNotBlank()) BankDetailLine("Referenz", transaction.bankReference, Icons.Default.Description)', 'reference icon')
+
+          account_old = '''                    BankDetailLine("Konto", buildString {
+                        append(account?.displayName?.ifBlank { "Bankkonto" } ?: "Bankkonto")
+                        account?.iban?.takeIf { it.isNotBlank() }?.let { append("\\n").append(maskedIban(it)) }
+                    })'''
+          account_new = '''                    BankDetailLine("Konto", buildString {
+                        append(account?.displayName?.ifBlank { "Bankkonto" } ?: "Bankkonto")
+                        account?.iban?.takeIf { it.isNotBlank() }?.let { append("\\n").append(maskedIban(it)) }
+                    }, Icons.Default.AccountBalance)'''
+          once(account_old, account_new, 'account icon')
+
+          detail_start = s.index('@Composable\nprivate fun BankDetailLine')
+          detail_end = s.index('\n@Composable\nprivate fun ToolContainer', detail_start)
+          detail_fn = '''@Composable
+private fun BankDetailLine(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
+        Icon(icon, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(10.dp))
+        Text(label, modifier = Modifier.weight(0.34f), fontSize = 11.sp, color = SlateGray)
+        Text(value, modifier = Modifier.weight(0.66f), fontSize = 12.sp, color = DarkNavy)
+    }
+}
+'''
+          s = s[:detail_start] + detail_fn + s[detail_end:]
+          print('detail rows ok')
+
+          once('''            Text(NumberFormatter.format(amount), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = if (positiveStyle) EmeraldGreen else CrimsonRed, maxLines = 1)''', '''            val amountColor = when (title) {
+                "Eingänge" -> EmeraldGreen
+                "Ausgänge" -> CrimsonRed
+                "Saldo" -> AccentBlue
+                else -> if (positiveStyle) EmeraldGreen else CrimsonRed
+            }
+            Text(NumberFormatter.format(amount), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = amountColor, maxLines = 1)''', 'summary color')
+
+          once('''    receiptDetails?.let { receipt ->
+        ReceiptDetailDialog(receipt = receipt, viewModel = viewModel, onDismiss = { receiptDetails = null })
+    }
+}''', '''    receiptDetails?.let { receipt ->
+        ReceiptDetailDialog(receipt = receipt, viewModel = viewModel, onDismiss = { receiptDetails = null })
+    }
+    if (showImportDetails && !importStatus.isNullOrBlank()) {
+        AlertDialog(
+            onDismissRequest = { showImportDetails = false },
+            title = { Text("Importdetails") },
+            text = {
+                Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                    Text(importStatus.orEmpty(), fontSize = 11.sp, color = SlateGray)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showImportDetails = false }) { Text("Schließen") } }
+        )
+    }
+}''', 'import details dialog')
+
+          if s == original:
+              raise SystemExit('No changes produced')
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- app/src/main/java/com/example/ui/BankFeature.kt
+
+      - name: Verify lint
+        timeout-minutes: 10
+        run: gradle lintDebug --stacktrace --no-daemon
+
+      - name: Verify unit tests
+        timeout-minutes: 10
+        run: gradle testDebugUnitTest --stacktrace --no-daemon
+
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Commit verified UI patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/BankFeature.kt
+          git commit -m "Bank & Belege: Referenzdesign und Buchungsicons final angleichen"
+          git push origin HEAD:main
