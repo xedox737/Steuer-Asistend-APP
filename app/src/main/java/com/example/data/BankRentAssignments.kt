@@ -40,7 +40,8 @@ data class BankRentAssignment(
     val source: String = BankRentAssignmentSource.USER_CONFIRMED,
     val receiptId: Int? = null,
     val createdAt: String,
-    val updatedAt: String
+    val updatedAt: String,
+    val note: String = ""
 )
 
 @Dao
@@ -76,6 +77,16 @@ interface BankRentAssignmentDao {
 object BankRentAssignmentIdentity {
     fun id(transactionId: String, propertyId: String, unitId: String, rentMonth: String, paymentType: String): String =
         "rent-${BankTransactionIdentity.sha256(listOf(transactionId, propertyId, unitId, rentMonth, paymentType).joinToString("|")).take(28)}"
+
+    /** Stable identity for an explicitly chosen manual split target. Legacy rent ids stay unchanged. */
+    fun manualId(
+        transactionId: String,
+        propertyId: String,
+        unitId: String,
+        rentMonth: String,
+        paymentType: String,
+        tenantReference: String
+    ): String = "split-${BankTransactionIdentity.sha256(listOf(transactionId, propertyId, unitId, rentMonth, paymentType, tenantReference).joinToString("|")).take(28)}"
 }
 
 object BankRentMonthStatus {

@@ -32,6 +32,149 @@ class BankPhase2DService(
         return applyAllocations(allocations)
     }
 
+    suspend fun confirmManualSplit(
+        positions: List<BankManualSplitPosition>,
+        explicitlyConfirmed: Boolean
+    ): BankCombinationApplyResult {
+        if (!explicitlyConfirmed) return BankCombinationApplyResult(false, message = "Aufteilung wurde noch nicht final bestätigt.")
+        if (positions.isEmpty()) return BankCombinationApplyResult(false, message = "Mindestens eine Teilposition ist erforderlich.")
+        val transactionIds = positions.map { it.transactionId }.distinct()
+        if (transactionIds.size != 1) return BankCombinationApplyResult(false, message = "Alle Teilpositionen müssen zu derselben Bankbuchung gehören.")
+        return database.withTransaction {
+            val bankDao = database.bankDao()
+            val rentDao = database.bankRentAssignmentDao()
+            val transaction = bankDao.getTransaction(transactionIds.single())
+                ?: return@withTransaction BankCombinationApplyResult(false, message = "Bankbuchung nicht gefunden.")
+            if (transaction.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED) {
+                return@withTransaction BankCombinationApplyResult(false, message = "NO_RECEIPT_REQUIRED darf nicht still überschrieben werden.")
+            }
+            val currentLinks = bankDao.getAllLinks().toMutableList()
+            val currentAssignments = rentDao.getForTransaction(transaction.transactionId).toMutableList()
+            val plannedLinks = mutableListOf<BankReceiptLink>()
+            val plannedAssignments = mutableListOf<BankRentAssignment>()
+            val targetKeys = mutableSetOf<String>()
+            val appliedIds = mutableListOf<String>()
+
+            for (raw in positions) {
+                val validated = BankTransactionSplitPolicy.validatePosition(transaction, raw)
+                if (!validated.allowed) return@withTransaction BankCombinationApplyResult(false, message = validated.reason)
+                val position = raw.copy(amount = validated.amount, rentMonth = raw.rentMonth.ifBlank { transaction.bookingDate.take(7) })
+                if (position.paymentType == BankSplitPaymentType.RECEIPT) {
+                    val receiptId = position.receiptId ?: return@withTransaction BankCombinationApplyResult(false, message = "Für 'Beleg zuordnen' muss ein Beleg gewählt werden.")
+                    val receipt = database.receiptDao().getReceiptById(receiptId)
+                        ?: return@withTransaction BankCombinationApplyResult(false, message = "Gewählter Beleg wurde nicht gefunden.")
+                    if (transaction.propertyId.isNotBlank() && receipt.propertyId.isNotBlank() && transaction.propertyId != receipt.propertyId) {
+                        return@withTransaction BankCombinationApplyResult(false, message = "Immobilienkonflikt verhindert die Belegzuordnung.")
+                    }
+                    if (position.propertyId.isNotBlank() && receipt.propertyId.isNotBlank() && position.propertyId != receipt.propertyId) {
+                        return@withTransaction BankCombinationApplyResult(false, message = "Immobilienkonflikt zwischen Teilposition und Beleg.")
+                    }
+                    val linkId = BankLinkPolicy.linkId(transaction.transactionId, receipt.id, receipt.internalId)
+                    if (!targetKeys.add("link:$linkId")) return@withTransaction BankCombinationApplyResult(false, message = "Dasselbe Ziel darf in einer Aufteilung nicht doppelt vorkommen.")
+                    val existing = currentLinks.firstOrNull { it.linkId == linkId }
+                    if (existing != null) {
+                        if (kotlin.math.abs(existing.allocatedAmount - position.amount) <= BankAllocationPolicy.MONEY_TOLERANCE) {
+                            appliedIds += linkId
+                            continue
+                        }
+                        return@withTransaction BankCombinationApplyResult(false, message = "Bestehende Belegzuordnung hat einen anderen Betrag und wird nicht überschrieben.")
+                    }
+                    val guard = BankAllocationPolicy.guardAllocation(transaction, receipt, position.amount, currentLinks + plannedLinks)
+                    if (!guard.allowed) return@withTransaction BankCombinationApplyResult(false, message = guard.reason)
+                    plannedLinks += BankReceiptLink(
+                        linkId = linkId, transactionId = transaction.transactionId, receiptId = receipt.id,
+                        receiptInternalId = receipt.internalId, allocatedAmount = guard.normalizedAmount,
+                        status = BankLinkStatus.CONFIRMED, source = BankLinkSource.NUTZER_BESTAETIGT, createdAt = now()
+                    )
+                    appliedIds += linkId
+                } else {
+                    val assignmentId = BankRentAssignmentIdentity.manualId(
+                        transaction.transactionId, position.propertyId, position.unitId, position.rentMonth,
+                        position.paymentType, position.tenantReference
+                    )
+                    if (!targetKeys.add("assignment:$assignmentId")) return@withTransaction BankCombinationApplyResult(false, message = "Dasselbe fachliche Ziel darf in einer Aufteilung nicht doppelt vorkommen.")
+                    val existing = currentAssignments.firstOrNull { it.assignmentId == assignmentId }
+                    if (existing != null) {
+                        val sameAmount = kotlin.math.abs(existing.allocatedAmount - position.amount) <= BankAllocationPolicy.MONEY_TOLERANCE
+                        if (sameAmount && existing.note == position.note) {
+                            appliedIds += assignmentId
+                            continue
+                        }
+                        return@withTransaction BankCombinationApplyResult(false, message = "Bestehende Nutzerzuordnung hat andere Daten und wird nicht still überschrieben.")
+                    }
+                    plannedAssignments += BankRentAssignment(
+                        assignmentId = assignmentId,
+                        transactionId = transaction.transactionId,
+                        propertyId = position.propertyId,
+                        unitId = position.unitId,
+                        rentMonth = position.rentMonth,
+                        tenantReference = position.tenantReference,
+                        allocatedAmount = position.amount,
+                        paymentType = position.paymentType,
+                        status = BankRentAssignmentStatus.CONFIRMED,
+                        source = BankRentAssignmentSource.MANUAL,
+                        receiptId = null,
+                        createdAt = now(),
+                        updatedAt = now(),
+                        note = position.note
+                    )
+                    appliedIds += assignmentId
+                }
+            }
+
+            val currentAllocated = BankTransactionSplitPolicy.allocatedAmount(transaction.transactionId, currentLinks, currentAssignments)
+            val plannedAmount = BankAllocationPolicy.roundMoney(plannedLinks.sumOf { it.allocatedAmount } + plannedAssignments.sumOf { it.allocatedAmount })
+            if (currentAllocated + plannedAmount > transaction.absoluteAmount + BankAllocationPolicy.MONEY_TOLERANCE) {
+                return@withTransaction BankCombinationApplyResult(false, message = "Aufteilung überschreitet den verfügbaren Restbetrag der Bankbuchung.")
+            }
+            plannedLinks.forEach { bankDao.upsertLink(it) }
+            plannedAssignments.forEach { rentDao.upsert(it) }
+            refreshStatus(bankDao, transaction.transactionId)
+            BankCombinationApplyResult(
+                true,
+                appliedIds.distinct(),
+                if (plannedLinks.isEmpty() && plannedAssignments.isEmpty()) "Bereits bestätigt; keine Doppelzuordnung erzeugt." else "Aufteilung wurde vollständig gespeichert.",
+                listOf(transaction.transactionId)
+            )
+        }
+    }
+
+    suspend fun changeManualSplitAssignment(
+        assignmentId: String,
+        newAmount: Double,
+        explicitlyConfirmed: Boolean
+    ): BankCombinationApplyResult {
+        if (!explicitlyConfirmed) return BankCombinationApplyResult(false, message = "Explizite Nutzerbestätigung fehlt.")
+        return database.withTransaction {
+            val bankDao = database.bankDao()
+            val rentDao = database.bankRentAssignmentDao()
+            val assignment = rentDao.getById(assignmentId) ?: return@withTransaction BankCombinationApplyResult(false, message = "Teilzuordnung nicht gefunden.")
+            val transaction = bankDao.getTransaction(assignment.transactionId) ?: return@withTransaction BankCombinationApplyResult(false, message = "Bankbuchung nicht gefunden.")
+            if (transaction.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED) return@withTransaction BankCombinationApplyResult(false, message = "NO_RECEIPT_REQUIRED darf nicht überschrieben werden.")
+            if (!newAmount.isFinite() || newAmount <= 0.0) return@withTransaction BankCombinationApplyResult(false, message = "Teilbetrag muss positiv und endlich sein.")
+            val normalized = BankAllocationPolicy.roundMoney(newAmount)
+            if (normalized <= BankAllocationPolicy.MONEY_TOLERANCE) return@withTransaction BankCombinationApplyResult(false, message = "Teilbetrag muss größer als 0,00 € sein.")
+            val links = bankDao.getLinksForTransaction(transaction.transactionId)
+            val others = rentDao.getForTransaction(transaction.transactionId).filterNot { it.assignmentId == assignmentId }
+            val usedWithoutCurrent = BankTransactionSplitPolicy.allocatedAmount(transaction.transactionId, links, others)
+            if (usedWithoutCurrent + normalized > transaction.absoluteAmount + BankAllocationPolicy.MONEY_TOLERANCE) {
+                return@withTransaction BankCombinationApplyResult(false, message = "Geänderter Teilbetrag würde die Bankbuchung überzuordnen.")
+            }
+            rentDao.upsert(assignment.copy(allocatedAmount = normalized, updatedAt = now()))
+            refreshStatus(bankDao, transaction.transactionId)
+            BankCombinationApplyResult(true, listOf(assignmentId), "Teilbetrag geändert; Restbetrag und Status neu berechnet.", listOf(transaction.transactionId))
+        }
+    }
+
+    suspend fun unlinkManualSplitAssignment(assignmentId: String): BankCombinationApplyResult = database.withTransaction {
+        val bankDao = database.bankDao()
+        val rentDao = database.bankRentAssignmentDao()
+        val assignment = rentDao.getById(assignmentId) ?: return@withTransaction BankCombinationApplyResult(false, message = "Teilzuordnung nicht gefunden.")
+        rentDao.deleteById(assignmentId)
+        refreshStatus(bankDao, assignment.transactionId)
+        BankCombinationApplyResult(true, message = "Teilzuordnung gelöst; Restbetrag und Status neu berechnet.", affectedTransactionIds = listOf(assignment.transactionId))
+    }
+
     suspend fun executeSafeBatch(
         selected: List<BankReviewItem>,
         explicitlyConfirmed: Boolean
@@ -123,6 +266,12 @@ class BankPhase2DService(
                 }
                 return@withTransaction BankCombinationApplyResult(false, message = "Bestehender Nutzerlink hat einen anderen Betrag und wird nicht überschrieben.")
             }
+            val manualAssignments = database.bankRentAssignmentDao().getForTransaction(transaction.transactionId)
+            val combinedRemaining = BankTransactionSplitPolicy.remainingAmount(transaction, allLinks + planned, manualAssignments)
+            val normalizedRequested = BankAllocationPolicy.roundMoney(allocation.amount)
+            if (normalizedRequested > combinedRemaining + BankAllocationPolicy.MONEY_TOLERANCE) {
+                return@withTransaction BankCombinationApplyResult(false, message = "Allocation überschreitet den Restbetrag der Bankbuchung einschließlich manueller Teilzuordnungen.")
+            }
             val guard = BankAllocationPolicy.guardAllocation(transaction, receipt, allocation.amount, allLinks + planned)
             if (!guard.allowed) return@withTransaction BankCombinationApplyResult(false, message = guard.reason)
             val link = BankReceiptLink(
@@ -154,7 +303,8 @@ class BankPhase2DService(
     private suspend fun refreshStatus(bankDao: BankDao, transactionId: String) {
         val transaction = bankDao.getTransaction(transactionId) ?: return
         val links = bankDao.getLinksForTransaction(transactionId)
-        val status = BankLinkPolicy.statusFor(transaction, links)
+        val assignments = database.bankRentAssignmentDao().getForTransaction(transactionId)
+        val status = BankTransactionSplitPolicy.statusFor(transaction, links, assignments)
         bankDao.updateTransactionStatus(transactionId, status, "", now())
     }
 }
