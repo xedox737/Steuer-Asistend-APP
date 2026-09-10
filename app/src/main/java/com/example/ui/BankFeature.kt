@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,6 +32,12 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -38,6 +45,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -98,6 +106,7 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     var accountMenuOpen by remember { mutableStateOf(false) }
     var toolsMenuOpen by remember { mutableStateOf(false) }
     var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }
+    var showImportDetails by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -147,14 +156,15 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     OutlinedTextField(
                         value = searchText,
                         onValueChange = { searchText = it },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(52.dp),
                         singleLine = true,
+                        shape = RoundedCornerShape(26.dp),
                         placeholder = { Text("Buchungen durchsuchen …") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suche") }
                     )
                     Box {
                         IconButton(onClick = { toolsMenuOpen = true }) {
-                            Icon(Icons.Default.MoreHoriz, contentDescription = "Filter und Werkzeuge")
+                            Icon(Icons.Default.Tune, contentDescription = "Filter und Werkzeuge", tint = DarkNavy)
                         }
                         DropdownMenu(expanded = toolsMenuOpen, onDismissRequest = { toolsMenuOpen = false }) {
                             DropdownMenuItem(text = { Text("Bankregeln") }, onClick = { toolsMode = BankToolsMode.RULES; toolsMenuOpen = false })
@@ -177,7 +187,13 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                         FilterChip(
                             selected = filter == item,
                             onClick = { filter = item },
-                            label = { Text("${BankCompactUiPolicy.filterLabel(item)} (${BankCompactUiPolicy.countFor(counts, item)})", maxLines = 1) }
+                            label = { Text("${BankCompactUiPolicy.filterLabel(item)} (${BankCompactUiPolicy.countFor(counts, item)})", maxLines = 1) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color.White,
+                                labelColor = SlateGray,
+                                selectedContainerColor = Color(0xFF3B82F6),
+                                selectedLabelColor = Color.White
+                            )
                         )
                     }
                 }
@@ -219,7 +235,25 @@ fun BankScreen(viewModel: ReceiptViewModel) {
                     BankMoneySummaryCard("Ausgänge", summary.outgoing, false, Modifier.weight(1f))
                     BankMoneySummaryCard("Saldo", summary.balance, summary.balance >= 0, Modifier.weight(1f))
                 }
-                if (!importStatus.isNullOrBlank()) Text(importStatus.orEmpty(), fontSize = 11.sp, color = SlateGray, modifier = Modifier.padding(top = 4.dp))
+                if (!importStatus.isNullOrBlank()) {
+                    val headline = importStatus.orEmpty().lineSequence().firstOrNull().orEmpty()
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 3.dp).clickable { showImportDetails = true },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("✓", color = EmeraldGreen, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.size(5.dp))
+                        Text(
+                            headline,
+                            modifier = Modifier.weight(1f),
+                            fontSize = 10.sp,
+                            color = SlateGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text("Importdetails", fontSize = 10.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
+                    }
+                }
             }
 
             when (toolsMode) {
@@ -255,10 +289,25 @@ fun BankScreen(viewModel: ReceiptViewModel) {
             } else {
                 groups.forEach { group ->
                     item(key = "date-${group.key}") {
-                        Text(group.label, fontWeight = FontWeight.Bold, color = SlateGray, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
+                        Text(group.label, fontWeight = FontWeight.Bold, color = SlateGray, fontSize = 13.sp, modifier = Modifier.padding(top = 7.dp, bottom = 2.dp))
                     }
-                    items(group.transactions, key = { it.transactionId }) { transaction ->
-                        BankCompactTransactionRow(transaction = transaction, onClick = { selectedTransactionId = transaction.transactionId })
+                    item(key = "group-${group.key}") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, BorderColor),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Column {
+                                group.transactions.forEachIndexed { index, transaction ->
+                                    BankCompactTransactionRow(
+                                        transaction = transaction,
+                                        onClick = { selectedTransactionId = transaction.transactionId }
+                                    )
+                                    if (index < group.transactions.lastIndex) HorizontalDivider(color = BorderColor)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -302,33 +351,100 @@ fun BankScreen(viewModel: ReceiptViewModel) {
     receiptDetails?.let { receipt ->
         ReceiptDetailDialog(receipt = receipt, viewModel = viewModel, onDismiss = { receiptDetails = null })
     }
+    if (showImportDetails && !importStatus.isNullOrBlank()) {
+        AlertDialog(
+            onDismissRequest = { showImportDetails = false },
+            title = { Text("Importdetails") },
+            text = {
+                Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                    Text(importStatus.orEmpty(), fontSize = 11.sp, color = SlateGray)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showImportDetails = false }) { Text("Schließen") }
+            }
+        )
+    }
+}
+
+private data class BankTransactionVisual(
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val background: Color,
+    val foreground: Color
+)
+
+private fun bankTransactionVisual(transaction: BankTransaction): BankTransactionVisual {
+    val text = "${transaction.counterparty} ${transaction.purpose}".lowercase(Locale.GERMANY)
+    return when {
+        listOf("miete", "mieter", "kaution", "nebenkosten").any { it in text } || transaction.amount > 0 ->
+            BankTransactionVisual(Icons.Default.Home, Color(0xFFDCFCE7), Color(0xFF16A34A))
+        listOf("baumarkt", "hornbach", "obi", "toom", "bauhaus", "handwerk", "werkzeug").any { it in text } ->
+            BankTransactionVisual(Icons.Default.Build, Color(0xFFEFF3F8), Color(0xFF64748B))
+        listOf("stadtwerk", "strom", "gas", "wasser", "energie").any { it in text } ->
+            BankTransactionVisual(Icons.Default.Person, Color(0xFFEFF3F8), Color(0xFF64748B))
+        listOf("telekom", "vodafone", "telefon", "internet", "mobilfunk").any { it in text } ->
+            BankTransactionVisual(Icons.Default.Description, Color(0xFFEFF3F8), Color(0xFF64748B))
+        transaction.amount < 0 ->
+            BankTransactionVisual(Icons.Default.ShoppingCart, Color(0xFFFEE2E2), Color(0xFFEF4444))
+        else -> BankTransactionVisual(Icons.Default.AccountBalance, Color(0xFFEFF3F8), Color(0xFF64748B))
+    }
 }
 
 @Composable
 internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, BorderColor)
+    val visual = bankTransactionVisual(transaction)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFF1F5F9)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.AccountBalance, contentDescription = null, tint = SlateGray, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.size(9.dp))
-            Column(Modifier.weight(1f)) {
-                Text(transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" }, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(BankCompactUiPolicy.compactSubtitle(transaction), fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                BankStatusBadge(transaction.reconciliationStatus)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy, maxLines = 1)
-                Text(formatDate(transaction.bookingDate), fontSize = 10.sp, color = SlateGray)
-                Text("›", fontSize = 20.sp, color = AccentBlue)
-            }
+        Box(
+            modifier = Modifier.size(42.dp).clip(CircleShape).background(visual.background),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                visual.icon,
+                contentDescription = null,
+                tint = visual.foreground,
+                modifier = Modifier.size(23.dp)
+            )
+        }
+        Spacer(Modifier.size(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" },
+                fontWeight = FontWeight.Bold,
+                color = DarkNavy,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                BankCompactUiPolicy.compactSubtitle(transaction),
+                fontSize = 11.sp,
+                color = SlateGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            BankStatusBadge(transaction.reconciliationStatus)
+        }
+        Spacer(Modifier.size(6.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                NumberFormatter.format(transaction.amount),
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy,
+                maxLines = 1
+            )
+            Text(formatDate(transaction.bookingDate), fontSize = 10.sp, color = SlateGray)
+            Text(
+                "›",
+                fontSize = 21.sp,
+                color = if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) AccentBlue else Color(0xFF94A3B8)
+            )
         }
     }
 }
@@ -381,8 +497,9 @@ private fun BankTransactionDetailsScreen(
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(48.dp).clip(CircleShape).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.AccountBalance, contentDescription = null, tint = SlateGray)
+                        val visual = bankTransactionVisual(transaction)
+                        Box(Modifier.size(54.dp).clip(CircleShape).background(visual.background), contentAlignment = Alignment.Center) {
+                            Icon(visual.icon, contentDescription = null, tint = visual.foreground, modifier = Modifier.size(28.dp))
                         }
                         Spacer(Modifier.size(10.dp))
                         Column(Modifier.weight(1f)) {
@@ -542,7 +659,13 @@ private fun BankMoneySummaryCard(title: String, amount: Double, positiveStyle: B
     Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.padding(horizontal = 7.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, fontSize = 9.sp, color = SlateGray)
-            Text(NumberFormatter.format(amount), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = if (positiveStyle) EmeraldGreen else CrimsonRed, maxLines = 1)
+            val amountColor = when (title) {
+                "Eingänge" -> EmeraldGreen
+                "Ausgänge" -> CrimsonRed
+                "Saldo" -> AccentBlue
+                else -> if (positiveStyle) EmeraldGreen else CrimsonRed
+            }
+            Text(NumberFormatter.format(amount), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = amountColor, maxLines = 1)
         }
     }
 }
