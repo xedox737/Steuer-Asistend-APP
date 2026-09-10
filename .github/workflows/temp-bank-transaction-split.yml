@@ -22,6 +22,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Make backup restore replacement precise
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/apply_bank_transaction_split.py')
+          s = p.read_text()
+          old = '''replace_once(\n    'app/src/main/java/com/example/data/SupplementalDriveBackup.kt',\n    'updatedAt = optString("updatedAt", "")\\n    )',\n    'updatedAt = optString("updatedAt", ""), note = optString("note", "")\\n    )'\n)'''
+          new = '''replace_once(\n    'app/src/main/java/com/example/data/SupplementalDriveBackup.kt',\n    'receiptId = if (has("receiptId") && !isNull("receiptId")) optInt("receiptId") else null,\\n        createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")\\n    )',\n    'receiptId = if (has("receiptId") && !isNull("receiptId")) optInt("receiptId") else null,\\n        createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", ""), note = optString("note", "")\\n    )'\n)'''
+          if old not in s:
+              raise SystemExit('backup script patch block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
       - name: Apply product patch
         run: python .github/scripts/apply_bank_transaction_split.py
       - name: Remove temporary helpers
