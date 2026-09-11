@@ -133,7 +133,7 @@ if 'transferSuggestion: com.example.data.BankTransferSuggestion?' not in ui:
     assert sig_marker in ui
     ui = ui.replace(sig_marker, sig_new, 1)
 
-card_marker = '''        if (transaction.classification == BankTransactionClassification.NORMAL && lastMonthSuggestion != null) {
+card_marker = '''        if (lastMonthSuggestion != null) {
 '''
 card_insert = '''        if (transaction.classification == BankTransactionClassification.TRANSFER) {
             item {
