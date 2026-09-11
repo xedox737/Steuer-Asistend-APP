@@ -28,6 +28,7 @@ data class BankLastMonthAssignmentSuggestion(
 object BankLastMonthAssignmentPolicy {
     private const val MIN_DAYS = 20L
     private const val MAX_DAYS = 45L
+    private const val MIN_CONFIDENCE = 80
 
     fun suggest(
         target: BankTransaction,
@@ -36,6 +37,7 @@ object BankLastMonthAssignmentPolicy {
         receipts: List<Receipt>
     ): BankLastMonthAssignmentSuggestion? {
         if (BankTransactionClassification.normalize(target.classification) != BankTransactionClassification.NORMAL) return null
+        if (target.reconciliationStatus in setOf(BankReconciliationStatus.MATCHED, BankReconciliationStatus.NO_RECEIPT_REQUIRED)) return null
         val targetDate = parseDate(target.bookingDate) ?: return null
         val targetCounterparty = BankRecurringPaymentDetector.normalizeCounterparty(target)
         val targetPurpose = BankRecurringPaymentDetector.purposeFingerprint(target.purpose)
@@ -99,7 +101,7 @@ object BankLastMonthAssignmentPolicy {
                     suggestedPaymentMethod = receipt.zahlungsart,
                     confidence = confidence.coerceIn(0, 100),
                     reasons = reasons
-                )
+                ).takeIf { it.confidence >= MIN_CONFIDENCE }
             }
             .sortedWith(
                 compareByDescending<BankLastMonthAssignmentSuggestion> { it.sourceBookingDate }
