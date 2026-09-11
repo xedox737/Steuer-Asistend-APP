@@ -145,6 +145,9 @@ interface BankDao {
         updatedAt: String
     )
 
+    @Query("UPDATE bank_transactions SET reviewState = :reviewState, updatedAt = :updatedAt WHERE transactionId = :transactionId")
+    suspend fun updateTransactionReviewState(transactionId: String, reviewState: String, updatedAt: String)
+
     @Query("SELECT * FROM bank_receipt_links ORDER BY createdAt DESC, linkId")
     fun observeLinks(): Flow<List<BankReceiptLink>>
 

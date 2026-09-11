@@ -1664,6 +1664,26 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun markBankTransactionReviewDone(transactionId: String) {
+        updateBankTransactionReviewState(transactionId, com.example.data.BankReviewState.DONE)
+    }
+
+    fun reopenBankTransactionReview(transactionId: String) {
+        updateBankTransactionReviewState(transactionId, com.example.data.BankReviewState.OPEN)
+    }
+
+    private fun updateBankTransactionReviewState(transactionId: String, reviewState: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = java.time.Instant.now().toString()
+            database.bankDao().updateTransactionReviewState(transactionId, reviewState, now)
+            _bankImportStatus.value = if (reviewState == com.example.data.BankReviewState.DONE) {
+                "Buchung aus persönlicher Prüfliste als erledigt markiert. DATEV-Fachstatus bleibt unverändert."
+            } else {
+                "Buchung wieder in die persönliche Prüfliste aufgenommen."
+            }
+        }
+    }
+
     fun markBankTransactionPrivateIgnored(transactionId: String) {
         classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.PRIVATE_IGNORED)
     }

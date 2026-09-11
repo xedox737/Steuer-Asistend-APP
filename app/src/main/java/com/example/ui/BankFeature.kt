@@ -76,6 +76,7 @@ import com.example.data.BankMatchSuggestion
 import com.example.data.BankReceiptLink
 import com.example.data.BankReceiptMatcher
 import com.example.data.BankReconciliationStatus
+import com.example.data.BankReviewState
 import com.example.data.BankTransaction
 import com.example.data.BankTransactionClassification
 import com.example.data.BankTransactionSplitPolicy
@@ -84,7 +85,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT }
+private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT, DATEV_PRECHECK }
 
 @Composable
 fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean) -> Unit = {}) {
@@ -180,6 +181,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             DropdownMenuItem(text = { Text("Darlehen & Wiederkehrend") }, onClick = { toolsMode = BankToolsMode.LOAN_RECURRING; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Prüfwarteschlange & Sammelzahlungen") }, onClick = { toolsMode = BankToolsMode.REVIEW_COMBINATIONS; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Beleg → Bank-Zuordnung") }, onClick = { toolsMode = BankToolsMode.REVERSE_RECEIPT; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("DATEV-Vorprüfung") }, onClick = { toolsMode = BankToolsMode.DATEV_PRECHECK; toolsMenuOpen = false })
                             if (!importStatus.isNullOrBlank()) {
                                 DropdownMenuItem(text = { Text("Importdetails") }, onClick = { showImportDetails = true; toolsMenuOpen = false })
                             }
@@ -253,6 +255,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 BankToolsMode.RENT -> item { ToolContainer("Mietabgleich", onClose = { toolsMode = BankToolsMode.NONE }) { BankRentPanel(viewModel) } }
                 BankToolsMode.LOAN_RECURRING -> item { ToolContainer("Darlehen & Wiederkehrend", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2CPanel(viewModel) } }
                 BankToolsMode.REVIEW_COMBINATIONS -> item { ToolContainer("Prüfwarteschlange & Sammelzahlungen", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2DReviewPanel(viewModel) } }
+                BankToolsMode.DATEV_PRECHECK -> item { ToolContainer("DATEV-Vorprüfung", onClose = { toolsMode = BankToolsMode.NONE }) { BankDatevPrecheckPanel(accountTransactions) } }
                 BankToolsMode.REVERSE_RECEIPT -> item {
                     ToolContainer("Beleg → Bank-Zuordnung", onClose = { toolsMode = BankToolsMode.NONE }) {
                         BankReverseReceiptPanel(
@@ -460,6 +463,9 @@ private fun BankPrimaryStatusBadge(transaction: BankTransaction) {
         )
         else -> BankStatusBadge(transaction.reconciliationStatus)
     }
+    if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reviewState == BankReviewState.DONE) {
+        Text("Erledigt", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = SlateGray)
+    }
 }
 
 @Composable
@@ -504,6 +510,19 @@ private fun BankTransactionDetailsScreen(
                                 viewModel.resetBankTransactionClassification(transaction.transactionId)
                                 detailMenuOpen = false
                             })
+                        }
+                        if (transaction.classification == BankTransactionClassification.NORMAL) {
+                            if (transaction.reviewState == BankReviewState.OPEN) {
+                                DropdownMenuItem(text = { Text("Als erledigt markieren") }, onClick = {
+                                    viewModel.markBankTransactionReviewDone(transaction.transactionId)
+                                    detailMenuOpen = false
+                                })
+                            } else {
+                                DropdownMenuItem(text = { Text("Prüfung wieder öffnen") }, onClick = {
+                                    viewModel.reopenBankTransactionReview(transaction.transactionId)
+                                    detailMenuOpen = false
+                                })
+                            }
                         }
                         if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
                             DropdownMenuItem(text = { Text("Manuell prüfen") }, onClick = {
