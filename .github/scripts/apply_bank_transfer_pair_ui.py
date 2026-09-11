@@ -99,6 +99,9 @@ selected_marker = '''    val selectedTransaction = selectedTransactionId?.let { 
 selected_insert = '''    val selectedTransferSuggestion = selectedTransaction?.takeIf {
         it.classification == BankTransactionClassification.TRANSFER && it.linkedTransferTransactionId.isBlank()
     }?.let { com.example.data.BankTransferMatcher.suggestions(it, transactions).firstOrNull() }
+    val selectedSuggestedTransferCounterpart = selectedTransferSuggestion?.let { suggestion ->
+        transactions.firstOrNull { it.transactionId == suggestion.counterTransactionId }
+    }
     val selectedTransferCounterpart = selectedTransaction?.linkedTransferTransactionId
         ?.takeIf { it.isNotBlank() }
         ?.let { id -> transactions.firstOrNull { it.transactionId == id } }
@@ -110,6 +113,7 @@ if 'val selectedTransferSuggestion' not in ui:
 pass_marker = '''            lastMonthSuggestion = lastMonthSuggestions[selectedTransaction.transactionId],
 '''
 pass_insert = '''            transferSuggestion = selectedTransferSuggestion,
+            suggestedTransferCounterpart = selectedSuggestedTransferCounterpart,
             transferCounterpart = selectedTransferCounterpart,
 '''
 if 'transferSuggestion = selectedTransferSuggestion' not in ui:
@@ -121,6 +125,7 @@ sig_marker = '''    lastMonthSuggestion: com.example.data.BankLastMonthAssignmen
 '''
 sig_new = '''    lastMonthSuggestion: com.example.data.BankLastMonthAssignmentSuggestion?,
     transferSuggestion: com.example.data.BankTransferSuggestion?,
+    suggestedTransferCounterpart: BankTransaction?,
     transferCounterpart: BankTransaction?,
     linkedLinks: List<BankReceiptLink>,
 '''
@@ -153,9 +158,8 @@ card_insert = '''        if (transaction.classification == BankTransactionClassi
                                 ) { Text("Gegenbuchungs-Verknüpfung lösen") }
                             }
                             transferSuggestion != null -> {
-                                val candidate = viewModel.bankTransactions.value.firstOrNull { it.transactionId == transferSuggestion.counterTransactionId }
                                 Text("Mögliche Gegenbuchung • ${transferSuggestion.score}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
-                                if (candidate != null) {
+                                suggestedTransferCounterpart?.let { candidate ->
                                     Text(
                                         "${formatDate(candidate.bookingDate)} • ${candidate.counterparty.ifBlank { "Eigenes Konto" }} • ${NumberFormatter.format(candidate.amount)}",
                                         fontSize = 11.sp,
