@@ -369,8 +369,10 @@ private fun bankTransactionVisual(transaction: BankTransaction): BankTransaction
     return when {
         listOf("miete", "mieter", "kaution", "nebenkosten").any { it in text } || transaction.amount > 0 ->
             BankTransactionVisual(Icons.Default.Home, Color(0xFFDCFCE7), Color(0xFF16A34A))
-        listOf("baumarkt", "hornbach", "obi", "toom", "bauhaus", "handwerk", "werkzeug").any { it in text } ->
+        listOf("hornbach", "handwerk", "werkzeug").any { it in text } ->
             BankTransactionVisual(Icons.Default.Build, Color(0xFFEFF3F8), Color(0xFF64748B))
+        listOf("haisch", "baumarkt", "obi", "toom", "bauhaus", "kartenzahlung").any { it in text } ->
+            BankTransactionVisual(Icons.Default.ShoppingCart, Color(0xFFFEE2E2), Color(0xFFEF4444))
         listOf("stadtwerk", "strom", "gas", "wasser", "energie").any { it in text } ->
             BankTransactionVisual(Icons.Default.Person, Color(0xFFEFF3F8), Color(0xFF64748B))
         listOf("telekom", "vodafone", "telefon", "internet", "mobilfunk").any { it in text } ->
@@ -514,7 +516,7 @@ private fun BankTransactionDetailsScreen(
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
-                BankQuickAction("Beleg\nanlegen", Icons.Default.Add, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
+                BankQuickAction("Beleg\nanlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
                 Column(Modifier.weight(1f)) {
                     BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
                 }
@@ -608,6 +610,17 @@ private fun BankTransactionDetailsScreen(
                     }
                 }
             }
+        } else {
+            item {
+                OutlinedButton(
+                    onClick = onNoReceipt,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    border = BorderStroke(1.dp, CrimsonRed),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Buchung ignorieren", color = CrimsonRed, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         item { Spacer(Modifier.height(20.dp)) }
     }
@@ -616,13 +629,14 @@ private fun BankTransactionDetailsScreen(
 @Composable
 internal fun BankQuickAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Card(
-        modifier = modifier.height(78.dp).clickable(onClick = onClick),
+        modifier = modifier.height(88.dp).clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.fillMaxSize().padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(icon, contentDescription = label.replace('\n', ' '), tint = AccentBlue, modifier = Modifier.size(21.dp))
-            Text(label, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Icon(icon, contentDescription = label.replace('\n', ' '), tint = if (label.startsWith("Kein Beleg")) EmeraldGreen else AccentBlue, modifier = Modifier.size(25.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
