@@ -2646,6 +2646,8 @@ data class AiSearchUiState(
         val included = mutableListOf<Receipt>()
         val excluded = mutableListOf<Receipt>()
         val exclusionReasons = linkedMapOf<String, List<String>>()
+        val currentBankLinks = bankReceiptLinks.value
+        val currentBankTransactions = bankTransactions.value
 
         allRecs.forEach { receipt ->
             val reasons = mutableListOf<String>()
@@ -2670,6 +2672,11 @@ data class AiSearchUiState(
             }
             reasons += com.example.util.DatevReceiptEligibility.issues(receipt)
                 .map { it.message }
+            reasons += com.example.data.BankLinkedReceiptDatevPolicy.exclusions(
+                receipt = receipt,
+                links = currentBankLinks,
+                transactions = currentBankTransactions
+            ).map { "${it.code}: ${it.message}" }
             if (receipt.internalId.trim() in duplicateInternalIds) {
                 reasons += "Stabile Beleg-ID kommt mehrfach vor; Export ist bis zur Dublettenbereinigung blockiert."
             }
@@ -2843,6 +2850,18 @@ data class AiSearchUiState(
         val metaName = meta?.name ?: ""
         val propName = if (metaName.isNotEmpty()) metaName else "MFH Sulzerstraße"
         val propShort = if (metaName.isNotEmpty()) metaName.take(15) else "MFH Sulz"
+
+        val bankDatevExclusions = receipts.flatMap { receipt ->
+            com.example.data.BankLinkedReceiptDatevPolicy.exclusions(
+                receipt = receipt,
+                links = bankReceiptLinks.value,
+                transactions = bankTransactions.value
+            ).map { exclusion -> "${exclusion.code}: ${exclusion.message}" }
+        }
+        if (bankDatevExclusions.isNotEmpty()) {
+            Log.w("ReceiptViewModel", "DATEV export blocked by bank classification: ${bankDatevExclusions.joinToString(" | ")}")
+            return null
+        }
 
         val config = com.example.util.DatevConfig(
             beraterNummer = beraterNummer.ifEmpty { "1111111" },
