@@ -1760,6 +1760,45 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _currentScreen.value = AppScreen.ADD_RECEIPT
     }
 
+    fun startReceiptLikeLastMonth(
+        transaction: com.example.data.BankTransaction,
+        suggestion: com.example.data.BankLastMonthAssignmentSuggestion
+    ) {
+        if (suggestion.transactionId != transaction.transactionId ||
+            com.example.data.BankTransactionClassification.normalize(transaction.classification) != com.example.data.BankTransactionClassification.NORMAL
+        ) {
+            _bankImportStatus.value = "Der Wiederholungs-Vorschlag ist nicht mehr aktuell."
+            return
+        }
+        if (com.example.data.BankLastMonthAssignmentPolicy.hasAssignmentConflict(transaction, suggestion)) {
+            _bankImportStatus.value = "Bestehende Objekt-/Einheitszuordnung weicht vom Vormonat ab. Nichts wurde überschrieben."
+            return
+        }
+        suggestion.suggestedPropertyId.takeIf {
+            it.isNotBlank() && it != com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        }?.let(::selectProperty)
+        _pendingBankTransactionId.value = transaction.transactionId
+        _scanState.value = ScanUiState.Success(
+            com.example.api.ExtractedReceipt(
+                aussteller = suggestion.suggestedVendor.ifBlank { transaction.counterparty },
+                datum = transaction.bookingDate,
+                uhrzeit = "",
+                bruttobetrag = transaction.absoluteAmount,
+                hauptkategorie = suggestion.suggestedCategory,
+                unterkategorie = suggestion.suggestedSubcategory,
+                kontoNr = "",
+                beschreibung = transaction.purpose,
+                isEigenleistungSanierung = false,
+                wohneinheit = suggestion.suggestedUnit,
+                mieter = "",
+                zahlungsart = suggestion.suggestedPaymentMethod.ifBlank { "Überweisung" },
+                positionen = emptyList()
+            )
+        )
+        _bankImportStatus.value = "Wie letzten Monat vorbefüllt. Es wurde ein neuer Belegentwurf erstellt; der alte Monatsbeleg wurde nicht verknüpft."
+        _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
     fun startRentReceiptFromBankTransaction(
         transaction: com.example.data.BankTransaction,
         unit: WohneinheitStatus,

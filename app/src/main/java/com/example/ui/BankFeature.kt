@@ -131,6 +131,16 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val receiptById = remember(receipts) { receipts.associateBy { it.id } }
     val accountById = remember(accounts) { accounts.associateBy { it.accountId } }
     val selectedTransaction = selectedTransactionId?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+    val lastMonthSuggestion = remember(selectedTransaction, transactions, links, receipts) {
+        selectedTransaction?.let { transaction ->
+            com.example.data.BankLastMonthAssignmentPolicy.suggest(
+                target = transaction,
+                transactions = transactions,
+                links = links,
+                receipts = receipts
+            )
+        }
+    }
 
     LaunchedEffect(selectedTransaction != null) {
         onDetailVisibilityChanged(selectedTransaction != null)
@@ -144,6 +154,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             transaction = selectedTransaction,
             account = accountById[selectedTransaction.accountId],
             suggestion = suggestions[selectedTransaction.transactionId],
+            lastMonthSuggestion = lastMonthSuggestion,
             linkedLinks = linksByTransaction[selectedTransaction.transactionId].orEmpty(),
             assignments = assignmentsByTransaction[selectedTransaction.transactionId].orEmpty(),
             receiptById = receiptById,
@@ -474,6 +485,7 @@ private fun BankTransactionDetailsScreen(
     transaction: BankTransaction,
     account: BankAccount?,
     suggestion: BankMatchSuggestion?,
+    lastMonthSuggestion: com.example.data.BankLastMonthAssignmentSuggestion?,
     linkedLinks: List<BankReceiptLink>,
     assignments: List<com.example.data.BankRentAssignment>,
     receiptById: Map<Int, Receipt>,
@@ -575,6 +587,53 @@ private fun BankTransactionDetailsScreen(
                     BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
                 }
                 BankQuickAction("Kein Beleg\nerforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt)
+            }
+        }
+
+        if (lastMonthSuggestion != null) {
+            item {
+                val conflict = com.example.data.BankLastMonthAssignmentPolicy.hasAssignmentConflict(transaction, lastMonthSuggestion)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Wie letzten Monat zuordnen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text("${lastMonthSuggestion.confidence}%", fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                        }
+                        val targetText = listOf(
+                            lastMonthSuggestion.suggestedVendor,
+                            lastMonthSuggestion.suggestedCategory,
+                            lastMonthSuggestion.suggestedSubcategory,
+                            lastMonthSuggestion.suggestedUnit
+                        ).filter { it.isNotBlank() }.joinToString(" • ")
+                        if (targetText.isNotBlank()) Text(targetText, fontSize = 12.sp, color = SlateGray)
+                        Text(
+                            lastMonthSuggestion.reasons.take(4).joinToString(" • "),
+                            fontSize = 11.sp,
+                            color = SlateGray
+                        )
+                        if (conflict) {
+                            Text(
+                                "Bestehende Objekt-/Einheitszuordnung weicht ab. Es wird nichts überschrieben.",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = CrimsonRed
+                            )
+                        } else {
+                            Button(
+                                onClick = { viewModel.startReceiptLikeLastMonth(transaction, lastMonthSuggestion) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Zuordnung übernehmen und neuen Beleg prüfen") }
+                        }
+                        Text(
+                            "Der alte Monatsbeleg wird nicht übernommen oder erneut verknüpft.",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    }
+                }
             }
         }
 
