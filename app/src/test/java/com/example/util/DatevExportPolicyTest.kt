@@ -1,5 +1,6 @@
 package com.example.util
 
+import com.example.data.BankTransactionClassification
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -107,17 +108,42 @@ class DatevExportPolicyTest {
         assertEquals(-10_000L, plan.bookingLines.single().amountCent)
     }
 
+    @Test
+    fun privateBankMovementCanNeverBeExported() {
+        val plan = DatevExportPolicy.plan(
+            listOf(receipt(bankClassification = BankTransactionClassification.PRIVATE_IGNORED))
+        )
+
+        assertFalse(plan.exportable)
+        assertTrue(plan.bookingLines.isEmpty())
+        assertTrue(plan.issues.any { it.code == "BANK_PRIVATE_IGNORED" })
+    }
+
+    @Test
+    fun transferCanNeverBeExportedAsNormalIncomeOrExpense() {
+        val plan = DatevExportPolicy.plan(
+            listOf(receipt(bankClassification = BankTransactionClassification.TRANSFER))
+        )
+
+        assertFalse(plan.exportable)
+        assertTrue(plan.bookingLines.isEmpty())
+        assertTrue(plan.issues.any { it.code == "BANK_TRANSFER" })
+    }
+
     private fun receipt(
         internalId: String = "receipt-1",
         amountCent: Long = 10_000,
         attachmentReference: String? = "receipt.pdf",
-        allocations: List<ConfirmedDatevAllocation> = listOf(allocation("a", amountCent))
+        allocations: List<ConfirmedDatevAllocation> = listOf(allocation("a", amountCent)),
+        bankClassification: String = BankTransactionClassification.NORMAL
     ) = DatevExportReceipt(
         internalId = internalId,
         amountCent = amountCent,
         bookingDate = "2026-08-01",
         attachmentReference = attachmentReference,
-        allocations = allocations
+        allocations = allocations,
+        bankTransactionId = "bank-1",
+        bankClassification = bankClassification
     )
 
     private fun allocation(
