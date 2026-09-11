@@ -77,6 +77,7 @@ import com.example.data.BankReceiptLink
 import com.example.data.BankReceiptMatcher
 import com.example.data.BankReconciliationStatus
 import com.example.data.BankTransaction
+import com.example.data.BankTransactionClassification
 import com.example.data.BankTransactionSplitPolicy
 import com.example.data.Receipt
 import java.time.LocalDate
@@ -421,7 +422,7 @@ internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: ()
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            BankStatusBadge(transaction.reconciliationStatus)
+            BankPrimaryStatusBadge(transaction)
         }
         Spacer(Modifier.size(6.dp))
         Column(horizontalAlignment = Alignment.End) {
@@ -439,6 +440,25 @@ internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: ()
                 color = if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) AccentBlue else Color(0xFF94A3B8)
             )
         }
+    }
+}
+
+@Composable
+private fun BankPrimaryStatusBadge(transaction: BankTransaction) {
+    when (transaction.classification) {
+        BankTransactionClassification.PRIVATE_IGNORED -> Text(
+            "Privat",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = SlateGray
+        )
+        BankTransactionClassification.TRANSFER -> Text(
+            "Umbuchung",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AccentBlue
+        )
+        else -> BankStatusBadge(transaction.reconciliationStatus)
     }
 }
 
@@ -470,7 +490,22 @@ private fun BankTransactionDetailsScreen(
                         Icon(Icons.Default.MoreHoriz, contentDescription = "Weitere Buchungsaktionen", tint = SlateGray)
                     }
                     DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {
-                        if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
+                        if (transaction.classification == BankTransactionClassification.NORMAL) {
+                            DropdownMenuItem(text = { Text("Privat / ignorieren") }, onClick = {
+                                viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                            DropdownMenuItem(text = { Text("Als Umbuchung markieren") }, onClick = {
+                                viewModel.markBankTransactionTransfer(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                        } else {
+                            DropdownMenuItem(text = { Text("Sonderklassifikation entfernen") }, onClick = {
+                                viewModel.resetBankTransactionClassification(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                        }
+                        if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
                             DropdownMenuItem(text = { Text("Manuell prüfen") }, onClick = {
                                 viewModel.markBankTransactionForReview(transaction.transactionId)
                                 detailMenuOpen = false
@@ -497,7 +532,7 @@ private fun BankTransactionDetailsScreen(
                         Spacer(Modifier.size(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" }, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
-                            BankStatusBadge(transaction.reconciliationStatus)
+                            BankPrimaryStatusBadge(transaction)
                         }
                         Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy)
                     }
@@ -513,7 +548,7 @@ private fun BankTransactionDetailsScreen(
                 }
             }
         }
-        item {
+        if (transaction.classification == BankTransactionClassification.NORMAL) item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
                 BankQuickAction("Beleg\nanlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })

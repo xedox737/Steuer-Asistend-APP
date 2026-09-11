@@ -2,6 +2,7 @@ package com.example.ui
 
 import com.example.data.BankReconciliationStatus
 import com.example.data.BankTransaction
+import com.example.data.BankClassificationPolicy
 import java.time.LocalDate
 import java.util.Locale
 
@@ -38,7 +39,7 @@ internal data class BankDateGroup(
 internal object BankCompactUiPolicy {
     fun counts(transactions: List<BankTransaction>): BankCompactCounts = BankCompactCounts(
         all = transactions.size,
-        open = transactions.count { it.reconciliationStatus == BankReconciliationStatus.OPEN },
+        open = transactions.count { BankClassificationPolicy.decision(it).requiresReceiptReview && it.reconciliationStatus == BankReconciliationStatus.OPEN },
         matched = transactions.count { it.reconciliationStatus == BankReconciliationStatus.MATCHED },
         partial = transactions.count { it.reconciliationStatus == BankReconciliationStatus.PARTIAL },
         review = transactions.count { it.reconciliationStatus == BankReconciliationStatus.REVIEW },
@@ -47,7 +48,7 @@ internal object BankCompactUiPolicy {
 
     fun filter(transactions: List<BankTransaction>, filter: BankCompactFilter): List<BankTransaction> = when (filter) {
         BankCompactFilter.ALL -> transactions
-        BankCompactFilter.OPEN -> transactions.filter { it.reconciliationStatus == BankReconciliationStatus.OPEN }
+        BankCompactFilter.OPEN -> transactions.filter { BankClassificationPolicy.decision(it).requiresReceiptReview && it.reconciliationStatus == BankReconciliationStatus.OPEN }
         BankCompactFilter.MATCHED -> transactions.filter { it.reconciliationStatus == BankReconciliationStatus.MATCHED }
         BankCompactFilter.PARTIAL -> transactions.filter { it.reconciliationStatus == BankReconciliationStatus.PARTIAL }
         BankCompactFilter.REVIEW -> transactions.filter { it.reconciliationStatus == BankReconciliationStatus.REVIEW }

@@ -1664,6 +1664,60 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun markBankTransactionPrivateIgnored(transactionId: String) {
+        classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.PRIVATE_IGNORED)
+    }
+
+    fun markBankTransactionTransfer(
+        transactionId: String,
+        transferCounterAccountId: String = "",
+        linkedTransferTransactionId: String = ""
+    ) {
+        classifyBankTransaction(
+            transactionId,
+            com.example.data.BankTransactionClassification.TRANSFER,
+            transferCounterAccountId,
+            linkedTransferTransactionId
+        )
+    }
+
+    fun resetBankTransactionClassification(transactionId: String) {
+        classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.NORMAL)
+    }
+
+    private fun classifyBankTransaction(
+        transactionId: String,
+        classification: String,
+        transferCounterAccountId: String = "",
+        linkedTransferTransactionId: String = ""
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val transaction = dao.getTransaction(transactionId) ?: return@launch
+            val now = java.time.Instant.now().toString()
+            val updated = com.example.data.BankClassificationPolicy.classify(
+                transactionId = transaction.transactionId,
+                classification = classification,
+                transferCounterAccountId = transferCounterAccountId,
+                linkedTransferTransactionId = linkedTransferTransactionId,
+                now = now
+            )
+            dao.updateTransactionClassification(
+                transactionId = transactionId,
+                classification = updated.classification,
+                transferCounterAccountId = updated.transferCounterAccountId,
+                linkedTransferTransactionId = updated.linkedTransferTransactionId,
+                reviewState = updated.reviewState,
+                updatedAt = now
+            )
+            _bankImportStatus.value = when (updated.classification) {
+                com.example.data.BankTransactionClassification.PRIVATE_IGNORED -> "Buchung als Privat/ignoriert markiert. Kein Belegabgleich und kein normaler DATEV-Export."
+                com.example.data.BankTransactionClassification.TRANSFER -> "Buchung als Umbuchung markiert. Kein Belegabgleich und kein normaler Einnahmen-/Ausgabenexport."
+                else -> "Sonderklassifikation entfernt. Buchung wird wieder normal geprüft."
+            }
+        }
+    }
+
     fun startReceiptFromBankTransaction(transaction: com.example.data.BankTransaction) {
         _pendingBankTransactionId.value = transaction.transactionId
         _scanState.value = ScanUiState.Success(
