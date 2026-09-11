@@ -37,7 +37,7 @@ class BankTransactionSplitMigrationBackupTest {
     }
 
     @Test fun supplementalBackupRoundTripsManualNote() = runTest {
-        assertEquals(11, SupplementalDriveBackup.SCHEMA_VERSION)
+        assertEquals(12, SupplementalDriveBackup.SCHEMA_VERSION)
         val context: Context = ApplicationProvider.getApplicationContext()
         val source = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         source.bankRentAssignmentDao().upsert(BankRentAssignment("a","t","p","u","2026-09","tenant",10.0,"KAUTION",createdAt="c",updatedAt="u",note="Synthetic note"))

@@ -131,6 +131,30 @@ class BankCamtV8ReimportStatusAcceptanceTest {
         assertEquals(8, dao.getAllLinks().size)
     }
 
+    @Test fun reimportPreservesClassificationReviewAndTransferLink() = runTest {
+        val dao = database.bankDao()
+        val batch = BankImportParser.parseCamtV8(synthetic052(), "SYNTHETIC", "first")
+        dao.upsertAccount(batch.account)
+        val tx = batch.transactions.single()
+        dao.insertTransactions(listOf(tx))
+        dao.updateTransactionClassification(
+            transactionId = tx.transactionId,
+            classification = BankTransactionClassification.TRANSFER,
+            transferCounterAccountId = "own-account-2",
+            linkedTransferTransactionId = "counterpart-tx",
+            reviewState = BankReviewState.DONE,
+            updatedAt = "confirmed"
+        )
+
+        dao.insertTransactions(BankImportParser.parseCamtV8(synthetic052(), "SYNTHETIC", "second").transactions)
+        val restored = dao.getTransaction(tx.transactionId)!!
+
+        assertEquals(BankTransactionClassification.TRANSFER, restored.classification)
+        assertEquals("own-account-2", restored.transferCounterAccountId)
+        assertEquals("counterpart-tx", restored.linkedTransferTransactionId)
+        assertEquals(BankReviewState.DONE, restored.reviewState)
+    }
+
     private fun zipOf(vararg entries: Pair<String, ByteArray>): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->

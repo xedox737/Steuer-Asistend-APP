@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 11
+    internal const val SCHEMA_VERSION = 12
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -146,6 +146,8 @@ object SupplementalDriveBackup {
         put("propertyId", propertyId); put("unitId", unitId)
         put("importFileName", importFileName); put("importRunId", importRunId)
         put("reconciliationStatus", reconciliationStatus); put("noReceiptReason", noReceiptReason)
+        put("classification", classification); put("transferCounterAccountId", transferCounterAccountId)
+        put("linkedTransferTransactionId", linkedTransferTransactionId); put("reviewState", reviewState)
         put("importedAt", importedAt); put("updatedAt", updatedAt)
     }
 
@@ -159,8 +161,12 @@ object SupplementalDriveBackup {
         unitId = optString("unitId", ""), importFileName = optString("importFileName", ""),
         importRunId = optString("importRunId", ""),
         reconciliationStatus = optString("reconciliationStatus", BankReconciliationStatus.OPEN),
-        noReceiptReason = optString("noReceiptReason", ""), importedAt = optString("importedAt", ""),
-        updatedAt = optString("updatedAt", "")
+        noReceiptReason = optString("noReceiptReason", ""),
+        classification = BankTransactionClassification.normalize(optString("classification", BankTransactionClassification.NORMAL)),
+        transferCounterAccountId = optString("transferCounterAccountId", ""),
+        linkedTransferTransactionId = optString("linkedTransferTransactionId", ""),
+        reviewState = optString("reviewState", BankReviewState.OPEN).takeIf { it in setOf(BankReviewState.OPEN, BankReviewState.DONE) } ?: BankReviewState.OPEN,
+        importedAt = optString("importedAt", ""), updatedAt = optString("updatedAt", "")
     )
 
     private fun BankLearningRule.toBackupJson() = JSONObject().apply {
