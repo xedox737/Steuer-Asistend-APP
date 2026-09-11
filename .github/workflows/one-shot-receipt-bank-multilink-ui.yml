@@ -1,0 +1,53 @@
+name: One-shot Receipt bank multi-link UI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/bank-classification-phase-a
+    paths:
+      - '.github/workflows/one-shot-receipt-bank-multilink-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/bank-classification-phase-a
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Create local debug keystore
+        run: |
+          keytool -genkeypair -v -storetype PKCS12 -keystore "$GITHUB_WORKSPACE/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+      - name: Apply receipt bank multi-link UI
+        run: |
+          python .github/scripts/apply_receipt_bank_multilink_ui.py
+          git diff --check
+      - name: Lint
+        run: gradle lintDebug
+      - name: Unit tests
+        run: gradle testDebugUnitTest
+      - name: Build debug APK
+        run: gradle assembleDebug
+      - name: Commit verified receipt bank multi-link UI
+        run: |
+          if git diff --quiet -- app/src/main/java/com/example/ui/ReceiptAppUi.kt; then
+            echo "No receipt multi-link UI diff to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/ReceiptAppUi.kt
+          git commit -m "Show multiple bank links on receipt details"
+          git pull --rebase origin feature/bank-classification-phase-a
+          git push origin HEAD:feature/bank-classification-phase-a
