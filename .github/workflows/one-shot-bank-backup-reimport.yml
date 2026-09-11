@@ -28,8 +28,7 @@ jobs:
           gradle-version: '9.3.1'
       - name: Create local debug keystore
         run: |
-          mkdir -p "$HOME/.android"
-          keytool -genkeypair -v -storetype PKCS12 -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          keytool -genkeypair -v -storetype PKCS12 -keystore "$GITHUB_WORKSPACE/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
       - name: Apply bank backup and reimport patch
         run: |
           python .github/scripts/apply_bank_backup_classification.py
@@ -42,13 +41,13 @@ jobs:
         run: gradle assembleDebug
       - name: Commit verified backup patch
         run: |
-          if git diff --quiet -- app/src/main/java/com/example/data/SupplementalDriveBackup.kt app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt app/src/test/java/com/example/data/BankCamtV8ReimportStatusAcceptanceTest.kt; then
+          if git diff --quiet -- app/src/main/java/com/example/data/SupplementalDriveBackup.kt app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt app/src/test/java/com/example/data/BankCamtV8ReimportStatusAcceptanceTest.kt app/src/test/java/com/example/data/BankBackup7AcceptanceTest.kt app/src/test/java/com/example/data/BankLearningRulesBackupAcceptanceTest.kt app/src/test/java/com/example/data/BankPhase2CBackupAcceptanceTest.kt app/src/test/java/com/example/data/BankTransactionSplitMigrationBackupTest.kt; then
             echo "No backup diff to commit"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/example/data/SupplementalDriveBackup.kt app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt app/src/test/java/com/example/data/BankCamtV8ReimportStatusAcceptanceTest.kt
+          git add app/src/main/java/com/example/data/SupplementalDriveBackup.kt app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt app/src/test/java/com/example/data/BankCamtV8ReimportStatusAcceptanceTest.kt app/src/test/java/com/example/data/BankBackup7AcceptanceTest.kt app/src/test/java/com/example/data/BankLearningRulesBackupAcceptanceTest.kt app/src/test/java/com/example/data/BankPhase2CBackupAcceptanceTest.kt app/src/test/java/com/example/data/BankTransactionSplitMigrationBackupTest.kt
           git commit -m "Preserve bank classification in backup and reimport"
           git pull --rebase origin feature/bank-classification-phase-a
           git push origin HEAD:feature/bank-classification-phase-a
