@@ -37,7 +37,7 @@ jobs:
             keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
           fi
 
-      - name: Apply persistence and matching patch
+      - name: Apply persistence and UI patch
         run: |
           python3 .github/scripts/apply_bank_classification_phase_a_persistence.py
           git diff --check
@@ -58,6 +58,7 @@ jobs:
           git add app/src/main/java/com/example/data/BankingModels.kt \
                   app/src/main/java/com/example/data/ReceiptDatabase.kt \
                   app/src/main/java/com/example/ui/ReceiptViewModel.kt \
-                  app/src/main/java/com/example/ui/BankCompactUiPolicy.kt
-          git commit -m "Bank Phase A: Klassifikation persistent absichern"
+                  app/src/main/java/com/example/ui/BankCompactUiPolicy.kt \
+                  app/src/main/java/com/example/ui/BankFeature.kt
+          git commit -m "Bank Phase A: Klassifikation persistent und sichtbar absichern"
           git push origin HEAD:feature/bank-classification-phase-a
