@@ -41,7 +41,9 @@ object BankClassificationPolicy {
         transaction: BankTransaction,
         record: BankTransactionClassificationRecord? = null
     ): BankClassificationDecision {
-        val classification = BankTransactionClassification.normalize(record?.classification.orEmpty())
+        val classification = BankTransactionClassification.normalize(
+            record?.classification ?: transaction.classification
+        )
         val special = classification != BankTransactionClassification.NORMAL
         return BankClassificationDecision(
             classification = classification,
@@ -51,7 +53,11 @@ object BankClassificationPolicy {
             ),
             eligibleForReceiptMatching = !special && transaction.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED,
             eligibleForNormalDatevExport = !special,
-            reviewState = if (special) BankReviewState.DONE else record?.reviewState ?: BankReviewState.OPEN
+            reviewState = if (special) {
+                BankReviewState.DONE
+            } else {
+                record?.reviewState ?: transaction.reviewState
+            }
         )
     }
 
@@ -76,9 +82,15 @@ object BankClassificationPolicy {
 }
 
 object BankDatevClassificationGate {
-    fun exclusionReason(record: BankTransactionClassificationRecord?): String? = when (
+    fun exclusionReason(record: BankTransactionClassificationRecord?): String? = exclusionReason(
         BankTransactionClassification.normalize(record?.classification.orEmpty())
-    ) {
+    )
+
+    fun exclusionReason(transaction: BankTransaction): String? = exclusionReason(
+        BankTransactionClassification.normalize(transaction.classification)
+    )
+
+    private fun exclusionReason(classification: String): String? = when (classification) {
         BankTransactionClassification.PRIVATE_IGNORED -> "Privat/ignoriert – nicht als betriebliche DATEV-Buchung exportieren."
         BankTransactionClassification.TRANSFER -> "Umbuchung – nicht als normale Einnahme/Ausgabe exportieren."
         else -> null
