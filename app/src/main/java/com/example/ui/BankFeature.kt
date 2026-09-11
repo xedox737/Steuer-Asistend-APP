@@ -131,6 +131,15 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val receiptById = remember(receipts) { receipts.associateBy { it.id } }
     val accountById = remember(accounts) { accounts.associateBy { it.accountId } }
     val selectedTransaction = selectedTransactionId?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+    val selectedTransferSuggestion = selectedTransaction?.takeIf {
+        it.classification == BankTransactionClassification.TRANSFER && it.linkedTransferTransactionId.isBlank()
+    }?.let { com.example.data.BankTransferMatcher.suggestions(it, transactions).firstOrNull() }
+    val selectedSuggestedTransferCounterpart = selectedTransferSuggestion?.let { suggestion ->
+        transactions.firstOrNull { it.transactionId == suggestion.counterTransactionId }
+    }
+    val selectedTransferCounterpart = selectedTransaction?.linkedTransferTransactionId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { id -> transactions.firstOrNull { it.transactionId == id } }
     val lastMonthSuggestion = remember(selectedTransaction, transactions, links, receipts) {
         selectedTransaction?.let { transaction ->
             com.example.data.BankLastMonthAssignmentPolicy.suggest(
@@ -155,6 +164,9 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             account = accountById[selectedTransaction.accountId],
             suggestion = suggestions[selectedTransaction.transactionId],
             lastMonthSuggestion = lastMonthSuggestion,
+            transferSuggestion = selectedTransferSuggestion,
+            suggestedTransferCounterpart = selectedSuggestedTransferCounterpart,
+            transferCounterpart = selectedTransferCounterpart,
             linkedLinks = linksByTransaction[selectedTransaction.transactionId].orEmpty(),
             assignments = assignmentsByTransaction[selectedTransaction.transactionId].orEmpty(),
             receiptById = receiptById,
@@ -486,6 +498,9 @@ private fun BankTransactionDetailsScreen(
     account: BankAccount?,
     suggestion: BankMatchSuggestion?,
     lastMonthSuggestion: com.example.data.BankLastMonthAssignmentSuggestion?,
+    transferSuggestion: com.example.data.BankTransferSuggestion?,
+    suggestedTransferCounterpart: BankTransaction?,
+    transferCounterpart: BankTransaction?,
     linkedLinks: List<BankReceiptLink>,
     assignments: List<com.example.data.BankRentAssignment>,
     receiptById: Map<Int, Receipt>,
@@ -590,6 +605,51 @@ private fun BankTransactionDetailsScreen(
             }
         }
 
+        if (transaction.classification == BankTransactionClassification.TRANSFER) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Umbuchung / Gegenbuchung", fontWeight = FontWeight.Bold, color = DarkNavy)
+                        when {
+                            transferCounterpart != null -> {
+                                Text("Beidseitig verknüpft", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = EmeraldGreen)
+                                Text(
+                                    "${formatDate(transferCounterpart.bookingDate)} • ${transferCounterpart.counterparty.ifBlank { "Eigenes Konto" }} • ${NumberFormatter.format(transferCounterpart.amount)}",
+                                    fontSize = 11.sp,
+                                    color = DarkNavy
+                                )
+                                Text("Gegenkonto: ${transferCounterpart.accountId}", fontSize = 10.sp, color = SlateGray)
+                                OutlinedButton(
+                                    onClick = { viewModel.unlinkBankTransferPair(transaction.transactionId) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Gegenbuchungs-Verknüpfung lösen") }
+                            }
+                            transferSuggestion != null -> {
+                                Text("Mögliche Gegenbuchung • ${transferSuggestion.score}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+                                suggestedTransferCounterpart?.let { candidate ->
+                                    Text(
+                                        "${formatDate(candidate.bookingDate)} • ${candidate.counterparty.ifBlank { "Eigenes Konto" }} • ${NumberFormatter.format(candidate.amount)}",
+                                        fontSize = 11.sp,
+                                        color = DarkNavy
+                                    )
+                                }
+                                Text(transferSuggestion.reasons.joinToString(" • "), fontSize = 10.sp, color = SlateGray)
+                                Text("Die Verknüpfung erfolgt erst nach deiner Bestätigung.", fontSize = 10.sp, color = SlateGray)
+                                Button(
+                                    onClick = { viewModel.confirmBankTransferPair(transaction.transactionId, transferSuggestion.counterTransactionId) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Als Gegenbuchung verknüpfen") }
+                            }
+                            else -> Text("Keine ausreichend passende Gegenbuchung auf einem anderen importierten Konto gefunden.", fontSize = 11.sp, color = SlateGray)
+                        }
+                    }
+                }
+            }
+        }
+
         if (lastMonthSuggestion != null) {
             item {
                 val conflict = com.example.data.BankLastMonthAssignmentPolicy.hasAssignmentConflict(transaction, lastMonthSuggestion)
@@ -649,6 +709,7 @@ private fun BankTransactionDetailsScreen(
                                     Text("${receipt.getEffectiveDisplayId()} • ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 11.sp, color = SlateGray)
                                 }
                                 TextButton(onClick = { onReceiptDetails(receipt) }) { Text("Öffnen") }
+                                TextButton(onClick = { viewModel.proposeBankRuleFromConfirmedReceipt(transaction.transactionId, receipt.id) }) { Text("Regel merken") }
                                 TextButton(onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }) { Text("Lösen") }
                             }
                         }

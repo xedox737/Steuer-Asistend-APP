@@ -1684,6 +1684,60 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun confirmBankTransferPair(transactionId: String, counterpartTransactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val first = dao.getTransaction(transactionId) ?: return@launch
+            val second = dao.getTransaction(counterpartTransactionId) ?: return@launch
+            if (!com.example.data.BankTransferPairPolicy.canConfirm(first, second)) {
+                _bankImportStatus.value = "Gegenbuchung nicht verknüpft: Betrag, Richtung, Konto oder Datum passen nicht sicher genug."
+                return@launch
+            }
+            val now = java.time.Instant.now().toString()
+            val update = com.example.data.BankTransferPairPolicy.confirm(first, second, now)
+            listOf(update.first, update.second).forEach { record ->
+                dao.updateTransactionClassification(
+                    transactionId = record.transactionId,
+                    classification = record.classification,
+                    transferCounterAccountId = record.transferCounterAccountId,
+                    linkedTransferTransactionId = record.linkedTransferTransactionId,
+                    reviewState = record.reviewState,
+                    updatedAt = now
+                )
+            }
+            _bankImportStatus.value = "Umbuchungspaar bestätigt und beidseitig verknüpft. Beide Buchungen bleiben vom normalen DATEV-Einnahmen-/Ausgabenexport ausgeschlossen."
+        }
+    }
+
+    fun unlinkBankTransferPair(transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val selected = dao.getTransaction(transactionId) ?: return@launch
+            val counterpart = selected.linkedTransferTransactionId.takeIf { it.isNotBlank() }?.let { dao.getTransaction(it) }
+            val now = java.time.Instant.now().toString()
+            val update = com.example.data.BankTransferPairPolicy.unlink(selected, counterpart, now)
+            dao.updateTransactionClassification(
+                transactionId = update.selected.transactionId,
+                classification = update.selected.classification,
+                transferCounterAccountId = update.selected.transferCounterAccountId,
+                linkedTransferTransactionId = update.selected.linkedTransferTransactionId,
+                reviewState = update.selected.reviewState,
+                updatedAt = now
+            )
+            update.counterpart?.let { record ->
+                dao.updateTransactionClassification(
+                    transactionId = record.transactionId,
+                    classification = record.classification,
+                    transferCounterAccountId = record.transferCounterAccountId,
+                    linkedTransferTransactionId = record.linkedTransferTransactionId,
+                    reviewState = record.reviewState,
+                    updatedAt = now
+                )
+            }
+            _bankImportStatus.value = "Gegenbuchungs-Verknüpfung gelöst. Die Umbuchungs-Klassifikation bleibt bestehen und kann separat entfernt werden."
+        }
+    }
+
     fun markBankTransactionPrivateIgnored(transactionId: String) {
         classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.PRIVATE_IGNORED)
     }
@@ -1715,6 +1769,24 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             val dao = database.bankDao()
             val transaction = dao.getTransaction(transactionId) ?: return@launch
             val now = java.time.Instant.now().toString()
+            if (classification != com.example.data.BankTransactionClassification.TRANSFER && transaction.linkedTransferTransactionId.isNotBlank()) {
+                val counterpart = dao.getTransaction(transaction.linkedTransferTransactionId)
+                if (counterpart?.linkedTransferTransactionId == transaction.transactionId) {
+                    val counterpartUpdate = com.example.data.BankClassificationPolicy.classify(
+                        transactionId = counterpart.transactionId,
+                        classification = com.example.data.BankTransactionClassification.TRANSFER,
+                        now = now
+                    )
+                    dao.updateTransactionClassification(
+                        transactionId = counterpartUpdate.transactionId,
+                        classification = counterpartUpdate.classification,
+                        transferCounterAccountId = counterpartUpdate.transferCounterAccountId,
+                        linkedTransferTransactionId = counterpartUpdate.linkedTransferTransactionId,
+                        reviewState = counterpartUpdate.reviewState,
+                        updatedAt = now
+                    )
+                }
+            }
             val updated = com.example.data.BankClassificationPolicy.classify(
                 transactionId = transaction.transactionId,
                 classification = classification,
@@ -2119,6 +2191,36 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 com.example.data.BankReconciliationStatus.MATCHED -> "Buchung bleibt gemäß bestehender Zuordnung verknüpft."
                 else -> "Bankstatus blieb unverändert."
             }
+        }
+    }
+
+    fun proposeBankRuleFromConfirmedReceipt(transactionId: String, receiptId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bankDao = database.bankDao()
+            val transaction = bankDao.getTransaction(transactionId) ?: return@launch
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            val confirmed = bankDao.getLinksForTransaction(transactionId).any {
+                it.receiptId == receiptId && it.status == com.example.data.BankLinkStatus.CONFIRMED
+            }
+            if (!confirmed) {
+                _bankImportStatus.value = "Regel nicht erstellt: Die Belegzuordnung ist nicht bestätigt."
+                return@launch
+            }
+            val now = java.time.Instant.now().toString()
+            val rule = com.example.data.BankExplicitRuleProposal.create(transaction, receipt, now)
+            val dao = database.bankLearningRuleDao()
+            when (dao.getRule(rule.ruleId)?.state) {
+                com.example.data.BankRuleState.ACTIVE -> {
+                    _bankImportStatus.value = "Eine passende aktive Bankregel existiert bereits."
+                    return@launch
+                }
+                com.example.data.BankRuleState.REJECTED -> {
+                    _bankImportStatus.value = "Eine passende Regel wurde früher abgelehnt. Sie kann in Bankregeln geprüft werden."
+                    return@launch
+                }
+            }
+            dao.upsertRule(rule)
+            _bankImportStatus.value = "Regelvorschlag gespeichert. Er ist deaktiviert und muss in Bankregeln ausdrücklich aktiviert werden."
         }
     }
 
