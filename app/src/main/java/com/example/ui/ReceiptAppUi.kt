@@ -4147,6 +4147,18 @@ fun ReceiptPositionenEditor(
 @Composable
 fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
     var isEditing by remember { mutableStateOf(false) }
+    val bankReceiptLinks by viewModel.bankReceiptLinks.collectAsState()
+    val bankTransactions by viewModel.bankTransactions.collectAsState()
+    val linkedBankEntries = remember(receipt.id, receipt.internalId, bankReceiptLinks, bankTransactions) {
+        val transactionById = bankTransactions.associateBy { it.transactionId }
+        bankReceiptLinks
+            .filter { link ->
+                link.receiptId == receipt.id ||
+                    (receipt.internalId.isNotBlank() && link.receiptInternalId == receipt.internalId)
+            }
+            .mapNotNull { link -> transactionById[link.transactionId]?.let { transaction -> link to transaction } }
+            .sortedByDescending { (_, transaction) -> transaction.bookingDate }
+    }
 
     // State for all editable fields
     var editAussteller by remember(receipt) { mutableStateOf(receipt.aussteller) }
@@ -4446,6 +4458,74 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                         if (receipt.beschreibung.isNotEmpty()) {
                             HorizontalDivider()
                             DetailRow(label = "Beschreibung / Zweck", value = receipt.beschreibung)
+                        }
+                    }
+
+                    if (linkedBankEntries.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().testTag("receipt_bank_links_card"),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, BorderColor)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = if (linkedBankEntries.size == 1) "Mit 1 Bankbuchung verknüpft" else "Mit ${linkedBankEntries.size} Bankbuchungen verknüpft",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = DarkNavy
+                                )
+                                linkedBankEntries.forEach { (link, transaction) ->
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(SoftBackground, RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } },
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 12.sp,
+                                                    color = DarkNavy,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = transaction.bookingDate,
+                                                    fontSize = 10.sp,
+                                                    color = SlateGray
+                                                )
+                                            }
+                                            Text(
+                                                text = NumberFormatter.format(transaction.amount),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = DarkNavy
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
+                                            modifier = Modifier.align(Alignment.End)
+                                        ) {
+                                            Text("Verknüpfung lösen", fontSize = 11.sp, color = CrimsonRed)
+                                        }
+                                    }
+                                }
+                                Text(
+                                    "Der Beleg bleibt gespeichert, wenn nur eine einzelne Bank-Verknüpfung gelöst wird.",
+                                    fontSize = 10.sp,
+                                    color = SlateGray
+                                )
+                            }
                         }
                     }
 
