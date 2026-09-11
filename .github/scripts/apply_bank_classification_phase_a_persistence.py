@@ -104,4 +104,35 @@ if 'BankClassificationPolicy' in text and 'import com.example.data.BankClassific
     text = text.replace('import com.example.data.BankTransaction\n', 'import com.example.data.BankTransaction\nimport com.example.data.BankClassificationPolicy\n')
 path.write_text(text)
 
-print("Phase A persistence patch applied")
+# 5) Existing Bank UI: add actions/status without redesign.
+path = Path("app/src/main/java/com/example/ui/BankFeature.kt")
+text = path.read_text()
+if 'import com.example.data.BankTransactionClassification\n' not in text:
+    text = replace_once(
+        text,
+        'import com.example.data.BankTransaction\n',
+        'import com.example.data.BankTransaction\nimport com.example.data.BankTransactionClassification\n',
+        'classification UI import'
+    )
+
+text = text.replace(
+    '            BankStatusBadge(transaction.reconciliationStatus)',
+    '            BankPrimaryStatusBadge(transaction)'
+)
+
+badge_anchor = '@Composable\nprivate fun BankTransactionDetailsScreen('
+badge_block = '''@Composable\nprivate fun BankPrimaryStatusBadge(transaction: BankTransaction) {\n    when (transaction.classification) {\n        BankTransactionClassification.PRIVATE_IGNORED -> Text(\n            "Privat",\n            fontSize = 10.sp,\n            fontWeight = FontWeight.SemiBold,\n            color = SlateGray\n        )\n        BankTransactionClassification.TRANSFER -> Text(\n            "Umbuchung",\n            fontSize = 10.sp,\n            fontWeight = FontWeight.SemiBold,\n            color = AccentBlue\n        )\n        else -> BankStatusBadge(transaction.reconciliationStatus)\n    }\n}\n\n'''
+text = replace_once(text, badge_anchor, badge_block + badge_anchor, 'classification status badge')
+
+menu_anchor = '''                    DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {\n                        if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {\n'''
+menu_block = '''                    DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {\n                        if (transaction.classification == BankTransactionClassification.NORMAL) {\n                            DropdownMenuItem(text = { Text("Privat / ignorieren") }, onClick = {\n                                viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)\n                                detailMenuOpen = false\n                            })\n                            DropdownMenuItem(text = { Text("Als Umbuchung markieren") }, onClick = {\n                                viewModel.markBankTransactionTransfer(transaction.transactionId)\n                                detailMenuOpen = false\n                            })\n                        } else {\n                            DropdownMenuItem(text = { Text("Sonderklassifikation entfernen") }, onClick = {\n                                viewModel.resetBankTransactionClassification(transaction.transactionId)\n                                detailMenuOpen = false\n                            })\n                        }\n                        if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {\n'''
+text = replace_once(text, menu_anchor, menu_block, 'detail classification actions')
+
+# Hide receipt-specific action row/suggestions for special movements.
+quick_anchor = '''        item {\n            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {\n                BankQuickAction("Beleg\\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)\n'''
+quick_block = '''        if (transaction.classification == BankTransactionClassification.NORMAL) item {\n            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {\n                BankQuickAction("Beleg\\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)\n'''
+text = replace_once(text, quick_anchor, quick_block, 'hide receipt quick actions for special classification')
+
+path.write_text(text)
+
+print("Phase A persistence/UI patch applied")
