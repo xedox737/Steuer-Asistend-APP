@@ -51,3 +51,5 @@ jobs:
           git commit -m "Show multiple bank links on receipt details"
           git pull --rebase origin feature/bank-classification-phase-a
           git push origin HEAD:feature/bank-classification-phase-a
+
+# Trigger refresh: workflow existed before this push so path filtering can execute it.
