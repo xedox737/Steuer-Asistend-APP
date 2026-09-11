@@ -29,6 +29,39 @@ class BankTransactionClassificationTest {
     }
 
     @Test
+    fun persistedPrivateIgnored_isUsedWithoutSeparateRecord() {
+        val transaction = tx().copy(
+            classification = BankTransactionClassification.PRIVATE_IGNORED,
+            reviewState = BankReviewState.OPEN
+        )
+
+        val decision = BankClassificationPolicy.decision(transaction)
+
+        assertEquals(BankTransactionClassification.PRIVATE_IGNORED, decision.classification)
+        assertEquals(BankReviewState.DONE, decision.reviewState)
+        assertFalse(decision.requiresReceiptReview)
+        assertFalse(decision.eligibleForReceiptMatching)
+        assertFalse(decision.eligibleForNormalDatevExport)
+        assertNotNull(BankDatevClassificationGate.exclusionReason(transaction))
+    }
+
+    @Test
+    fun persistedNormalDoneReviewState_isPreservedWithoutSeparateRecord() {
+        val transaction = tx().copy(
+            classification = BankTransactionClassification.NORMAL,
+            reviewState = BankReviewState.DONE
+        )
+
+        val decision = BankClassificationPolicy.decision(transaction)
+
+        assertEquals(BankTransactionClassification.NORMAL, decision.classification)
+        assertEquals(BankReviewState.DONE, decision.reviewState)
+        assertTrue(decision.requiresReceiptReview)
+        assertTrue(decision.eligibleForReceiptMatching)
+        assertTrue(decision.eligibleForNormalDatevExport)
+    }
+
+    @Test
     fun transfer_keepsCounterAccount_andIsNotNormalIncomeExpense() {
         val transaction = tx()
         val record = BankClassificationPolicy.classify(
