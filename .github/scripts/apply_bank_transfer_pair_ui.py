@@ -110,7 +110,7 @@ if 'val selectedTransferSuggestion' not in ui:
     assert selected_marker in ui
     ui = ui.replace(selected_marker, selected_marker + selected_insert, 1)
 
-pass_marker = '''            lastMonthSuggestion = lastMonthSuggestions[selectedTransaction.transactionId],
+pass_marker = '''            lastMonthSuggestion = lastMonthSuggestion,
 '''
 pass_insert = '''            transferSuggestion = selectedTransferSuggestion,
             suggestedTransferCounterpart = selectedSuggestedTransferCounterpart,
