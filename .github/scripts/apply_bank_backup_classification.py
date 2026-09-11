@@ -3,6 +3,12 @@ from pathlib import Path
 backup_path = Path('app/src/main/java/com/example/data/SupplementalDriveBackup.kt')
 test_path = Path('app/src/test/java/com/example/data/SupplementalDriveBackupTest.kt')
 reimport_test_path = Path('app/src/test/java/com/example/data/BankCamtV8ReimportStatusAcceptanceTest.kt')
+legacy_schema_test_paths = [
+    Path('app/src/test/java/com/example/data/BankBackup7AcceptanceTest.kt'),
+    Path('app/src/test/java/com/example/data/BankLearningRulesBackupAcceptanceTest.kt'),
+    Path('app/src/test/java/com/example/data/BankPhase2CBackupAcceptanceTest.kt'),
+    Path('app/src/test/java/com/example/data/BankTransactionSplitMigrationBackupTest.kt'),
+]
 backup = backup_path.read_text()
 test = test_path.read_text()
 reimport_test = reimport_test_path.read_text()
@@ -107,6 +113,22 @@ reimport_insert = '''    @Test fun reimportPreservesClassificationReviewAndTrans
 if 'reimportPreservesClassificationReviewAndTransferLink' not in reimport_test:
     assert reimport_marker in reimport_test
     reimport_test = reimport_test.replace(reimport_marker, reimport_insert + reimport_marker, 1)
+
+# Schema 12 only adds backward-compatible bank classification fields. Existing
+# current-schema acceptance tests must track the new current schema number.
+for legacy_path in legacy_schema_test_paths:
+    legacy = legacy_path.read_text()
+    if 'assertEquals(11, payload.getInt("schemaVersion"))' in legacy:
+        legacy = legacy.replace(
+            'assertEquals(11, payload.getInt("schemaVersion"))',
+            'assertEquals(12, payload.getInt("schemaVersion"))'
+        )
+    if 'assertEquals(11, SupplementalDriveBackup.SCHEMA_VERSION)' in legacy:
+        legacy = legacy.replace(
+            'assertEquals(11, SupplementalDriveBackup.SCHEMA_VERSION)',
+            'assertEquals(12, SupplementalDriveBackup.SCHEMA_VERSION)'
+        )
+    legacy_path.write_text(legacy)
 
 backup_path.write_text(backup)
 test_path.write_text(test)
