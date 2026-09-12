@@ -394,8 +394,8 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             transactions = accountTransactions,
             links = links,
             onDismiss = { bankPickerForReceipt = null },
-            onSelect = { transaction ->
-                viewModel.confirmBankReceiptLink(transaction.transactionId, receipt.id)
+            onSelect = { selectedIds ->
+                viewModel.confirmManyBankTransactionsForReceipt(selectedIds, receipt.id)
                 bankPickerForReceipt = null
             }
         )
@@ -1082,10 +1082,11 @@ private fun BankTransactionPickerDialog(
     transactions: List<BankTransaction>,
     links: List<BankReceiptLink>,
     onDismiss: () -> Unit,
-    onSelect: (BankTransaction) -> Unit
+    onSelect: (Set<String>) -> Unit
 ) {
     val ranked = remember(receipt.id, transactions, links) { BankReceiptMatcher.rankTransactionsForReceipt(receipt, transactions, links) }
     var query by remember(receipt.id) { mutableStateOf("") }
+    var selectedIds by remember(receipt.id) { mutableStateOf<Set<String>>(emptySet()) }
     val visible = remember(ranked, query, transactions) {
         val needle = query.trim().lowercase(Locale.GERMANY)
         if (needle.isBlank()) ranked else ranked.filter { suggestion ->
@@ -1097,7 +1098,7 @@ private fun BankTransactionPickerDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Andere Buchung auswählen") },
+        title = { Text("Weitere Bankbuchungen verknüpfen") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Offene Bankbuchungen durchsuchen") })
@@ -1108,9 +1109,16 @@ private fun BankTransactionPickerDialog(
                         if (transaction != null) {
                             Card(modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                 Column(Modifier.padding(10.dp)) {
-                                    Text(transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } }, fontWeight = FontWeight.SemiBold)
-                                    Text("${formatDate(transaction.bookingDate)} • ${NumberFormatter.format(transaction.amount)} • ${suggestion.score}%", fontSize = 12.sp)
-                                    TextButton(onClick = { onSelect(transaction) }) { Text("Zuordnen") }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = transaction.transactionId in selectedIds,
+                                            onCheckedChange = { selectedIds = selectedIds.toggle(transaction.transactionId) }
+                                        )
+                                        Column {
+                                            Text(transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } }, fontWeight = FontWeight.SemiBold)
+                                            Text("${formatDate(transaction.bookingDate)} • ${NumberFormatter.format(transaction.amount)} • ${suggestion.score}%", fontSize = 12.sp)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1118,7 +1126,11 @@ private fun BankTransactionPickerDialog(
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            Button(onClick = { onSelect(selectedIds) }, enabled = selectedIds.isNotEmpty()) {
+                Text("${selectedIds.size} verknüpfen • ${NumberFormatter.format(transactions.filter { it.transactionId in selectedIds }.sumOf { it.absoluteAmount })}")
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
     )
 }
