@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot verified patch: keep receipt deletion safe while bank links exist.
 p = Path('app/src/main/java/com/example/ui/ReceiptViewModel.kt')
 s = p.read_text()
 
