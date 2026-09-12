@@ -98,6 +98,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val rentSuggestions by viewModel.bankRentSuggestions.collectAsState()
     val importStatus by viewModel.bankImportStatus.collectAsState()
+    val undoState by viewModel.bankUndoState.collectAsState()
     val learningRules by viewModel.bankLearningRules.collectAsState()
 
     var searchText by remember { mutableStateOf("") }
@@ -175,6 +176,9 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             receiptById = receiptById,
             rentSuggestion = rentSuggestions[selectedTransaction.transactionId].orEmpty().firstOrNull(),
             units = units,
+            undoState = undoState,
+            onUndo = { viewModel.undoLastBankAction() },
+            onDismissUndo = { viewModel.dismissBankUndo() },
             onBack = { selectedTransactionId = null },
             onPickReceipt = { receiptPickerFor = selectedTransaction },
             onNoReceipt = { noReceiptFor = selectedTransaction },
@@ -222,6 +226,12 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             })
                         }
                     }
+                }
+            }
+
+            if (undoState != null) {
+                item {
+                    BankUndoBanner(undoState!!, onUndo = { viewModel.undoLastBankAction() }, onDismiss = { viewModel.dismissBankUndo() })
                 }
             }
 
@@ -480,6 +490,28 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     }
 }
 
+@Composable
+private fun BankUndoBanner(
+    state: com.example.data.BankUndoState,
+    onUndo: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("${state.label} ausgeführt", fontWeight = FontWeight.SemiBold, color = DarkNavy, fontSize = 12.sp)
+                Text("${state.entries.size} Änderung(en) können sicher rückgängig gemacht werden.", fontSize = 10.sp, color = SlateGray)
+            }
+            TextButton(onClick = onUndo) { Text("Rückgängig") }
+            TextButton(onClick = onDismiss) { Text("Schließen") }
+        }
+    }
+}
+
 private data class BankTransactionVisual(
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
     val background: Color,
@@ -602,6 +634,9 @@ private fun BankTransactionDetailsScreen(
     receiptById: Map<Int, Receipt>,
     rentSuggestion: com.example.data.BankRentSuggestion?,
     units: List<WohneinheitStatus>,
+    undoState: com.example.data.BankUndoState?,
+    onUndo: () -> Unit,
+    onDismissUndo: () -> Unit,
     onBack: () -> Unit,
     onPickReceipt: () -> Unit,
     onNoReceipt: () -> Unit,
@@ -662,6 +697,9 @@ private fun BankTransactionDetailsScreen(
                     }
                 }
             }
+        }
+        if (undoState != null) {
+            item { BankUndoBanner(undoState, onUndo = onUndo, onDismiss = onDismissUndo) }
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {

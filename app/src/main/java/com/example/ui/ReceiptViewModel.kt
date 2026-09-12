@@ -259,6 +259,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
     private val _bankImportStatus = MutableStateFlow<String?>(null)
     val bankImportStatus: StateFlow<String?> = _bankImportStatus.asStateFlow()
+    private val _bankUndoState = MutableStateFlow<com.example.data.BankUndoState?>(null)
+    val bankUndoState: StateFlow<com.example.data.BankUndoState?> = _bankUndoState.asStateFlow()
     private val _pendingBankTransactionId = MutableStateFlow<String?>(null)
     val pendingBankTransactionId: StateFlow<String?> = _pendingBankTransactionId.asStateFlow()
 
@@ -1747,6 +1749,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             val current = transactionIds.distinct().mapNotNull { dao.getTransaction(it) }
             val preview = com.example.data.BankBatchActionPolicy.preview(current, dao.getAllLinks(), action)
             val now = java.time.Instant.now().toString()
+            val undoEntries = mutableListOf<com.example.data.BankUndoEntry>()
 
             preview.eligibleTransactionIds.forEach { transactionId ->
                 val transaction = dao.getTransaction(transactionId) ?: return@forEach
@@ -1756,6 +1759,15 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         val target = if (action == com.example.data.BankBatchAction.PRIVATE_IGNORED)
                             com.example.data.BankTransactionClassification.PRIVATE_IGNORED
                         else com.example.data.BankTransactionClassification.TRANSFER
+                        undoEntries += com.example.data.BankUndoEntry(
+                            transactionId = transaction.transactionId,
+                            fieldSet = com.example.data.BankUndoFieldSet.CLASSIFICATION,
+                            expectedUpdatedAt = now,
+                            classification = transaction.classification,
+                            transferCounterAccountId = transaction.transferCounterAccountId,
+                            linkedTransferTransactionId = transaction.linkedTransferTransactionId,
+                            reviewState = transaction.reviewState
+                        )
                         val updated = com.example.data.BankClassificationPolicy.classify(
                             transactionId = transaction.transactionId,
                             classification = target,
@@ -1771,6 +1783,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         )
                     }
                     com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> {
+                        undoEntries += com.example.data.BankUndoEntry(
+                            transactionId = transaction.transactionId,
+                            fieldSet = com.example.data.BankUndoFieldSet.RECONCILIATION,
+                            expectedUpdatedAt = now,
+                            reconciliationStatus = transaction.reconciliationStatus,
+                            noReceiptReason = transaction.noReceiptReason
+                        )
                         dao.updateTransactionStatus(
                             transaction.transactionId,
                             com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
@@ -1781,6 +1800,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
+            if (undoEntries.isNotEmpty()) {
+                val label = when (action) {
+                    com.example.data.BankBatchAction.PRIVATE_IGNORED -> "Privat-Sammelaktion"
+                    com.example.data.BankBatchAction.TRANSFER -> "Umbuchungs-Sammelaktion"
+                    com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> "Kein-Beleg-Sammelaktion"
+                }
+                _bankUndoState.value = com.example.data.BankUndoState(label, undoEntries)
+            }
             _bankImportStatus.value = buildString {
                 append("Sammelaktion abgeschlossen: ${preview.eligibleCount} geändert")
                 if (preview.unchangedCount > 0) append(" • ${preview.unchangedCount} bereits passend")
@@ -1788,6 +1815,44 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 append(".")
             }
         }
+    }
+
+    fun undoLastBankAction() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val state = _bankUndoState.value ?: return@launch
+            val dao = database.bankDao()
+            val current = state.entries.mapNotNull { dao.getTransaction(it.transactionId) }
+            val decision = com.example.data.BankUndoPolicy.decide(current, state)
+            val now = java.time.Instant.now().toString()
+            decision.restorable.forEach { entry ->
+                when (entry.fieldSet) {
+                    com.example.data.BankUndoFieldSet.CLASSIFICATION -> dao.updateTransactionClassification(
+                        transactionId = entry.transactionId,
+                        classification = entry.classification,
+                        transferCounterAccountId = entry.transferCounterAccountId,
+                        linkedTransferTransactionId = entry.linkedTransferTransactionId,
+                        reviewState = entry.reviewState,
+                        updatedAt = now
+                    )
+                    com.example.data.BankUndoFieldSet.RECONCILIATION -> dao.updateTransactionStatus(
+                        transactionId = entry.transactionId,
+                        status = entry.reconciliationStatus,
+                        reason = entry.noReceiptReason,
+                        updatedAt = now
+                    )
+                }
+            }
+            _bankUndoState.value = null
+            _bankImportStatus.value = buildString {
+                append("Rückgängig: ${decision.restorable.size} Buchung(en) wiederhergestellt")
+                if (decision.skipped.isNotEmpty()) append(" • ${decision.skipped.size} wegen neuerer Änderungen übersprungen")
+                append(".")
+            }
+        }
+    }
+
+    fun dismissBankUndo() {
+        _bankUndoState.value = null
     }
 
     fun markBankTransactionPrivateIgnored(transactionId: String) {
@@ -1820,6 +1885,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             val dao = database.bankDao()
             val transaction = dao.getTransaction(transactionId) ?: return@launch
+            val canOfferUndo = transaction.linkedTransferTransactionId.isBlank()
             val now = java.time.Instant.now().toString()
             if (classification != com.example.data.BankTransactionClassification.TRANSFER && transaction.linkedTransferTransactionId.isNotBlank()) {
                 val counterpart = dao.getTransaction(transaction.linkedTransferTransactionId)
@@ -1854,6 +1920,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 reviewState = updated.reviewState,
                 updatedAt = now
             )
+            if (canOfferUndo) {
+                _bankUndoState.value = com.example.data.BankUndoState(
+                    label = "Buchungsklassifikation",
+                    entries = listOf(com.example.data.BankUndoEntry(
+                        transactionId = transaction.transactionId,
+                        fieldSet = com.example.data.BankUndoFieldSet.CLASSIFICATION,
+                        expectedUpdatedAt = now,
+                        classification = transaction.classification,
+                        transferCounterAccountId = transaction.transferCounterAccountId,
+                        linkedTransferTransactionId = transaction.linkedTransferTransactionId,
+                        reviewState = transaction.reviewState
+                    ))
+                )
+            } else {
+                _bankUndoState.value = null
+            }
             _bankImportStatus.value = when (updated.classification) {
                 com.example.data.BankTransactionClassification.PRIVATE_IGNORED -> "Buchung als Privat/ignoriert markiert. Kein Belegabgleich und kein normaler DATEV-Export."
                 com.example.data.BankTransactionClassification.TRANSFER -> "Buchung als Umbuchung markiert. Kein Belegabgleich und kein normaler Einnahmen-/Ausgabenexport."
@@ -2204,16 +2286,28 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun markBankTransactionNoReceiptRequired(transactionId: String, reason: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val dao = database.bankDao()
+            val transaction = dao.getTransaction(transactionId) ?: return@launch
             if (dao.getLinksForTransaction(transactionId).isNotEmpty()) {
                 _bankImportStatus.value =
                     "Die Buchung ist bereits mit einem Beleg verbunden. Verknüpfung zuerst lösen."
                 return@launch
             }
+            val now = java.time.Instant.now().toString()
             dao.updateTransactionStatus(
                 transactionId,
                 com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
                 reason.trim(),
-                java.time.Instant.now().toString()
+                now
+            )
+            _bankUndoState.value = com.example.data.BankUndoState(
+                label = "Kein Beleg erforderlich",
+                entries = listOf(com.example.data.BankUndoEntry(
+                    transactionId = transaction.transactionId,
+                    fieldSet = com.example.data.BankUndoFieldSet.RECONCILIATION,
+                    expectedUpdatedAt = now,
+                    reconciliationStatus = transaction.reconciliationStatus,
+                    noReceiptReason = transaction.noReceiptReason
+                ))
             )
             _bankImportStatus.value = "Als „kein Beleg erforderlich“ markiert: ${reason.trim()}."
         }
