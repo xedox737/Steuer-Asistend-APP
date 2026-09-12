@@ -1,5 +1,6 @@
 name: One-shot Bank Phase B batch actions
 
+# Trigger marker for verified Phase-B batch implementation.
 on:
   workflow_dispatch:
   push:
