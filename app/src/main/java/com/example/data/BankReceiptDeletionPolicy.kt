@@ -11,7 +11,7 @@ object BankReceiptDeletionPolicy {
         val reason: String?
     )
 
-    fun decide(receiptId: Long, links: List<BankReceiptLink>): Decision {
+    fun decide(receiptId: Int, links: List<BankReceiptLink>): Decision {
         val count = links.count { it.receiptId == receiptId }
         return if (count == 0) {
             Decision(allowed = true, linkedTransactionCount = 0, reason = null)
