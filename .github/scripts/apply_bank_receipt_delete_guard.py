@@ -11,7 +11,7 @@ old = '''        viewModelScope.launch(Dispatchers.IO) {
 new = '''        viewModelScope.launch(Dispatchers.IO) {
             val receipt = repository.getReceiptById(id) ?: return@launch
             val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
-                receiptId = receipt.id.toLong(),
+                receiptId = receipt.id,
                 links = bankReceiptLinks.value
             )
             if (!deleteDecision.allowed) {
@@ -31,7 +31,7 @@ old2 = '''    fun permanentlyDeleteReceipt(receipt: Receipt, onComplete: (com.ex
 new2 = '''    fun permanentlyDeleteReceipt(receipt: Receipt, onComplete: (com.example.data.PermanentDeleteResult) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
             val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
-                receiptId = receipt.id.toLong(),
+                receiptId = receipt.id,
                 links = bankReceiptLinks.value
             )
             if (!deleteDecision.allowed) {
