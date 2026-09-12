@@ -1738,6 +1738,58 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun executeBankBatchAction(
+        transactionIds: List<String>,
+        action: com.example.data.BankBatchAction
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val current = transactionIds.distinct().mapNotNull { dao.getTransaction(it) }
+            val preview = com.example.data.BankBatchActionPolicy.preview(current, dao.getAllLinks(), action)
+            val now = java.time.Instant.now().toString()
+
+            preview.eligibleTransactionIds.forEach { transactionId ->
+                val transaction = dao.getTransaction(transactionId) ?: return@forEach
+                when (action) {
+                    com.example.data.BankBatchAction.PRIVATE_IGNORED,
+                    com.example.data.BankBatchAction.TRANSFER -> {
+                        val target = if (action == com.example.data.BankBatchAction.PRIVATE_IGNORED)
+                            com.example.data.BankTransactionClassification.PRIVATE_IGNORED
+                        else com.example.data.BankTransactionClassification.TRANSFER
+                        val updated = com.example.data.BankClassificationPolicy.classify(
+                            transactionId = transaction.transactionId,
+                            classification = target,
+                            now = now
+                        )
+                        dao.updateTransactionClassification(
+                            transactionId = transaction.transactionId,
+                            classification = updated.classification,
+                            transferCounterAccountId = updated.transferCounterAccountId,
+                            linkedTransferTransactionId = updated.linkedTransferTransactionId,
+                            reviewState = updated.reviewState,
+                            updatedAt = now
+                        )
+                    }
+                    com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> {
+                        dao.updateTransactionStatus(
+                            transaction.transactionId,
+                            com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
+                            "Sammelaktion: Beleg nicht erforderlich",
+                            now
+                        )
+                    }
+                }
+            }
+
+            _bankImportStatus.value = buildString {
+                append("Sammelaktion abgeschlossen: ${preview.eligibleCount} geändert")
+                if (preview.unchangedCount > 0) append(" • ${preview.unchangedCount} bereits passend")
+                if (preview.conflictCount > 0) append(" • ${preview.conflictCount} aus Sicherheitsgründen übersprungen")
+                append(".")
+            }
+        }
+    }
+
     fun markBankTransactionPrivateIgnored(transactionId: String) {
         classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.PRIVATE_IGNORED)
     }

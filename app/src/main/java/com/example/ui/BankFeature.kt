@@ -112,6 +112,9 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     var toolsMenuOpen by remember { mutableStateOf(false) }
     var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }
     var showImportDetails by remember { mutableStateOf(false) }
+    var batchSelectionMode by remember { mutableStateOf(false) }
+    var selectedBatchIds by remember { mutableStateOf(setOf<String>()) }
+    var batchPreviewAction by remember { mutableStateOf<com.example.data.BankBatchAction?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -205,6 +208,11 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             DropdownMenuItem(text = { Text("Prüfwarteschlange & Sammelzahlungen") }, onClick = { toolsMode = BankToolsMode.REVIEW_COMBINATIONS; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Beleg → Bank-Zuordnung") }, onClick = { toolsMode = BankToolsMode.REVERSE_RECEIPT; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("DATEV-Vorprüfung") }, onClick = { toolsMode = BankToolsMode.DATEV_PRECHECK; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text(if (batchSelectionMode) "Mehrfachauswahl beenden" else "Mehrfachauswahl") }, onClick = {
+                                batchSelectionMode = !batchSelectionMode
+                                if (!batchSelectionMode) selectedBatchIds = emptySet()
+                                toolsMenuOpen = false
+                            })
                             if (!importStatus.isNullOrBlank()) {
                                 DropdownMenuItem(text = { Text("Importdetails") }, onClick = { showImportDetails = true; toolsMenuOpen = false })
                             }
@@ -273,6 +281,44 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 }
             }
 
+            if (batchSelectionMode) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Mehrfachauswahl", fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text("${selectedBatchIds.size} Buchungen ausgewählt. Bestehende Beleglinks oder widersprüchliche Sonderstatus werden nicht überschrieben.", fontSize = 11.sp, color = SlateGray)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(
+                                    onClick = { batchPreviewAction = com.example.data.BankBatchAction.PRIVATE_IGNORED },
+                                    enabled = selectedBatchIds.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Privat", fontSize = 11.sp) }
+                                OutlinedButton(
+                                    onClick = { batchPreviewAction = com.example.data.BankBatchAction.TRANSFER },
+                                    enabled = selectedBatchIds.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Umbuchung", fontSize = 11.sp) }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(
+                                    onClick = { batchPreviewAction = com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED },
+                                    enabled = selectedBatchIds.isNotEmpty(),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Kein Beleg", fontSize = 11.sp) }
+                                TextButton(
+                                    onClick = { batchSelectionMode = false; selectedBatchIds = emptySet() },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Abbrechen", fontSize = 11.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+
             when (toolsMode) {
                 BankToolsMode.RULES -> item { ToolContainer("Bankregeln", onClose = { toolsMode = BankToolsMode.NONE }) { BankRulesPanel(viewModel, learningRules) } }
                 BankToolsMode.RENT -> item { ToolContainer("Mietabgleich", onClose = { toolsMode = BankToolsMode.NONE }) { BankRentPanel(viewModel) } }
@@ -320,7 +366,16 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                                 group.transactions.forEachIndexed { index, transaction ->
                                     BankCompactTransactionRow(
                                         transaction = transaction,
-                                        onClick = { selectedTransactionId = transaction.transactionId }
+                                        selected = transaction.transactionId in selectedBatchIds,
+                                        onClick = {
+                                            if (batchSelectionMode) {
+                                                selectedBatchIds = if (transaction.transactionId in selectedBatchIds)
+                                                    selectedBatchIds - transaction.transactionId
+                                                else selectedBatchIds + transaction.transactionId
+                                            } else {
+                                                selectedTransactionId = transaction.transactionId
+                                            }
+                                        }
                                     )
                                     if (index < group.transactions.lastIndex) HorizontalDivider(color = BorderColor)
                                 }
@@ -369,6 +424,46 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     receiptDetails?.let { receipt ->
         ReceiptDetailDialog(receipt = receipt, viewModel = viewModel, onDismiss = { receiptDetails = null })
     }
+    batchPreviewAction?.let { action ->
+        val selected = transactions.filter { it.transactionId in selectedBatchIds }
+        val preview = com.example.data.BankBatchActionPolicy.preview(selected, links, action)
+        val actionLabel = when (action) {
+            com.example.data.BankBatchAction.PRIVATE_IGNORED -> "Privat / ignorieren"
+            com.example.data.BankBatchAction.TRANSFER -> "Als Umbuchung markieren"
+            com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> "Kein Beleg erforderlich"
+        }
+        AlertDialog(
+            onDismissRequest = { batchPreviewAction = null },
+            title = { Text("Sammelaktion bestätigen") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(actionLabel, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text("${preview.selectedCount} ausgewählt • ${preview.eligibleCount} werden geändert • ${preview.unchangedCount} bereits passend • ${preview.conflictCount} werden übersprungen.", fontSize = 12.sp)
+                    if (preview.conflicts.isNotEmpty()) {
+                        Text("Nicht automatisch geändert:", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                        preview.conflicts.take(8).forEach { conflict ->
+                            val tx = transactions.firstOrNull { it.transactionId == conflict.transactionId }
+                            Text("• ${tx?.counterparty?.ifBlank { "Buchung" } ?: "Buchung"}: ${conflict.reason}", fontSize = 11.sp, color = SlateGray)
+                        }
+                        if (preview.conflicts.size > 8) Text("… und ${preview.conflicts.size - 8} weitere", fontSize = 11.sp, color = SlateGray)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = preview.eligibleCount > 0,
+                    onClick = {
+                        viewModel.executeBankBatchAction(preview.eligibleTransactionIds, action)
+                        selectedBatchIds = emptySet()
+                        batchSelectionMode = false
+                        batchPreviewAction = null
+                    }
+                ) { Text("${preview.eligibleCount} anwenden") }
+            },
+            dismissButton = { TextButton(onClick = { batchPreviewAction = null }) { Text("Abbrechen") } }
+        )
+    }
+
     if (showImportDetails && !importStatus.isNullOrBlank()) {
         AlertDialog(
             onDismissRequest = { showImportDetails = false },
@@ -411,11 +506,12 @@ private fun bankTransactionVisual(transaction: BankTransaction): BankTransaction
 }
 
 @Composable
-internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: () -> Unit) {
+internal fun BankCompactTransactionRow(transaction: BankTransaction, selected: Boolean = false, onClick: () -> Unit) {
     val visual = bankTransactionVisual(transaction)
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (selected) Color(0xFFEFF6FF) else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
