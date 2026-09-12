@@ -1,5 +1,6 @@
 package com.example.util
 
+import com.example.data.BankTransactionClassification
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.UUID
@@ -21,7 +22,10 @@ data class DatevExportReceipt(
     val amountCent: Long,
     val bookingDate: String,
     val attachmentReference: String?,
-    val allocations: List<ConfirmedDatevAllocation>
+    val allocations: List<ConfirmedDatevAllocation>,
+    val bankTransactionId: String? = null,
+    val bankClassification: String = BankTransactionClassification.NORMAL,
+    val noReceiptRequired: Boolean = false
 )
 
 data class DatevExportIssue(
@@ -57,11 +61,32 @@ data class DatevExportPlan(
     val exportable: Boolean get() = issues.isEmpty() && bookingLines.isNotEmpty()
 }
 
+data class DatevExclusionReason(
+    val receiptInternalId: String,
+    val bankTransactionId: String?,
+    val code: String,
+    val message: String
+)
+
+data class DatevExportPreview(
+    val checked: Int,
+    val exportable: Int,
+    val privateIgnored: Int,
+    val transfers: Int,
+    val noReceiptRequired: Int,
+    val unresolved: Int,
+    val bookingLines: Int,
+    val canExport: Boolean,
+    val exclusions: List<DatevExclusionReason>
+)
+
 /**
  * Safety gate in front of the legacy DATEV writer.
  *
  * It never invents accounts or allocations. A receipt is exportable only when all booking
  * allocations were explicitly confirmed, carry stable IDs and balance to the receipt total.
+ * Bank movements classified as private/ignored or transfer are blocked independently here,
+ * even if an upstream UI or filter accidentally passes them into export preparation.
  */
 object DatevExportPolicy {
     private val accountPattern = Regex("""\d{1,9}""")
@@ -83,6 +108,17 @@ object DatevExportPolicy {
             val key = receipt.internalId.trim()
             fun reject(code: String, message: String) {
                 issues += DatevExportIssue(key, code, message)
+            }
+
+            when (BankTransactionClassification.normalize(receipt.bankClassification)) {
+                BankTransactionClassification.PRIVATE_IGNORED -> {
+                    reject("BANK_PRIVATE_IGNORED", "Privat/ignoriert: Diese Bankbuchung darf nicht nach DATEV exportiert werden.")
+                    return@forEach
+                }
+                BankTransactionClassification.TRANSFER -> {
+                    reject("BANK_TRANSFER", "Umbuchung: Diese Bankbuchung darf nicht als normale Einnahme/Ausgabe nach DATEV exportiert werden.")
+                    return@forEach
+                }
             }
 
             if (key.isBlank()) {
@@ -148,10 +184,7 @@ object DatevExportPolicy {
                     )
                 }
                 receipt.attachmentReference?.trim()?.takeIf(String::isNotEmpty)?.let { source ->
-                    attachments.putIfAbsent(
-                        key,
-                        DatevAttachmentPlan(key, guid, source)
-                    )
+                    attachments.putIfAbsent(key, DatevAttachmentPlan(key, guid, source))
                 }
             }
         }
@@ -159,6 +192,43 @@ object DatevExportPolicy {
         val sortedLines = lines.sortedWith(compareBy(DatevBookingPlanLine::receiptInternalId, DatevBookingPlanLine::allocationId))
         val contentId = contentFingerprint(sortedLines)
         return DatevExportPlan(contentId, sortedLines, attachments.values.toList(), issues)
+    }
+
+    fun preview(receipts: List<DatevExportReceipt>, roundingToleranceCent: Long = 1L): DatevExportPreview {
+        val plan = plan(receipts, roundingToleranceCent)
+        val issuesByReceipt = plan.issues.groupBy { it.receiptInternalId }
+        val exportableReceiptIds = plan.bookingLines.mapTo(linkedSetOf()) { it.receiptInternalId }
+        val privateCount = receipts.count {
+            BankTransactionClassification.normalize(it.bankClassification) == BankTransactionClassification.PRIVATE_IGNORED
+        }
+        val transferCount = receipts.count {
+            BankTransactionClassification.normalize(it.bankClassification) == BankTransactionClassification.TRANSFER
+        }
+        val unresolvedCount = receipts.count { receipt ->
+            val classification = BankTransactionClassification.normalize(receipt.bankClassification)
+            classification == BankTransactionClassification.NORMAL &&
+                issuesByReceipt[receipt.internalId.trim()].orEmpty().isNotEmpty()
+        }
+        val transactionByReceiptId = receipts.associateBy({ it.internalId.trim() }, { it.bankTransactionId })
+        val exclusions = plan.issues.map { issue ->
+            DatevExclusionReason(
+                receiptInternalId = issue.receiptInternalId,
+                bankTransactionId = transactionByReceiptId[issue.receiptInternalId],
+                code = issue.code,
+                message = issue.message
+            )
+        }
+        return DatevExportPreview(
+            checked = receipts.size,
+            exportable = exportableReceiptIds.size,
+            privateIgnored = privateCount,
+            transfers = transferCount,
+            noReceiptRequired = receipts.count { it.noReceiptRequired },
+            unresolved = unresolvedCount,
+            bookingLines = plan.bookingLines.size,
+            canExport = plan.exportable,
+            exclusions = exclusions
+        )
     }
 
     fun stableReceiptGuid(internalId: String): String {

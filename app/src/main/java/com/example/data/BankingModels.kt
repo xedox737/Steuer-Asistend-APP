@@ -51,7 +51,8 @@ data class BankAccount(
     indices = [
         Index(value = ["accountId"], name = "index_bank_transactions_accountId"),
         Index(value = ["bookingDate"], name = "index_bank_transactions_bookingDate"),
-        Index(value = ["reconciliationStatus"], name = "index_bank_transactions_reconciliationStatus")
+        Index(value = ["reconciliationStatus"], name = "index_bank_transactions_reconciliationStatus"),
+        Index(value = ["classification"], name = "index_bank_transactions_classification")
     ]
 )
 data class BankTransaction(
@@ -72,6 +73,10 @@ data class BankTransaction(
     val importRunId: String = "",
     val reconciliationStatus: String = BankReconciliationStatus.OPEN,
     val noReceiptReason: String = "",
+    val classification: String = BankTransactionClassification.NORMAL,
+    val transferCounterAccountId: String = "",
+    val linkedTransferTransactionId: String = "",
+    val reviewState: String = BankReviewState.OPEN,
     val importedAt: String = "",
     val updatedAt: String = ""
 ) {
@@ -129,6 +134,19 @@ interface BankDao {
 
     @Query("UPDATE bank_transactions SET reconciliationStatus = :status, noReceiptReason = :reason, updatedAt = :updatedAt WHERE transactionId = :transactionId")
     suspend fun updateTransactionStatus(transactionId: String, status: String, reason: String = "", updatedAt: String)
+
+    @Query("UPDATE bank_transactions SET classification = :classification, transferCounterAccountId = :transferCounterAccountId, linkedTransferTransactionId = :linkedTransferTransactionId, reviewState = :reviewState, updatedAt = :updatedAt WHERE transactionId = :transactionId")
+    suspend fun updateTransactionClassification(
+        transactionId: String,
+        classification: String,
+        transferCounterAccountId: String = "",
+        linkedTransferTransactionId: String = "",
+        reviewState: String = BankReviewState.OPEN,
+        updatedAt: String
+    )
+
+    @Query("UPDATE bank_transactions SET reviewState = :reviewState, updatedAt = :updatedAt WHERE transactionId = :transactionId")
+    suspend fun updateTransactionReviewState(transactionId: String, reviewState: String, updatedAt: String)
 
     @Query("SELECT * FROM bank_receipt_links ORDER BY createdAt DESC, linkId")
     fun observeLinks(): Flow<List<BankReceiptLink>>
@@ -540,7 +558,7 @@ object BankReceiptMatcher {
     ): Map<String, BankMatchSuggestion> {
         val linkedTransactionIds = links.filter { it.status == BankLinkStatus.CONFIRMED }.map { it.transactionId }.toSet()
         return transactions.asSequence()
-            .filter { it.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED }
+            .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
             .filterNot { it.transactionId in linkedTransactionIds && it.reconciliationStatus == BankReconciliationStatus.MATCHED }
             .mapNotNull { transaction -> bestForTransaction(transaction, receipts, links)?.let { transaction.transactionId to it } }
             .toMap()
@@ -551,6 +569,7 @@ object BankReceiptMatcher {
         receipts: List<Receipt>,
         links: List<BankReceiptLink> = emptyList()
     ): BankMatchSuggestion? {
+        if (!BankClassificationPolicy.decision(transaction).eligibleForReceiptMatching) return null
         val linkedReceiptIds = links.filter { it.transactionId == transaction.transactionId }.map { it.receiptId }.toSet()
         return receipts.asSequence()
             .filterNot { it.id in linkedReceiptIds }
@@ -569,7 +588,7 @@ object BankReceiptMatcher {
             .map { it.transactionId }.toSet()
         return transactions.asSequence()
             .filterNot { it.transactionId in linkedTxIds }
-            .filter { it.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED }
+            .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
             .filter { receiptDirectionMatches(it, receipt) }
             .map { score(it, receipt) }
             .filter { it.score >= 45 }
@@ -577,7 +596,7 @@ object BankReceiptMatcher {
     }
 
     fun rankReceipts(transaction: BankTransaction, receipts: List<Receipt>, links: List<BankReceiptLink>): List<BankMatchSuggestion> =
-        receipts.asSequence()
+        if (!BankClassificationPolicy.decision(transaction).eligibleForReceiptMatching) emptyList() else receipts.asSequence()
             .filter { receiptDirectionMatches(transaction, it) }
             .filter { BankLinkPolicy.propose(transaction, it, links).allowed }
             .map { score(transaction, it) }
@@ -590,7 +609,7 @@ object BankReceiptMatcher {
         transactions: List<BankTransaction>,
         links: List<BankReceiptLink>
     ): List<BankMatchSuggestion> = transactions.asSequence()
-        .filter { it.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED }
+        .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
         .filter { receiptDirectionMatches(it, receipt) }
         .filter { BankLinkPolicy.propose(it, receipt, links).allowed }
         .map { score(it, receipt) }
@@ -725,6 +744,9 @@ object BankLinkPolicy {
     )
 
     fun propose(transaction: BankTransaction, receipt: Receipt, existingLinks: List<BankReceiptLink>): Allocation {
+        if (!BankClassificationPolicy.decision(transaction).eligibleForReceiptMatching) {
+            return Allocation(false, 0.0, transaction.absoluteAmount, receipt.bruttobetrag, "Privat-/Umbuchungen werden nicht mit Belegen verknüpft.")
+        }
         val txAllocated = existingLinks.filter { it.transactionId == transaction.transactionId && it.status == BankLinkStatus.CONFIRMED }
             .sumOf { it.allocatedAmount }
         val receiptAllocated = existingLinks.filter {

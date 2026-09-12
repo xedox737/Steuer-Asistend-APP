@@ -57,7 +57,7 @@ class SupplementalDriveBackupTest {
             .putString("google_routes_key_ciphertext", "MUST_NOT_LEAVE_DEVICE").apply()
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(11, payload.getInt("schemaVersion"))
+        assertEquals(12, payload.getInt("schemaVersion"))
         assertFalse(payload.toString().contains("MUST_NOT_LEAVE_DEVICE"))
         database.logbookDao().deleteTrip(41)
         database.logbookDao().deleteStandardRoute(17)
@@ -196,7 +196,13 @@ class SupplementalDriveBackupTest {
             source = BankLinkSource.NUTZER_BESTAETIGT
         )
         database.bankDao().upsertAccount(account)
-        database.bankDao().upsertTransaction(transaction.copy(reconciliationStatus = BankReconciliationStatus.MATCHED))
+        database.bankDao().upsertTransaction(transaction.copy(
+            reconciliationStatus = BankReconciliationStatus.MATCHED,
+            classification = BankTransactionClassification.TRANSFER,
+            transferCounterAccountId = "bank-2",
+            linkedTransferTransactionId = "tx-counterpart",
+            reviewState = BankReviewState.DONE
+        ))
         database.bankDao().upsertLink(link)
 
         val payload = SupplementalDriveBackup.createPayload(context, database)
@@ -215,6 +221,10 @@ class SupplementalDriveBackupTest {
         assertEquals("unit-1", restoredTransaction?.unitId)
         assertEquals("konto.csv", restoredTransaction?.importFileName)
         assertEquals("import-1", restoredTransaction?.importRunId)
+        assertEquals(BankTransactionClassification.TRANSFER, restoredTransaction?.classification)
+        assertEquals("bank-2", restoredTransaction?.transferCounterAccountId)
+        assertEquals("tx-counterpart", restoredTransaction?.linkedTransferTransactionId)
+        assertEquals(BankReviewState.DONE, restoredTransaction?.reviewState)
         assertEquals(247.38, restoredLink.allocatedAmount, 0.001)
         assertEquals(BankLinkSource.NUTZER_BESTAETIGT, restoredLink.source)
     }
@@ -234,6 +244,10 @@ class SupplementalDriveBackupTest {
         assertEquals("", account?.accountHolder)
         assertEquals("", transaction?.propertyId)
         assertEquals("", transaction?.importRunId)
+        assertEquals(BankTransactionClassification.NORMAL, transaction?.classification)
+        assertEquals("", transaction?.transferCounterAccountId)
+        assertEquals("", transaction?.linkedTransferTransactionId)
+        assertEquals(BankReviewState.OPEN, transaction?.reviewState)
     }
 
     @Test fun schemaOneWithoutLogbookArraysStillRestores() = runTest {

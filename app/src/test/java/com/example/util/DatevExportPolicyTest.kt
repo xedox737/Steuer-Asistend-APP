@@ -1,5 +1,6 @@
 package com.example.util
 
+import com.example.data.BankTransactionClassification
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -107,17 +108,82 @@ class DatevExportPolicyTest {
         assertEquals(-10_000L, plan.bookingLines.single().amountCent)
     }
 
+    @Test
+    fun privateBankMovementCanNeverBeExported() {
+        val plan = DatevExportPolicy.plan(
+            listOf(receipt(bankClassification = BankTransactionClassification.PRIVATE_IGNORED))
+        )
+
+        assertFalse(plan.exportable)
+        assertTrue(plan.bookingLines.isEmpty())
+        assertTrue(plan.issues.any { it.code == "BANK_PRIVATE_IGNORED" })
+    }
+
+    @Test
+    fun transferCanNeverBeExportedAsNormalIncomeOrExpense() {
+        val plan = DatevExportPolicy.plan(
+            listOf(receipt(bankClassification = BankTransactionClassification.TRANSFER))
+        )
+
+        assertFalse(plan.exportable)
+        assertTrue(plan.bookingLines.isEmpty())
+        assertTrue(plan.issues.any { it.code == "BANK_TRANSFER" })
+    }
+
+    @Test
+    fun previewSeparatesExportablePrivateTransferAndUnresolvedItems() {
+        val preview = DatevExportPolicy.preview(
+            listOf(
+                receipt(internalId = "ok", bankTransactionId = "bank-ok"),
+                receipt(
+                    internalId = "private",
+                    bankTransactionId = "bank-private",
+                    bankClassification = BankTransactionClassification.PRIVATE_IGNORED
+                ),
+                receipt(
+                    internalId = "transfer",
+                    bankTransactionId = "bank-transfer",
+                    bankClassification = BankTransactionClassification.TRANSFER
+                ),
+                receipt(
+                    internalId = "open",
+                    bankTransactionId = "bank-open",
+                    allocations = emptyList(),
+                    noReceiptRequired = true
+                )
+            )
+        )
+
+        assertEquals(4, preview.checked)
+        assertEquals(1, preview.exportable)
+        assertEquals(1, preview.privateIgnored)
+        assertEquals(1, preview.transfers)
+        assertEquals(1, preview.noReceiptRequired)
+        assertEquals(1, preview.unresolved)
+        assertEquals(1, preview.bookingLines)
+        assertFalse(preview.canExport)
+        assertTrue(preview.exclusions.any { it.bankTransactionId == "bank-private" && it.code == "BANK_PRIVATE_IGNORED" })
+        assertTrue(preview.exclusions.any { it.bankTransactionId == "bank-transfer" && it.code == "BANK_TRANSFER" })
+        assertTrue(preview.exclusions.any { it.bankTransactionId == "bank-open" && it.code == "MISSING_CONFIRMED_ALLOCATION" })
+    }
+
     private fun receipt(
         internalId: String = "receipt-1",
         amountCent: Long = 10_000,
         attachmentReference: String? = "receipt.pdf",
-        allocations: List<ConfirmedDatevAllocation> = listOf(allocation("a", amountCent))
+        allocations: List<ConfirmedDatevAllocation> = listOf(allocation("a", amountCent)),
+        bankTransactionId: String = "bank-1",
+        bankClassification: String = BankTransactionClassification.NORMAL,
+        noReceiptRequired: Boolean = false
     ) = DatevExportReceipt(
         internalId = internalId,
         amountCent = amountCent,
         bookingDate = "2026-08-01",
         attachmentReference = attachmentReference,
-        allocations = allocations
+        allocations = allocations,
+        bankTransactionId = bankTransactionId,
+        bankClassification = bankClassification,
+        noReceiptRequired = noReceiptRequired
     )
 
     private fun allocation(

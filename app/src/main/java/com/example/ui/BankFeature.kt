@@ -76,14 +76,16 @@ import com.example.data.BankMatchSuggestion
 import com.example.data.BankReceiptLink
 import com.example.data.BankReceiptMatcher
 import com.example.data.BankReconciliationStatus
+import com.example.data.BankReviewState
 import com.example.data.BankTransaction
+import com.example.data.BankTransactionClassification
 import com.example.data.BankTransactionSplitPolicy
 import com.example.data.Receipt
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT }
+private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT, DATEV_PRECHECK }
 
 @Composable
 fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean) -> Unit = {}) {
@@ -129,6 +131,25 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val receiptById = remember(receipts) { receipts.associateBy { it.id } }
     val accountById = remember(accounts) { accounts.associateBy { it.accountId } }
     val selectedTransaction = selectedTransactionId?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+    val selectedTransferSuggestion = selectedTransaction?.takeIf {
+        it.classification == BankTransactionClassification.TRANSFER && it.linkedTransferTransactionId.isBlank()
+    }?.let { com.example.data.BankTransferMatcher.suggestions(it, transactions).firstOrNull() }
+    val selectedSuggestedTransferCounterpart = selectedTransferSuggestion?.let { suggestion ->
+        transactions.firstOrNull { it.transactionId == suggestion.counterTransactionId }
+    }
+    val selectedTransferCounterpart = selectedTransaction?.linkedTransferTransactionId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+    val lastMonthSuggestion = remember(selectedTransaction, transactions, links, receipts) {
+        selectedTransaction?.let { transaction ->
+            com.example.data.BankLastMonthAssignmentPolicy.suggest(
+                target = transaction,
+                transactions = transactions,
+                links = links,
+                receipts = receipts
+            )
+        }
+    }
 
     LaunchedEffect(selectedTransaction != null) {
         onDetailVisibilityChanged(selectedTransaction != null)
@@ -142,6 +163,10 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             transaction = selectedTransaction,
             account = accountById[selectedTransaction.accountId],
             suggestion = suggestions[selectedTransaction.transactionId],
+            lastMonthSuggestion = lastMonthSuggestion,
+            transferSuggestion = selectedTransferSuggestion,
+            suggestedTransferCounterpart = selectedSuggestedTransferCounterpart,
+            transferCounterpart = selectedTransferCounterpart,
             linkedLinks = linksByTransaction[selectedTransaction.transactionId].orEmpty(),
             assignments = assignmentsByTransaction[selectedTransaction.transactionId].orEmpty(),
             receiptById = receiptById,
@@ -179,6 +204,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             DropdownMenuItem(text = { Text("Darlehen & Wiederkehrend") }, onClick = { toolsMode = BankToolsMode.LOAN_RECURRING; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Prüfwarteschlange & Sammelzahlungen") }, onClick = { toolsMode = BankToolsMode.REVIEW_COMBINATIONS; toolsMenuOpen = false })
                             DropdownMenuItem(text = { Text("Beleg → Bank-Zuordnung") }, onClick = { toolsMode = BankToolsMode.REVERSE_RECEIPT; toolsMenuOpen = false })
+                            DropdownMenuItem(text = { Text("DATEV-Vorprüfung") }, onClick = { toolsMode = BankToolsMode.DATEV_PRECHECK; toolsMenuOpen = false })
                             if (!importStatus.isNullOrBlank()) {
                                 DropdownMenuItem(text = { Text("Importdetails") }, onClick = { showImportDetails = true; toolsMenuOpen = false })
                             }
@@ -252,6 +278,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 BankToolsMode.RENT -> item { ToolContainer("Mietabgleich", onClose = { toolsMode = BankToolsMode.NONE }) { BankRentPanel(viewModel) } }
                 BankToolsMode.LOAN_RECURRING -> item { ToolContainer("Darlehen & Wiederkehrend", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2CPanel(viewModel) } }
                 BankToolsMode.REVIEW_COMBINATIONS -> item { ToolContainer("Prüfwarteschlange & Sammelzahlungen", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2DReviewPanel(viewModel) } }
+                BankToolsMode.DATEV_PRECHECK -> item { ToolContainer("DATEV-Vorprüfung", onClose = { toolsMode = BankToolsMode.NONE }) { BankDatevPrecheckPanel(accountTransactions) } }
                 BankToolsMode.REVERSE_RECEIPT -> item {
                     ToolContainer("Beleg → Bank-Zuordnung", onClose = { toolsMode = BankToolsMode.NONE }) {
                         BankReverseReceiptPanel(
@@ -421,7 +448,7 @@ internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: ()
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            BankStatusBadge(transaction.reconciliationStatus)
+            BankPrimaryStatusBadge(transaction)
         }
         Spacer(Modifier.size(6.dp))
         Column(horizontalAlignment = Alignment.End) {
@@ -443,11 +470,37 @@ internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: ()
 }
 
 @Composable
+private fun BankPrimaryStatusBadge(transaction: BankTransaction) {
+    when (transaction.classification) {
+        BankTransactionClassification.PRIVATE_IGNORED -> Text(
+            "Privat",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = SlateGray
+        )
+        BankTransactionClassification.TRANSFER -> Text(
+            "Umbuchung",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = AccentBlue
+        )
+        else -> BankStatusBadge(transaction.reconciliationStatus)
+    }
+    if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reviewState == BankReviewState.DONE) {
+        Text("Erledigt", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = SlateGray)
+    }
+}
+
+@Composable
 private fun BankTransactionDetailsScreen(
     viewModel: ReceiptViewModel,
     transaction: BankTransaction,
     account: BankAccount?,
     suggestion: BankMatchSuggestion?,
+    lastMonthSuggestion: com.example.data.BankLastMonthAssignmentSuggestion?,
+    transferSuggestion: com.example.data.BankTransferSuggestion?,
+    suggestedTransferCounterpart: BankTransaction?,
+    transferCounterpart: BankTransaction?,
     linkedLinks: List<BankReceiptLink>,
     assignments: List<com.example.data.BankRentAssignment>,
     receiptById: Map<Int, Receipt>,
@@ -470,7 +523,35 @@ private fun BankTransactionDetailsScreen(
                         Icon(Icons.Default.MoreHoriz, contentDescription = "Weitere Buchungsaktionen", tint = SlateGray)
                     }
                     DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {
-                        if (transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
+                        if (transaction.classification == BankTransactionClassification.NORMAL) {
+                            DropdownMenuItem(text = { Text("Privat / ignorieren") }, onClick = {
+                                viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                            DropdownMenuItem(text = { Text("Als Umbuchung markieren") }, onClick = {
+                                viewModel.markBankTransactionTransfer(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                        } else {
+                            DropdownMenuItem(text = { Text("Sonderklassifikation entfernen") }, onClick = {
+                                viewModel.resetBankTransactionClassification(transaction.transactionId)
+                                detailMenuOpen = false
+                            })
+                        }
+                        if (transaction.classification == BankTransactionClassification.NORMAL) {
+                            if (transaction.reviewState == BankReviewState.OPEN) {
+                                DropdownMenuItem(text = { Text("Als erledigt markieren") }, onClick = {
+                                    viewModel.markBankTransactionReviewDone(transaction.transactionId)
+                                    detailMenuOpen = false
+                                })
+                            } else {
+                                DropdownMenuItem(text = { Text("Prüfung wieder öffnen") }, onClick = {
+                                    viewModel.reopenBankTransactionReview(transaction.transactionId)
+                                    detailMenuOpen = false
+                                })
+                            }
+                        }
+                        if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
                             DropdownMenuItem(text = { Text("Manuell prüfen") }, onClick = {
                                 viewModel.markBankTransactionForReview(transaction.transactionId)
                                 detailMenuOpen = false
@@ -497,7 +578,7 @@ private fun BankTransactionDetailsScreen(
                         Spacer(Modifier.size(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" }, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
-                            BankStatusBadge(transaction.reconciliationStatus)
+                            BankPrimaryStatusBadge(transaction)
                         }
                         Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy)
                     }
@@ -513,7 +594,7 @@ private fun BankTransactionDetailsScreen(
                 }
             }
         }
-        item {
+        if (transaction.classification == BankTransactionClassification.NORMAL) item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
                 BankQuickAction("Beleg\nanlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
@@ -521,6 +602,98 @@ private fun BankTransactionDetailsScreen(
                     BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
                 }
                 BankQuickAction("Kein Beleg\nerforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt)
+            }
+        }
+
+        if (transaction.classification == BankTransactionClassification.TRANSFER) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Umbuchung / Gegenbuchung", fontWeight = FontWeight.Bold, color = DarkNavy)
+                        when {
+                            transferCounterpart != null -> {
+                                Text("Beidseitig verknüpft", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = EmeraldGreen)
+                                Text(
+                                    "${formatDate(transferCounterpart.bookingDate)} • ${transferCounterpart.counterparty.ifBlank { "Eigenes Konto" }} • ${NumberFormatter.format(transferCounterpart.amount)}",
+                                    fontSize = 11.sp,
+                                    color = DarkNavy
+                                )
+                                Text("Gegenkonto: ${transferCounterpart.accountId}", fontSize = 10.sp, color = SlateGray)
+                                OutlinedButton(
+                                    onClick = { viewModel.unlinkBankTransferPair(transaction.transactionId) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Gegenbuchungs-Verknüpfung lösen") }
+                            }
+                            transferSuggestion != null -> {
+                                Text("Mögliche Gegenbuchung • ${transferSuggestion.score}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+                                suggestedTransferCounterpart?.let { candidate ->
+                                    Text(
+                                        "${formatDate(candidate.bookingDate)} • ${candidate.counterparty.ifBlank { "Eigenes Konto" }} • ${NumberFormatter.format(candidate.amount)}",
+                                        fontSize = 11.sp,
+                                        color = DarkNavy
+                                    )
+                                }
+                                Text(transferSuggestion.reasons.joinToString(" • "), fontSize = 10.sp, color = SlateGray)
+                                Text("Die Verknüpfung erfolgt erst nach deiner Bestätigung.", fontSize = 10.sp, color = SlateGray)
+                                Button(
+                                    onClick = { viewModel.confirmBankTransferPair(transaction.transactionId, transferSuggestion.counterTransactionId) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Als Gegenbuchung verknüpfen") }
+                            }
+                            else -> Text("Keine ausreichend passende Gegenbuchung auf einem anderen importierten Konto gefunden.", fontSize = 11.sp, color = SlateGray)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (lastMonthSuggestion != null) {
+            item {
+                val conflict = com.example.data.BankLastMonthAssignmentPolicy.hasAssignmentConflict(transaction, lastMonthSuggestion)
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Wie letzten Monat zuordnen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text("${lastMonthSuggestion.confidence}%", fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                        }
+                        val targetText = listOf(
+                            lastMonthSuggestion.suggestedVendor,
+                            lastMonthSuggestion.suggestedCategory,
+                            lastMonthSuggestion.suggestedSubcategory,
+                            lastMonthSuggestion.suggestedUnit
+                        ).filter { it.isNotBlank() }.joinToString(" • ")
+                        if (targetText.isNotBlank()) Text(targetText, fontSize = 12.sp, color = SlateGray)
+                        Text(
+                            lastMonthSuggestion.reasons.take(4).joinToString(" • "),
+                            fontSize = 11.sp,
+                            color = SlateGray
+                        )
+                        if (conflict) {
+                            Text(
+                                "Bestehende Objekt-/Einheitszuordnung weicht ab. Es wird nichts überschrieben.",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = CrimsonRed
+                            )
+                        } else {
+                            Button(
+                                onClick = { viewModel.startReceiptLikeLastMonth(transaction, lastMonthSuggestion) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Zuordnung übernehmen und neuen Beleg prüfen") }
+                        }
+                        Text(
+                            "Der alte Monatsbeleg wird nicht übernommen oder erneut verknüpft.",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    }
+                }
             }
         }
 
@@ -536,6 +709,7 @@ private fun BankTransactionDetailsScreen(
                                     Text("${receipt.getEffectiveDisplayId()} • ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 11.sp, color = SlateGray)
                                 }
                                 TextButton(onClick = { onReceiptDetails(receipt) }) { Text("Öffnen") }
+                                TextButton(onClick = { viewModel.proposeBankRuleFromConfirmedReceipt(transaction.transactionId, receipt.id) }) { Text("Regel merken") }
                                 TextButton(onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }) { Text("Lösen") }
                             }
                         }

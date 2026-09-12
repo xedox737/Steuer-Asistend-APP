@@ -1664,6 +1664,152 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun markBankTransactionReviewDone(transactionId: String) {
+        updateBankTransactionReviewState(transactionId, com.example.data.BankReviewState.DONE)
+    }
+
+    fun reopenBankTransactionReview(transactionId: String) {
+        updateBankTransactionReviewState(transactionId, com.example.data.BankReviewState.OPEN)
+    }
+
+    private fun updateBankTransactionReviewState(transactionId: String, reviewState: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = java.time.Instant.now().toString()
+            database.bankDao().updateTransactionReviewState(transactionId, reviewState, now)
+            _bankImportStatus.value = if (reviewState == com.example.data.BankReviewState.DONE) {
+                "Buchung aus persönlicher Prüfliste als erledigt markiert. DATEV-Fachstatus bleibt unverändert."
+            } else {
+                "Buchung wieder in die persönliche Prüfliste aufgenommen."
+            }
+        }
+    }
+
+    fun confirmBankTransferPair(transactionId: String, counterpartTransactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val first = dao.getTransaction(transactionId) ?: return@launch
+            val second = dao.getTransaction(counterpartTransactionId) ?: return@launch
+            if (!com.example.data.BankTransferPairPolicy.canConfirm(first, second)) {
+                _bankImportStatus.value = "Gegenbuchung nicht verknüpft: Betrag, Richtung, Konto oder Datum passen nicht sicher genug."
+                return@launch
+            }
+            val now = java.time.Instant.now().toString()
+            val update = com.example.data.BankTransferPairPolicy.confirm(first, second, now)
+            listOf(update.first, update.second).forEach { record ->
+                dao.updateTransactionClassification(
+                    transactionId = record.transactionId,
+                    classification = record.classification,
+                    transferCounterAccountId = record.transferCounterAccountId,
+                    linkedTransferTransactionId = record.linkedTransferTransactionId,
+                    reviewState = record.reviewState,
+                    updatedAt = now
+                )
+            }
+            _bankImportStatus.value = "Umbuchungspaar bestätigt und beidseitig verknüpft. Beide Buchungen bleiben vom normalen DATEV-Einnahmen-/Ausgabenexport ausgeschlossen."
+        }
+    }
+
+    fun unlinkBankTransferPair(transactionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val selected = dao.getTransaction(transactionId) ?: return@launch
+            val counterpart = selected.linkedTransferTransactionId.takeIf { it.isNotBlank() }?.let { dao.getTransaction(it) }
+            val now = java.time.Instant.now().toString()
+            val update = com.example.data.BankTransferPairPolicy.unlink(selected, counterpart, now)
+            dao.updateTransactionClassification(
+                transactionId = update.selected.transactionId,
+                classification = update.selected.classification,
+                transferCounterAccountId = update.selected.transferCounterAccountId,
+                linkedTransferTransactionId = update.selected.linkedTransferTransactionId,
+                reviewState = update.selected.reviewState,
+                updatedAt = now
+            )
+            update.counterpart?.let { record ->
+                dao.updateTransactionClassification(
+                    transactionId = record.transactionId,
+                    classification = record.classification,
+                    transferCounterAccountId = record.transferCounterAccountId,
+                    linkedTransferTransactionId = record.linkedTransferTransactionId,
+                    reviewState = record.reviewState,
+                    updatedAt = now
+                )
+            }
+            _bankImportStatus.value = "Gegenbuchungs-Verknüpfung gelöst. Die Umbuchungs-Klassifikation bleibt bestehen und kann separat entfernt werden."
+        }
+    }
+
+    fun markBankTransactionPrivateIgnored(transactionId: String) {
+        classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.PRIVATE_IGNORED)
+    }
+
+    fun markBankTransactionTransfer(
+        transactionId: String,
+        transferCounterAccountId: String = "",
+        linkedTransferTransactionId: String = ""
+    ) {
+        classifyBankTransaction(
+            transactionId,
+            com.example.data.BankTransactionClassification.TRANSFER,
+            transferCounterAccountId,
+            linkedTransferTransactionId
+        )
+    }
+
+    fun resetBankTransactionClassification(transactionId: String) {
+        classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.NORMAL)
+    }
+
+    private fun classifyBankTransaction(
+        transactionId: String,
+        classification: String,
+        transferCounterAccountId: String = "",
+        linkedTransferTransactionId: String = ""
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val transaction = dao.getTransaction(transactionId) ?: return@launch
+            val now = java.time.Instant.now().toString()
+            if (classification != com.example.data.BankTransactionClassification.TRANSFER && transaction.linkedTransferTransactionId.isNotBlank()) {
+                val counterpart = dao.getTransaction(transaction.linkedTransferTransactionId)
+                if (counterpart?.linkedTransferTransactionId == transaction.transactionId) {
+                    val counterpartUpdate = com.example.data.BankClassificationPolicy.classify(
+                        transactionId = counterpart.transactionId,
+                        classification = com.example.data.BankTransactionClassification.TRANSFER,
+                        now = now
+                    )
+                    dao.updateTransactionClassification(
+                        transactionId = counterpartUpdate.transactionId,
+                        classification = counterpartUpdate.classification,
+                        transferCounterAccountId = counterpartUpdate.transferCounterAccountId,
+                        linkedTransferTransactionId = counterpartUpdate.linkedTransferTransactionId,
+                        reviewState = counterpartUpdate.reviewState,
+                        updatedAt = now
+                    )
+                }
+            }
+            val updated = com.example.data.BankClassificationPolicy.classify(
+                transactionId = transaction.transactionId,
+                classification = classification,
+                transferCounterAccountId = transferCounterAccountId,
+                linkedTransferTransactionId = linkedTransferTransactionId,
+                now = now
+            )
+            dao.updateTransactionClassification(
+                transactionId = transactionId,
+                classification = updated.classification,
+                transferCounterAccountId = updated.transferCounterAccountId,
+                linkedTransferTransactionId = updated.linkedTransferTransactionId,
+                reviewState = updated.reviewState,
+                updatedAt = now
+            )
+            _bankImportStatus.value = when (updated.classification) {
+                com.example.data.BankTransactionClassification.PRIVATE_IGNORED -> "Buchung als Privat/ignoriert markiert. Kein Belegabgleich und kein normaler DATEV-Export."
+                com.example.data.BankTransactionClassification.TRANSFER -> "Buchung als Umbuchung markiert. Kein Belegabgleich und kein normaler Einnahmen-/Ausgabenexport."
+                else -> "Sonderklassifikation entfernt. Buchung wird wieder normal geprüft."
+            }
+        }
+    }
+
     fun startReceiptFromBankTransaction(transaction: com.example.data.BankTransaction) {
         _pendingBankTransactionId.value = transaction.transactionId
         _scanState.value = ScanUiState.Success(
@@ -1683,6 +1829,45 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 positionen = emptyList()
             )
         )
+        _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
+    fun startReceiptLikeLastMonth(
+        transaction: com.example.data.BankTransaction,
+        suggestion: com.example.data.BankLastMonthAssignmentSuggestion
+    ) {
+        if (suggestion.transactionId != transaction.transactionId ||
+            com.example.data.BankTransactionClassification.normalize(transaction.classification) != com.example.data.BankTransactionClassification.NORMAL
+        ) {
+            _bankImportStatus.value = "Der Wiederholungs-Vorschlag ist nicht mehr aktuell."
+            return
+        }
+        if (com.example.data.BankLastMonthAssignmentPolicy.hasAssignmentConflict(transaction, suggestion)) {
+            _bankImportStatus.value = "Bestehende Objekt-/Einheitszuordnung weicht vom Vormonat ab. Nichts wurde überschrieben."
+            return
+        }
+        suggestion.suggestedPropertyId.takeIf {
+            it.isNotBlank() && it != com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        }?.let(::selectProperty)
+        _pendingBankTransactionId.value = transaction.transactionId
+        _scanState.value = ScanUiState.Success(
+            com.example.api.ExtractedReceipt(
+                aussteller = suggestion.suggestedVendor.ifBlank { transaction.counterparty },
+                datum = transaction.bookingDate,
+                uhrzeit = "",
+                bruttobetrag = transaction.absoluteAmount,
+                hauptkategorie = suggestion.suggestedCategory,
+                unterkategorie = suggestion.suggestedSubcategory,
+                kontoNr = "",
+                beschreibung = transaction.purpose,
+                isEigenleistungSanierung = false,
+                wohneinheit = suggestion.suggestedUnit,
+                mieter = "",
+                zahlungsart = suggestion.suggestedPaymentMethod.ifBlank { "Überweisung" },
+                positionen = emptyList()
+            )
+        )
+        _bankImportStatus.value = "Wie letzten Monat vorbefüllt. Es wurde ein neuer Belegentwurf erstellt; der alte Monatsbeleg wurde nicht verknüpft."
         _currentScreen.value = AppScreen.ADD_RECEIPT
     }
 
@@ -2006,6 +2191,36 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 com.example.data.BankReconciliationStatus.MATCHED -> "Buchung bleibt gemäß bestehender Zuordnung verknüpft."
                 else -> "Bankstatus blieb unverändert."
             }
+        }
+    }
+
+    fun proposeBankRuleFromConfirmedReceipt(transactionId: String, receiptId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bankDao = database.bankDao()
+            val transaction = bankDao.getTransaction(transactionId) ?: return@launch
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            val confirmed = bankDao.getLinksForTransaction(transactionId).any {
+                it.receiptId == receiptId && it.status == com.example.data.BankLinkStatus.CONFIRMED
+            }
+            if (!confirmed) {
+                _bankImportStatus.value = "Regel nicht erstellt: Die Belegzuordnung ist nicht bestätigt."
+                return@launch
+            }
+            val now = java.time.Instant.now().toString()
+            val rule = com.example.data.BankExplicitRuleProposal.create(transaction, receipt, now)
+            val dao = database.bankLearningRuleDao()
+            when (dao.getRule(rule.ruleId)?.state) {
+                com.example.data.BankRuleState.ACTIVE -> {
+                    _bankImportStatus.value = "Eine passende aktive Bankregel existiert bereits."
+                    return@launch
+                }
+                com.example.data.BankRuleState.REJECTED -> {
+                    _bankImportStatus.value = "Eine passende Regel wurde früher abgelehnt. Sie kann in Bankregeln geprüft werden."
+                    return@launch
+                }
+            }
+            dao.upsertRule(rule)
+            _bankImportStatus.value = "Regelvorschlag gespeichert. Er ist deaktiviert und muss in Bankregeln ausdrücklich aktiviert werden."
         }
     }
 
@@ -2431,6 +2646,8 @@ data class AiSearchUiState(
         val included = mutableListOf<Receipt>()
         val excluded = mutableListOf<Receipt>()
         val exclusionReasons = linkedMapOf<String, List<String>>()
+        val currentBankLinks = bankReceiptLinks.value
+        val currentBankTransactions = bankTransactions.value
 
         allRecs.forEach { receipt ->
             val reasons = mutableListOf<String>()
@@ -2455,6 +2672,11 @@ data class AiSearchUiState(
             }
             reasons += com.example.util.DatevReceiptEligibility.issues(receipt)
                 .map { it.message }
+            reasons += com.example.data.BankLinkedReceiptDatevPolicy.exclusions(
+                receipt = receipt,
+                links = currentBankLinks,
+                transactions = currentBankTransactions
+            ).map { "${it.code}: ${it.message}" }
             if (receipt.internalId.trim() in duplicateInternalIds) {
                 reasons += "Stabile Beleg-ID kommt mehrfach vor; Export ist bis zur Dublettenbereinigung blockiert."
             }
@@ -2628,6 +2850,18 @@ data class AiSearchUiState(
         val metaName = meta?.name ?: ""
         val propName = if (metaName.isNotEmpty()) metaName else "MFH Sulzerstraße"
         val propShort = if (metaName.isNotEmpty()) metaName.take(15) else "MFH Sulz"
+
+        val bankDatevExclusions = receipts.flatMap { receipt ->
+            com.example.data.BankLinkedReceiptDatevPolicy.exclusions(
+                receipt = receipt,
+                links = bankReceiptLinks.value,
+                transactions = bankTransactions.value
+            ).map { exclusion -> "${exclusion.code}: ${exclusion.message}" }
+        }
+        if (bankDatevExclusions.isNotEmpty()) {
+            Log.w("ReceiptViewModel", "DATEV export blocked by bank classification: ${bankDatevExclusions.joinToString(" | ")}")
+            return null
+        }
 
         val config = com.example.util.DatevConfig(
             beraterNummer = beraterNummer.ifEmpty { "1111111" },
@@ -3671,6 +3905,14 @@ data class AiSearchUiState(
     fun deleteReceipt(id: Int, deletedBy: String = "LocalUser", reason: String = "Vom Nutzer gelöscht") {
         viewModelScope.launch(Dispatchers.IO) {
             val receipt = repository.getReceiptById(id) ?: return@launch
+            val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
+                receiptId = receipt.id,
+                links = bankReceiptLinks.value
+            )
+            if (!deleteDecision.allowed) {
+                Log.w("ReceiptViewModel", deleteDecision.reason ?: "Beleg ist noch mit Bankbuchungen verknüpft.")
+                return@launch
+            }
             val email = _googleAccountEmail.value
             val isDriveActive = _isDriveConnected.value && !email.isNullOrBlank()
 
@@ -3766,6 +4008,18 @@ data class AiSearchUiState(
 
     fun permanentlyDeleteReceipt(receipt: Receipt, onComplete: (com.example.data.PermanentDeleteResult) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
+            val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
+                receiptId = receipt.id,
+                links = bankReceiptLinks.value
+            )
+            if (!deleteDecision.allowed) {
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onComplete(com.example.data.PermanentDeleteResult.Error(
+                        deleteDecision.reason ?: "Beleg ist noch mit Bankbuchungen verknüpft."
+                    ))
+                }
+                return@launch
+            }
             val email = _googleAccountEmail.value
             val isDriveActive = _isDriveConnected.value && !email.isNullOrBlank()
             val result = if (!isDriveActive) {
