@@ -7,6 +7,7 @@ on:
       - feature/bank-classification-phase-a
     paths:
       - '.github/workflows/one-shot-bank-receipt-delete-guard.yml'
+      - '.github/scripts/apply_bank_receipt_delete_guard.py'
 
 permissions:
   contents: write
@@ -51,5 +52,3 @@ jobs:
           git commit -m "Block deleting receipts with active bank links"
           git pull --rebase origin feature/bank-classification-phase-a
           git push origin HEAD:feature/bank-classification-phase-a
-
-# Trigger verification after workflow registration.
