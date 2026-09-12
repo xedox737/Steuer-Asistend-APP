@@ -3,6 +3,7 @@ package com.example.data
 /**
  * Prevents deleting a receipt while bank transactions still reference it.
  * Links must be removed explicitly first so no dangling bank references remain.
+ * This guard is shared by soft and permanent receipt deletion paths.
  */
 object BankReceiptDeletionPolicy {
     data class Decision(
