@@ -3905,6 +3905,14 @@ data class AiSearchUiState(
     fun deleteReceipt(id: Int, deletedBy: String = "LocalUser", reason: String = "Vom Nutzer gelöscht") {
         viewModelScope.launch(Dispatchers.IO) {
             val receipt = repository.getReceiptById(id) ?: return@launch
+            val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
+                receiptId = receipt.id,
+                links = bankReceiptLinks.value
+            )
+            if (!deleteDecision.allowed) {
+                Log.w("ReceiptViewModel", deleteDecision.reason ?: "Beleg ist noch mit Bankbuchungen verknüpft.")
+                return@launch
+            }
             val email = _googleAccountEmail.value
             val isDriveActive = _isDriveConnected.value && !email.isNullOrBlank()
 
@@ -4000,6 +4008,18 @@ data class AiSearchUiState(
 
     fun permanentlyDeleteReceipt(receipt: Receipt, onComplete: (com.example.data.PermanentDeleteResult) -> Unit = {}) {
         viewModelScope.launch(Dispatchers.IO) {
+            val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
+                receiptId = receipt.id,
+                links = bankReceiptLinks.value
+            )
+            if (!deleteDecision.allowed) {
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onComplete(com.example.data.PermanentDeleteResult.Error(
+                        deleteDecision.reason ?: "Beleg ist noch mit Bankbuchungen verknüpft."
+                    ))
+                }
+                return@launch
+            }
             val email = _googleAccountEmail.value
             val isDriveActive = _isDriveConnected.value && !email.isNullOrBlank()
             val result = if (!isDriveActive) {
