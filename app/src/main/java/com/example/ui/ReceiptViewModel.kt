@@ -259,6 +259,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
     private val _bankImportStatus = MutableStateFlow<String?>(null)
     val bankImportStatus: StateFlow<String?> = _bankImportStatus.asStateFlow()
+    private val bankComfortPrefs = application.getSharedPreferences("bank_comfort_prefs", Context.MODE_PRIVATE)
+    private val _bankFavoriteKeys = MutableStateFlow(
+        bankComfortPrefs.getStringSet("assignment_favorites", emptySet()).orEmpty().toSet()
+    )
+    val bankFavoriteKeys: StateFlow<Set<String>> = _bankFavoriteKeys.asStateFlow()
+    private val _bankUndoState = MutableStateFlow<com.example.data.BankUndoState?>(null)
+    val bankUndoState: StateFlow<com.example.data.BankUndoState?> = _bankUndoState.asStateFlow()
     private val _pendingBankTransactionId = MutableStateFlow<String?>(null)
     val pendingBankTransactionId: StateFlow<String?> = _pendingBankTransactionId.asStateFlow()
 
@@ -1738,6 +1745,121 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun executeBankBatchAction(
+        transactionIds: List<String>,
+        action: com.example.data.BankBatchAction
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = database.bankDao()
+            val current = transactionIds.distinct().mapNotNull { dao.getTransaction(it) }
+            val preview = com.example.data.BankBatchActionPolicy.preview(current, dao.getAllLinks(), action)
+            val now = java.time.Instant.now().toString()
+            val undoEntries = mutableListOf<com.example.data.BankUndoEntry>()
+
+            preview.eligibleTransactionIds.forEach { transactionId ->
+                val transaction = dao.getTransaction(transactionId) ?: return@forEach
+                when (action) {
+                    com.example.data.BankBatchAction.PRIVATE_IGNORED,
+                    com.example.data.BankBatchAction.TRANSFER -> {
+                        val target = if (action == com.example.data.BankBatchAction.PRIVATE_IGNORED)
+                            com.example.data.BankTransactionClassification.PRIVATE_IGNORED
+                        else com.example.data.BankTransactionClassification.TRANSFER
+                        undoEntries += com.example.data.BankUndoEntry(
+                            transactionId = transaction.transactionId,
+                            fieldSet = com.example.data.BankUndoFieldSet.CLASSIFICATION,
+                            expectedUpdatedAt = now,
+                            classification = transaction.classification,
+                            transferCounterAccountId = transaction.transferCounterAccountId,
+                            linkedTransferTransactionId = transaction.linkedTransferTransactionId,
+                            reviewState = transaction.reviewState
+                        )
+                        val updated = com.example.data.BankClassificationPolicy.classify(
+                            transactionId = transaction.transactionId,
+                            classification = target,
+                            now = now
+                        )
+                        dao.updateTransactionClassification(
+                            transactionId = transaction.transactionId,
+                            classification = updated.classification,
+                            transferCounterAccountId = updated.transferCounterAccountId,
+                            linkedTransferTransactionId = updated.linkedTransferTransactionId,
+                            reviewState = updated.reviewState,
+                            updatedAt = now
+                        )
+                    }
+                    com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> {
+                        undoEntries += com.example.data.BankUndoEntry(
+                            transactionId = transaction.transactionId,
+                            fieldSet = com.example.data.BankUndoFieldSet.RECONCILIATION,
+                            expectedUpdatedAt = now,
+                            reconciliationStatus = transaction.reconciliationStatus,
+                            noReceiptReason = transaction.noReceiptReason
+                        )
+                        dao.updateTransactionStatus(
+                            transaction.transactionId,
+                            com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
+                            "Sammelaktion: Beleg nicht erforderlich",
+                            now
+                        )
+                    }
+                }
+            }
+
+            if (undoEntries.isNotEmpty()) {
+                val label = when (action) {
+                    com.example.data.BankBatchAction.PRIVATE_IGNORED -> "Privat-Sammelaktion"
+                    com.example.data.BankBatchAction.TRANSFER -> "Umbuchungs-Sammelaktion"
+                    com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> "Kein-Beleg-Sammelaktion"
+                }
+                _bankUndoState.value = com.example.data.BankUndoState(label, undoEntries)
+            }
+            _bankImportStatus.value = buildString {
+                append("Sammelaktion abgeschlossen: ${preview.eligibleCount} geändert")
+                if (preview.unchangedCount > 0) append(" • ${preview.unchangedCount} bereits passend")
+                if (preview.conflictCount > 0) append(" • ${preview.conflictCount} aus Sicherheitsgründen übersprungen")
+                append(".")
+            }
+        }
+    }
+
+    fun undoLastBankAction() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val state = _bankUndoState.value ?: return@launch
+            val dao = database.bankDao()
+            val current = state.entries.mapNotNull { dao.getTransaction(it.transactionId) }
+            val decision = com.example.data.BankUndoPolicy.decide(current, state)
+            val now = java.time.Instant.now().toString()
+            decision.restorable.forEach { entry ->
+                when (entry.fieldSet) {
+                    com.example.data.BankUndoFieldSet.CLASSIFICATION -> dao.updateTransactionClassification(
+                        transactionId = entry.transactionId,
+                        classification = entry.classification,
+                        transferCounterAccountId = entry.transferCounterAccountId,
+                        linkedTransferTransactionId = entry.linkedTransferTransactionId,
+                        reviewState = entry.reviewState,
+                        updatedAt = now
+                    )
+                    com.example.data.BankUndoFieldSet.RECONCILIATION -> dao.updateTransactionStatus(
+                        transactionId = entry.transactionId,
+                        status = entry.reconciliationStatus,
+                        reason = entry.noReceiptReason,
+                        updatedAt = now
+                    )
+                }
+            }
+            _bankUndoState.value = null
+            _bankImportStatus.value = buildString {
+                append("Rückgängig: ${decision.restorable.size} Buchung(en) wiederhergestellt")
+                if (decision.skipped.isNotEmpty()) append(" • ${decision.skipped.size} wegen neuerer Änderungen übersprungen")
+                append(".")
+            }
+        }
+    }
+
+    fun dismissBankUndo() {
+        _bankUndoState.value = null
+    }
+
     fun markBankTransactionPrivateIgnored(transactionId: String) {
         classifyBankTransaction(transactionId, com.example.data.BankTransactionClassification.PRIVATE_IGNORED)
     }
@@ -1768,6 +1890,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             val dao = database.bankDao()
             val transaction = dao.getTransaction(transactionId) ?: return@launch
+            val canOfferUndo = transaction.linkedTransferTransactionId.isBlank()
             val now = java.time.Instant.now().toString()
             if (classification != com.example.data.BankTransactionClassification.TRANSFER && transaction.linkedTransferTransactionId.isNotBlank()) {
                 val counterpart = dao.getTransaction(transaction.linkedTransferTransactionId)
@@ -1802,6 +1925,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 reviewState = updated.reviewState,
                 updatedAt = now
             )
+            if (canOfferUndo) {
+                _bankUndoState.value = com.example.data.BankUndoState(
+                    label = "Buchungsklassifikation",
+                    entries = listOf(com.example.data.BankUndoEntry(
+                        transactionId = transaction.transactionId,
+                        fieldSet = com.example.data.BankUndoFieldSet.CLASSIFICATION,
+                        expectedUpdatedAt = now,
+                        classification = transaction.classification,
+                        transferCounterAccountId = transaction.transferCounterAccountId,
+                        linkedTransferTransactionId = transaction.linkedTransferTransactionId,
+                        reviewState = transaction.reviewState
+                    ))
+                )
+            } else {
+                _bankUndoState.value = null
+            }
             _bankImportStatus.value = when (updated.classification) {
                 com.example.data.BankTransactionClassification.PRIVATE_IGNORED -> "Buchung als Privat/ignoriert markiert. Kein Belegabgleich und kein normaler DATEV-Export."
                 com.example.data.BankTransactionClassification.TRANSFER -> "Buchung als Umbuchung markiert. Kein Belegabgleich und kein normaler Einnahmen-/Ausgabenexport."
@@ -1829,6 +1968,55 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 positionen = emptyList()
             )
         )
+        _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
+    fun toggleBankAssignmentFavorite(receiptId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            val key = com.example.data.BankAssignmentFavoritesPolicy.key(receipt)
+            val current = _bankFavoriteKeys.value
+            val updated = if (key in current) current - key else current + key
+            bankComfortPrefs.edit().putStringSet("assignment_favorites", updated).apply()
+            _bankFavoriteKeys.value = updated
+            _bankImportStatus.value = if (key in updated)
+                "Zuordnung als Favorit gespeichert. Favoriten ändern keine Steuer- oder DATEV-Logik."
+            else "Zuordnung aus Favoriten entfernt."
+        }
+    }
+
+    fun startReceiptFromBankFavorite(
+        transaction: com.example.data.BankTransaction,
+        favorite: com.example.data.BankAssignmentFavorite
+    ) {
+        if (com.example.data.BankTransactionClassification.normalize(transaction.classification) !=
+            com.example.data.BankTransactionClassification.NORMAL
+        ) {
+            _bankImportStatus.value = "Schnellzuordnung ist für Privat-/Umbuchungsbuchungen nicht verfügbar."
+            return
+        }
+        favorite.propertyId.takeIf {
+            it.isNotBlank() && it != com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        }?.let(::selectProperty)
+        _pendingBankTransactionId.value = transaction.transactionId
+        _scanState.value = ScanUiState.Success(
+            com.example.api.ExtractedReceipt(
+                aussteller = favorite.vendor.ifBlank { transaction.counterparty },
+                datum = transaction.bookingDate,
+                uhrzeit = "",
+                bruttobetrag = transaction.absoluteAmount,
+                hauptkategorie = favorite.category,
+                unterkategorie = favorite.subcategory,
+                kontoNr = "",
+                beschreibung = transaction.purpose,
+                isEigenleistungSanierung = false,
+                wohneinheit = favorite.unitName,
+                mieter = "",
+                zahlungsart = favorite.paymentMethod.ifBlank { "Überweisung" },
+                positionen = emptyList()
+            )
+        )
+        _bankImportStatus.value = "Schnellzuordnung vorbefüllt. Erst der Nutzer bestätigt den neuen Beleg; keine automatische Buchung."
         _currentScreen.value = AppScreen.ADD_RECEIPT
     }
 
@@ -1895,6 +2083,30 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             )
         )
         _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
+    fun confirmBankReceiptLinks(receiptId: Int, transactionIds: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            val dao = database.bankDao()
+            val selected = transactionIds.distinct().mapNotNull { dao.getTransaction(it) }
+            val preview = com.example.data.BankCollectiveReceiptLinkPolicy.preview(
+                receipt = receipt,
+                selected = selected,
+                existingLinks = dao.getAllLinks()
+            )
+            var linked = 0
+            preview.candidates.forEach { candidate ->
+                val transaction = dao.getTransaction(candidate.transactionId) ?: return@forEach
+                val message = confirmBankReceiptLinkInternal(transaction, receipt)
+                if (message.startsWith("Buchung und Beleg")) linked++
+            }
+            _bankImportStatus.value = buildString {
+                append("Sammelbeleg: $linked Bankbuchung(en) verknüpft")
+                if (preview.conflictCount > 0) append(" • ${preview.conflictCount} nicht automatisch verknüpft")
+                append(". Die Belegdatei bleibt einmal gespeichert.")
+            }
+        }
     }
 
     fun confirmBankReceiptLink(transactionId: String, receiptId: Int) {
@@ -2152,16 +2364,28 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun markBankTransactionNoReceiptRequired(transactionId: String, reason: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val dao = database.bankDao()
+            val transaction = dao.getTransaction(transactionId) ?: return@launch
             if (dao.getLinksForTransaction(transactionId).isNotEmpty()) {
                 _bankImportStatus.value =
                     "Die Buchung ist bereits mit einem Beleg verbunden. Verknüpfung zuerst lösen."
                 return@launch
             }
+            val now = java.time.Instant.now().toString()
             dao.updateTransactionStatus(
                 transactionId,
                 com.example.data.BankReconciliationStatus.NO_RECEIPT_REQUIRED,
                 reason.trim(),
-                java.time.Instant.now().toString()
+                now
+            )
+            _bankUndoState.value = com.example.data.BankUndoState(
+                label = "Kein Beleg erforderlich",
+                entries = listOf(com.example.data.BankUndoEntry(
+                    transactionId = transaction.transactionId,
+                    fieldSet = com.example.data.BankUndoFieldSet.RECONCILIATION,
+                    expectedUpdatedAt = now,
+                    reconciliationStatus = transaction.reconciliationStatus,
+                    noReceiptReason = transaction.noReceiptReason
+                ))
             )
             _bankImportStatus.value = "Als „kein Beleg erforderlich“ markiert: ${reason.trim()}."
         }
