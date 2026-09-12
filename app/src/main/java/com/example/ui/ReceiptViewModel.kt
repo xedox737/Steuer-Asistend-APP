@@ -259,6 +259,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
     private val _bankImportStatus = MutableStateFlow<String?>(null)
     val bankImportStatus: StateFlow<String?> = _bankImportStatus.asStateFlow()
+    private val bankComfortPrefs = application.getSharedPreferences("bank_comfort_prefs", Context.MODE_PRIVATE)
+    private val _bankFavoriteKeys = MutableStateFlow(
+        bankComfortPrefs.getStringSet("assignment_favorites", emptySet()).orEmpty().toSet()
+    )
+    val bankFavoriteKeys: StateFlow<Set<String>> = _bankFavoriteKeys.asStateFlow()
     private val _bankUndoState = MutableStateFlow<com.example.data.BankUndoState?>(null)
     val bankUndoState: StateFlow<com.example.data.BankUndoState?> = _bankUndoState.asStateFlow()
     private val _pendingBankTransactionId = MutableStateFlow<String?>(null)
@@ -1963,6 +1968,55 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 positionen = emptyList()
             )
         )
+        _currentScreen.value = AppScreen.ADD_RECEIPT
+    }
+
+    fun toggleBankAssignmentFavorite(receiptId: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            val key = com.example.data.BankAssignmentFavoritesPolicy.key(receipt)
+            val current = _bankFavoriteKeys.value
+            val updated = if (key in current) current - key else current + key
+            bankComfortPrefs.edit().putStringSet("assignment_favorites", updated).apply()
+            _bankFavoriteKeys.value = updated
+            _bankImportStatus.value = if (key in updated)
+                "Zuordnung als Favorit gespeichert. Favoriten ändern keine Steuer- oder DATEV-Logik."
+            else "Zuordnung aus Favoriten entfernt."
+        }
+    }
+
+    fun startReceiptFromBankFavorite(
+        transaction: com.example.data.BankTransaction,
+        favorite: com.example.data.BankAssignmentFavorite
+    ) {
+        if (com.example.data.BankTransactionClassification.normalize(transaction.classification) !=
+            com.example.data.BankTransactionClassification.NORMAL
+        ) {
+            _bankImportStatus.value = "Schnellzuordnung ist für Privat-/Umbuchungsbuchungen nicht verfügbar."
+            return
+        }
+        favorite.propertyId.takeIf {
+            it.isNotBlank() && it != com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        }?.let(::selectProperty)
+        _pendingBankTransactionId.value = transaction.transactionId
+        _scanState.value = ScanUiState.Success(
+            com.example.api.ExtractedReceipt(
+                aussteller = favorite.vendor.ifBlank { transaction.counterparty },
+                datum = transaction.bookingDate,
+                uhrzeit = "",
+                bruttobetrag = transaction.absoluteAmount,
+                hauptkategorie = favorite.category,
+                unterkategorie = favorite.subcategory,
+                kontoNr = "",
+                beschreibung = transaction.purpose,
+                isEigenleistungSanierung = false,
+                wohneinheit = favorite.unitName,
+                mieter = "",
+                zahlungsart = favorite.paymentMethod.ifBlank { "Überweisung" },
+                positionen = emptyList()
+            )
+        )
+        _bankImportStatus.value = "Schnellzuordnung vorbefüllt. Erst der Nutzer bestätigt den neuen Beleg; keine automatische Buchung."
         _currentScreen.value = AppScreen.ADD_RECEIPT
     }
 

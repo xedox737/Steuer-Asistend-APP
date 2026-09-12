@@ -99,6 +99,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val rentSuggestions by viewModel.bankRentSuggestions.collectAsState()
     val importStatus by viewModel.bankImportStatus.collectAsState()
     val undoState by viewModel.bankUndoState.collectAsState()
+    val favoriteKeys by viewModel.bankFavoriteKeys.collectAsState()
     val learningRules by viewModel.bankLearningRules.collectAsState()
 
     var searchText by remember { mutableStateOf("") }
@@ -144,6 +145,14 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val selectedTransferCounterpart = selectedTransaction?.linkedTransferTransactionId
         ?.takeIf { it.isNotBlank() }
         ?.let { id -> transactions.firstOrNull { it.transactionId == id } }
+    val assignmentFavorites = remember(transactions, receipts, links, favoriteKeys) {
+        com.example.data.BankAssignmentFavoritesPolicy.derive(
+            transactions = transactions,
+            receipts = receipts,
+            links = links,
+            manualFavoriteKeys = favoriteKeys
+        ).take(8)
+    }
     val lastMonthSuggestion = remember(selectedTransaction, transactions, links, receipts) {
         selectedTransaction?.let { transaction ->
             com.example.data.BankLastMonthAssignmentPolicy.suggest(
@@ -174,6 +183,8 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             linkedLinks = linksByTransaction[selectedTransaction.transactionId].orEmpty(),
             assignments = assignmentsByTransaction[selectedTransaction.transactionId].orEmpty(),
             receiptById = receiptById,
+            assignmentFavorites = assignmentFavorites,
+            favoriteKeys = favoriteKeys,
             rentSuggestion = rentSuggestions[selectedTransaction.transactionId].orEmpty().firstOrNull(),
             units = units,
             undoState = undoState,
@@ -632,6 +643,8 @@ private fun BankTransactionDetailsScreen(
     linkedLinks: List<BankReceiptLink>,
     assignments: List<com.example.data.BankRentAssignment>,
     receiptById: Map<Int, Receipt>,
+    assignmentFavorites: List<com.example.data.BankAssignmentFavorite>,
+    favoriteKeys: Set<String>,
     rentSuggestion: com.example.data.BankRentSuggestion?,
     units: List<WohneinheitStatus>,
     undoState: com.example.data.BankUndoState?,
@@ -784,6 +797,42 @@ private fun BankTransactionDetailsScreen(
             }
         }
 
+        if (transaction.classification == BankTransactionClassification.NORMAL && assignmentFavorites.isNotEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Schnellzuordnungen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                        Text("Favoriten, häufige und zuletzt verwendete Zuordnungen. Es wird nur ein neuer Belegentwurf vorbefüllt.", fontSize = 10.sp, color = SlateGray)
+                        assignmentFavorites.take(4).forEach { favorite ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        (if (favorite.manualFavorite) "★ " else "") + favorite.label,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp,
+                                        color = DarkNavy,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "${favorite.vendor.ifBlank { "Zuordnung" }} • ${favorite.useCount}× verwendet${favorite.lastUsedDate.takeIf { it.isNotBlank() }?.let { " • zuletzt ${formatDate(it)}" }.orEmpty()}",
+                                        fontSize = 10.sp,
+                                        color = SlateGray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                TextButton(onClick = { viewModel.startReceiptFromBankFavorite(transaction, favorite) }) { Text("Übernehmen") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (lastMonthSuggestion != null) {
             item {
                 val conflict = com.example.data.BankLastMonthAssignmentPolicy.hasAssignmentConflict(transaction, lastMonthSuggestion)
@@ -843,6 +892,10 @@ private fun BankTransactionDetailsScreen(
                                     Text("${receipt.getEffectiveDisplayId()} • ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 11.sp, color = SlateGray)
                                 }
                                 TextButton(onClick = { onReceiptDetails(receipt) }) { Text("Öffnen") }
+                                val favoriteKey = com.example.data.BankAssignmentFavoritesPolicy.key(receipt)
+                                TextButton(onClick = { viewModel.toggleBankAssignmentFavorite(receipt.id) }) {
+                                    Text(if (favoriteKey in favoriteKeys) "★" else "☆")
+                                }
                                 TextButton(onClick = { viewModel.proposeBankRuleFromConfirmedReceipt(transaction.transactionId, receipt.id) }) { Text("Regel merken") }
                                 TextButton(onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }) { Text("Lösen") }
                             }
