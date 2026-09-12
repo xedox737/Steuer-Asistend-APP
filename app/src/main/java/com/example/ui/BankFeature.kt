@@ -416,8 +416,8 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             transactions = accountTransactions,
             links = links,
             onDismiss = { bankPickerForReceipt = null },
-            onSelect = { transaction ->
-                viewModel.confirmBankReceiptLink(transaction.transactionId, receipt.id)
+            onConfirmMany = { transactionIds ->
+                viewModel.confirmBankReceiptLinks(receipt.id, transactionIds)
                 bankPickerForReceipt = null
             }
         )
@@ -1081,10 +1081,11 @@ private fun BankTransactionPickerDialog(
     transactions: List<BankTransaction>,
     links: List<BankReceiptLink>,
     onDismiss: () -> Unit,
-    onSelect: (BankTransaction) -> Unit
+    onConfirmMany: (List<String>) -> Unit
 ) {
     val ranked = remember(receipt.id, transactions, links) { BankReceiptMatcher.rankTransactionsForReceipt(receipt, transactions, links) }
     var query by remember(receipt.id) { mutableStateOf("") }
+    var selectedIds by remember(receipt.id) { mutableStateOf(setOf<String>()) }
     val visible = remember(ranked, query, transactions) {
         val needle = query.trim().lowercase(Locale.GERMANY)
         if (needle.isBlank()) ranked else ranked.filter { suggestion ->
@@ -1094,22 +1095,66 @@ private fun BankTransactionPickerDialog(
             } == true
         }
     }
+    val selectedTransactions = ranked.mapNotNull { suggestion ->
+        transactions.firstOrNull { it.transactionId == suggestion.transactionId && it.transactionId in selectedIds }
+    }
+    val collectivePreview = remember(receipt.id, selectedTransactions, links) {
+        com.example.data.BankCollectiveReceiptLinkPolicy.preview(receipt, selectedTransactions, links)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Andere Buchung auswählen") },
+        title = { Text("Bankbuchungen auswählen") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Offene Bankbuchungen durchsuchen") })
-                LazyColumn(modifier = Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (visible.isEmpty()) item { Text(if (query.isBlank()) "Keine offene Bankbuchung ist für diesen Beleg verfügbar." else "Keine Buchung passt zur Suche.") }
+                Text(
+                    "Für Sammel-/Jahresbelege können mehrere Buchungen ausgewählt werden. Verknüpft wird erst nach Bestätigung.",
+                    fontSize = 11.sp,
+                    color = SlateGray
+                )
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Bankbuchungen durchsuchen") }
+                )
+                if (selectedIds.isNotEmpty()) {
+                    Text(
+                        "${selectedIds.size} ausgewählt • ${collectivePreview.candidateCount} verknüpfbar • ${collectivePreview.conflictCount} Konflikt(e) • ${NumberFormatter.format(collectivePreview.allocatedTotal)} vorgesehen",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DarkNavy
+                    )
+                    collectivePreview.conflicts.take(3).forEach { conflict ->
+                        val tx = transactions.firstOrNull { it.transactionId == conflict.transactionId }
+                        Text(
+                            "• ${tx?.counterparty?.ifBlank { "Buchung" } ?: "Buchung"}: ${conflict.reason}",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    }
+                }
+                LazyColumn(modifier = Modifier.heightIn(max = 330.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (visible.isEmpty()) item {
+                        Text(if (query.isBlank()) "Keine offene Bankbuchung ist für diesen Beleg verfügbar." else "Keine Buchung passt zur Suche.")
+                    }
                     else items(visible, key = { it.transactionId }) { suggestion ->
                         val transaction = transactions.firstOrNull { it.transactionId == suggestion.transactionId }
                         if (transaction != null) {
-                            Card(modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                                Column(Modifier.padding(10.dp)) {
-                                    Text(transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } }, fontWeight = FontWeight.SemiBold)
-                                    Text("${formatDate(transaction.bookingDate)} • ${NumberFormatter.format(transaction.amount)} • ${suggestion.score}%", fontSize = 12.sp)
-                                    TextButton(onClick = { onSelect(transaction) }) { Text("Zuordnen") }
+                            val selected = transaction.transactionId in selectedIds
+                            Card(
+                                modifier = Modifier.fillMaxWidth().clickable {
+                                    selectedIds = if (selected) selectedIds - transaction.transactionId else selectedIds + transaction.transactionId
+                                },
+                                border = BorderStroke(1.dp, if (selected) AccentBlue else BorderColor),
+                                colors = CardDefaults.cardColors(containerColor = if (selected) Color(0xFFEFF6FF) else MaterialTheme.colorScheme.surface)
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } }, fontWeight = FontWeight.SemiBold)
+                                        Text("${formatDate(transaction.bookingDate)} • ${NumberFormatter.format(transaction.amount)} • ${suggestion.score}%", fontSize = 12.sp)
+                                    }
+                                    Text(if (selected) "Ausgewählt" else "Auswählen", fontSize = 10.sp, color = if (selected) AccentBlue else SlateGray)
                                 }
                             }
                         }
@@ -1117,8 +1162,13 @@ private fun BankTransactionPickerDialog(
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
+        confirmButton = {
+            Button(
+                enabled = collectivePreview.candidateCount > 0,
+                onClick = { onConfirmMany(collectivePreview.candidates.map { it.transactionId }) }
+            ) { Text("${collectivePreview.candidateCount} verknüpfen") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }
 

@@ -2031,6 +2031,30 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _currentScreen.value = AppScreen.ADD_RECEIPT
     }
 
+    fun confirmBankReceiptLinks(receiptId: Int, transactionIds: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            val dao = database.bankDao()
+            val selected = transactionIds.distinct().mapNotNull { dao.getTransaction(it) }
+            val preview = com.example.data.BankCollectiveReceiptLinkPolicy.preview(
+                receipt = receipt,
+                selected = selected,
+                existingLinks = dao.getAllLinks()
+            )
+            var linked = 0
+            preview.candidates.forEach { candidate ->
+                val transaction = dao.getTransaction(candidate.transactionId) ?: return@forEach
+                val message = confirmBankReceiptLinkInternal(transaction, receipt)
+                if (message.startsWith("Buchung und Beleg")) linked++
+            }
+            _bankImportStatus.value = buildString {
+                append("Sammelbeleg: $linked Bankbuchung(en) verknüpft")
+                if (preview.conflictCount > 0) append(" • ${preview.conflictCount} nicht automatisch verknüpft")
+                append(". Die Belegdatei bleibt einmal gespeichert.")
+            }
+        }
+    }
+
     fun confirmBankReceiptLink(transactionId: String, receiptId: Int) {
         viewModelScope.launch(Dispatchers.IO) {
             val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
