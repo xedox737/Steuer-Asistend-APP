@@ -30,7 +30,14 @@ class BankBatchActionPolicyTest {
             tx("transfer", classification = BankTransactionClassification.TRANSFER),
             tx("already", classification = BankTransactionClassification.PRIVATE_IGNORED)
         )
-        val links = listOf(BankReceiptLink(linkId = "l", transactionId = "linked", receiptId = 7))
+        val links = listOf(
+            BankReceiptLink(
+                linkId = "l",
+                transactionId = "linked",
+                receiptId = 7,
+                allocatedAmount = 50.0
+            )
+        )
 
         val preview = BankBatchActionPolicy.preview(selected, links, BankBatchAction.PRIVATE_IGNORED)
 
@@ -42,7 +49,14 @@ class BankBatchActionPolicyTest {
     @Test
     fun transferBatchNeverOverwritesExistingPairOrReceiptLink() {
         val selected = listOf(tx("eligible"), tx("paired", linkedTransferTransactionId = "other"), tx("linked"))
-        val links = listOf(BankReceiptLink(linkId = "l", transactionId = "linked", receiptId = 7))
+        val links = listOf(
+            BankReceiptLink(
+                linkId = "l",
+                transactionId = "linked",
+                receiptId = 7,
+                allocatedAmount = 50.0
+            )
+        )
 
         val preview = BankBatchActionPolicy.preview(selected, links, BankBatchAction.TRANSFER)
 
