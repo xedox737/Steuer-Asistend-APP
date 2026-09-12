@@ -1952,6 +1952,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun confirmManyBankTransactionsForReceipt(transactionIds: Set<String>, receiptId: Int) {
+        if (transactionIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            var linked = 0
+            val messages = mutableListOf<String>()
+            transactionIds.forEach { transactionId ->
+                val transaction = database.bankDao().getTransaction(transactionId) ?: return@forEach
+                val message = confirmBankReceiptLinkInternal(transaction, receipt)
+                messages += message
+                if ("bestätigt" in message.lowercase(Locale.GERMANY)) linked++
+            }
+            _bankImportStatus.value = "$linked von ${transactionIds.size} Bankbuchungen mit dem vorhandenen Beleg verknüpft. Der Beleg wurde nicht kopiert."
+        }
+    }
+
     private suspend fun confirmBankReceiptLinkInternal(
         transaction: com.example.data.BankTransaction,
         receipt: Receipt
