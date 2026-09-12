@@ -11,7 +11,7 @@ data class BankBatchConflict(
     val reason: String
 )
 
-data class BankBatchPreview(
+data class BankBatchActionPreview(
     val action: BankBatchAction,
     val selectedCount: Int,
     val eligibleTransactionIds: List<String>,
@@ -32,7 +32,7 @@ object BankBatchActionPolicy {
         selected: List<BankTransaction>,
         links: List<BankReceiptLink>,
         action: BankBatchAction
-    ): BankBatchPreview {
+    ): BankBatchActionPreview {
         val linkedIds = links.mapTo(mutableSetOf()) { it.transactionId }
         val eligible = mutableListOf<String>()
         val unchanged = mutableListOf<String>()
@@ -68,7 +68,7 @@ object BankBatchActionPolicy {
             }
         }
 
-        return BankBatchPreview(
+        return BankBatchActionPreview(
             action = action,
             selectedCount = selected.distinctBy { it.transactionId }.size,
             eligibleTransactionIds = eligible,
