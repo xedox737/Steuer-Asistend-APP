@@ -31,12 +31,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Build
@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -212,9 +213,18 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                         placeholder = { Text("Buchungen durchsuchen …") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suche") }
                     )
+                    Spacer(Modifier.size(6.dp))
+                    IconButton(
+                        onClick = {
+                            importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/zip", "application/x-zip-compressed", "application/octet-stream", "text/plain"))
+                        },
+                        modifier = Modifier.size(44.dp).clip(CircleShape).background(AccentBlue)
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = "Kontoauszug importieren", tint = Color.White)
+                    }
                     Box {
                         IconButton(onClick = { toolsMenuOpen = true }) {
-                            Icon(Icons.Default.Tune, contentDescription = "Filter und Werkzeuge", tint = DarkNavy)
+                            Icon(Icons.Default.Apps, contentDescription = "Weitere Funktionen", tint = DarkNavy)
                         }
                         DropdownMenu(expanded = toolsMenuOpen, onDismissRequest = { toolsMenuOpen = false }) {
                             DropdownMenuItem(text = { Text("Bankregeln") }, onClick = { toolsMode = BankToolsMode.RULES; toolsMenuOpen = false })
