@@ -69,6 +69,8 @@ data class BankTransaction(
     val source: String = "CSV",
     val propertyId: String = "",
     val unitId: String = "",
+    val category: String = "",
+    val subcategory: String = "",
     val importFileName: String = "",
     val importRunId: String = "",
     val reconciliationStatus: String = BankReconciliationStatus.OPEN,
@@ -774,4 +776,3 @@ object BankLinkPolicy {
     fun linkId(transactionId: String, receiptId: Int, receiptInternalId: String): String =
         "link-" + BankTransactionIdentity.sha256("$transactionId|$receiptId|$receiptInternalId").take(32)
 }
-
