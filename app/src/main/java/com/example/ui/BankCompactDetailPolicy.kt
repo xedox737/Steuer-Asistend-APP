@@ -30,6 +30,8 @@ internal data class BankDetailActionLabels(
 )
 
 internal object BankDetailActionPolicy {
+    fun useFourReceiptColumns(fontScale: Float): Boolean = fontScale <= 1.15f
+
     fun labels(transaction: BankTransaction) = BankDetailActionLabels(
         privateAction = if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) "Privat aufheben" else "Privat / ignorieren",
         transferAction = if (transaction.classification == BankTransactionClassification.TRANSFER) "Umbuchung aufheben" else "Als Umbuchung markieren",
