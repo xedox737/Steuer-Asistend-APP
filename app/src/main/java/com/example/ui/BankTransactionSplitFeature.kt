@@ -84,7 +84,7 @@ fun BankTransactionSplitActions(
     if (showTrigger && (transaction.reconciliationStatus == BankReconciliationStatus.OPEN || transaction.reconciliationStatus == BankReconciliationStatus.PARTIAL)) {
         if (compactTrigger) {
             Card(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 104.dp).clickable { showDialog = true },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 86.dp).clickable { showDialog = true },
                 colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFF3E8FF)),
                 border = BorderStroke(1.dp, BorderColor)
             ) {
@@ -93,8 +93,8 @@ fun BankTransactionSplitActions(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.CallSplit, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF7C3AED), modifier = Modifier.size(27.dp))
-                    Text("Buchung aufteilen", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = TextAlign.Center)
+                    Icon(Icons.Default.CallSplit, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF7C3AED), modifier = Modifier.size(25.dp))
+                    Text("Buchung\naufteilen", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = TextAlign.Center)
                 }
             }
         } else {
