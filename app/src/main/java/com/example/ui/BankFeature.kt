@@ -123,6 +123,8 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     var selectedTransactionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingBatchAction by remember { mutableStateOf<String?>(null) }
     var pendingPropertyChoice by remember { mutableStateOf(false) }
+    var pendingCategoryChoice by remember { mutableStateOf(false) }
+    var pendingCategoryAssignment by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -248,6 +250,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                                     OutlinedButton(onClick = { pendingBatchAction = action }) { Text(label) }
                                 }
                                 OutlinedButton(onClick = { pendingPropertyChoice = true }) { Text("Immobilie") }
+                                OutlinedButton(onClick = { pendingCategoryChoice = true }) { Text("Kategorie") }
                             }
                         }
                     }
@@ -435,16 +438,25 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         val preview = com.example.data.BankBatchActionPolicy.preview(
             selectedTransactions,
             links.filter { it.transactionId in selectedTransactionIds },
-            action
+            action,
+            category = pendingCategoryAssignment?.first.orEmpty(),
+            subcategory = pendingCategoryAssignment?.second.orEmpty()
         )
         BankBatchConfirmDialog(
             selected = preview.selected,
             protected = preview.protected,
-            onDismiss = { pendingBatchAction = null },
+            onDismiss = { pendingBatchAction = null; pendingCategoryAssignment = null },
             onApply = { overwrite ->
-                viewModel.applyBankBatchAction(selectedTransactionIds, action, overwriteProtected = overwrite)
+                viewModel.applyBankBatchAction(
+                    selectedTransactionIds,
+                    action,
+                    category = pendingCategoryAssignment?.first.orEmpty(),
+                    subcategory = pendingCategoryAssignment?.second.orEmpty(),
+                    overwriteProtected = overwrite
+                )
                 selectedTransactionIds = emptySet()
                 pendingBatchAction = null
+                pendingCategoryAssignment = null
             }
         )
     }
@@ -459,6 +471,38 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             }, modifier = Modifier.fillMaxWidth()) { Text(propertyId) } }; if (propertyIds.isEmpty()) Text("Noch keine Immobilie vorhanden.") } },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { pendingPropertyChoice = false }) { Text("Abbrechen") } }
+        )
+    }
+    if (pendingCategoryChoice) {
+        val favorites = remember(transactions, receipts) {
+            com.example.data.BankAssignmentFavoritesPolicy.categories(transactions, receipts)
+        }
+        AlertDialog(
+            onDismissRequest = { pendingCategoryChoice = false },
+            title = { Text("Kategorie zuweisen") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    if (favorites.isEmpty()) item { Text("Noch keine Kategorien aus bestätigten Belegen vorhanden.") }
+                    items(favorites, key = { "${it.category}|${it.subcategory}" }) { favorite ->
+                        TextButton(onClick = {
+                            pendingCategoryAssignment = favorite.category to favorite.subcategory
+                            pendingBatchAction = com.example.data.BankBatchAction.CATEGORY
+                            pendingCategoryChoice = false
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(favorite.category, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    listOf(favorite.subcategory.takeIf { it.isNotBlank() }, "${favorite.useCount}× verwendet").filterNotNull().joinToString(" • "),
+                                    fontSize = 10.sp,
+                                    color = SlateGray
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pendingCategoryChoice = false }) { Text("Abbrechen") } }
         )
     }
     if (undoNotice.id != 0L) {
