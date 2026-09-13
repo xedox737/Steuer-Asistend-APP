@@ -28,10 +28,11 @@ class BankBackup7AcceptanceTest {
         database.bankDao().upsertAccount(BankAccount("a", "Haus", bankName = "Sparkasse", accountHolder = "Sergej"))
         database.bankDao().upsertTransaction(BankTransaction(
             "t", "a", "2026-09-04", amount = -5.0, reconciliationStatus = BankReconciliationStatus.NO_RECEIPT_REQUIRED,
-            noReceiptReason = "Bankgebühr", importedAt = "import", updatedAt = "status-change"
+            noReceiptReason = "Bankgebühr", category = "Bankkosten", subcategory = "Kontoführung",
+            importedAt = "import", updatedAt = "status-change"
         ))
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(12, payload.getInt("schemaVersion"))
+        assertEquals(13, payload.getInt("schemaVersion"))
         database.bankDao().upsertTransaction(database.bankDao().getTransaction("t")!!.copy(reconciliationStatus = BankReconciliationStatus.OPEN, noReceiptReason = "", updatedAt = "other"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
@@ -39,6 +40,8 @@ class BankBackup7AcceptanceTest {
         assertEquals(BankReconciliationStatus.NO_RECEIPT_REQUIRED, restored.reconciliationStatus)
         assertEquals("Bankgebühr", restored.noReceiptReason)
         assertEquals("status-change", restored.updatedAt)
+        assertEquals("Bankkosten", restored.category)
+        assertEquals("Kontoführung", restored.subcategory)
         assertEquals(1, database.bankDao().getAllTransactions().count { it.transactionId == "t" })
     }
 
