@@ -56,4 +56,26 @@ class BankBatchActionsTest {
         assertEquals(0, result.changed)
         assertEquals(BankReconciliationStatus.OPEN, database.bankDao().getTransaction("linked")!!.reconciliationStatus)
     }
+
+    @Test fun categoryBatchSkipsExistingManualCategoryAndCanBeUndone() = runTest {
+        database.bankDao().insertTransactions(listOf(tx("open"), tx("manual").copy(category = "Alt", subcategory = "Fest")))
+        val service = BankBatchActionService(database)
+        val result = service.apply(setOf("open", "manual"), BankBatchAction.CATEGORY, category = "Kosten", subcategory = "Strom")
+        assertEquals(1, result.changed)
+        assertEquals("Kosten", database.bankDao().getTransaction("open")!!.category)
+        assertEquals("Alt", database.bankDao().getTransaction("manual")!!.category)
+        service.restore(result.before)
+        assertEquals("", database.bankDao().getTransaction("open")!!.category)
+    }
+
+    @Test fun favoritesPreferFrequentlyAndRecentlyUsedConfirmedHistory() {
+        val transactions = listOf(
+            tx("a").copy(category = "Energie", subcategory = "Strom", updatedAt = "2026-09-10"),
+            tx("b").copy(category = "Energie", subcategory = "Strom", updatedAt = "2026-09-11"),
+            tx("c").copy(category = "Versicherung", updatedAt = "2026-09-12")
+        )
+        val favorites = BankAssignmentFavoritesPolicy.categories(transactions, emptyList())
+        assertEquals("Energie", favorites.first().category)
+        assertEquals(2, favorites.first().useCount)
+    }
 }
