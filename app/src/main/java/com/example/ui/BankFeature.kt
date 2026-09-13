@@ -11,7 +11,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -32,7 +32,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -72,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -692,7 +695,7 @@ private fun BankTransactionDetailsScreen(
     onReceiptDetails: (Receipt) -> Unit
 ) {
     val linkedReceipts = linkedLinks.mapNotNull { link -> receiptById[link.receiptId]?.let { link to it } }
-    LazyColumn(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
@@ -701,7 +704,7 @@ private fun BankTransactionDetailsScreen(
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val visual = bankTransactionVisual(transaction)
                         Box(Modifier.size(54.dp).clip(CircleShape).background(visual.background), contentAlignment = Alignment.Center) {
@@ -729,8 +732,15 @@ private fun BankTransactionDetailsScreen(
         item {
             val labels = BankDetailActionPolicy.labels(transaction)
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Was möchtest du tun?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
+                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Was möchtest du tun?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                        Row(Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFFEAF4FF)).padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.size(4.dp))
+                            Text("Schnell & einfach", color = AccentBlue, fontSize = 9.sp)
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         BankActionCard(labels.privateAction, "Nicht in die Steuer übernehmen", Icons.Default.Person, Color(0xFFFFE8EC), CrimsonRed, Modifier.weight(1f)) {
                             if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) viewModel.resetBankTransactionClassification(transaction.transactionId)
@@ -756,18 +766,9 @@ private fun BankTransactionDetailsScreen(
 
         if (transaction.classification == BankTransactionClassification.NORMAL) item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Beleg zuordnen", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                        BankQuickAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
-                        BankQuickAction("Beleg hochladen / anlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                        Column(Modifier.weight(1f)) {
-                            BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
-                        }
-                        BankQuickAction("Kein Beleg erforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt, tint = EmeraldGreen, containerColor = Color(0xFFE8F8ED))
-                    }
+                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("Beleg zuordnen", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 15.sp)
+                    BankReceiptActionGrid(viewModel, transaction, onPickReceipt, onNoReceipt)
                     Text(
                         when {
                             linkedLinks.isNotEmpty() -> "Beleg zugeordnet."
@@ -778,6 +779,15 @@ private fun BankTransactionDetailsScreen(
                         color = SlateGray,
                         fontSize = 12.sp
                     )
+                }
+            }
+        }
+
+        if (transaction.classification == BankTransactionClassification.NORMAL) item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Weitere Informationen", fontWeight = FontWeight.Bold, color = DarkNavy, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SlateGray)
                 }
             }
         }
@@ -970,14 +980,14 @@ internal fun BankQuickAction(
     containerColor: Color = Color(0xFFEFF6FF)
 ) {
     Card(
-        modifier = modifier.heightIn(min = 104.dp).clickable(onClick = onClick),
+        modifier = modifier.heightIn(min = 86.dp).clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.fillMaxSize().padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(27.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(25.dp))
             Spacer(Modifier.height(4.dp))
-            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text(label, fontSize = 9.sp, lineHeight = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
     }
 }
@@ -992,13 +1002,43 @@ internal fun BankActionCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card(modifier = modifier.heightIn(min = 112.dp).clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = containerColor)) {
-        Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(29.dp))
-            Spacer(Modifier.size(10.dp))
+    Card(modifier = modifier.heightIn(min = 86.dp).clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = containerColor)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 9.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(25.dp))
+            Spacer(Modifier.size(7.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
-                Text(subtitle, color = SlateGray, fontSize = 11.sp)
+                Text(title, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 11.sp, lineHeight = 13.sp)
+                Text(subtitle, color = SlateGray, fontSize = 9.sp, lineHeight = 11.sp)
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun BankReceiptActionGrid(
+    viewModel: ReceiptViewModel,
+    transaction: BankTransaction,
+    onPickReceipt: () -> Unit,
+    onNoReceipt: () -> Unit
+) {
+    val useFourColumns = BankDetailActionPolicy.useFourReceiptColumns(LocalDensity.current.fontScale)
+    if (useFourColumns) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+            BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
+            BankQuickAction("Beleg\nhochladen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
+            Column(Modifier.weight(1f)) { BankTransactionSplitActions(viewModel, transaction, compactTrigger = true, showAssignments = false) }
+            BankQuickAction("Kein Beleg\nerforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt, tint = EmeraldGreen, containerColor = Color(0xFFE8F8ED))
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                BankQuickAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
+                BankQuickAction("Beleg hochladen / anlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) { BankTransactionSplitActions(viewModel, transaction, compactTrigger = true, showAssignments = false) }
+                BankQuickAction("Kein Beleg erforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt, tint = EmeraldGreen, containerColor = Color(0xFFE8F8ED))
             }
         }
     }
@@ -1043,10 +1083,8 @@ private fun BankDetailLine(label: String, value: String, icon: androidx.compose.
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
         Icon(icon, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 11.sp, color = SlateGray)
-            Text(value, fontSize = 12.sp, color = DarkNavy)
-        }
+        Text(label, modifier = Modifier.width(126.dp), fontSize = 10.sp, lineHeight = 13.sp, color = SlateGray)
+        Text(value, modifier = Modifier.weight(1f), fontSize = 11.sp, lineHeight = 14.sp, color = DarkNavy)
     }
 }
 
