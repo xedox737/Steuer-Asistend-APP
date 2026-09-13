@@ -14,6 +14,30 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class BankMigrationTest {
     @Test
+    fun migration29To30PreservesRowsAndAddsCategoryFields() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context).name(null)
+                .callback(object : SupportSQLiteOpenHelper.Callback(29) {
+                    override fun onCreate(db: SupportSQLiteDatabase) = Unit
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                }).build()
+        )
+        helper.use {
+            val db = it.writableDatabase
+            db.execSQL("CREATE TABLE bank_transactions (transactionId TEXT NOT NULL PRIMARY KEY)")
+            db.execSQL("INSERT INTO bank_transactions VALUES ('kept')")
+            MIGRATION_29_30.migrate(db)
+            db.query("SELECT transactionId, category, subcategory FROM bank_transactions").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("kept", cursor.getString(0))
+                assertEquals("", cursor.getString(1))
+                assertEquals("", cursor.getString(2))
+            }
+        }
+    }
+
+    @Test
     fun migration22To23KeepsBankRowsAndAddsCorrectionFields() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val helper = FrameworkSQLiteOpenHelperFactory().create(
