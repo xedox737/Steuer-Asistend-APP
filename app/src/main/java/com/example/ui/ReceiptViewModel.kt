@@ -69,6 +69,8 @@ data class MockReceiptTemplate(
     val filename: String
 )
 
+data class BankUndoNotice(val id: Long = 0L, val message: String = "")
+
 data class WohneinheitStatus(
     val name: String,
     val label: String,
@@ -259,6 +261,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
     private val _bankImportStatus = MutableStateFlow<String?>(null)
     val bankImportStatus: StateFlow<String?> = _bankImportStatus.asStateFlow()
+    private val _bankUndoNotice = MutableStateFlow(BankUndoNotice())
+    val bankUndoNotice: StateFlow<BankUndoNotice> = _bankUndoNotice.asStateFlow()
+    private var bankUndoSnapshot: List<com.example.data.BankTransaction> = emptyList()
     private val _pendingBankTransactionId = MutableStateFlow<String?>(null)
     val pendingBankTransactionId: StateFlow<String?> = _pendingBankTransactionId.asStateFlow()
 
@@ -1668,6 +1673,53 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         updateBankTransactionReviewState(transactionId, com.example.data.BankReviewState.DONE)
     }
 
+    fun applyBankBatchAction(
+        transactionIds: Set<String>,
+        action: String,
+        propertyId: String = "",
+        category: String = "",
+        subcategory: String = "",
+        noReceiptReason: String = "Batch: kein Beleg erforderlich",
+        overwriteProtected: Boolean = false
+    ) {
+        if (transactionIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = com.example.data.BankBatchActionService(database).apply(
+                transactionIds = transactionIds,
+                action = action,
+                propertyId = propertyId,
+                category = category,
+                subcategory = subcategory,
+                noReceiptReason = noReceiptReason,
+                overwriteProtected = overwriteProtected
+            )
+            bankUndoSnapshot = result.before
+            val label = when (action) {
+                com.example.data.BankBatchAction.PRIVATE -> "Als privat markiert"
+                com.example.data.BankBatchAction.TRANSFER -> "Als Umbuchung markiert"
+                com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED -> "Kein Beleg erforderlich"
+                com.example.data.BankBatchAction.REVIEW_DONE -> "Als erledigt markiert"
+                com.example.data.BankBatchAction.REVIEW_OPEN -> "Wieder geöffnet"
+                com.example.data.BankBatchAction.PROPERTY -> "Immobilie zugewiesen"
+                com.example.data.BankBatchAction.CATEGORY -> "Kategorie zugewiesen"
+                else -> "Buchungen geändert"
+            }
+            _bankImportStatus.value = "$label: ${result.changed}. Übersprungen: ${result.skipped}."
+            if (result.changed > 0) _bankUndoNotice.value = BankUndoNotice(System.nanoTime(), "$label (${result.changed})")
+        }
+    }
+
+    fun undoLastBankBatchAction() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val snapshot = bankUndoSnapshot
+            if (snapshot.isEmpty()) return@launch
+            com.example.data.BankBatchActionService(database).restore(snapshot)
+            bankUndoSnapshot = emptyList()
+            _bankUndoNotice.value = BankUndoNotice()
+            _bankImportStatus.value = "Letzte schnelle Bankänderung wurde rückgängig gemacht."
+        }
+    }
+
     fun reopenBankTransactionReview(transactionId: String) {
         updateBankTransactionReviewState(transactionId, com.example.data.BankReviewState.OPEN)
     }
@@ -1902,6 +1954,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
             val receipt = repository.getReceiptById(receiptId) ?: return@launch
             _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, receipt)
+        }
+    }
+
+    fun confirmManyBankTransactionsForReceipt(transactionIds: Set<String>, receiptId: Int) {
+        if (transactionIds.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val receipt = repository.getReceiptById(receiptId) ?: return@launch
+            var linked = 0
+            val messages = mutableListOf<String>()
+            transactionIds.forEach { transactionId ->
+                val transaction = database.bankDao().getTransaction(transactionId) ?: return@forEach
+                val message = confirmBankReceiptLinkInternal(transaction, receipt)
+                messages += message
+                if ("bestätigt" in message.lowercase(Locale.GERMANY)) linked++
+            }
+            _bankImportStatus.value = "$linked von ${transactionIds.size} Bankbuchungen mit dem vorhandenen Beleg verknüpft. Der Beleg wurde nicht kopiert."
         }
     }
 

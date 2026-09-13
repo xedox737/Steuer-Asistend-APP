@@ -4,8 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +46,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -56,6 +59,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Snackbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -71,6 +75,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.example.data.BankAccount
 import com.example.data.BankMatchSuggestion
 import com.example.data.BankReceiptLink
@@ -87,6 +93,7 @@ import java.util.Locale
 
 private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT, DATEV_PRECHECK }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean) -> Unit = {}) {
     val transactions by viewModel.bankTransactions.collectAsState()
@@ -99,6 +106,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val rentSuggestions by viewModel.bankRentSuggestions.collectAsState()
     val importStatus by viewModel.bankImportStatus.collectAsState()
     val learningRules by viewModel.bankLearningRules.collectAsState()
+    val undoNotice by viewModel.bankUndoNotice.collectAsState()
 
     var searchText by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(BankCompactFilter.ALL) }
@@ -112,6 +120,11 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     var toolsMenuOpen by remember { mutableStateOf(false) }
     var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }
     var showImportDetails by remember { mutableStateOf(false) }
+    var selectedTransactionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingBatchAction by remember { mutableStateOf<String?>(null) }
+    var pendingPropertyChoice by remember { mutableStateOf(false) }
+    var pendingCategoryChoice by remember { mutableStateOf(false) }
+    var pendingCategoryAssignment by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
@@ -126,6 +139,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         BankCompactUiPolicy.search(BankCompactUiPolicy.filter(accountTransactions, filter), searchText)
     }
     val groups = remember(shown) { BankCompactUiPolicy.group(shown) }
+    val selectedTransactions = remember(transactions, selectedTransactionIds) { transactions.filter { it.transactionId in selectedTransactionIds } }
     val linksByTransaction = remember(links) { links.groupBy { it.transactionId } }
     val assignmentsByTransaction = remember(assignments) { assignments.groupBy { it.transactionId } }
     val receiptById = remember(receipts) { receipts.associateBy { it.id } }
@@ -212,6 +226,32 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                                 toolsMenuOpen = false
                                 importLauncher.launch(arrayOf("text/csv", "text/xml", "application/xml", "application/zip", "application/x-zip-compressed", "application/octet-stream", "text/plain"))
                             })
+                        }
+                    }
+                }
+            }
+
+            if (selectedTransactionIds.isNotEmpty()) {
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), border = BorderStroke(1.dp, AccentBlue)) {
+                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text("${selectedTransactionIds.size} ausgewählt", fontWeight = FontWeight.Bold, color = DarkNavy, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { selectedTransactionIds = emptySet() }) { Text("Abbrechen") }
+                            }
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf(
+                                    com.example.data.BankBatchAction.PRIVATE to "Privat",
+                                    com.example.data.BankBatchAction.TRANSFER to "Umbuchung",
+                                    com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED to "Kein Beleg",
+                                    com.example.data.BankBatchAction.REVIEW_DONE to "Erledigt",
+                                    com.example.data.BankBatchAction.REVIEW_OPEN to "Wieder öffnen"
+                                ).forEach { (action, label) ->
+                                    OutlinedButton(onClick = { pendingBatchAction = action }) { Text(label) }
+                                }
+                                OutlinedButton(onClick = { pendingPropertyChoice = true }) { Text("Immobilie") }
+                                OutlinedButton(onClick = { pendingCategoryChoice = true }) { Text("Kategorie") }
+                            }
                         }
                     }
                 }
@@ -320,7 +360,13 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                                 group.transactions.forEachIndexed { index, transaction ->
                                     BankCompactTransactionRow(
                                         transaction = transaction,
-                                        onClick = { selectedTransactionId = transaction.transactionId }
+                                        selected = transaction.transactionId in selectedTransactionIds,
+                                        selectionMode = selectedTransactionIds.isNotEmpty(),
+                                        onClick = {
+                                            if (selectedTransactionIds.isEmpty()) selectedTransactionId = transaction.transactionId
+                                            else selectedTransactionIds = selectedTransactionIds.toggle(transaction.transactionId)
+                                        },
+                                        onLongClick = { selectedTransactionIds = selectedTransactionIds.toggle(transaction.transactionId) }
                                     )
                                     if (index < group.transactions.lastIndex) HorizontalDivider(color = BorderColor)
                                 }
@@ -351,8 +397,8 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             transactions = accountTransactions,
             links = links,
             onDismiss = { bankPickerForReceipt = null },
-            onSelect = { transaction ->
-                viewModel.confirmBankReceiptLink(transaction.transactionId, receipt.id)
+            onSelect = { selectedIds ->
+                viewModel.confirmManyBankTransactionsForReceipt(selectedIds, receipt.id)
                 bankPickerForReceipt = null
             }
         )
@@ -361,7 +407,12 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         NoReceiptReasonDialog(
             onDismiss = { noReceiptFor = null },
             onSelect = { reason ->
-                viewModel.markBankTransactionNoReceiptRequired(transaction.transactionId, reason)
+                viewModel.applyBankBatchAction(
+                    setOf(transaction.transactionId),
+                    com.example.data.BankBatchAction.NO_RECEIPT_REQUIRED,
+                    noReceiptReason = reason,
+                    overwriteProtected = false
+                )
                 noReceiptFor = null
             }
         )
@@ -383,6 +434,122 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             }
         )
     }
+    pendingBatchAction?.let { action ->
+        val preview = com.example.data.BankBatchActionPolicy.preview(
+            selectedTransactions,
+            links.filter { it.transactionId in selectedTransactionIds },
+            action,
+            category = pendingCategoryAssignment?.first.orEmpty(),
+            subcategory = pendingCategoryAssignment?.second.orEmpty()
+        )
+        BankBatchConfirmDialog(
+            selected = preview.selected,
+            protected = preview.protected,
+            onDismiss = { pendingBatchAction = null; pendingCategoryAssignment = null },
+            onApply = { overwrite ->
+                viewModel.applyBankBatchAction(
+                    selectedTransactionIds,
+                    action,
+                    category = pendingCategoryAssignment?.first.orEmpty(),
+                    subcategory = pendingCategoryAssignment?.second.orEmpty(),
+                    overwriteProtected = overwrite
+                )
+                selectedTransactionIds = emptySet()
+                pendingBatchAction = null
+                pendingCategoryAssignment = null
+            }
+        )
+    }
+    if (pendingPropertyChoice) {
+        val propertyIds = (transactions.map { it.propertyId } + receipts.map { it.propertyId }).filter { it.isNotBlank() }.distinct().sorted()
+        AlertDialog(
+            onDismissRequest = { pendingPropertyChoice = false },
+            title = { Text("Immobilie zuweisen") },
+            text = { Column { propertyIds.forEach { propertyId -> TextButton(onClick = {
+                viewModel.applyBankBatchAction(selectedTransactionIds, com.example.data.BankBatchAction.PROPERTY, propertyId)
+                selectedTransactionIds = emptySet(); pendingPropertyChoice = false
+            }, modifier = Modifier.fillMaxWidth()) { Text(propertyId) } }; if (propertyIds.isEmpty()) Text("Noch keine Immobilie vorhanden.") } },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pendingPropertyChoice = false }) { Text("Abbrechen") } }
+        )
+    }
+    if (pendingCategoryChoice) {
+        val favorites = remember(transactions, receipts) {
+            com.example.data.BankAssignmentFavoritesPolicy.categories(transactions, receipts)
+        }
+        AlertDialog(
+            onDismissRequest = { pendingCategoryChoice = false },
+            title = { Text("Kategorie zuweisen") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    if (favorites.isEmpty()) item { Text("Noch keine Kategorien aus bestätigten Belegen vorhanden.") }
+                    items(favorites, key = { "${it.category}|${it.subcategory}" }) { favorite ->
+                        TextButton(onClick = {
+                            pendingCategoryAssignment = favorite.category to favorite.subcategory
+                            pendingBatchAction = com.example.data.BankBatchAction.CATEGORY
+                            pendingCategoryChoice = false
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(favorite.category, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    listOf(favorite.subcategory.takeIf { it.isNotBlank() }, "${favorite.useCount}× verwendet").filterNotNull().joinToString(" • "),
+                                    fontSize = 10.sp,
+                                    color = SlateGray
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { pendingCategoryChoice = false }) { Text("Abbrechen") } }
+        )
+    }
+    if (undoNotice.id != 0L) {
+        Popup(alignment = Alignment.BottomCenter, properties = PopupProperties(focusable = false)) {
+            Snackbar(
+                modifier = Modifier.padding(12.dp),
+                action = { TextButton(onClick = viewModel::undoLastBankBatchAction) { Text("Rückgängig") } }
+            ) { Text(undoNotice.message) }
+        }
+    }
+}
+
+private fun Set<String>.toggle(id: String): Set<String> = if (id in this) this - id else this + id
+
+@Composable
+private fun BankBatchConfirmDialog(
+    selected: Int,
+    protected: Int,
+    onDismiss: () -> Unit,
+    onApply: (overwriteProtected: Boolean) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Massenänderung prüfen") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("$selected Bankbuchungen ausgewählt.")
+                if (protected > 0) {
+                    Text(
+                        "$protected Buchungen besitzen bereits bestätigte Links oder manuelle Zuordnungen.",
+                        fontWeight = FontWeight.SemiBold,
+                        color = CrimsonRed
+                    )
+                    Text("Du kannst nur unbelegte Buchungen ändern oder die vorhandenen Werte ausdrücklich überschreiben.", fontSize = 11.sp, color = SlateGray)
+                } else {
+                    Text("Die Änderung wird erst nach dieser Bestätigung gespeichert.", fontSize = 11.sp, color = SlateGray)
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onApply(false) }) { Text(if (protected > 0) "Nur unbelegte ändern" else "Ändern") } },
+        dismissButton = {
+            Row {
+                if (protected > 0) TextButton(onClick = { onApply(true) }) { Text("Alle überschreiben") }
+                TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            }
+        }
+    )
 }
 
 private data class BankTransactionVisual(
@@ -410,16 +577,28 @@ private fun bankTransactionVisual(transaction: BankTransaction): BankTransaction
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun BankCompactTransactionRow(transaction: BankTransaction, onClick: () -> Unit) {
+internal fun BankCompactTransactionRow(
+    transaction: BankTransaction,
+    selected: Boolean = false,
+    selectionMode: Boolean = false,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
+) {
     val visual = bankTransactionVisual(transaction)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(if (selected) Color(0xFFEFF6FF) else Color.Transparent)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (selectionMode) {
+            Checkbox(checked = selected, onCheckedChange = { onClick() })
+            Spacer(Modifier.size(4.dp))
+        }
         Box(
             modifier = Modifier.size(42.dp).clip(CircleShape).background(visual.background),
             contentAlignment = Alignment.Center
@@ -525,11 +704,11 @@ private fun BankTransactionDetailsScreen(
                     DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {
                         if (transaction.classification == BankTransactionClassification.NORMAL) {
                             DropdownMenuItem(text = { Text("Privat / ignorieren") }, onClick = {
-                                viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
+                                viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.PRIVATE, overwriteProtected = true)
                                 detailMenuOpen = false
                             })
                             DropdownMenuItem(text = { Text("Als Umbuchung markieren") }, onClick = {
-                                viewModel.markBankTransactionTransfer(transaction.transactionId)
+                                viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.TRANSFER, overwriteProtected = true)
                                 detailMenuOpen = false
                             })
                         } else {
@@ -541,12 +720,12 @@ private fun BankTransactionDetailsScreen(
                         if (transaction.classification == BankTransactionClassification.NORMAL) {
                             if (transaction.reviewState == BankReviewState.OPEN) {
                                 DropdownMenuItem(text = { Text("Als erledigt markieren") }, onClick = {
-                                    viewModel.markBankTransactionReviewDone(transaction.transactionId)
+                                    viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.REVIEW_DONE)
                                     detailMenuOpen = false
                                 })
                             } else {
                                 DropdownMenuItem(text = { Text("Prüfung wieder öffnen") }, onClick = {
-                                    viewModel.reopenBankTransactionReview(transaction.transactionId)
+                                    viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.REVIEW_OPEN)
                                     detailMenuOpen = false
                                 })
                             }
@@ -947,10 +1126,11 @@ private fun BankTransactionPickerDialog(
     transactions: List<BankTransaction>,
     links: List<BankReceiptLink>,
     onDismiss: () -> Unit,
-    onSelect: (BankTransaction) -> Unit
+    onSelect: (Set<String>) -> Unit
 ) {
     val ranked = remember(receipt.id, transactions, links) { BankReceiptMatcher.rankTransactionsForReceipt(receipt, transactions, links) }
     var query by remember(receipt.id) { mutableStateOf("") }
+    var selectedIds by remember(receipt.id) { mutableStateOf<Set<String>>(emptySet()) }
     val visible = remember(ranked, query, transactions) {
         val needle = query.trim().lowercase(Locale.GERMANY)
         if (needle.isBlank()) ranked else ranked.filter { suggestion ->
@@ -962,7 +1142,7 @@ private fun BankTransactionPickerDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Andere Buchung auswählen") },
+        title = { Text("Weitere Bankbuchungen verknüpfen") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Offene Bankbuchungen durchsuchen") })
@@ -973,9 +1153,16 @@ private fun BankTransactionPickerDialog(
                         if (transaction != null) {
                             Card(modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                                 Column(Modifier.padding(10.dp)) {
-                                    Text(transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } }, fontWeight = FontWeight.SemiBold)
-                                    Text("${formatDate(transaction.bookingDate)} • ${NumberFormatter.format(transaction.amount)} • ${suggestion.score}%", fontSize = 12.sp)
-                                    TextButton(onClick = { onSelect(transaction) }) { Text("Zuordnen") }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = transaction.transactionId in selectedIds,
+                                            onCheckedChange = { selectedIds = selectedIds.toggle(transaction.transactionId) }
+                                        )
+                                        Column {
+                                            Text(transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } }, fontWeight = FontWeight.SemiBold)
+                                            Text("${formatDate(transaction.bookingDate)} • ${NumberFormatter.format(transaction.amount)} • ${suggestion.score}%", fontSize = 12.sp)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -983,7 +1170,11 @@ private fun BankTransactionPickerDialog(
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            Button(onClick = { onSelect(selectedIds) }, enabled = selectedIds.isNotEmpty()) {
+                Text("${selectedIds.size} verknüpfen • ${NumberFormatter.format(transactions.filter { it.transactionId in selectedIds }.sumOf { it.absoluteAmount })}")
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
     )
 }

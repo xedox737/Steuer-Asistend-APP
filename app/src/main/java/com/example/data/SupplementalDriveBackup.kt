@@ -9,7 +9,7 @@ import org.json.JSONObject
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 12
+    internal const val SCHEMA_VERSION = 13
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -144,6 +144,7 @@ object SupplementalDriveBackup {
         put("counterparty", counterparty); put("counterpartyIban", counterpartyIban); put("purpose", purpose)
         put("bankReference", bankReference); put("source", source)
         put("propertyId", propertyId); put("unitId", unitId)
+        put("category", category); put("subcategory", subcategory)
         put("importFileName", importFileName); put("importRunId", importRunId)
         put("reconciliationStatus", reconciliationStatus); put("noReceiptReason", noReceiptReason)
         put("classification", classification); put("transferCounterAccountId", transferCounterAccountId)
@@ -158,7 +159,8 @@ object SupplementalDriveBackup {
         counterparty = optString("counterparty", ""), counterpartyIban = optString("counterpartyIban", ""),
         purpose = optString("purpose", ""), bankReference = optString("bankReference", ""),
         source = optString("source", "CSV"), propertyId = optString("propertyId", ""),
-        unitId = optString("unitId", ""), importFileName = optString("importFileName", ""),
+        unitId = optString("unitId", ""), category = optString("category", ""),
+        subcategory = optString("subcategory", ""), importFileName = optString("importFileName", ""),
         importRunId = optString("importRunId", ""),
         reconciliationStatus = optString("reconciliationStatus", BankReconciliationStatus.OPEN),
         noReceiptReason = optString("noReceiptReason", ""),
