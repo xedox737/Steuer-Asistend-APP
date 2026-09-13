@@ -33,13 +33,14 @@ import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material3.AlertDialog
@@ -691,59 +692,11 @@ private fun BankTransactionDetailsScreen(
     onReceiptDetails: (Receipt) -> Unit
 ) {
     val linkedReceipts = linkedLinks.mapNotNull { link -> receiptById[link.receiptId]?.let { link to it } }
-    var detailMenuOpen by remember(transaction.transactionId) { mutableStateOf(false) }
     LazyColumn(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
                 Text("Buchungsdetails", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 19.sp, modifier = Modifier.weight(1f))
-                Box {
-                    IconButton(onClick = { detailMenuOpen = true }) {
-                        Icon(Icons.Default.MoreHoriz, contentDescription = "Weitere Buchungsaktionen", tint = SlateGray)
-                    }
-                    DropdownMenu(expanded = detailMenuOpen, onDismissRequest = { detailMenuOpen = false }) {
-                        if (transaction.classification == BankTransactionClassification.NORMAL) {
-                            DropdownMenuItem(text = { Text("Privat / ignorieren") }, onClick = {
-                                viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.PRIVATE, overwriteProtected = true)
-                                detailMenuOpen = false
-                            })
-                            DropdownMenuItem(text = { Text("Als Umbuchung markieren") }, onClick = {
-                                viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.TRANSFER, overwriteProtected = true)
-                                detailMenuOpen = false
-                            })
-                        } else {
-                            DropdownMenuItem(text = { Text("Sonderklassifikation entfernen") }, onClick = {
-                                viewModel.resetBankTransactionClassification(transaction.transactionId)
-                                detailMenuOpen = false
-                            })
-                        }
-                        if (transaction.classification == BankTransactionClassification.NORMAL) {
-                            if (transaction.reviewState == BankReviewState.OPEN) {
-                                DropdownMenuItem(text = { Text("Als erledigt markieren") }, onClick = {
-                                    viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.REVIEW_DONE)
-                                    detailMenuOpen = false
-                                })
-                            } else {
-                                DropdownMenuItem(text = { Text("Prüfung wieder öffnen") }, onClick = {
-                                    viewModel.applyBankBatchAction(setOf(transaction.transactionId), com.example.data.BankBatchAction.REVIEW_OPEN)
-                                    detailMenuOpen = false
-                                })
-                            }
-                        }
-                        if (transaction.classification == BankTransactionClassification.NORMAL && transaction.reconciliationStatus == BankReconciliationStatus.OPEN) {
-                            DropdownMenuItem(text = { Text("Manuell prüfen") }, onClick = {
-                                viewModel.markBankTransactionForReview(transaction.transactionId)
-                                detailMenuOpen = false
-                            })
-                        }
-                        if (transaction.reconciliationStatus != BankReconciliationStatus.OPEN) {
-                            DropdownMenuItem(text = { Text("Buchung wieder öffnen") }, onClick = {
-                                viewModel.reopenBankTransaction(transaction.transactionId)
-                                detailMenuOpen = false
-                            })
-                        }
-                    }
-                }
             }
         }
         item {
@@ -773,14 +726,59 @@ private fun BankTransactionDetailsScreen(
                 }
             }
         }
-        if (transaction.classification == BankTransactionClassification.NORMAL) item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-                BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
-                BankQuickAction("Beleg\nanlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
-                Column(Modifier.weight(1f)) {
-                    BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
+        item {
+            val labels = BankDetailActionPolicy.labels(transaction)
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Was möchtest du tun?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BankActionCard(labels.privateAction, "Nicht in die Steuer übernehmen", Icons.Default.Person, Color(0xFFFFE8EC), CrimsonRed, Modifier.weight(1f)) {
+                            if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) viewModel.resetBankTransactionClassification(transaction.transactionId)
+                            else viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
+                        }
+                        BankActionCard(labels.transferAction, "Zwischen eigenen Konten", Icons.Default.SwapHoriz, Color(0xFFE7F2FF), AccentBlue, Modifier.weight(1f)) {
+                            if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
+                            else viewModel.markBankTransactionTransfer(transaction.transactionId)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BankActionCard(labels.reviewAction, labels.reviewSubtitle, Icons.Default.CheckCircle, Color(0xFFE8F8ED), EmeraldGreen, Modifier.weight(1f)) {
+                            if (transaction.reviewState == BankReviewState.DONE) viewModel.reopenBankTransactionReview(transaction.transactionId)
+                            else viewModel.markBankTransactionReviewDone(transaction.transactionId)
+                        }
+                        BankActionCard("Manuell prüfen", "Später bearbeiten", Icons.Default.Visibility, Color(0xFFFFF6D8), Color(0xFFF2A900), Modifier.weight(1f)) {
+                            viewModel.markBankTransactionForReview(transaction.transactionId)
+                        }
+                    }
                 }
-                BankQuickAction("Kein Beleg\nerforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt)
+            }
+        }
+
+        if (transaction.classification == BankTransactionClassification.NORMAL) item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Beleg zuordnen", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                        BankQuickAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
+                        BankQuickAction("Beleg hochladen / anlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f)) {
+                            BankTransactionSplitActions(viewModel = viewModel, transaction = transaction, compactTrigger = true, showAssignments = false)
+                        }
+                        BankQuickAction("Kein Beleg erforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt, tint = EmeraldGreen, containerColor = Color(0xFFE8F8ED))
+                    }
+                    Text(
+                        when {
+                            linkedLinks.isNotEmpty() -> "Beleg zugeordnet."
+                            suggestion != null -> "Passender Belegvorschlag gefunden."
+                            else -> "Noch kein passender Beleg gefunden."
+                        },
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F5F9)).padding(10.dp),
+                        color = SlateGray,
+                        fontSize = 12.sp
+                    )
+                }
             }
         }
 
@@ -930,12 +928,6 @@ private fun BankTransactionDetailsScreen(
                     }
                 }
             }
-        } else {
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                    Text("Noch kein passender Beleg gefunden.", modifier = Modifier.padding(12.dp), color = SlateGray)
-                }
-            }
         }
 
         if (rentSuggestion != null && transaction.amount > 0 && transaction.reconciliationStatus != BankReconciliationStatus.MATCHED) {
@@ -963,33 +955,51 @@ private fun BankTransactionDetailsScreen(
                     }
                 }
             }
-        } else {
-            item {
-                OutlinedButton(
-                    onClick = onNoReceipt,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    border = BorderStroke(1.dp, CrimsonRed),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Buchung ignorieren", color = CrimsonRed, fontWeight = FontWeight.Bold)
-                }
-            }
         }
         item { Spacer(Modifier.height(20.dp)) }
     }
 }
 
 @Composable
-internal fun BankQuickAction(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun BankQuickAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    tint: Color = AccentBlue,
+    containerColor: Color = Color(0xFFEFF6FF)
+) {
     Card(
-        modifier = modifier.height(88.dp).clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = modifier.heightIn(min = 104.dp).clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.fillMaxSize().padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(icon, contentDescription = label.replace('\n', ' '), tint = if (label.startsWith("Kein Beleg")) EmeraldGreen else AccentBlue, modifier = Modifier.size(25.dp))
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(27.dp))
             Spacer(Modifier.height(4.dp))
-            Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+internal fun BankActionCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    containerColor: Color,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(modifier = modifier.heightIn(min = 112.dp).clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = containerColor)) {
+        Row(Modifier.fillMaxSize().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(29.dp))
+            Spacer(Modifier.size(10.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
+                Text(subtitle, color = SlateGray, fontSize = 11.sp)
+            }
         }
     }
 }
@@ -1033,8 +1043,10 @@ private fun BankDetailLine(label: String, value: String, icon: androidx.compose.
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
         Icon(icon, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(10.dp))
-        Text(label, modifier = Modifier.weight(0.34f), fontSize = 11.sp, color = SlateGray)
-        Text(value, modifier = Modifier.weight(0.66f), fontSize = 12.sp, color = DarkNavy)
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 11.sp, color = SlateGray)
+            Text(value, fontSize = 12.sp, color = DarkNavy)
+        }
     }
 }
 
