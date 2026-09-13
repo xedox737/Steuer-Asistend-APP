@@ -6,6 +6,8 @@ import com.example.data.BankReconciliationStatus
 import com.example.data.BankRentAssignment
 import com.example.data.BankSplitPaymentType
 import com.example.data.BankTransaction
+import com.example.data.BankTransactionClassification
+import com.example.data.BankReviewState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -43,9 +45,25 @@ class BankCompactDetailPolicyTest {
 
     @Test fun detailHasExactlyFourRequiredQuickActions() {
         assertEquals(
-            listOf("Beleg suchen", "Beleg anlegen", "Buchung aufteilen", "Kein Beleg erforderlich"),
+            listOf("Beleg suchen", "Beleg hochladen / anlegen", "Buchung aufteilen", "Kein Beleg erforderlich"),
             BankCompactDetailPolicy.quickActions.map { it.label }
         )
+    }
+
+    @Test fun directActionsUseStateDependentUndoLabels() {
+        val normal = transaction()
+        assertEquals("Privat / ignorieren", BankDetailActionPolicy.labels(normal).privateAction)
+        assertEquals("Als Umbuchung markieren", BankDetailActionPolicy.labels(normal).transferAction)
+        assertEquals("Als erledigt markieren", BankDetailActionPolicy.labels(normal).reviewAction)
+
+        val private = normal.copy(classification = BankTransactionClassification.PRIVATE_IGNORED)
+        assertEquals("Privat aufheben", BankDetailActionPolicy.labels(private).privateAction)
+
+        val transfer = normal.copy(classification = BankTransactionClassification.TRANSFER)
+        assertEquals("Umbuchung aufheben", BankDetailActionPolicy.labels(transfer).transferAction)
+
+        val done = normal.copy(reviewState = BankReviewState.DONE)
+        assertEquals("Wieder öffnen", BankDetailActionPolicy.labels(done).reviewAction)
     }
 
     @Test fun matchScoreIsPassedThroughWithoutInventedPercentage() {
