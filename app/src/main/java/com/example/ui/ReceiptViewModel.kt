@@ -1677,6 +1677,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         transactionIds: Set<String>,
         action: String,
         propertyId: String = "",
+        category: String = "",
+        subcategory: String = "",
         noReceiptReason: String = "Batch: kein Beleg erforderlich",
         overwriteProtected: Boolean = false
     ) {
@@ -1686,6 +1688,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 transactionIds = transactionIds,
                 action = action,
                 propertyId = propertyId,
+                category = category,
+                subcategory = subcategory,
                 noReceiptReason = noReceiptReason,
                 overwriteProtected = overwriteProtected
             )
@@ -1697,6 +1701,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 com.example.data.BankBatchAction.REVIEW_DONE -> "Als erledigt markiert"
                 com.example.data.BankBatchAction.REVIEW_OPEN -> "Wieder geöffnet"
                 com.example.data.BankBatchAction.PROPERTY -> "Immobilie zugewiesen"
+                com.example.data.BankBatchAction.CATEGORY -> "Kategorie zugewiesen"
                 else -> "Buchungen geändert"
             }
             _bankImportStatus.value = "$label: ${result.changed}. Übersprungen: ${result.skipped}."
