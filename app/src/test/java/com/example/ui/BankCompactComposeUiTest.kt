@@ -53,12 +53,12 @@ class BankCompactComposeUiTest {
         var actions = 0
         composeRule.setContent {
             MaterialTheme {
-                BankQuickAction("Beleg\nsuchen", Icons.Default.Search, onClick = { actions++ })
+                BankQuickAction("Beleg suchen", Icons.Default.Search, onClick = { actions++ })
             }
         }
 
-        composeRule.onNodeWithText("Beleg\nsuchen").fetchSemanticsNode()
-        composeRule.onNodeWithText("Beleg\nsuchen").performClick()
+        composeRule.onNodeWithText("Beleg suchen").fetchSemanticsNode()
+        composeRule.onNodeWithText("Beleg suchen").performClick()
         composeRule.runOnIdle { assertEquals(1, actions) }
     }
 }
