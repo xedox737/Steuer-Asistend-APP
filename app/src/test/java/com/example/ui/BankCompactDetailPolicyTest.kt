@@ -66,6 +66,11 @@ class BankCompactDetailPolicyTest {
         assertEquals("Wieder öffnen", BankDetailActionPolicy.labels(done).reviewAction)
     }
 
+    @Test fun receiptGridUsesFourColumnsAtNormalFontAndTwoByTwoForLargeFont() {
+        assertTrue(BankDetailActionPolicy.useFourReceiptColumns(1.0f))
+        assertEquals(false, BankDetailActionPolicy.useFourReceiptColumns(1.3f))
+    }
+
     @Test fun matchScoreIsPassedThroughWithoutInventedPercentage() {
         val suggestion = BankMatchSuggestion("tx-synthetic", 1, 92, "HOCH", listOf("synthetic"))
         assertEquals(92, BankCompactDetailPolicy.visibleMatchScore(suggestion))
