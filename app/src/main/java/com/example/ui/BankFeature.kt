@@ -793,15 +793,6 @@ private fun BankTransactionDetailsScreen(
             }
         }
 
-        if (transaction.classification == BankTransactionClassification.NORMAL) item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Weitere Informationen", fontWeight = FontWeight.Bold, color = DarkNavy, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SlateGray)
-                }
-            }
-        }
-
         if (transaction.classification == BankTransactionClassification.TRANSFER) {
             item {
                 Card(
@@ -900,14 +891,14 @@ private fun BankTransactionDetailsScreen(
                     Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("✓ Zugeordnet", fontWeight = FontWeight.Bold, color = EmeraldGreen)
                         linkedReceipts.forEach { (link, receipt) ->
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(receipt.aussteller.ifBlank { "Beleg ${receipt.id}" }, fontWeight = FontWeight.SemiBold, color = DarkNavy)
-                                    Text("${receipt.getEffectiveDisplayId()} • ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 11.sp, color = SlateGray)
+                            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(receipt.aussteller.ifBlank { "Beleg ${receipt.id}" }, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                                Text("${receipt.getEffectiveDisplayId()} • ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 11.sp, color = SlateGray)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = { onReceiptDetails(receipt) }, modifier = Modifier.weight(1f)) { Text("Öffnen", maxLines = 1) }
+                                    TextButton(onClick = { viewModel.proposeBankRuleFromConfirmedReceipt(transaction.transactionId, receipt.id) }, modifier = Modifier.weight(1f)) { Text("Regel merken", maxLines = 1) }
+                                    TextButton(onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }, modifier = Modifier.weight(1f)) { Text("Lösen", maxLines = 1) }
                                 }
-                                TextButton(onClick = { onReceiptDetails(receipt) }) { Text("Öffnen") }
-                                TextButton(onClick = { viewModel.proposeBankRuleFromConfirmedReceipt(transaction.transactionId, receipt.id) }) { Text("Regel merken") }
-                                TextButton(onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) }) { Text("Lösen") }
                             }
                         }
                         assignments.forEach { assignment ->
