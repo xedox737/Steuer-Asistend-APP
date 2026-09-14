@@ -319,15 +319,26 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        if (currentScreen == AppScreen.DASHBOARD) {
+                            Surface(
+                                modifier = Modifier.size(44.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = AccentBlue.copy(alpha = 0.12f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Home, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        }
                         Column {
                             Text(
-                                screenTitle,
+                                if (currentScreen == AppScreen.DASHBOARD) "ImmoPilot" else screenTitle,
                                 fontWeight = FontWeight.Bold,
                                 color = DarkNavy,
-                                fontSize = 20.sp
+                                fontSize = if (currentScreen == AppScreen.DASHBOARD) 25.sp else 20.sp
                             )
                             Text(
-                                if (currentScreen == AppScreen.DASHBOARD) "Steuer-Assistent • Anlage V" else "Steuer-Assistent",
+                                if (currentScreen == AppScreen.DASHBOARD) "Immobilien. Finanzen. Steuern." else "Steuer-Assistent",
                                 color = SlateGray,
                                 fontSize = 11.sp
                             )
@@ -960,18 +971,25 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
-        Ui2Section("Guten Tag!") {
-            Text("Schön, dass du da bist.", style = MaterialTheme.typography.bodyLarge)
-            Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE, dd.MM.yyyy", Locale.GERMAN)),
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Ui2Section("Hallo!") {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("☀️", fontSize = 38.sp)
+                Column(Modifier.weight(1f)) {
+                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Deine Immobilien und Finanzen auf einen Blick.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEE\ndd.MM.yyyy", Locale.GERMAN)),
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         Ui2Section("Aktueller Stand") {
             Ui2Grid(listOf(
-                "Belege gesamt" to receipts.size.toString(),
-                "Fehlende Belege" to missingReceiptsCount.toString(),
-                "Mietrückstände" to rentArrearsCount.toString(),
-                "Gelernte Regeln" to learnedRulesCount.toString()
-            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier) }
+                Triple("Offene Buchungen", totalBankAlerts.toString(), AccentBlue),
+                Triple("Offene Belege", missingReceiptsCount.toString(), EmeraldGreen),
+                Triple("Belege gesamt", receipts.size.toString(), Color(0xFF7C3AED)),
+                Triple("Regeln aktiv", learnedRulesCount.toString(), WarmOrange)
+            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier, metric.third) }
             if (totalBankAlerts > 0) {
                 Ui2Destination("$totalBankAlerts Hinweise aus dem Bankabgleich",
                     "$missingReceiptsCount fehlende Belege · $rentArrearsCount Mietrückstände",
@@ -13872,21 +13890,3 @@ fun RecycleBinDialog(
                                                 Text("Endgültig löschen", fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
                                             }
                                         }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = DarkNavy)
-            ) {
-                Text("Schließen")
-            }
-        }
-    )
-}
