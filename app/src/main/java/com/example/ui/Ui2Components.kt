@@ -20,9 +20,9 @@ import androidx.compose.ui.unit.dp
 
 /** Shared presentation tokens. These components do not own application state. */
 object Ui2 {
-    val spacing = 12.dp
-    val padding = 16.dp
-    val shape = RoundedCornerShape(16.dp)
+    val spacing = 8.dp
+    val padding = 12.dp
+    val shape = RoundedCornerShape(12.dp)
 }
 
 @Composable
@@ -86,7 +86,7 @@ internal fun Ui2ActionGrid(actions: List<Ui2Action>) {
 internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
     Card(
         onClick = action.onClick,
-        modifier = modifier.heightIn(min = 92.dp),
+        modifier = modifier.heightIn(min = 72.dp),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(
             containerColor = action.color.copy(alpha = 0.09f),
@@ -94,21 +94,21 @@ internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
         )
     ) {
         Row(
-            Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.size(34.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = action.color.copy(alpha = 0.14f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(25.dp))
+                    Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(20.dp))
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(action.title, style = MaterialTheme.typography.titleSmall)
+                Text(action.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 if (action.subtitle.isNotBlank()) {
                     Text(action.subtitle, style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -122,8 +122,8 @@ internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
 internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifier, color: Color = AccentBlue) {
     Surface(modifier, shape = Ui2.shape, color = color.copy(alpha = 0.08f)) {
         Row(
-            Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val icon = when (label) {
@@ -133,18 +133,18 @@ internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifi
                 else -> Icons.Default.ReceiptLong
             }
             Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.size(32.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = color.copy(alpha = 0.14f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = color, modifier = Modifier.size(25.dp))
+                    Icon(icon, null, tint = color, modifier = Modifier.size(19.dp))
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface)
-                Text(label, style = MaterialTheme.typography.bodyMedium,
+                Text(label, style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -159,23 +159,23 @@ internal fun Ui2Destination(
     color: Color = AccentBlue,
     onClick: () -> Unit
 ) {
-    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
+    Surface(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
         shape = Ui2.shape, color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Surface(
-                modifier = Modifier.size(40.dp),
-                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.size(34.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = color.copy(alpha = 0.10f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
+                    Icon(icon, null, tint = color, modifier = Modifier.size(19.dp))
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.bodyMedium,
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                if (subtitle.isNotBlank()) Text(subtitle, style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = color, modifier = Modifier.size(20.dp))
