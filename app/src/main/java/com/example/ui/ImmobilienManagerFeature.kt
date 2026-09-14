@@ -174,12 +174,13 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
 private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyManagerSummary, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("property_card_${property.propertyId}"),
+        shape = Ui2.shape,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.padding(16.dp), Arrangement.spacedBy(7.dp)) {
-            Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            Text(property.adresse, fontSize = 11.sp, color = SlateGray)
+            Text(property.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(property.adresse, fontSize = 13.sp, color = SlateGray)
             HorizontalDivider(color = BorderColor)
             Text("${summary.unitCount} Einheiten · ${summary.rentedCount} vermietet · ${summary.vacantCount} frei/prüfen", fontSize = 11.sp, color = DarkNavy)
             Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {

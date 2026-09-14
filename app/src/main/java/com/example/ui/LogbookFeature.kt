@@ -74,22 +74,25 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
             .verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("KI-Fahrtenbuch 2.0", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-        Text(
-            "Die KI erkennt Belegdatum, Händler, Objektbezug und einen möglichen Fahrtzweck. " +
-                "Ihre Kilometerangabe bleibt ein gekennzeichneter Vorschlag und wird nie allein steuerlich eingebucht.",
-            fontSize = 12.sp, color = SlateGray
-        )
+        Ui2Section("KI-Fahrtenbuch 2.0") {
+            Text(
+                "Die KI erkennt Belegdatum, Händler, Objektbezug und einen möglichen Fahrtzweck. " +
+                    "Ihre Kilometerangabe bleibt ein gekennzeichneter Vorschlag und wird nie allein steuerlich eingebucht.",
+                fontSize = 12.sp, color = SlateGray, lineHeight = 17.sp
+            )
+        }
         if (trips.isNotEmpty()) {
-            Text("Gespeicherte Fahrten", fontWeight = FontWeight.Bold, color = DarkNavy)
-            trips.take(5).forEach { SavedTripCard(it) }
+            Ui2Section("Gespeicherte Fahrten") {
+                trips.take(5).forEach { SavedTripCard(it) }
+            }
         }
         if (routes.isNotEmpty()) StandardRoutesCard(routes, viewModel)
-        Text("Fahrtvorschläge aus Belegen", fontWeight = FontWeight.Bold, color = DarkNavy)
-        if (suggested.isEmpty()) {
-            Text("Keine neuen passenden Belege gefunden.", color = SlateGray, fontSize = 12.sp)
-        } else {
-            suggested.forEach { LogbookSuggestionCard(it, effectiveMetadata, viewModel) }
+        Ui2Section("Fahrtvorschläge aus Belegen") {
+            if (suggested.isEmpty()) {
+                Text("Keine neuen passenden Belege gefunden.", color = SlateGray, fontSize = 12.sp)
+            } else {
+                suggested.forEach { LogbookSuggestionCard(it, effectiveMetadata, viewModel) }
+            }
         }
         Spacer(Modifier.height(72.dp))
     }
@@ -97,7 +100,7 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
 
 @Composable
 private fun SavedTripCard(trip: LogbookTrip) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+    Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(trip.date, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -114,7 +117,7 @@ private fun SavedTripCard(trip: LogbookTrip) {
 @Composable
 private fun StandardRoutesCard(routes: List<StandardRoute>, viewModel: ReceiptViewModel) {
     var expanded by remember { mutableStateOf(false) }
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+    Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Standardstrecken (${routes.size})", fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -497,3 +500,4 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
         }
     }
 }
+
