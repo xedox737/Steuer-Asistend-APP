@@ -408,7 +408,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             AppScreen.RECEIPTS_LIST -> Triple(screen, Icons.Default.Receipt, "Belege")
                             AppScreen.ADD_RECEIPT -> Triple(screen, Icons.Default.AddCircle, "Scannen")
                             AppScreen.PROPERTIES -> Triple(screen, Icons.Default.Apartment, "Immobilien")
-                            AppScreen.MORE -> Triple(screen, Icons.Default.MoreHoriz, "Mehr")
+                            AppScreen.MORE -> Triple(screen, Icons.Default.Apartment, "Mehr")
                             else -> error("Nicht unterstütztes primäres Navigationsziel: $screen")
                         }
                     }
