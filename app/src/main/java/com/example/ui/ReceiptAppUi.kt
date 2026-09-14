@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Assessment
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.isGranted
@@ -291,6 +292,14 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         AppScreen.BANK -> "Bank & Belege"
         AppScreen.MORE -> "Mehr"
     }
+    val headerIcon = when (currentScreen) {
+        AppScreen.DASHBOARD -> Icons.Default.Home
+        AppScreen.RECEIPTS_LIST -> Icons.Default.Receipt
+        AppScreen.ADD_RECEIPT -> Icons.Default.AddCircle
+        AppScreen.PROPERTIES -> Icons.Default.Apartment
+        AppScreen.MORE -> Icons.Default.MoreHoriz
+        else -> null
+    }
 
     var showAccountSettingsDialog by remember { mutableStateOf(false) }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
@@ -319,18 +328,24 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Column {
-                            Text(
-                                screenTitle,
-                                fontWeight = FontWeight.Bold,
-                                color = DarkNavy,
-                                fontSize = 20.sp
-                            )
-                            Text(
-                                if (currentScreen == AppScreen.DASHBOARD) "Steuer-Assistent • Anlage V" else "Steuer-Assistent",
-                                color = SlateGray,
-                                fontSize = 11.sp
-                            )
+                        headerIcon?.let { icon ->
+                            Surface(
+                                modifier = Modifier.size(44.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = AccentBlue.copy(alpha = 0.12f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(icon, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        }
+                        if (currentScreen == AppScreen.DASHBOARD) {
+                            Column {
+                                Text("ImmoPilot", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 25.sp)
+                                Text("Immobilien. Finanzen. Steuern.", color = SlateGray, fontSize = 11.sp)
+                            }
+                        } else {
+                            Text(screenTitle, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 20.sp)
                         }
                     }
                 },
@@ -411,11 +426,20 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             selected = isSelected,
                             onClick = { viewModel.setScreen(screen) },
                             icon = {
-                                Icon(
-                                    icon,
-                                    contentDescription = label,
-                                    modifier = if (isPrimaryAction) Modifier.size(28.dp) else Modifier.size(24.dp)
-                                )
+                                if (isPrimaryAction) {
+                                    Surface(
+                                        modifier = Modifier.size(54.dp),
+                                        shape = CircleShape,
+                                        color = AccentBlue,
+                                        shadowElevation = 6.dp
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(30.dp))
+                                        }
+                                    }
+                                } else {
+                                    Icon(icon, contentDescription = label, modifier = Modifier.size(24.dp))
+                                }
                             },
                             label = {
                       Text(
@@ -428,9 +452,9 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = if (isPrimaryAction) Color.White else AccentBlue,
                                 selectedTextColor = if (isPrimaryAction) AccentBlue else DarkNavy,
-                                unselectedIconColor = if (isPrimaryAction) AccentBlue else SlateGray,
+                                unselectedIconColor = if (isPrimaryAction) Color.White else SlateGray,
                                 unselectedTextColor = SlateGray,
-                                indicatorColor = if (isPrimaryAction) AccentBlue else Color(0xFFDBEAFE)
+                                indicatorColor = if (isPrimaryAction) Color.Transparent else Color(0xFFDBEAFE)
                             ),
                             modifier = Modifier.testTag("nav_item_${screen.name.lowercase()}")
                         )
@@ -960,18 +984,31 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
-        Ui2Section("Guten Tag!") {
-            Text("Schön, dass du da bist.", style = MaterialTheme.typography.bodyLarge)
-            Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE, dd.MM.yyyy", Locale.GERMAN)),
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Ui2Section("Hallo Sergej!") {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("☀️", fontSize = 38.sp)
+                Column(Modifier.weight(1f)) {
+                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Deine Immobilien und Finanzen auf einen Blick.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    java.time.LocalDate.now().format(
+                        java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
+                    ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End
+                )
+            }
         }
         Ui2Section("Aktueller Stand") {
             Ui2Grid(listOf(
-                "Belege gesamt" to receipts.size.toString(),
-                "Fehlende Belege" to missingReceiptsCount.toString(),
-                "Mietrückstände" to rentArrearsCount.toString(),
-                "Gelernte Regeln" to learnedRulesCount.toString()
-            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier) }
+                Triple("Offene Buchungen", totalBankAlerts.toString(), AccentBlue),
+                Triple("Offene Belege", missingReceiptsCount.toString(), EmeraldGreen),
+                Triple("Belege gesamt", receipts.size.toString(), Color(0xFF7C3AED)),
+                Triple("Regeln aktiv", learnedRulesCount.toString(), WarmOrange)
+            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier, metric.third) }
             if (totalBankAlerts > 0) {
                 Ui2Destination("$totalBankAlerts Hinweise aus dem Bankabgleich",
                     "$missingReceiptsCount fehlende Belege · $rentArrearsCount Mietrückstände",
@@ -980,14 +1017,15 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         }
         Ui2Section("Schnellaktionen") {
             Ui2ActionGrid(listOf(
-                Ui2Action("Beleg scannen", "Scan & Upload Center", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Beleg hochladen", "Datei oder Bild auswählen", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Kontoauszüge importieren", "Bank / Kontoauszüge", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
-                Ui2Action("Neue Buchung", "Beleg manuell erfassen", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
+                Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Beleg hochladen", "", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Kontoauszüge\nimportieren", "", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
+                Ui2Action("Neue Buchung", "", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
             ))
         }
         Ui2Section("Letzte Aktivitäten") {
-            // The source has receipt dates, not an audit event stream; label these honestly.
+            // The data source has receipt dates rather than a separate audit log. Keep the
+            // visual activity treatment while naming the data honestly.
             Text("Zuletzt datierte Belege", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (receipts.isEmpty()) Text("Noch keine Belege erfasst.")
@@ -1036,6 +1074,41 @@ internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean,
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück zu Mehr") }
             Text(if (monitor) "Sanierungs-Monitor" else "AfA Gebäude", style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f))
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = Ui2.shape,
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)),
+            border = BorderStroke(1.dp, Color(0xFFD8E9FF))
+        ) {
+            Row(
+                Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = AccentBlue.copy(alpha = 0.12f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(if (monitor) Icons.Default.Build else Icons.Default.Assessment, null, tint = AccentBlue)
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        if (monitor) "Sanierung im Blick" else "Gebäude abschreiben",
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                    Text(
+                        if (monitor) "Behalte Kosten, Zeitraum und die 15%-Prüfung im Blick."
+                        else "Verwalte deine Immobilien, berechne die AfA und behalte wichtige Daten im Blick.",
+                        fontSize = 12.sp,
+                        color = SlateGray
+                    )
+                }
+            }
         }
         Ui2Section(metadata.name.ifBlank { "Immobilie" }) {
             Text(metadata.adresse, style = MaterialTheme.typography.bodyMedium)

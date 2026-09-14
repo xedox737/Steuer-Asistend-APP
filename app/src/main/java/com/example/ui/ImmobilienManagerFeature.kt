@@ -6,10 +6,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
@@ -32,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -53,6 +57,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -142,12 +150,14 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column {
-                        Text("Meine Immobilien", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                        Text("Objekte, Einheiten und Mieten im Überblick", fontSize = 11.sp, color = SlateGray)
-                    }
-                    Button(onClick = { showWizard = true }, modifier = Modifier.testTag("add_property_button")) {
-                        Icon(Icons.Default.Add, null); Text(" Immobilie")
+                    Text("Deine Objekte im Überblick", fontSize = 14.sp, color = SlateGray)
+                    FloatingActionButton(
+                        onClick = { showWizard = true },
+                        modifier = Modifier.testTag("add_property_button"),
+                        containerColor = AccentBlue,
+                        contentColor = Color.White
+                    ) {
+                        Icon(Icons.Default.Add, "Immobilie hinzufügen")
                     }
                 }
             }
@@ -178,16 +188,26 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
     ) {
-        Column(Modifier.padding(16.dp), Arrangement.spacedBy(7.dp)) {
-            Text(property.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            Text(property.adresse, fontSize = 13.sp, color = SlateGray)
-            HorizontalDivider(color = BorderColor)
-            Text("${summary.unitCount} Einheiten · ${summary.rentedCount} vermietet · ${summary.vacantCount} frei/prüfen", fontSize = 11.sp, color = DarkNavy)
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                Text("Soll ${NumberFormatter.format(summary.expectedRent)}", fontSize = 11.sp, color = SlateGray)
-                Text("Ist ${NumberFormatter.format(summary.actualRent)}", fontSize = 11.sp, color = EmeraldGreen)
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFFBFDBFE), Color(0xFFE0F2FE)))) ,
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.HomeWork, null, tint = AccentBlue, modifier = Modifier.size(42.dp))
             }
-            Text("Offen ${NumberFormatter.format(summary.outstandingRent)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen)
+            Column(Modifier.weight(1f), Arrangement.spacedBy(6.dp)) {
+                Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(property.adresse, fontSize = 13.sp, color = SlateGray)
+                Text("${summary.unitCount} Einheiten", fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Text("Soll ${NumberFormatter.format(summary.expectedRent)}", fontSize = 11.sp, color = SlateGray)
+                    Text("Ist ${NumberFormatter.format(summary.actualRent)}", fontSize = 11.sp, color = EmeraldGreen)
+                }
+                Text("Offen ${NumberFormatter.format(summary.outstandingRent)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen)
+            }
         }
     }
 }
@@ -626,26 +646,49 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
             }
         } else {
             item { Ui2Section("Finanzen") {
-                Ui2Destination("Bank / Kontoauszüge", "Importieren, prüfen und zuordnen", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) }
-                Ui2Destination("Einnahmen / Ausgaben", "Buchungen und Auswertungen", Icons.Default.Payments) { viewModel.setScreen(AppScreen.LEDGER) }
-                Ui2Destination("DATEV Export", "Vorschau, Prüfung und Export", Icons.Default.Description) { showDatev = true }
-                Ui2Destination("Steuerliche Übersicht", "Steuerschätzung · Anlage V", Icons.Default.Assessment) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+                Ui2Destination("Bank / Kontoauszüge", "Kontoauszüge importieren und zuordnen", Icons.Default.AccountBalance, AccentBlue) { viewModel.setScreen(AppScreen.BANK) }
+                Ui2Destination("Einnahmen / Ausgaben", "Mieteinnahmen und Ausgaben erfassen", Icons.Default.Payments, CrimsonRed) { viewModel.setScreen(AppScreen.LEDGER) }
+                Ui2Destination("DATEV Export", "Buchungen für den Steuerberater", Icons.Default.Description, EmeraldGreen) { showDatev = true }
+                Ui2Destination("Steuerliche Übersicht", "Wichtige Kennzahlen", Icons.Default.Assessment, WarmOrange) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
                 Ui2Destination("Mieteingänge", "Soll/Ist & Nebenkosten", Icons.Default.HomeWork) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
             } }
             item { Ui2Section("Verwaltung") {
-                Ui2Destination("Dokumentenakte", "Dokumente und Volltextsuche", Icons.Default.Description) { viewModel.setScreen(AppScreen.DOCUMENTS) }
-                Ui2Destination("Regeln", "Bankregeln und Händler-Zuordnungen", Icons.Default.Settings) { page = "rules" }
-                Ui2Destination("Backup & Cloud", "Sicherung und Wiederherstellung", Icons.Default.Description) { page = "backup" }
+                Ui2Destination("Dokumentenakte", "Dokumente und Volltextsuche", Icons.Default.Description, AccentBlue) { viewModel.setScreen(AppScreen.DOCUMENTS) }
+                Ui2Destination("Regeln", "Automatische Zuordnung", Icons.Default.Settings, Color(0xFF7C3AED)) { page = "rules" }
+                Ui2Destination("Backup & Cloud", "Sicherung und Wiederherstellung", Icons.Default.Description, EmeraldGreen) { page = "backup" }
             } }
             item { Ui2Section("Objekte & Steuern") {
-                Ui2Destination("Immobilien verwalten", "Objekte, Einheiten und Stammdaten", Icons.Default.Apartment) { viewModel.setScreen(AppScreen.PROPERTIES) }
-                Ui2Destination("AfA Gebäude", "Kaufpreisaufteilung und Abschreibung", Icons.Default.Assessment) { page = "afa" }
-                Ui2Destination("Sanierungs-Monitor", "Sanierungsbelege und 15%-Prüfung", Icons.Default.Build) { page = "monitor" }
-                Ui2Destination("Fahrtenbuch", "Dienst- und Objektfahrten", Icons.Default.DirectionsCar) { viewModel.setScreen(AppScreen.LOGBOOK) }
+                Ui2Destination("Immobilien verwalten", "Objekte, Einheiten und Stammdaten", Icons.Default.Apartment, AccentBlue) { viewModel.setScreen(AppScreen.PROPERTIES) }
+                Ui2Destination("AfA Gebäude", "Abschreibung berechnen und verwalten", Icons.Default.Assessment, AccentBlue) { page = "afa" }
+                Ui2Destination("Sanierungs-Monitor", "Maßnahmen, Kosten und Zeitplan", Icons.Default.Build, EmeraldGreen) { page = "monitor" }
+                Ui2Destination("Fahrtenbuch", "Dienst- und Objektfahrten erfassen", Icons.Default.DirectionsCar, AccentBlue) { viewModel.setScreen(AppScreen.LOGBOOK) }
             } }
             item { Ui2Section("Einstellungen") {
                 Ui2Destination("App Einstellungen", "KI, Sicherung, Belege und persönliche Angaben", Icons.Default.Settings) { showSettings = true }
             } }
+            item {
+                Card(
+                    shape = Ui2.shape,
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)),
+                    border = BorderStroke(1.dp, Color(0xFFD8E9FF))
+                ) {
+                    Row(
+                        Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(Icons.Default.Lightbulb, null, tint = AccentBlue)
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Tipp", fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text(
+                                "Alle wichtigen Funktionen an einem Ort – für eine einfache und effiziente Verwaltung deiner Immobilien.",
+                                fontSize = 12.sp,
+                                color = SlateGray
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
