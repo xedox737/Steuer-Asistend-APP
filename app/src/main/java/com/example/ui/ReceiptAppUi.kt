@@ -988,7 +988,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
-        Ui2Section("Hallo!") {
+        Ui2Section("Hallo Sergej!") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("☀️", fontSize = 38.sp)
                 Column(Modifier.weight(1f)) {
@@ -996,8 +996,14 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     Text("Deine Immobilien und Finanzen auf einen Blick.", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEE\ndd.MM.yyyy", Locale.GERMAN)),
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    java.time.LocalDate.now().format(
+                        java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
+                    ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End
+                )
             }
         }
         Ui2Section("Aktueller Stand") {
@@ -1015,14 +1021,15 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         }
         Ui2Section("Schnellaktionen") {
             Ui2ActionGrid(listOf(
-                Ui2Action("Beleg scannen", "Scan & Upload Center", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Beleg hochladen", "Datei oder Bild auswählen", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Kontoauszüge importieren", "Bank / Kontoauszüge", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
-                Ui2Action("Neue Buchung", "Beleg manuell erfassen", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
+                Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Beleg hochladen", "", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Kontoauszüge\nimportieren", "", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
+                Ui2Action("Neue Buchung", "", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
             ))
         }
         Ui2Section("Letzte Aktivitäten") {
-            // The source has receipt dates, not an audit event stream; label these honestly.
+            // The data source has receipt dates rather than a separate audit log. Keep the
+            // visual activity treatment while naming the data honestly.
             Text("Zuletzt datierte Belege", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (receipts.isEmpty()) Text("Noch keine Belege erfasst.")
