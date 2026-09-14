@@ -291,6 +291,14 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
         AppScreen.BANK -> "Bank & Belege"
         AppScreen.MORE -> "Mehr"
     }
+    val headerIcon = when (currentScreen) {
+        AppScreen.DASHBOARD -> Icons.Default.Home
+        AppScreen.RECEIPTS_LIST -> Icons.Default.Receipt
+        AppScreen.ADD_RECEIPT -> Icons.Default.AddCircle
+        AppScreen.PROPERTIES -> Icons.Default.Apartment
+        AppScreen.MORE -> Icons.Default.MoreHoriz
+        else -> null
+    }
 
     var showAccountSettingsDialog by remember { mutableStateOf(false) }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
@@ -319,14 +327,14 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (currentScreen == AppScreen.DASHBOARD) {
+                        headerIcon?.let { icon ->
                             Surface(
                                 modifier = Modifier.size(44.dp),
                                 shape = RoundedCornerShape(14.dp),
                                 color = AccentBlue.copy(alpha = 0.12f)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.Home, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
+                                    Icon(icon, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
                                 }
                             }
                         }
@@ -422,11 +430,20 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             selected = isSelected,
                             onClick = { viewModel.setScreen(screen) },
                             icon = {
-                                Icon(
-                                    icon,
-                                    contentDescription = label,
-                                    modifier = if (isPrimaryAction) Modifier.size(28.dp) else Modifier.size(24.dp)
-                                )
+                                if (isPrimaryAction) {
+                                    Surface(
+                                        modifier = Modifier.size(54.dp),
+                                        shape = CircleShape,
+                                        color = AccentBlue,
+                                        shadowElevation = 6.dp
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(30.dp))
+                                        }
+                                    }
+                                } else {
+                                    Icon(icon, contentDescription = label, modifier = Modifier.size(24.dp))
+                                }
                             },
                             label = {
                       Text(
@@ -439,9 +456,9 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = if (isPrimaryAction) Color.White else AccentBlue,
                                 selectedTextColor = if (isPrimaryAction) AccentBlue else DarkNavy,
-                                unselectedIconColor = if (isPrimaryAction) AccentBlue else SlateGray,
+                                unselectedIconColor = if (isPrimaryAction) Color.White else SlateGray,
                                 unselectedTextColor = SlateGray,
-                                indicatorColor = if (isPrimaryAction) AccentBlue else Color(0xFFDBEAFE)
+                                indicatorColor = if (isPrimaryAction) Color.Transparent else Color(0xFFDBEAFE)
                             ),
                             modifier = Modifier.testTag("nav_item_${screen.name.lowercase()}")
                         )
@@ -13890,3 +13907,21 @@ fun RecycleBinDialog(
                                                 Text("Endgültig löschen", fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = DarkNavy)
+            ) {
+                Text("Schließen")
+            }
+        }
+    )
+}
