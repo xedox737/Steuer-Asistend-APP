@@ -741,36 +741,24 @@ private fun BankTransactionDetailsScreen(
         }
         item {
             val labels = BankDetailActionPolicy.labels(transaction)
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Was möchtest du tun?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                        Row(Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFFEAF4FF)).padding(horizontal = 7.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.size(4.dp))
-                            Text("Schnell & einfach", color = AccentBlue, fontSize = 9.sp)
-                        }
+            Ui2Section("Was möchtest du tun?") {
+                Ui2ActionGrid(listOf(
+                    Ui2Action(labels.privateAction, "Nicht in die Steuer übernehmen", Icons.Default.Person, CrimsonRed) {
+                        if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) viewModel.resetBankTransactionClassification(transaction.transactionId)
+                        else viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
+                    },
+                    Ui2Action(labels.transferAction, "Zwischen eigenen Konten", Icons.Default.SwapHoriz) {
+                        if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
+                        else viewModel.markBankTransactionTransfer(transaction.transactionId)
+                    },
+                    Ui2Action(labels.reviewAction, labels.reviewSubtitle, Icons.Default.CheckCircle, EmeraldGreen) {
+                        if (transaction.reviewState == BankReviewState.DONE) viewModel.reopenBankTransactionReview(transaction.transactionId)
+                        else viewModel.markBankTransactionReviewDone(transaction.transactionId)
+                    },
+                    Ui2Action("Manuell prüfen", "Später bearbeiten", Icons.Default.Visibility, WarmOrange) {
+                        viewModel.markBankTransactionForReview(transaction.transactionId)
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BankActionCard(labels.privateAction, "Nicht in die Steuer übernehmen", Icons.Default.Person, Color(0xFFFFE8EC), CrimsonRed, Modifier.weight(1f)) {
-                            if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) viewModel.resetBankTransactionClassification(transaction.transactionId)
-                            else viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
-                        }
-                        BankActionCard(labels.transferAction, "Zwischen eigenen Konten", Icons.Default.SwapHoriz, Color(0xFFE7F2FF), AccentBlue, Modifier.weight(1f)) {
-                            if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
-                            else viewModel.markBankTransactionTransfer(transaction.transactionId)
-                        }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BankActionCard(labels.reviewAction, labels.reviewSubtitle, Icons.Default.CheckCircle, Color(0xFFE8F8ED), EmeraldGreen, Modifier.weight(1f)) {
-                            if (transaction.reviewState == BankReviewState.DONE) viewModel.reopenBankTransactionReview(transaction.transactionId)
-                            else viewModel.markBankTransactionReviewDone(transaction.transactionId)
-                        }
-                        BankActionCard("Manuell prüfen", "Später bearbeiten", Icons.Default.Visibility, Color(0xFFFFF6D8), Color(0xFFF2A900), Modifier.weight(1f)) {
-                            viewModel.markBankTransactionForReview(transaction.transactionId)
-                        }
-                    }
-                }
+                ))
             }
         }
 
@@ -980,17 +968,7 @@ internal fun BankQuickAction(
     tint: Color = AccentBlue,
     containerColor: Color = Color(0xFFEFF6FF)
 ) {
-    Card(
-        modifier = modifier.heightIn(min = 86.dp).clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(1.dp, BorderColor)
-    ) {
-        Column(Modifier.fillMaxSize().padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(25.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(label, fontSize = 9.sp, lineHeight = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        }
-    }
+    Ui2ActionCard(Ui2Action(label.replace('\n', ' '), "", icon, tint, onClick), modifier.fillMaxWidth())
 }
 
 @Composable
@@ -1003,17 +981,7 @@ internal fun BankActionCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card(modifier = modifier.heightIn(min = 86.dp).clickable(onClick = onClick), colors = CardDefaults.cardColors(containerColor = containerColor)) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 9.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(25.dp))
-            Spacer(Modifier.size(7.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(title, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 11.sp, lineHeight = 13.sp)
-                Text(subtitle, color = SlateGray, fontSize = 9.sp, lineHeight = 11.sp)
-            }
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        }
-    }
+    Ui2ActionCard(Ui2Action(title, subtitle, icon, tint, onClick), modifier)
 }
 
 @Composable
@@ -1023,24 +991,16 @@ private fun BankReceiptActionGrid(
     onPickReceipt: () -> Unit,
     onNoReceipt: () -> Unit
 ) {
-    val useFourColumns = BankDetailActionPolicy.useFourReceiptColumns(LocalDensity.current.fontScale)
-    if (useFourColumns) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-            BankQuickAction("Beleg\nsuchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
-            BankQuickAction("Beleg\nhochladen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
-            Column(Modifier.weight(1f)) { BankTransactionSplitActions(viewModel, transaction, compactTrigger = true, showAssignments = false) }
-            BankQuickAction("Kein Beleg\nerforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt, tint = EmeraldGreen, containerColor = Color(0xFFE8F8ED))
-        }
-    } else {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                BankQuickAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
-                BankQuickAction("Beleg hochladen / anlegen", Icons.Default.Description, Modifier.weight(1f), onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
+    Ui2Grid(listOf(0, 1, 2, 3)) { action, modifier ->
+        when (action) {
+            0 -> BankQuickAction("Beleg suchen", Icons.Default.Search, modifier, onClick = onPickReceipt)
+            1 -> BankQuickAction("Beleg hochladen", Icons.Default.Description, modifier,
+                onClick = { viewModel.startReceiptFromBankTransaction(transaction) })
+            2 -> Column(modifier) {
+                BankTransactionSplitActions(viewModel, transaction, compactTrigger = true, showAssignments = false)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) { BankTransactionSplitActions(viewModel, transaction, compactTrigger = true, showAssignments = false) }
-                BankQuickAction("Kein Beleg erforderlich", Icons.Default.CheckCircle, Modifier.weight(1f), onClick = onNoReceipt, tint = EmeraldGreen, containerColor = Color(0xFFE8F8ED))
-            }
+            else -> BankQuickAction("Kein Beleg erforderlich", Icons.Default.CheckCircle, modifier,
+                onClick = onNoReceipt, tint = EmeraldGreen)
         }
     }
 }
@@ -1081,11 +1041,13 @@ private fun BankMoneySummaryCard(title: String, amount: Double, positiveStyle: B
 
 @Composable
 private fun BankDetailLine(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.Top) {
-        Icon(icon, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
-        Spacer(Modifier.size(10.dp))
-        Text(label, modifier = Modifier.width(126.dp), fontSize = 10.sp, lineHeight = 13.sp, color = SlateGray)
-        Text(value, modifier = Modifier.weight(1f), fontSize = 11.sp, lineHeight = 14.sp, color = DarkNavy)
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.size(12.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+        }
     }
 }
 
@@ -1254,3 +1216,4 @@ private fun formatDate(value: String): String {
     val date = runCatching { LocalDate.parse(value) }.getOrNull() ?: return value
     return date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMANY))
 }
+

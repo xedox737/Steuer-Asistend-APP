@@ -1,4 +1,5 @@
 package com.example.ui
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -937,189 +938,109 @@ fun WohneinheitenStatusSection(
 @Composable
 fun DashboardScreen(viewModel: ReceiptViewModel) {
     val receipts by viewModel.receipts.collectAsState()
-    val propertyMetadataState by viewModel.propertyMetadata.collectAsState()
-    val metadata = propertyMetadataState ?: PropertyMetadata()
-
-    val scrollState = rememberScrollState()
-    var showEditPropertyDialog by remember { mutableStateOf(false) }
-    val completeness by viewModel.anlageVCompleteness.collectAsState()
-
-    // Calculations
-    val taxPhase1 = com.example.data.TaxPropertyCalculator.calculate(metadata, receipts)
-    val totalKaufpreis = metadata.gesamtKaufpreis
-    val totalGebaeudeAnteil = metadata.gebaeudewert
-    val limit15Percent = taxPhase1.limit15Percent
-
+    val learnedRulesCount by viewModel.learnedRulesCount.collectAsState()
+    val bankStatementResult by viewModel.bankStatementResult.collectAsState()
+    val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
+    val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
+    val totalBankAlerts = missingReceiptsCount + rentArrearsCount
     val totalAnschaffung = receipts.filter { it.hauptkategorie == "Anschaffungskosten" }.sumOf { it.bruttobetrag }
     val totalFinanzierung = receipts.filter { it.hauptkategorie == "Finanzierung, Kredite & Versicherungen" }.sumOf { it.bruttobetrag }
     val totalRenovierung = receipts.filter { it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen" }.sumOf { it.bruttobetrag }
     val totalSonstige = receipts.filter { it.hauptkategorie == "Sonstige Ausgaben" }.sumOf { it.bruttobetrag }
     val totalExpenses = totalAnschaffung + totalFinanzierung + totalRenovierung + totalSonstige
-
     val totalIncome = receipts.filter { it.hauptkategorie == "Miete, Nebenkosten & Kaution" || it.hauptkategorie == "Sonstige Einnahmen" }.sumOf { it.bruttobetrag }
     val netCashflow = totalIncome - totalExpenses
-
-    val bankStatementResult by viewModel.bankStatementResult.collectAsState()
-    val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
-    val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
-    val totalBankAlerts = missingReceiptsCount + rentArrearsCount
-
-    val isCloudActive by viewModel.isCloudActive.collectAsState()
-    val currentUser by viewModel.currentUser.collectAsState()
-    val syncStatus by viewModel.driveSyncStatus.collectAsState()
-    var showAuthDialog by remember { mutableStateOf(false) }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
+    var selectedReceipt by remember { mutableStateOf<Receipt?>(null) }
+    if (showKiPowerCenterDialog) KiPowerCenterDialog(viewModel) { showKiPowerCenterDialog = false }
+    selectedReceipt?.let { receipt -> ReceiptDetailDialog(receipt, viewModel) { selectedReceipt = null } }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
+        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
+    ) {
+        Ui2Section("Guten Tag!") {
+            Text("Schön, dass du da bist.", style = MaterialTheme.typography.bodyLarge)
+            Text(java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("EEEE, dd.MM.yyyy", Locale.GERMAN)),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Ui2Section("Aktueller Stand") {
+            Ui2Grid(listOf(
+                "Belege gesamt" to receipts.size.toString(),
+                "Fehlende Belege" to missingReceiptsCount.toString(),
+                "Mietrückstände" to rentArrearsCount.toString(),
+                "Gelernte Regeln" to learnedRulesCount.toString()
+            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier) }
+            if (totalBankAlerts > 0) {
+                Ui2Destination("$totalBankAlerts Hinweise aus dem Bankabgleich",
+                    "$missingReceiptsCount fehlende Belege · $rentArrearsCount Mietrückstände",
+                    Icons.Default.Warning) { showKiPowerCenterDialog = true }
+            }
+        }
+        Ui2Section("Schnellaktionen") {
+            Ui2ActionGrid(listOf(
+                Ui2Action("Beleg scannen", "Scan & Upload Center", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Beleg hochladen", "Datei oder Bild auswählen", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Kontoauszüge importieren", "Bank / Kontoauszüge", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
+                Ui2Action("Neue Buchung", "Beleg manuell erfassen", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
+            ))
+        }
+        Ui2Section("Letzte Aktivitäten") {
+            // The source has receipt dates, not an audit event stream; label these honestly.
+            Text("Zuletzt datierte Belege", style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (receipts.isEmpty()) Text("Noch keine Belege erfasst.")
+            receipts.take(5).forEach { receipt ->
+                Ui2Destination(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() },
+                    "${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}",
+                    Icons.Default.Receipt) { selectedReceipt = receipt }
+            }
+            TextButton(onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }) { Text("Alle Belege anzeigen") }
+        }
+        Ui2Section("Einnahmen & Ausgaben") {
+            Ui2Grid(listOf(
+                "Einnahmen" to NumberFormatter.format(totalIncome),
+                "Ausgaben" to NumberFormatter.format(totalExpenses),
+                "Saldo" to NumberFormatter.format(netCashflow)
+            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier) }
+        }
+        LoanManagementSection(viewModel)
+        Ui2Section("Weitere Übersichten") {
+            Ui2Destination("Finanzen", "Auswertung", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.LEDGER) }
+            Ui2Destination("Fahrtenbuch", "Fahrten erfassen", Icons.Default.DirectionsCar) { viewModel.setScreen(AppScreen.LOGBOOK) }
+            Ui2Destination("Steuerschätzung", "Anlage V", Icons.Default.Calculate) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+            Box(Modifier.testTag("rent_overview_quick_action")) {
+                Ui2Destination("Mieteingänge", "Soll/Ist & Nebenkosten", Icons.Default.Home) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+            }
+            Ui2Destination("Dokumentenakte", "Verträge, Stammdaten und Volltextsuche", Icons.Default.Description) { viewModel.setScreen(AppScreen.DOCUMENTS) }
+        }
+    }
+}
+
+/** The existing tax presentation moved from Start into More; the calculator is unchanged. */
+@Composable
+internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean, onBack: () -> Unit) {
+    val receipts by viewModel.receipts.collectAsState()
+    val propertyMetadataState by viewModel.propertyMetadata.collectAsState()
+    val metadata = propertyMetadataState ?: PropertyMetadata()
+    val taxPhase1 = com.example.data.TaxPropertyCalculator.calculate(metadata, receipts)
     var showAfaDetails by remember { mutableStateOf(false) }
     var showMonitorDetails by remember { mutableStateOf(false) }
-
-    if (showKiPowerCenterDialog) {
-        KiPowerCenterDialog(
-            viewModel = viewModel,
-            onDismiss = { showKiPowerCenterDialog = false }
-        )
-    }
-
-    // Intentionally compact: configuration belongs in the app-wide settings dialog.
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Guten Tag", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-            Text(
-                "Erfasse Belege und behalte dein Objekt im Blick.",
-                fontSize = 13.sp,
-                color = SlateGray
-            )
+    var showEditPropertyDialog by remember { mutableStateOf(false) }
+    androidx.activity.compose.BackHandler(onBack = onBack)
+    if (showEditPropertyDialog) PropertyMetadataFormDialog(viewModel) { showEditPropertyDialog = false }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
+        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück zu Mehr") }
+            Text(if (monitor) "Sanierungs-Monitor" else "AfA Gebäude", style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f))
         }
-
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = AccentBlue)
-        ) {
-            Row(
-                modifier = Modifier.padding(18.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Beleg erfassen", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Foto aufnehmen oder Dokument auswählen", fontSize = 12.sp, color = Color.White.copy(alpha = 0.85f))
-                }
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Beleg erfassen", tint = Color.White)
-            }
+        Ui2Section(metadata.name.ifBlank { "Immobilie" }) {
+            Text(metadata.adresse, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { showEditPropertyDialog = true }) { Text("Stammdaten bearbeiten") }
         }
-
-        if (totalBankAlerts > 0) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showKiPowerCenterDialog = true },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
-                border = BorderStroke(1.dp, Color(0xFFFED7AA))
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = WarmOrange)
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("$totalBankAlerts Hinweis${if (totalBankAlerts == 1) "" else "e"} aus dem Bankabgleich", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                        Text("$missingReceiptsCount fehlende Belege · $rentArrearsCount Mietrückstände", fontSize = 11.sp, color = SlateGray)
-                    }
-                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = WarmOrange, modifier = Modifier.size(18.dp))
-                }
-            }
-        }
-
-        LoanManagementSection(viewModel)
-
-        Text("Überblick", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, BorderColor),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Erfasste Belege", fontSize = 12.sp, color = SlateGray)
-                    Text("${receipts.size}", fontSize = 16.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                }
-                HorizontalDivider(color = BorderColor)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Einnahmen", fontSize = 12.sp, color = SlateGray)
-                    Text(NumberFormatter.format(totalIncome), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Ausgaben", fontSize = 12.sp, color = SlateGray)
-                    Text(NumberFormatter.format(totalExpenses), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = CrimsonRed)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Saldo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                    Text((if (netCashflow >= 0) "+" else "") + NumberFormatter.format(netCashflow), fontSize = 14.sp, fontWeight = FontWeight.Black, color = if (netCashflow >= 0) EmeraldGreen else CrimsonRed)
-                }
-            }
-        }
-
-        Text("Schnellzugriff", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuickActionCard(
-                modifier = Modifier.weight(1f), title = "Belege", subtitle = "Archiv öffnen",
-                icon = Icons.Default.Receipt, containerColor = Color(0xFFEFF6FF), contentColor = AccentBlue,
-                onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }
-            )
-            QuickActionCard(
-                modifier = Modifier.weight(1f), title = "Finanzen", subtitle = "Auswertung",
-                icon = Icons.Default.AccountBalance, containerColor = Color(0xFFECFDF5), contentColor = EmeraldGreen,
-                onClick = { viewModel.setScreen(AppScreen.LEDGER) }
-            )
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuickActionCard(
-                modifier = Modifier.weight(1f), title = "Fahrtenbuch", subtitle = "Fahrten erfassen",
-                icon = Icons.Default.DirectionsCar, containerColor = Color(0xFFFFF7ED), contentColor = WarmOrange,
-                onClick = { viewModel.setScreen(AppScreen.LOGBOOK) }
-            )
-            QuickActionCard(
-                modifier = Modifier.weight(1f), title = "Steuerschätzung", subtitle = "Anlage V",
-                icon = Icons.Filled.Calculate, containerColor = Color(0xFFF5F3FF), contentColor = Color(0xFF7C3AED),
-                onClick = { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
-            )
-        }
-        QuickActionCard(
-            modifier = Modifier.fillMaxWidth().testTag("rent_overview_quick_action"),
-            title = "Mieteingänge", subtitle = "Soll/Ist & Nebenkosten",
-            icon = Icons.Default.Home, containerColor = Color(0xFFEFF6FF), contentColor = AccentBlue,
-            onClick = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
-        )
-        QuickActionCard(
-            modifier = Modifier.fillMaxWidth(),
-            title = "Dokumentenakte",
-            subtitle = "Verträge, Stammdaten und Volltextsuche",
-            icon = Icons.Default.Description,
-            containerColor = Color(0xFFEFF6FF),
-            contentColor = AccentBlue,
-            onClick = { viewModel.setScreen(AppScreen.DOCUMENTS) }
-        )
-
+        if (!monitor) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1168,6 +1089,8 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             }
         }
 
+
+        } else {
         val compactProgress15 = if (taxPhase1.limit15Percent > 0.0) {
             (taxPhase1.relevantModernizationNet / taxPhase1.limit15Percent).toFloat().coerceIn(0f, 1f)
         } else 0f
@@ -1222,6 +1145,8 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             }
         }
 
+
+        }
         if (showAfaDetails) {
             AlertDialog(
                 onDismissRequest = { showAfaDetails = false },
@@ -1285,950 +1210,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             )
         }
 
-        Text(
-            "Objekt, Drive, KI und weitere Einstellungen findest du oben rechts über das Zahnrad.",
-            fontSize = 11.sp,
-            color = SlateGray,
-            lineHeight = 15.sp,
-            modifier = Modifier.padding(top = 2.dp)
-        )
-    }
-    return
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // --- BANK STATEMENT MISSING RECEIPT ALERT BANNER ---
-        if (totalBankAlerts > 0) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
-                border = BorderStroke(1.dp, Color(0xFFFED7AA))
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFFFEDD5)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = WarmOrange, modifier = Modifier.size(20.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Belege prüfen", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text(
-                                "$totalBankAlerts offene ${if (totalBankAlerts == 1) "Abweichung" else "Abweichungen"}",
-                                fontSize = 11.sp,
-                                color = SlateGray
-                            )
-                        }
-                        Surface(color = WarmOrange, shape = CircleShape) {
-                            Text(
-                                text = "$totalBankAlerts",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "$missingReceiptsCount ohne Beleg • $rentArrearsCount Mietrückstände",
-                            fontSize = 11.sp,
-                            color = SlateGray,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = { showKiPowerCenterDialog = true }) {
-                            Text("Jetzt prüfen", fontWeight = FontWeight.Bold, color = WarmOrange)
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = null,
-                                tint = WarmOrange,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // --- GEMINI KI POWER HUB CARD ---
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { showKiPowerCenterDialog = true },
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-            border = BorderStroke(1.dp, Brush.horizontalGradient(listOf(AccentBlue, Color(0xFFF59E0B)))),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(AccentBlue, Color(0xFFF59E0B)))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
-                    }
-
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("KI-Assistenten", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color.White)
-                            Surface(
-                                color = Color(0xFFF59E0B).copy(alpha = 0.2f),
-                                shape = CircleShape
-                            ) {
-                                Text(
-                                    text = "5 Assistenten",
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFF59E0B)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Prüfen, abgleichen und Dokumente verstehen",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.8f)
-                        )
-                    }
-                }
-
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "Öffnen",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-        // 1. Modern Hero Banner Header with Property Info & Live Cloud Badge
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkNavy),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color(0xFF0F172A),
-                                Color(0xFF1E293B),
-                                Color(0xFF0284C7).copy(alpha = 0.3f)
-                            )
-                        )
-                    )
-                    .padding(20.dp)
-            ) {
-                Column {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(AccentBlue.copy(alpha = 0.2f))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "Anlage V Portfolio",
-                                    color = AccentBlue,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            val doneCount = completeness.count { it.value }
-                            val totalCount = completeness.size.coerceAtLeast(1)
-                            val percent = (doneCount * 100) / totalCount
-                            Box(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(EmeraldGreen.copy(alpha = 0.2f))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "$percent% Vollständig",
-                                    color = EmeraldGreen,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = { showEditPropertyDialog = true },
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.1f))
-                                .testTag("edit_property_metadata_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Stammdaten bearbeiten",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = metadata.name.ifEmpty { "Meine Immobilie" },
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White
-                    )
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Home,
-                            contentDescription = null,
-                            tint = Color(0xFF94A3B8),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = metadata.adresse.ifEmpty { "Keine Adresse hinterlegt" },
-                            fontSize = 13.sp,
-                            color = Color(0xFF94A3B8)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Cloud Sync Strip Inside Banner
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("firebase_auth_status_card"),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (currentUser != null) Color(0xFF166534).copy(alpha = 0.4f) else Color(0xFF9A3412).copy(alpha = 0.4f)
-                        ),
-                        border = BorderStroke(
-                            1.dp,
-                            if (currentUser != null) Color(0xFF22C55E).copy(alpha = 0.4f) else Color(0xFFF97316).copy(alpha = 0.4f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Cloud,
-                                    contentDescription = "Cloud Status",
-                                    tint = if (currentUser != null) Color(0xFF86EFAC) else Color(0xFFFDBA74),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Column {
-                                    Text(
-                                        text = if (currentUser != null) "Cloud-Backup Aktiv" else "Cloud: Offline-Modus",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        text = if (currentUser != null) "${currentUser?.email}" else "Melden Sie sich an für automatischen Sync",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFFCBD5E1)
-                                    )
-                                }
-                            }
-
-                            if (currentUser != null) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Button(
-                                        onClick = { viewModel.syncWithCloud() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(28.dp).testTag("firestore_sync_now_button")
-                                    ) {
-                                        Text("Sync", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                    }
-                                    OutlinedButton(
-                                        onClick = { viewModel.signOutUser() },
-                                        border = BorderStroke(1.dp, Color(0xFF86EFAC)),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                        modifier = Modifier.height(28.dp).testTag("firebase_logout_button")
-                                    ) {
-                                        Text("Logout", fontSize = 10.sp)
-                                    }
-                                }
-                            } else {
-                                Button(
-                                    onClick = { showAuthDialog = true },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF97316)),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-                                    modifier = Modifier.height(28.dp).testTag("firebase_login_button")
-                                ) {
-                                    Text("Anmelden", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-
-                    if (currentUser != null && syncStatus != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = syncStatus!!,
-                            fontSize = 10.sp,
-                            color = Color(0xFF86EFAC)
-                        )
-                    }
-                }
-            }
-        }
-
-        if (showAuthDialog) {
-            FirebaseLoginDialog(
-                viewModel = viewModel,
-                onDismiss = { showAuthDialog = false }
-            )
-        }
-
-        // 2. Interactive Quick Actions Grid
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Schnellzugriff & Aktionen",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = DarkNavy
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Scanner Shortcut
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Beleg Scannen",
-                    subtitle = "KI-Erfassung",
-                    icon = Icons.Default.AutoAwesome,
-                    containerColor = Color(0xFFEFF6FF),
-                    contentColor = AccentBlue,
-                    onClick = { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
-                )
-
-                // Rent Overview Shortcut
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Mieteingang",
-                    subtitle = "Soll vs. Ist",
-                    icon = Icons.Default.CheckCircle,
-                    containerColor = Color(0xFFECFDF5),
-                    contentColor = EmeraldGreen,
-                    onClick = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Tax Calculator Shortcut
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Steuerschätzung",
-                    subtitle = "Anlage V Profit",
-                    icon = Icons.Filled.Calculate,
-                    containerColor = Color(0xFFF5F3FF),
-                    contentColor = Color(0xFF7C3AED),
-                    onClick = { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
-                )
-
-                // Logbook Shortcut
-                QuickActionCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Fahrtenbuch",
-                    subtitle = "30ct/km Rechner",
-                    icon = Icons.Default.DirectionsCar,
-                    containerColor = Color(0xFFFFF7ED),
-                    contentColor = WarmOrange,
-                    onClick = { viewModel.setScreen(AppScreen.LOGBOOK) }
-                )
-            }
-        }
-
-        // 3. Financial Performance KPI Cards
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Finanz-Überblick (Anlage V)",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = DarkNavy
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Income Card
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(EmeraldGreen.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(EmeraldGreen))
-                            }
-                            Text("Einnahmen", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = NumberFormatter.format(totalIncome),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Black,
-                            color = EmeraldGreen
-                        )
-                    }
-                }
-
-                // Expenses Card
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(CrimsonRed.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(CrimsonRed))
-                            }
-                            Text("Ausgaben", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = NumberFormatter.format(totalExpenses),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Black,
-                            color = CrimsonRed
-                        )
-                    }
-                }
-
-                // Net Cashflow Card
-                Card(
-                    modifier = Modifier.weight(1f),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        val cashflowColor = if (netCashflow >= 0) EmeraldGreen else CrimsonRed
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(CircleShape)
-                                    .background(cashflowColor.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AccountBalance,
-                                    contentDescription = null,
-                                    tint = cashflowColor,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                            }
-                            Text("Netto", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = (if (netCashflow >= 0) "+" else "") + NumberFormatter.format(netCashflow),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Black,
-                            color = cashflowColor
-                        )
-                    }
-                }
-            }
-        }
-
-        // 4. Gemini AI Assistant Search Card
-        AiSearchCard(viewModel = viewModel)
-
-        // 5. Wohneinheiten Status Widget
-        WohneinheitenStatusSection(viewModel, receipts)
-
-        // 6. Monthly Income vs. Expenses Bar Chart
-        MonthlyIncomeExpenseChart(receipts)
-
-        // 7. AfA-Übersicht
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("AfA Gebäude", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                    Text("${taxPhase1.afaRatePercent}% p.a.", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
-                }
-                Text("Gebäude-Kaufpreisanteil: ${NumberFormatter.format(taxPhase1.buildingPurchaseShare)}", fontSize = 11.sp, color = SlateGray)
-                Text("+ anteilige Anschaffungsnebenkosten: ${NumberFormatter.format(taxPhase1.buildingAncillaryShare)}", fontSize = 11.sp, color = SlateGray)
-                HorizontalDivider(color = BorderColor)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("AfA-Bemessungsgrundlage", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
-                    Text(NumberFormatter.format(taxPhase1.buildingAcquisitionCosts), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("AfA volles Jahr", fontSize = 12.sp, color = SlateGray)
-                    Text(NumberFormatter.format(taxPhase1.annualAfa), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
-                }
-                if (taxPhase1.afaStartDate.isNotBlank()) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Erstes Jahr ab ${taxPhase1.afaStartDate}", fontSize = 11.sp, color = SlateGray)
-                        Text(NumberFormatter.format(taxPhase1.firstYearAfa), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
-                    }
-                }
-                Text("Vorbereitungshilfe: Gebäudewert und Anschaffungsnebenkosten müssen steuerlich plausibel auf Grund/Boden und Gebäude aufgeteilt sein.", fontSize = 9.5.sp, color = Color.Gray, lineHeight = 12.sp)
-            }
-        }
-
-        // 8. 15%-Grenze Warning Monitor
-        val progress15 = (taxPhase1.relevantModernizationNet / limit15Percent).toFloat().coerceIn(0f, 1f)
-        val progressColor = when {
-            taxPhase1.is15PercentExceeded -> CrimsonRed
-            progress15 > 0.8f -> WarmOrange
-            else -> EmeraldGreen
-        }
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = BorderStroke(1.dp, if (taxPhase1.is15PercentExceeded) CrimsonRed else BorderColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(progressColor.copy(alpha = 0.12f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                "15%-Grenze (§ 6 Abs. 1 Nr. 1a EStG)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = progressColor
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = if (taxPhase1.is15PercentExceeded) Icons.Default.Warning else Icons.Default.Info,
-                        contentDescription = "Status",
-                        tint = progressColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Anschaffungsnahe Herstellungskosten",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DarkNavy
-                )
-                Text(
-                    "3-Jahres-Prüfwert: 15% der Gebäude-Anschaffungskosten (${NumberFormatter.format(limit15Percent)}), maßgeblich ohne Umsatzsteuer.",
-                    fontSize = 11.sp,
-                    color = Color.Gray,
-                    lineHeight = 14.sp
-                )
-                Text(
-                    "Zeitraum: ${taxPhase1.monitorStartDate.ifBlank { "nicht festgelegt" }} bis ${taxPhase1.monitorEndDate.ifBlank { "nicht festgelegt" }} • Potenziell relevante Belege: ${taxPhase1.candidateReceiptCount}" +
-                        if (taxPhase1.estimatedNetCount > 0) " • Netto bei ${taxPhase1.estimatedNetCount} Beleg(en) geschätzt" else "",
-                    fontSize = 10.sp,
-                    color = SlateGray,
-                    lineHeight = 13.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Progress Bar
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(Color(0xFFECF0F1))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progress15)
-                            .fillMaxHeight()
-                            .background(
-                                Brush.horizontalGradient(
-                                    colors = listOf(progressColor.copy(alpha = 0.8f), progressColor)
-                                )
-                            )
-                    )
-                    Text(
-                        text = "${(progress15 * 100).toInt()}% verbraucht",
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(horizontal = 8.dp),
-                        color = if (progress15 > 0.5f) Color.White else DarkNavy,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Bereits verbucht:", fontSize = 12.sp, color = DarkNavy)
-                    Text(
-                        NumberFormatter.format(totalRenovierung),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkNavy
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Verbleibender Puffer:", fontSize = 12.sp, color = Color.Gray)
-                    val buffer = limit15Percent - taxPhase1.relevantModernizationNet
-                    Text(
-                        if (buffer >= 0) NumberFormatter.format(buffer) else "Überschritten um " + NumberFormatter.format(-buffer),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (buffer >= 0) EmeraldGreen else CrimsonRed
-                    )
-                }
-
-                if (taxPhase1.is15PercentExceeded) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(CrimsonRed.copy(alpha = 0.1f))
-                            .border(1.dp, CrimsonRed, RoundedCornerShape(8.dp))
-                            .padding(10.dp)
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.Warning, contentDescription = "Alarm", tint = CrimsonRed, modifier = Modifier.size(18.dp))
-                            Text(
-                                "STEUER-WARNUNG: Der vorläufige 15%-Prüfwert ist überschritten. Einordnung als anschaffungsnahe Herstellungskosten fachlich prüfen; Erweiterungen und jährlich übliche Erhaltungsarbeiten sind gesondert zu behandeln.",
-                                fontSize = 11.sp,
-                                color = CrimsonRed,
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = 14.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 8. Objekt-Stammdaten Details Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Objekt-Stammdaten",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkNavy
-                    )
-                    IconButton(
-                        onClick = { showEditPropertyDialog = true },
-                        modifier = Modifier.size(32.dp).testTag("edit_property_metadata_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Stammdaten bearbeiten",
-                            tint = SlateGray,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Box(modifier = Modifier.weight(1f)) { InfoColumn(label = "Baujahr", value = metadata.baujahr.toString()) }
-                    Box(modifier = Modifier.weight(1f)) { InfoColumn(label = "Wohnfläche", value = "${metadata.wohnflaeche} m²") }
-                    Box(modifier = Modifier.weight(1f)) { InfoColumn(label = "Grundstück", value = "${metadata.grundstuecksgroesse} m²") }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Box(modifier = Modifier.weight(1f)) { InfoColumn(label = "Notar. Kaufdatum", value = metadata.notariellesKaufdatum.ifEmpty { "-" }) }
-                    Box(modifier = Modifier.weight(1.5f)) { InfoColumn(label = "Übergang Nutzen/Lasten", value = metadata.uebergangNutzenLasten.ifEmpty { "-" }) }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Box(modifier = Modifier.weight(1f)) { InfoColumn(label = "Gesamtkaufpreis", value = NumberFormatter.format(totalKaufpreis)) }
-                    Box(modifier = Modifier.weight(1f)) { InfoColumn(label = "Gebäudewert", value = NumberFormatter.format(totalGebaeudeAnteil)) }
-                }
-
-                if (metadata.wohneinheiten.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider()
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Zugeordnete Wohneinheiten:",
-                        fontSize = 11.sp,
-                        color = Color.Gray,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = metadata.wohneinheiten,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = DarkNavy
-                    )
-                }
-            }
-        }
-
-        // 9. Financial Ausgaben-Struktur (Donut Chart)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    "Ausgaben-Struktur",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DarkNavy
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Custom Donut Chart on Canvas
-                    Box(
-                        modifier = Modifier
-                            .size(96.dp)
-                            .padding(4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val strokeWidth = 14.dp.toPx()
-                            val total = if (totalExpenses == 0.0) 1.0 else totalExpenses
-
-                            val angleAnschaffung = (totalAnschaffung / total * 360).toFloat()
-                            val angleFinanzierung = (totalFinanzierung / total * 360).toFloat()
-                            val angleRenovierung = (totalRenovierung / total * 360).toFloat()
-                            val angleSonstige = (totalSonstige / total * 360).toFloat()
-
-                            var startAngle = -90f
-
-                            drawArc(
-                                color = AccentBlue,
-                                startAngle = startAngle,
-                                sweepAngle = angleAnschaffung,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                            startAngle += angleAnschaffung
-
-                            drawArc(
-                                color = WarmOrange,
-                                startAngle = startAngle,
-                                sweepAngle = angleFinanzierung,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                            startAngle += angleFinanzierung
-
-                            drawArc(
-                                color = EmeraldGreen,
-                                startAngle = startAngle,
-                                sweepAngle = angleRenovierung,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                            startAngle += angleRenovierung
-
-                            drawArc(
-                                color = CrimsonRed,
-                                startAngle = startAngle,
-                                sweepAngle = angleSonstige,
-                                useCenter = false,
-                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-                            )
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "Gesamt",
-                                fontSize = 9.sp,
-                                color = Color.Gray,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "${receipts.size} Bel.",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = DarkNavy
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        CategoryLegendRow(color = AccentBlue, label = "Anschaffungskosten", value = totalAnschaffung)
-                        CategoryLegendRow(color = WarmOrange, label = "Finanzierung & Kredite", value = totalFinanzierung)
-                        CategoryLegendRow(color = EmeraldGreen, label = "Renovierung", value = totalRenovierung)
-                        CategoryLegendRow(color = CrimsonRed, label = "Sonstiges", value = totalSonstige)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
-                        .background(SoftBackground)
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Gesamte Ausgaben:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy)
-                    Text(
-                        NumberFormatter.format(totalExpenses),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Black,
-                        color = DarkNavy
-                    )
-                }
-            }
-        }
-
-        // 10. Compliance Checklist & Timeline
-        AnlageVChecklistSection(completeness)
-        TimelineSection(metadata, receipts)
-
-        // 11. Google Drive Sync Status
-        GoogleDriveSyncCard(viewModel)
-    }
-
-    if (showEditPropertyDialog) {
-        PropertyMetadataFormDialog(
-            viewModel = viewModel,
-            onDismiss = { showEditPropertyDialog = false }
-        )
     }
 }
 
@@ -2955,44 +1937,12 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
         RecycleBinDialog(viewModel = viewModel, onDismiss = { showRecycleBinFromBelege = false })
     }
 
-    if (receiptToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { receiptToDelete = null },
-            title = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null, tint = CrimsonRed)
-                    Text("Beleg in den Papierkorb?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 16.sp)
-                }
-            },
-            text = {
-                Text(
-                    "Der Beleg wird aus der Belegliste entfernt und in den Papierkorb verschoben. Er kann später wiederhergestellt werden.",
-                    fontSize = 13.sp,
-                    color = DarkNavy
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val id = receiptToDelete!!.id
-                        receiptToDelete = null
-                        viewModel.deleteReceipt(id)
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
-                    modifier = Modifier.testTag("confirm_delete_button")
-                ) {
-                    Text("Löschen")
-                }
-            },
-            dismissButton = {
-                OutlinedButton(
-                    onClick = { receiptToDelete = null }
-                ) {
-                    Text("Abbrechen")
-                }
+    receiptToDelete?.let { pending ->
+        ReceiptDeleteConfirmationDialog(
+            onDismiss = { receiptToDelete = null },
+            onConfirm = {
+                receiptToDelete = null
+                viewModel.deleteReceipt(pending.id)
             }
         )
     }
@@ -4143,10 +3093,35 @@ fun ReceiptPositionenEditor(
     }
 }
 
+@Composable
+private fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Beleg in den Papierkorb?", fontWeight = FontWeight.Bold) },
+        text = { Text("Der Beleg wird aus der Belegliste entfernt und in den Papierkorb verschoben. Er kann später wiederhergestellt werden.") },
+        confirmButton = {
+            Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
+                modifier = Modifier.testTag("confirm_delete_button")) { Text("Löschen") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
     var isEditing by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val previewRequester = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    val actionScope = rememberCoroutineScope()
+    if (confirmDelete) ReceiptDeleteConfirmationDialog(
+        onDismiss = { confirmDelete = false },
+        onConfirm = {
+            confirmDelete = false
+            viewModel.deleteReceipt(receipt.id)
+        }
+    )
     val bankReceiptLinks by viewModel.bankReceiptLinks.collectAsState()
     val bankTransactions by viewModel.bankTransactions.collectAsState()
     val linkedBankEntries = remember(receipt.id, receipt.internalId, bankReceiptLinks, bankTransactions) {
@@ -4211,7 +3186,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                         modifier = Modifier.size(24.dp)
                     )
                     Text(
-                        text = if (isEditing) "Beleg bearbeiten" else "Beleg-Kontierung",
+                        text = if (isEditing) "Beleg bearbeiten" else "Belegdetails",
                         fontWeight = FontWeight.Black,
                         fontSize = 18.sp,
                         color = DarkNavy
@@ -4417,8 +3392,32 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                         onPositionenChanged = { editPositionen = it }
                     )
                 } else {
-                    // 1. Image Preview or Aesthetic Placeholder
-                    ReceiptPreviewSection(receipt = receipt, viewModel = viewModel)
+                    Ui2Section(receipt.aussteller.ifBlank { "Beleg" }) {
+                        Text(receipt.getEffectiveDisplayId(), style = MaterialTheme.typography.bodyMedium)
+                        Text(receipt.datum, style = MaterialTheme.typography.bodyMedium)
+                        Text(NumberFormatter.format(receipt.bruttobetrag), style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold)
+                    }
+                    Ui2Section("Beleg Aktionen") {
+                        Ui2ActionGrid(listOf(
+                            Ui2Action("Beleg anzeigen", "Dokumentvorschau", Icons.Default.Receipt) {
+                                actionScope.launch { previewRequester.bringIntoView() }
+                            },
+                            Ui2Action("Beleg bearbeiten", "Angaben bearbeiten", Icons.Default.Edit) { isEditing = true },
+                            Ui2Action("Beleg teilen", "Zusammenfassung senden", Icons.Default.Share) {
+                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Beleg ${receipt.getEffectiveDisplayId()}")
+                                    putExtra(Intent.EXTRA_TEXT, "${receipt.aussteller}\n${receipt.datum}\n${NumberFormatter.format(receipt.bruttobetrag)}\n${receipt.beschreibung}")
+                                }
+                                context.startActivity(Intent.createChooser(shareIntent, "Beleg teilen"))
+                            },
+                            Ui2Action("Beleg löschen", "In den Papierkorb", Icons.Default.Delete, CrimsonRed) { confirmDelete = true }
+                        ))
+                    }
+                    Box(Modifier.bringIntoViewRequester(previewRequester)) {
+                        ReceiptPreviewSection(receipt = receipt, viewModel = viewModel)
+                    }
                     
                     Spacer(modifier = Modifier.height(2.dp))
                     
@@ -14888,3 +13887,4 @@ fun RecycleBinDialog(
         }
     )
 }
+

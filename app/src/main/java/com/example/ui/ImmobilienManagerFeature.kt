@@ -593,13 +593,59 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 @Composable
 fun MoreScreen(viewModel: ReceiptViewModel) {
     var showSettings by remember { mutableStateOf(false) }
+    var showDatev by remember { mutableStateOf(false) }
+    var showLearnedRules by remember { mutableStateOf(false) }
+    var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val receipts by viewModel.receipts.collectAsState()
+    val rules by viewModel.bankLearningRules.collectAsState()
     if (showSettings) AccountSettingsDialog(viewModel = viewModel, onDismiss = { showSettings = false })
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text("Mehr", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy); Text("Weitere Bereiche und Einstellungen", fontSize = 11.sp, color = SlateGray) }
-        item { PropertyDestination("Fahrtenbuch", Icons.Default.DirectionsCar) { viewModel.setScreen(AppScreen.LOGBOOK) } }
-        item { PropertyDestination("Finanzen", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.LEDGER) } }
-        item { PropertyDestination("Dokumentenakte", Icons.Default.Description) { viewModel.setScreen(AppScreen.DOCUMENTS) } }
-        item { PropertyDestination("Einstellungen", Icons.Default.Settings) { showSettings = true } }
+    if (showDatev) DatevExportDialog(viewModel, receipts) { showDatev = false }
+    if (showLearnedRules) KiLearnedRulesDialog(viewModel) { showLearnedRules = false }
+    if (page == "afa" || page == "monitor") {
+        PropertyTaxUi2Screen(viewModel, monitor = page == "monitor") { page = null }
+        return
+    }
+    androidx.activity.compose.BackHandler(enabled = page != null) { page = null }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(Ui2.padding),
+        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
+    ) {
+        if (page != null) {
+            item { TextButton(onClick = { page = null }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
+                Text("Zurück zu Mehr")
+            } }
+            if (page == "backup") item { GoogleDriveSyncCard(viewModel) }
+            if (page == "rules") {
+                item { Ui2Section("Regeln") {
+                    Ui2Destination("Gelerntes KI-Wissen", "Händler-Zuordnungen verwalten", Icons.Default.Settings) { showLearnedRules = true }
+                    BankRulesPanel(viewModel, rules)
+                } }
+            }
+        } else {
+            item { Ui2Section("Finanzen") {
+                Ui2Destination("Bank / Kontoauszüge", "Importieren, prüfen und zuordnen", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) }
+                Ui2Destination("Einnahmen / Ausgaben", "Buchungen und Auswertungen", Icons.Default.Payments) { viewModel.setScreen(AppScreen.LEDGER) }
+                Ui2Destination("DATEV Export", "Vorschau, Prüfung und Export", Icons.Default.Description) { showDatev = true }
+                Ui2Destination("Steuerliche Übersicht", "Steuerschätzung · Anlage V", Icons.Default.Assessment) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+                Ui2Destination("Mieteingänge", "Soll/Ist & Nebenkosten", Icons.Default.HomeWork) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+            } }
+            item { Ui2Section("Verwaltung") {
+                Ui2Destination("Dokumentenakte", "Dokumente und Volltextsuche", Icons.Default.Description) { viewModel.setScreen(AppScreen.DOCUMENTS) }
+                Ui2Destination("Regeln", "Bankregeln und Händler-Zuordnungen", Icons.Default.Settings) { page = "rules" }
+                Ui2Destination("Backup & Cloud", "Sicherung und Wiederherstellung", Icons.Default.Description) { page = "backup" }
+            } }
+            item { Ui2Section("Objekte & Steuern") {
+                Ui2Destination("Immobilien verwalten", "Objekte, Einheiten und Stammdaten", Icons.Default.Apartment) { viewModel.setScreen(AppScreen.PROPERTIES) }
+                Ui2Destination("AfA Gebäude", "Kaufpreisaufteilung und Abschreibung", Icons.Default.Assessment) { page = "afa" }
+                Ui2Destination("Sanierungs-Monitor", "Sanierungsbelege und 15%-Prüfung", Icons.Default.Build) { page = "monitor" }
+                Ui2Destination("Fahrtenbuch", "Dienst- und Objektfahrten", Icons.Default.DirectionsCar) { viewModel.setScreen(AppScreen.LOGBOOK) }
+            } }
+            item { Ui2Section("Einstellungen") {
+                Ui2Destination("App Einstellungen", "KI, Sicherung, Belege und persönliche Angaben", Icons.Default.Settings) { showSettings = true }
+            } }
+        }
     }
 }
 
@@ -663,3 +709,4 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
         dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }) { Text("Zurück") }; TextButton(onClick = onDismiss) { Text("Abbrechen") } } }
     )
 }
+
