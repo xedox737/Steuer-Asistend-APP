@@ -15,7 +15,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -45,16 +44,18 @@ internal fun Ui2Section(
     }
 }
 
-/** Collapse to a single column before large text or narrow screens can squeeze labels. */
+/** Keep the UI2 phone layout in two columns; only very narrow windows collapse. */
 @Composable
 internal fun <T> Ui2Grid(
     items: List<T>,
     modifier: Modifier = Modifier,
     content: @Composable (T, Modifier) -> Unit
 ) {
-    val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= (156 * fontScale * 2 + 12).dp) 2 else 1
+        // A normal phone content width is around 328–360 dp. Multiplying the
+        // breakpoint by the user's font scale turned the UI2 2×2 cards into a
+        // single vertical list on real devices. Card text already wraps safely.
+        val columns = if (maxWidth >= 320.dp) 2 else 1
         Column(verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
             items.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
