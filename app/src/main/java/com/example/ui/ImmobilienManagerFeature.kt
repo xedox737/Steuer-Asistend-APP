@@ -142,12 +142,9 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Column {
-                        Text("Meine Immobilien", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                        Text("Objekte, Einheiten und Mieten im Überblick", fontSize = 11.sp, color = SlateGray)
-                    }
+                    Text("Deine Objekte im Überblick", fontSize = 14.sp, color = SlateGray)
                     Button(onClick = { showWizard = true }, modifier = Modifier.testTag("add_property_button")) {
-                        Icon(Icons.Default.Add, null); Text(" Immobilie")
+                        Icon(Icons.Default.Add, null); Text(" Immobilie hinzufügen")
                     }
                 }
             }
