@@ -122,8 +122,8 @@ internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
 internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifier, color: Color = AccentBlue) {
     Surface(modifier, shape = Ui2.shape, color = color.copy(alpha = 0.08f)) {
         Row(
-            Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val icon = when (label) {
@@ -133,18 +133,18 @@ internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifi
                 else -> Icons.Default.ReceiptLong
             }
             Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.size(36.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = color.copy(alpha = 0.14f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = color, modifier = Modifier.size(25.dp))
+                    Icon(icon, null, tint = color, modifier = Modifier.size(22.dp))
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(value, fontSize = 18.sp, lineHeight = 20.sp, maxLines = 1, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface)
-                Text(label, style = MaterialTheme.typography.bodyMedium,
+                Text(label, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
