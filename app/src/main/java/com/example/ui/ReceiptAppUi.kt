@@ -1,4 +1,5 @@
 package com.example.ui
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import android.app.Activity
 import android.content.Intent
@@ -3107,7 +3108,7 @@ private fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: ()
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
     var isEditing by remember { mutableStateOf(false) }
