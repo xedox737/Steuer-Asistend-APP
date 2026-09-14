@@ -1966,13 +1966,13 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
             ) {
                 Column {
                     Text(
-                        "Belegs-Archiv",
-                        fontSize = 20.sp,
+                        "Belege",
+                        style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Black,
                         color = DarkNavy
                     )
                     Text(
-                        "Vorschau & Belegs-Verwaltung",
+                        "Übersicht, Suche und Zuordnung",
                         fontSize = 11.sp,
                         color = SlateGray
                     )
@@ -2048,7 +2048,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-            shape = RoundedCornerShape(10.dp)
+            shape = Ui2.shape
         ) {
             Column(
                 modifier = Modifier
@@ -2091,7 +2091,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("search_field"),
-            placeholder = { Text("Aussteller, Beschreibung, Konto...") },
+            placeholder = { Text("Belege suchen …") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suchen") },
             trailingIcon = {
                 if (query.isNotEmpty()) {
@@ -2107,7 +2107,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                 unfocusedContainerColor = Color.White
             ),
             singleLine = true,
-            shape = RoundedCornerShape(8.dp)
+            shape = Ui2.shape
         )
 
         // Category Quick Filters
@@ -2116,7 +2116,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             CategoryFilterChip(
-                label = "Alle",
+                label = "Alle (${receipts.size})",
                 isSelected = filter == null,
                 onClick = { viewModel.setCategoryFilter(null) }
             )
