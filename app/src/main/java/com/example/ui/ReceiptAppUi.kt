@@ -280,7 +280,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
     val screenTitle = when (currentScreen) {
-        AppScreen.DASHBOARD -> "Übersicht"
+        AppScreen.DASHBOARD -> "Start"
         AppScreen.RECEIPTS_LIST -> "Belege"
         AppScreen.ADD_RECEIPT -> "Beleg erfassen"
         AppScreen.LOGBOOK -> "Fahrtenbuch"
@@ -963,11 +963,13 @@ fun WohneinheitenStatusSection(
 @Composable
 fun DashboardScreen(viewModel: ReceiptViewModel) {
     val receipts by viewModel.receipts.collectAsState()
+    val bankTransactions by viewModel.bankTransactions.collectAsState()
     val learnedRulesCount by viewModel.learnedRulesCount.collectAsState()
     val bankStatementResult by viewModel.bankStatementResult.collectAsState()
     val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
     val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
+    val openBankTransactions = remember(bankTransactions) { BankCompactUiPolicy.counts(bankTransactions).open }
     val totalAnschaffung = receipts.filter { it.hauptkategorie == "Anschaffungskosten" }.sumOf { it.bruttobetrag }
     val totalFinanzierung = receipts.filter { it.hauptkategorie == "Finanzierung, Kredite & Versicherungen" }.sumOf { it.bruttobetrag }
     val totalRenovierung = receipts.filter { it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen" }.sumOf { it.bruttobetrag }
@@ -982,14 +984,23 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
-        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        Ui2Section("Hallo Sergej!") {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = Ui2.shape,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(Ui2.padding),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text("☀️", fontSize = 38.sp)
-                Column(Modifier.weight(1f)) {
-                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Deine Immobilien und Finanzen auf einen Blick.", style = MaterialTheme.typography.bodyMedium,
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Hallo Sergej", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
@@ -1004,7 +1015,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         }
         Ui2Section("Aktueller Stand") {
             Ui2Grid(listOf(
-                Triple("Offene Buchungen", totalBankAlerts.toString(), AccentBlue),
+                Triple("Offene Buchungen", openBankTransactions.toString(), AccentBlue),
                 Triple("Offene Belege", missingReceiptsCount.toString(), EmeraldGreen),
                 Triple("Belege gesamt", receipts.size.toString(), Color(0xFF7C3AED)),
                 Triple("Regeln aktiv", learnedRulesCount.toString(), WarmOrange)
@@ -1016,12 +1027,13 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             }
         }
         Ui2Section("Schnellaktionen") {
-            Ui2ActionGrid(listOf(
+            val dashboardActions = listOf(
                 Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
                 Ui2Action("Beleg hochladen", "", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
                 Ui2Action("Kontoauszüge\nimportieren", "", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
-                Ui2Action("Neue Buchung", "", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
-            ))
+                Ui2Action("Auswertung anzeigen", "", Icons.Default.Assessment, EmeraldGreen) { viewModel.setScreen(AppScreen.LEDGER) }
+            )
+            Ui2Grid(dashboardActions) { action, modifier -> DashboardQuickAction(action, modifier) }
         }
         Ui2Section("Letzte Aktivitäten") {
             // The data source has receipt dates rather than a separate audit log. Keep the
@@ -1029,7 +1041,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             Text("Zuletzt datierte Belege", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (receipts.isEmpty()) Text("Noch keine Belege erfasst.")
-            receipts.take(5).forEach { receipt ->
+            receipts.sortedByDescending { it.datum }.take(5).forEach { receipt ->
                 Ui2Destination(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() },
                     "${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}",
                     Icons.Default.Receipt) { selectedReceipt = receipt }
@@ -1052,6 +1064,28 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 Ui2Destination("Mieteingänge", "Soll/Ist & Nebenkosten", Icons.Default.Home) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
             }
             Ui2Destination("Dokumentenakte", "Verträge, Stammdaten und Volltextsuche", Icons.Default.Description) { viewModel.setScreen(AppScreen.DOCUMENTS) }
+        }
+    }
+}
+
+@Composable
+private fun DashboardQuickAction(action: Ui2Action, modifier: Modifier = Modifier) {
+    Card(
+        onClick = action.onClick,
+        modifier = modifier.heightIn(min = 96.dp),
+        shape = Ui2.shape,
+        colors = CardDefaults.cardColors(
+            containerColor = action.color.copy(alpha = 0.09f),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        )
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(30.dp))
+            Text(action.title, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
         }
     }
 }
