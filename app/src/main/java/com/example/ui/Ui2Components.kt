@@ -85,19 +85,33 @@ internal fun Ui2ActionGrid(actions: List<Ui2Action>) {
 internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
     Card(
         onClick = action.onClick,
-        modifier = modifier.heightIn(min = 88.dp),
+        modifier = modifier.heightIn(min = 92.dp),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(
             containerColor = action.color.copy(alpha = 0.09f),
             contentColor = MaterialTheme.colorScheme.onSurface
         )
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(28.dp))
-            Text(action.title, style = MaterialTheme.typography.titleSmall)
-            if (action.subtitle.isNotBlank()) {
-                Text(action.subtitle, style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = action.color.copy(alpha = 0.14f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(25.dp))
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(action.title, style = MaterialTheme.typography.titleSmall)
+                if (action.subtitle.isNotBlank()) {
+                    Text(action.subtitle, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
     }
