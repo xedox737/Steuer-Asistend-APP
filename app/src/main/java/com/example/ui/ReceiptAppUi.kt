@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Assessment
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.isGranted
@@ -1073,6 +1074,41 @@ internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean,
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück zu Mehr") }
             Text(if (monitor) "Sanierungs-Monitor" else "AfA Gebäude", style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f))
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = Ui2.shape,
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)),
+            border = BorderStroke(1.dp, Color(0xFFD8E9FF))
+        ) {
+            Row(
+                Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    modifier = Modifier.size(44.dp),
+                    shape = CircleShape,
+                    color = AccentBlue.copy(alpha = 0.12f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(if (monitor) Icons.Default.Build else Icons.Default.Assessment, null, tint = AccentBlue)
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        if (monitor) "Sanierung im Blick" else "Gebäude abschreiben",
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                    Text(
+                        if (monitor) "Behalte Kosten, Zeitraum und die 15%-Prüfung im Blick."
+                        else "Verwalte deine Immobilien, berechne die AfA und behalte wichtige Daten im Blick.",
+                        fontSize = 12.sp,
+                        color = SlateGray
+                    )
+                }
+            }
         }
         Ui2Section(metadata.name.ifBlank { "Immobilie" }) {
             Text(metadata.adresse, style = MaterialTheme.typography.bodyMedium)
