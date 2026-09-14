@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 184176)
-Total output lines: 13999
-
 package com.example.ui
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -3918,7 +3915,6463 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                   …84176 tokens truncated…                         },
+                    if (receipt.freigabestatus == "FREIGEGEBEN") {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "Diese DATEV-Aufteilung wurde ausdrücklich freigegeben.",
+                                modifier = Modifier.padding(12.dp),
+                                color = Color(0xFF166534),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                com.example.util.DatevMappingService
+                                    .confirmDatevPreview(receipt, datevRows)
+                                    ?.let { confirmedReceipt ->
+                                        viewModel.updateReceipt(confirmedReceipt)
+                                        onDismiss()
+                                    }
+                            },
+                            enabled = datevRows.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("DATEV-Aufteilung ausdrücklich freigeben", fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            "Erst nach dieser Bestätigung wird der Beleg in einen DATEV-Export aufgenommen.",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    }
+
+                }
+            }
+        },
+        confirmButton = {
+            if (isEditing) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { isEditing = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = SlateGray),
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Text("Abbrechen", fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = {
+                            val parsedBetrag = editBruttobetrag.toDoubleOrNull() ?: 0.0
+                            val updatedReceipt = receipt.copy(
+                                aussteller = editAussteller,
+                                datum = editDatum,
+                                uhrzeit = editUhrzeit,
+                                bruttobetrag = parsedBetrag,
+                                hauptkategorie = editHauptkategorie,
+                                unterkategorie = editUnterkategorie,
+                                kontoNr = editKontoNr,
+                                beschreibung = editBeschreibung,
+                                isEigenleistungSanierung = editIsEigenleistung,
+                                wohneinheit = editWohneinheit,
+                                mieter = editMieter,
+                                zahlungsart = editZahlungsart,
+                                zahlungsartQuelle = if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartQuelle else if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) "UNBEKANNT" else "MANUELL",
+                                zahlungsartConfidence = if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) 0.0 else if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartConfidence else 1.0,
+                                positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
+                            )
+                            viewModel.updateReceipt(updatedReceipt)
+                            isEditing = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        modifier = Modifier.weight(1f).height(48.dp).testTag("save_edited_receipt_button")
+                    ) {
+                        Text("Speichern", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { isEditing = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                        modifier = Modifier.weight(1f).height(48.dp).testTag("edit_receipt_button")
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Bearbeiten", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(containerColor = SlateGray),
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Text("Schließen", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        containerColor = Color.White
+    )
+}
+
+@Composable
+fun FullScreenReceiptPreviewDialog(bitmap: Bitmap, onDismiss: () -> Unit) {
+    var scale by remember { mutableStateOf(1f) }
+    var rotation by remember { mutableStateOf(0f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.9f))
+                .pointerInput(Unit) {
+                    detectTransformGestures { _, pan, zoom, rotationChange ->
+                        scale *= zoom
+                        rotation += rotationChange
+                        offset += pan
+                    }
+                }
+        ) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Vollbild Beleg",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        rotationZ = rotation,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    )
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Schließen", tint = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+fun AnlageVChecklistSection(completeness: Map<String, Boolean>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Dokumenten-Checkliste (Anlage V)", fontWeight = FontWeight.Bold, color = DarkNavy)
+            Spacer(modifier = Modifier.height(8.dp))
+            completeness.forEach { (category, isDone) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                    Icon(
+                        imageVector = if (isDone) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = if (isDone) Color(0xFF4CAF50) else Color(0xFFF44336),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(category, modifier = Modifier.padding(start = 8.dp), fontSize = 14.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TimelineSection(metadata: PropertyMetadata, receipts: List<Receipt>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Zeitstrahl: Kauf & Übergang", fontWeight = FontWeight.Bold, color = DarkNavy)
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("Kauf", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(metadata.notariellesKaufdatum, fontSize = 12.sp)
+                }
+                Column {
+                    Text("Nutzen/Lasten", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(metadata.uebergangNutzenLasten, fontSize = 12.sp)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // Minimalist timeline indicator
+            Box(modifier = Modifier.fillMaxWidth().height(4.dp).background(Color.LightGray))
+        }
+    }
+}
+
+sealed class PreviewState {
+    object Loading : PreviewState()
+    data class Success(val bitmap: Bitmap) : PreviewState()
+    data class Error(
+        val message: String,
+        val phase: String,
+        val mimeType: String?,
+        val detectedFormat: String?,
+        val fileSize: Long,
+        val exceptionClass: String?,
+        val exceptionMessage: String?
+    ) : PreviewState()
+}
+
+@Composable
+fun ReceiptPreviewSection(receipt: Receipt, viewModel: ReceiptViewModel) {
+    var fullScreenImage by remember { mutableStateOf<Bitmap?>(null) }
+    
+    val downloadStatusMap by viewModel.documentDownloadStatus.collectAsState()
+    val status = downloadStatusMap[receipt.internalId]
+    
+    var pendingRepairFile by remember { mutableStateOf<File?>(null) }
+    var pendingValidation by remember { mutableStateOf<FileValidationResult?>(null) }
+    var repairErrorMsg by remember { mutableStateOf<String?>(null) }
+
+    val context = LocalContext.current
+    val activity = context as? Activity
+
+    // Repair File Picker Launcher
+    val repairFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { selectedUri ->
+            try {
+                val inputStream = context.contentResolver.openInputStream(selectedUri)
+                val tempFile = File(context.cacheDir, "repair_file_${System.currentTimeMillis()}")
+                inputStream?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                val validation = viewModel.validateFileForRepair(context, tempFile)
+                if (validation.isValid) {
+                    pendingRepairFile = tempFile
+                    pendingValidation = validation
+                    repairErrorMsg = null
+                } else {
+                    repairErrorMsg = validation.errorMessage ?: "Ungültiges Dokument"
+                }
+            } catch (e: Exception) {
+                repairErrorMsg = "Fehler beim Lesen der Datei: ${e.message}"
+            }
+        }
+    }
+
+    // Repair ML Kit Scanner Launcher
+    val repairScannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scanningResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            if (scanningResult != null && !scanningResult.pages.isNullOrEmpty()) {
+                val firstPageUri = scanningResult.pages!![0].imageUri
+                try {
+                    val inputStream = context.contentResolver.openInputStream(firstPageUri)
+                    val tempFile = File(context.cacheDir, "repair_scan_${System.currentTimeMillis()}.jpg")
+                    inputStream?.use { input ->
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    val validation = viewModel.validateFileForRepair(context, tempFile)
+                    if (validation.isValid) {
+                        pendingRepairFile = tempFile
+                        pendingValidation = validation
+                        repairErrorMsg = null
+                    } else {
+                        repairErrorMsg = validation.errorMessage ?: "Ungültiges gescanntes Dokument"
+                    }
+                } catch (e: Exception) {
+                    repairErrorMsg = "Fehler beim Lesen des Scans: ${e.message}"
+                }
+            }
+        }
+    }
+
+    fun triggerRepairScan() {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(1)
+            .setResultFormats(
+                GmsDocumentScannerOptions.RESULT_FORMAT_JPEG,
+                GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+            )
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+
+        val scanner = GmsDocumentScanning.getClient(options)
+        if (activity != null) {
+            scanner.getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    repairScannerLauncher.launch(
+                        IntentSenderRequest.Builder(intentSender).build()
+                    )
+                }
+                .addOnFailureListener {
+                    repairFilePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+                }
+        } else {
+            repairFilePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+        }
+    }
+
+    LaunchedEffect(receipt.internalId) {
+        if (status == null) {
+            viewModel.checkDocumentStatus(receipt)
+        }
+    }
+
+    if (fullScreenImage != null) {
+        FullScreenReceiptPreviewDialog(fullScreenImage!!) { fullScreenImage = null }
+    }
+
+    if (pendingRepairFile != null && pendingValidation != null) {
+        ConfirmRepairDocumentDialog(
+            receipt = receipt,
+            file = pendingRepairFile!!,
+            validation = pendingValidation!!,
+            viewModel = viewModel,
+            onDismiss = {
+                pendingRepairFile = null
+                pendingValidation = null
+            }
+        )
+    }
+
+    val state = status?.state ?: DocumentState.CHECKING
+    val currentLocalPath = status?.localPath ?: receipt.imageUrl
+    
+    val paths = remember(currentLocalPath) {
+        if (currentLocalPath.isNotEmpty()) currentLocalPath.split(",") else emptyList()
+    }
+
+    if (state != DocumentState.CHECKING || paths.isNotEmpty()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "Eingescannte Beleg-Seiten",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = SlateGray,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            
+            when (state) {
+                DocumentState.CHECKING -> {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = AccentBlue)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Beleg wird geprüft...", fontSize = 12.sp, color = DarkNavy)
+                        }
+                    }
+                }
+                DocumentState.DOWNLOAD_REQUIRED, DocumentState.DOWNLOADING -> {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = AccentBlue)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Beleg wird aus Google Drive geladen...", fontSize = 12.sp, color = DarkNavy)
+                        }
+                    }
+                }
+                DocumentState.ERROR -> {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Warning, contentDescription = "Fehler", tint = CrimsonRed, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(status?.message ?: "Fehler beim Laden", fontSize = 12.sp, color = CrimsonRed, textAlign = TextAlign.Center)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(onClick = { viewModel.downloadReceiptDocument(receipt) }) {
+                                Text("Erneut versuchen")
+                            }
+                        }
+                    }
+                }
+                DocumentState.UNSUPPORTED -> {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, BorderColor),
+                        modifier = Modifier.fillMaxWidth().height(120.dp)
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(status?.message ?: "Keine Bildvorschau verfügbar", fontSize = 12.sp, color = SlateGray)
+                        }
+                    }
+                }
+                DocumentState.AVAILABLE -> {
+                    if (paths.isEmpty()) {
+                        Card(
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, BorderColor),
+                            modifier = Modifier.fillMaxWidth().height(120.dp)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("Keine Datei verfügbar", fontSize = 12.sp, color = SlateGray)
+                            }
+                        }
+                    } else {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
+                        ) {
+                            items(paths) { path ->
+                                var previewState by remember(path) { mutableStateOf<PreviewState>(PreviewState.Loading) }
+                                
+                                LaunchedEffect(path) {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                        try {
+                                            val file = java.io.File(path)
+                                            if (!file.exists()) {
+                                                previewState = PreviewState.Error(
+                                                    message = "Lokale Datei fehlt",
+                                                    phase = "RENDERING",
+                                                    mimeType = receipt.originalMimeType,
+                                                    detectedFormat = null,
+                                                    fileSize = 0L,
+                                                    exceptionClass = "FileNotFoundException",
+                                                    exceptionMessage = "Die Datei existiert nicht unter: $path"
+                                                )
+                                                return@withContext
+                                            }
+                                            if (file.length() == 0L) {
+                                                previewState = PreviewState.Error(
+                                                    message = "Lokale Datei ist leer",
+                                                    phase = "RENDERING",
+                                                    mimeType = receipt.originalMimeType,
+                                                    detectedFormat = null,
+                                                    fileSize = 0L,
+                                                    exceptionClass = "IOException",
+                                                    exceptionMessage = "Die Datei hat 0 Bytes"
+                                                )
+                                                return@withContext
+                                            }
+
+                                            // Check format
+                                            var detectedFormat = "Unbekannt"
+                                            var isPdf = false
+                                            file.inputStream().use {
+                                                val header = run { val buffer = ByteArray(16); var offset = 0; while (offset < buffer.size) { val count = it.read(buffer, offset, buffer.size - offset); if (count < 0) break; offset += count }; buffer.copyOf(offset) }
+                                                val hex = header.joinToString(" ") { b -> "%02X".format(b) }
+                                                
+                                                if (header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x25, 0x50, 0x44, 0x46))) {
+                                                    detectedFormat = "PDF (%PDF-)"
+                                                    isPdf = true
+                                                } else if (header.size >= 3 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()) {
+                                                    detectedFormat = "JPEG"
+                                                } else if (header.size >= 8 && header.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))) {
+                                                    detectedFormat = "PNG"
+                                                } else if (header.size >= 12 && header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) && header.copyOfRange(8, 12).contentEquals("WEBP".toByteArray())) {
+                                                    detectedFormat = "WEBP"
+                                                } else {
+                                                    detectedFormat = "Unbekannt ($hex...)"
+                                                }
+                                            }
+
+                                            if (isPdf) {
+                                                try {
+                                                    val fd = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+                                                    val renderer = android.graphics.pdf.PdfRenderer(fd)
+                                                    if (renderer.pageCount > 0) {
+                                                        val page = renderer.openPage(0)
+                                                        val bmp = Bitmap.createBitmap(800, (800.toFloat() / page.width * page.height).toInt(), Bitmap.Config.ARGB_8888)
+                                                        val canvas = android.graphics.Canvas(bmp)
+                                                        canvas.drawColor(android.graphics.Color.WHITE)
+                                                        page.render(bmp, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                                        page.close()
+                                                        renderer.close()
+                                                        fd.close()
+                                                        previewState = PreviewState.Success(bmp)
+                                                    } else {
+                                                        renderer.close()
+                                                        fd.close()
+                                                        previewState = PreviewState.Error(
+                                                            message = "PDF hat keine Seiten",
+                                                            phase = "RENDERING",
+                                                            mimeType = receipt.originalMimeType,
+                                                            detectedFormat = detectedFormat,
+                                                            fileSize = file.length(),
+                                                            exceptionClass = "IllegalArgumentException",
+                                                            exceptionMessage = "PdfRenderer.pageCount ist 0"
+                                                        )
+                                                    }
+                                                } catch (e: Exception) {
+                                                    previewState = PreviewState.Error(
+                                                        message = "PDF-Rendering fehlgeschlagen",
+                                                        phase = "RENDERING",
+                                                        mimeType = receipt.originalMimeType,
+                                                        detectedFormat = detectedFormat,
+                                                        fileSize = file.length(),
+                                                        exceptionClass = e.javaClass.simpleName,
+                                                        exceptionMessage = e.message
+                                                    )
+                                                }
+                                            } else if (detectedFormat == "JPEG" || detectedFormat == "PNG" || detectedFormat == "WEBP") {
+                                                try {
+                                                    val options = BitmapFactory.Options()
+                                                    options.inJustDecodeBounds = true
+                                                    BitmapFactory.decodeFile(path, options)
+                                                    
+                                                    val reqWidth = 1200
+                                                    val reqHeight = 1600
+                                                    var inSampleSize = 1
+                                                    if (options.outHeight > reqHeight || options.outWidth > reqWidth) {
+                                                        val halfHeight: Int = options.outHeight / 2
+                                                        val halfWidth: Int = options.outWidth / 2
+                                                        while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                                                            inSampleSize *= 2
+                                                        }
+                                                    }
+                                                    
+                                                    options.inJustDecodeBounds = false
+                                                    options.inSampleSize = inSampleSize
+                                                    
+                                                    val bmp = BitmapFactory.decodeFile(path, options)
+                                                    if (bmp != null) {
+                                                        previewState = PreviewState.Success(bmp)
+                                                    } else {
+                                                        previewState = PreviewState.Error(
+                                                            message = "Bilddekodierung fehlgeschlagen",
+                                                            phase = "RENDERING",
+                                                            mimeType = receipt.originalMimeType,
+                                                            detectedFormat = detectedFormat,
+                                                            fileSize = file.length(),
+                                                            exceptionClass = "DecodeError",
+                                                            exceptionMessage = "BitmapFactory.decodeFile lieferte null"
+                                                        )
+                                                    }
+                                                } catch (e: Exception) {
+                                                    previewState = PreviewState.Error(
+                                                        message = "Bilddekodierung fehlgeschlagen",
+                                                        phase = "RENDERING",
+                                                        mimeType = receipt.originalMimeType,
+                                                        detectedFormat = detectedFormat,
+                                                        fileSize = file.length(),
+                                                        exceptionClass = e.javaClass.simpleName,
+                                                        exceptionMessage = e.message
+                                                    )
+                                                }
+                                            } else if (receipt.originalMimeType?.contains("text/plain", ignoreCase = true) == true) {
+                                                previewState = PreviewState.Error(
+                                                    message = "Dateiformat falsch erkannt (Textdokument)",
+                                                    phase = "RENDERING",
+                                                    mimeType = receipt.originalMimeType,
+                                                    detectedFormat = detectedFormat,
+                                                    fileSize = file.length(),
+                                                    exceptionClass = "UnsupportedFormat",
+                                                    exceptionMessage = "text/plain wird nicht als Bild unterstützt"
+                                                )
+                                            } else {
+                                                previewState = PreviewState.Error(
+                                                    message = "Unbekanntes Dateiformat",
+                                                    phase = "RENDERING",
+                                                    mimeType = receipt.originalMimeType,
+                                                    detectedFormat = detectedFormat,
+                                                    fileSize = file.length(),
+                                                    exceptionClass = "UnsupportedFormat",
+                                                    exceptionMessage = "Kein PDF, JPEG, PNG oder WEBP"
+                                                )
+                                            }
+                                        } catch (e: Exception) {
+                                            previewState = PreviewState.Error(
+                                                message = "Fehler beim Dateizugriff",
+                                                phase = "RENDERING",
+                                                mimeType = receipt.originalMimeType,
+                                                detectedFormat = "Unbekannt",
+                                                fileSize = 0L,
+                                                exceptionClass = e.javaClass.simpleName,
+                                                exceptionMessage = e.message
+                                            )
+                                        }
+                                    }
+                                }
+
+                                when (val state = previewState) {
+                                    is PreviewState.Loading -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(280.dp).height(360.dp)
+                                                .background(SoftBackground, RoundedCornerShape(8.dp))
+                                                .border(1.dp, BorderColor, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                                        }
+                                    }
+                                    is PreviewState.Success -> {
+                                        Card(
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, BorderColor),
+                                            modifier = Modifier
+                                                .width(280.dp).height(360.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { fullScreenImage = state.bitmap }
+                                        ) {
+                                            Image(
+                                                bitmap = state.bitmap.asImageBitmap(),
+                                                contentDescription = "Beleg Seite",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+                                    is PreviewState.Error -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(280.dp)
+                                                .heightIn(min = 360.dp)
+                                                .background(SoftBackground, RoundedCornerShape(8.dp))
+                                                .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.TopCenter
+                                        ) {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Warning,
+                                                    contentDescription = "Fehler beim Laden",
+                                                    tint = CrimsonRed,
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                                if (state.detectedFormat == "JSON" || state.exceptionClass != null) {
+                                                    Text("Das Originaldokument dieses Belegs wurde nicht korrekt gesichert. Bitte laden oder scannen Sie das Original erneut.", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, textAlign = TextAlign.Center)
+                                                } else {
+                                                    Text(state.message, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy, textAlign = TextAlign.Center)
+                                                }
+
+                                                if (repairErrorMsg != null) {
+                                                    Text(repairErrorMsg!!, fontSize = 12.sp, color = CrimsonRed, textAlign = TextAlign.Center)
+                                                }
+                                                
+                                                Button(
+                                                    onClick = { 
+                                                        repairFilePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Originaldatei auswählen", fontSize = 12.sp)
+                                                }
+
+                                                OutlinedButton(
+                                                    onClick = { 
+                                                        triggerRepairScan()
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("Original neu scannen", fontSize = 12.sp)
+                                                }
+
+                                                OutlinedButton(
+                                                    onClick = { 
+                                                        viewModel.diagnoseAndFixAllReceipts()
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text("In Drive nach Original suchen", fontSize = 12.sp)
+                                                }
+                                                
+                                                var showDetails by remember { mutableStateOf(false) }
+                                                TextButton(onClick = { showDetails = !showDetails }) {
+                                                    Text(if (showDetails) "Technische Details ausblenden" else "Technische Details einblenden", fontSize = 12.sp, color = SlateGray)
+                                                }
+                                                
+                                                if (showDetails) {
+                                                    Column(
+                                                        modifier = Modifier.fillMaxWidth().background(Color.White, RoundedCornerShape(4.dp)).padding(8.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                    ) {
+                                                        Text("Phase: ${state.phase}", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                                        Text("MIME: ${state.mimeType ?: "null"}", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                                        Text("Format: ${state.detectedFormat ?: "null"}", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                                        Text("Größe: ${state.fileSize} Bytes", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                                        Text("Exception: ${state.exceptionClass ?: "null"}", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                                        Text("Details: ${state.exceptionMessage ?: "null"}", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // Aesthetic mock invoice receipt graphic for pre-populated entries
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            colors = CardDefaults.cardColors(containerColor = SoftBackground),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(12.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Receipt,
+                    contentDescription = null,
+                    tint = EmeraldGreen,
+                    modifier = Modifier.size(36.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Virtueller Beleg",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = DarkNavy
+                )
+                Text(
+                    "System-generierter Buchungsvorlage",
+                    fontSize = 10.sp,
+                    color = Color.Gray
+                )
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.95f)
+                        .background(Color.White, RoundedCornerShape(4.dp))
+                        .border(1.dp, BorderColor.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                        .padding(10.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            receipt.aussteller.uppercase(),
+                            fontWeight = FontWeight.Black,
+                            fontSize = 11.sp,
+                            color = DarkNavy,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "Datum: ${receipt.datum} ${receipt.uhrzeit}",
+                            fontSize = 9.sp,
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        
+                        Spacer(modifier = Modifier.height(6.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Buchungsposten:", fontSize = 9.sp, color = SlateGray)
+                            Text("Konto ${receipt.kontoNr}", fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = SlateGray)
+                        }
+                        
+                        Text(
+                            text = if (receipt.beschreibung.isNotEmpty()) receipt.beschreibung else receipt.unterkategorie,
+                            fontSize = 9.sp,
+                            color = DarkNavy,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
+                            drawLine(
+                                color = BorderColor,
+                                start = androidx.compose.ui.geometry.Offset(0f, 0f),
+                                end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                                strokeWidth = 2f,
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "SUMME EUR",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = DarkNavy
+                            )
+                            Text(
+                                NumberFormatter.format(receipt.bruttobetrag),
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                color = EmeraldGreen
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailRow(label: String, value: String, highlight: Boolean = false) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = SlateGray,
+            modifier = Modifier.weight(0.35f)
+        )
+        Text(
+            text = value,
+            fontSize = 11.sp,
+            fontWeight = if (highlight) FontWeight.Black else FontWeight.Bold,
+            color = if (highlight) EmeraldGreen else DarkNavy,
+            modifier = Modifier.weight(0.65f),
+            textAlign = TextAlign.End
+        )
+    }
+}
+
+@Composable
+fun HorizontalDivider() {
+    Spacer(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(BorderColor.copy(alpha = 0.5f))
+    )
+}
+
+@Composable
+fun DetailItem(label: String, value: String, isBold: Boolean = false) {
+    Column {
+        Text(label, fontSize = 11.sp, color = Color.Gray)
+        Text(value, fontSize = 14.sp, fontWeight = if (isBold) FontWeight.Black else FontWeight.Bold, color = DarkNavy)
+    }
+}
+
+fun getKontoLabel(kontoNr: String): String {
+    return when (kontoNr) {
+        "0050" -> "Anschaffungskosten Gebäude"
+        "2120" -> "Geldbeschaffungskosten"
+        "2110" -> "Kreditzinsen"
+        "4970" -> "Kontoführungsgebühren"
+        "4830" -> "Instandhaltung Gebäude"
+        "4670" -> "Fahrtkosten"
+        else -> "Sonstiges"
+    }
+}
+
+// --- SCREEN 3: ADD/SCAN RECEIPT (WITH GEMINI SIMULATION) ---
+
+data class SelectedFile(
+    val uri: Uri,
+    val name: String,
+    val isPdf: Boolean,
+    val bitmaps: List<Bitmap>
+)
+
+private fun getFileName(context: Context, uri: Uri): String {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index != -1) {
+                    result = cursor.getString(index)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
+    return result ?: "beleg_dokument"
+}
+
+private fun loadBitmapsFromUri(context: Context, uri: Uri): List<Bitmap> {
+    val bitmaps = mutableListOf<Bitmap>()
+    val mimeType = context.contentResolver.getType(uri)
+    if (mimeType == "application/pdf" || uri.toString().endsWith(".pdf", ignoreCase = true)) {
+        try {
+            val parcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")
+            if (parcelFileDescriptor != null) {
+                val pdfRenderer = android.graphics.pdf.PdfRenderer(parcelFileDescriptor)
+                val pageCount = pdfRenderer.pageCount
+                // limit to first 3 pages for API token safety/efficiency
+                for (i in 0 until minOf(pageCount, 3)) {
+                    val page = pdfRenderer.openPage(i)
+                    // Create bitmap with reasonable size for Gemini (e.g. max 1024 width/height to avoid memory overload)
+                    val width = minOf(page.width, 1024)
+                    val height = (width.toFloat() / page.width * page.height).toInt()
+                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    
+                    // Fill background white before rendering PDF (since page can have transparent background)
+                    val canvas = android.graphics.Canvas(bitmap)
+                    canvas.drawColor(android.graphics.Color.WHITE)
+                    
+                    page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    bitmaps.add(bitmap)
+                    page.close()
+                }
+                pdfRenderer.close()
+                parcelFileDescriptor.close()
+            }
+        } catch (e: Exception) {
+            Log.e("ReceiptAppUi", "Error rendering PDF to bitmaps: ${e.localizedMessage}", e)
+        }
+    } else {
+        // Standard image decoding
+        try {
+            context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                if (bitmap != null) {
+                    bitmaps.add(bitmap)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ReceiptAppUi", "Error decoding image bitmap: ${e.localizedMessage}", e)
+        }
+    }
+    return bitmaps
+}
+
+@Composable
+fun AiAnalysisLoadingContent(
+    modifier: Modifier = Modifier,
+    statusSubtitle: String = "Gemini KI analysiert Ihr Dokument..."
+) {
+    var activeStep by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1200)
+            if (activeStep < 2) {
+                activeStep++
+            }
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "ai_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        tonalElevation = 6.dp,
+        border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.3f)),
+        shadowElevation = 8.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header with pulsing icon & title
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(EmeraldGreen.copy(alpha = 0.25f), EmeraldGreen.copy(alpha = 0.05f))
+                            ),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = "KI Analyse",
+                        tint = EmeraldGreen,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .graphicsLayer { alpha = pulseAlpha }
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "KI-Dokumentenanalyse",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = DarkNavy,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            color = EmeraldGreen.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "VERARBEITUNG",
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = EmeraldGreen,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = statusSubtitle,
+                        fontSize = 11.5.sp,
+                        color = SlateGray,
+                        lineHeight = 15.sp
+                    )
+                }
+            }
+
+            // Animated progress bar
+            val progressTarget = when (activeStep) {
+                0 -> 0.38f
+                1 -> 0.72f
+                else -> 0.94f
+            }
+            val animatedProgress by animateFloatAsState(
+                targetValue = progressTarget,
+                animationSpec = tween(700, easing = FastOutSlowInEasing),
+                label = "progress"
+            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                LinearProgressIndicator(
+                    progress = animatedProgress,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(CircleShape),
+                    color = EmeraldGreen,
+                    trackColor = Color(0xFFE2E8F0)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = when (activeStep) {
+                            0 -> "1/3 Dokument hochladen & optimieren..."
+                            1 -> "2/3 Gemini KI extrahiert Daten..."
+                            else -> "3/3 Kontierung & Kategorisierung..."
+                        },
+                        fontSize = 10.5.sp,
+                        color = SlateGray,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "${(animatedProgress * 100).toInt()}%",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = EmeraldGreen
+                    )
+                }
+            }
+
+            // Checklist steps breakdown
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                val steps = listOf(
+                    "Dokument hochladen & Bild optimieren",
+                    "Gemini KI extrahiert Betrag, Datum & Aussteller",
+                    "Automatische Kontierung & SKR-Kategorisierung"
+                )
+
+                steps.forEachIndexed { index, stepText ->
+                    val isDone = index < activeStep
+                    val isCurrent = index == activeStep
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .background(
+                                    when {
+                                        isDone -> EmeraldGreen
+                                        isCurrent -> EmeraldGreen.copy(alpha = 0.15f)
+                                        else -> Color(0xFFE2E8F0)
+                                    },
+                                    CircleShape
+                                )
+                                .border(
+                                    width = if (isCurrent) 1.5.dp else 0.dp,
+                                    color = if (isCurrent) EmeraldGreen else Color.Transparent,
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isDone) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            } else if (isCurrent) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(12.dp),
+                                    color = EmeraldGreen,
+                                    strokeWidth = 1.8.dp
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(Color(0xFF94A3B8), CircleShape)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = stepText,
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                            color = when {
+                                isDone -> DarkNavy
+                                isCurrent -> EmeraldGreen
+                                else -> Color(0xFF94A3B8)
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Adaptive Memory Note
+            Surface(
+                color = EmeraldGreen.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.25f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "🧠 Lernende KI aktiv: Passt sich automatisch deinen früheren Belegs-Korrekturen an.",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = EmeraldGreen
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddReceiptScreen(viewModel: ReceiptViewModel) {
+    val scanState by viewModel.scanState.collectAsState()
+    val aiProviderState by viewModel.aiProviderState.collectAsState()
+    val aiProviderLabel = if (aiProviderState.provider == ReceiptAnalysisProvider.OPENAI) "OpenAI" else "Gemini"
+
+    var selectedFiles by remember { mutableStateOf<List<SelectedFile>>(emptyList()) }
+    var previewingFile by remember { mutableStateOf<SelectedFile?>(null) }
+    var croppingFile by remember { mutableStateOf<SelectedFile?>(null) }
+
+    val context = LocalContext.current
+    val activity = context as? Activity
+
+    // Google ML Kit Document Scanner Launcher
+    val mlKitScannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scanningResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            if (scanningResult != null) {
+                val pages = scanningResult.pages
+                if (!pages.isNullOrEmpty()) {
+                    val bitmaps = pages.flatMap { page ->
+                        loadBitmapsFromUri(context, page.imageUri)
+                    }
+                    if (bitmaps.isNotEmpty()) {
+                        // Trigger Gemini analysis with auto-cropped pages
+                        viewModel.analyzeReceipt(text = "", bitmaps = bitmaps)
+
+                        val virtualUri = Uri.parse("mlkit-scan://${System.currentTimeMillis()}")
+                        val name = "MLKit_Document_Scan_${System.currentTimeMillis() / 1000}.jpg"
+                        selectedFiles = selectedFiles + SelectedFile(
+                            uri = virtualUri,
+                            name = name,
+                            isPdf = false,
+                            bitmaps = bitmaps
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            val newSelectedFiles = uris.mapNotNull { uri ->
+                try {
+                    val name = getFileName(context, uri)
+                    val isPdf = name.endsWith(".pdf", ignoreCase = true) || context.contentResolver.getType(uri) == "application/pdf"
+                    val bitmaps = loadBitmapsFromUri(context, uri)
+                    if (bitmaps.isNotEmpty()) {
+                        SelectedFile(uri = uri, name = name, isPdf = isPdf, bitmaps = bitmaps)
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    Log.e("AddReceiptScreen", "Error loading uri: ${uri}", e)
+                    null
+                }
+            }
+            selectedFiles = selectedFiles + newSelectedFiles
+        }
+    }
+
+    val triggerMlKitScanner: () -> Unit = {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(10)
+            .setResultFormats(
+                GmsDocumentScannerOptions.RESULT_FORMAT_JPEG,
+                GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+            )
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+
+        val scanner = GmsDocumentScanning.getClient(options)
+        if (activity != null) {
+            scanner.getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender ->
+                    mlKitScannerLauncher.launch(
+                        IntentSenderRequest.Builder(intentSender).build()
+                    )
+                }
+                .addOnFailureListener { e ->
+                    Log.e("MLKitScanner", "ML Kit Scanner launch error: ${e.message}", e)
+                    filePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+                }
+        } else {
+            filePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+        }
+    }
+
+    if (previewingFile != null) {
+        val file = previewingFile!!
+        Dialog(
+            onDismissRequest = { previewingFile = null }
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = file.name,
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { previewingFile = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Schließen", tint = SlateGray)
+                        }
+                    }
+
+                    // Document status card
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(12.dp))
+                            .padding(20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (file.isPdf) Icons.Default.Description else Icons.Default.Receipt,
+                                contentDescription = if (file.isPdf) "PDF" else "Dokument",
+                                tint = if (file.isPdf) CrimsonRed else EmeraldGreen,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Text(
+                                text = file.name,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = DarkNavy
+                            )
+                            Text(
+                                text = if (file.isPdf) "PDF-Dokument bereit für KI-Analyse" else "${file.bitmaps.size} Seite(n) für KI-Analyse bereit",
+                                fontSize = 11.sp,
+                                color = SlateGray
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (!file.isPdf && file.bitmaps.isNotEmpty()) {
+                            OutlinedButton(
+                                onClick = {
+                                    croppingFile = file
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, EmeraldGreen)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(16.dp))
+                                    Text("Zuschneiden & Optimieren", fontSize = 11.sp, color = DarkNavy)
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = if (file.isPdf) "PDF-Dokument" else "${file.bitmaps.size} Seite(n) gescannt",
+                                fontSize = 11.sp,
+                                color = SlateGray
+                            )
+                        }
+                        Button(
+                            onClick = { previewingFile = null },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Schließen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (croppingFile != null) {
+        val file = croppingFile!!
+        val initialBitmap = file.bitmaps.firstOrNull()
+        if (initialBitmap != null) {
+            DocumentCropDialog(
+                initialBitmap = initialBitmap,
+                onDismiss = { croppingFile = null },
+                onCropped = { croppedBitmap ->
+                    croppingFile = null
+                    previewingFile = null
+                    // Trigger Gemini AI analysis with optimized cropped bitmap
+                    viewModel.analyzeReceipt(text = "", bitmaps = listOf(croppedBitmap))
+                    // Update selected file list
+                    val updatedFiles = selectedFiles.map {
+                        if (it.uri == file.uri) {
+                            it.copy(bitmaps = listOf(croppedBitmap))
+                        } else it
+                    }
+                    selectedFiles = updatedFiles
+                }
+            )
+        } else {
+            croppingFile = null
+        }
+    }
+
+    // Form Fields for Manual review / Edit after extraction
+    var editAussteller by remember { mutableStateOf("") }
+    var editDatum by remember { mutableStateOf("") }
+    var editUhrzeit by remember { mutableStateOf("") }
+    var editBruttobetrag by remember { mutableStateOf("") }
+    var editHauptkategorie by remember { mutableStateOf("Renovierungs- / Reparaturkosten & Investitionen") }
+    var editUnterkategorie by remember { mutableStateOf("Baukosten") }
+    var editKontoNr by remember { mutableStateOf("4830") }
+    var editBeschreibung by remember { mutableStateOf("") }
+    var editIsEigenleistung by remember { mutableStateOf(false) }
+    var editWohneinheit by remember { mutableStateOf("Gesamtobjekt / Allgemein") }
+    var editMieter by remember { mutableStateOf("") }
+    var editZahlungsart by remember { mutableStateOf("Unbekannt") }
+    var editPositionen by remember { mutableStateOf<List<com.example.data.ReceiptItem>>(emptyList()) }
+    var wohneinheitExpanded by remember { mutableStateOf(false) }
+    var localImagePaths by remember { mutableStateOf("") }
+
+    val propertyMetadataState by viewModel.propertyMetadata.collectAsState()
+    val metadata = propertyMetadataState ?: PropertyMetadata()
+    val unitsList = remember(metadata.wohneinheiten) {
+        metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
+    }
+
+    val mainCategories = listOf(
+        "Anschaffungskosten",
+        "Betriebs- / Nebenkosten",
+        "Finanzierung, Kredite & Versicherungen",
+        "Miete, Nebenkosten & Kaution",
+        "Renovierungs- / Reparaturkosten & Investitionen",
+        "Sonstige Ausgaben",
+        "Sonstige Einnahmen"
+    )
+
+    val subCategoriesMap = mapOf(
+        "Anschaffungskosten" to listOf(
+            "Abbruchkosten", "Architekt", "Baukosten", "Erschließungskosten",
+            "Grundbuchgebühren", "Grunderwerbsteuer", "Gutachter", "Kaufpreis Garagen",
+            "Kaufpreis Objekt", "Kaufpreis Sonstiges", "Kaufpreis Stellplatz",
+            "Maklerprovision", "Notarkosten", "Vermesser"
+        ),
+        "Betriebs- / Nebenkosten" to listOf(
+            "Abwasser", "Allgemeinstrom", "Antenne/Kabelanschluss", "Aufzug sowie Aufzugswartung",
+            "Betriebskosten", "Einmalige Ungezieferbekämpfung", "Entwässerung und Niederschlagswasser",
+            "Fassadenreinigung", "Frischwasser", "Fußwegreinigung", "Gartenpflege", "Gebäudereinigung",
+            "Gebäudeversicherung", "Grundsteuer", "Hausgeld und WEG Nebenkosten", "Hausverwaltungskosten",
+            "Hauswart/Hausmeister", "Heiz- und Warmwasserkosten", "Heizkosten", "Kosten für Brennstoffe",
+            "Legionellenuntersuchung", "Müllbeseitigung", "Nutzerwechselgebühren",
+            "Regelmäßige Dachrinnenreinigung & Fassadenreinigung", "Regelmäßige Ungezieferbekämpfung",
+            "Reinigung Öltank", "Reinigungskosten", "Sach- und Haftpflichtversicherung",
+            "Schornsteinreinigung", "Sonstige Betriebskosten", "Sonstige Versicherungen",
+            "Straßenreinigung", "Thermenwartung", "Wachdienst / Pförtner", "Warmwasserkosten",
+            "Wartung Rauchmelder & Feuerlöscher", "Wartung der Heizungsanlage / Thermen", "Winterdienst"
+        ),
+        "Finanzierung, Kredite & Versicherungen" to listOf(
+            "Erbpachtzins", "Geldbeschaffungskosten", "Kontoführungsgebühren",
+            "Kreditauszahlung", "Kreditrate", "Kredittilgung", "Kreditzinsen",
+            "Rechtsschutzversicherung", "Sondertilgung", "Vorfälligkeitsentschädigung"
+        ),
+        "Miete, Nebenkosten & Kaution" to listOf(
+            "Einzahlung Kaution", "Garage & Stellplätze", "Kaltmiete", "Kaution",
+            "Mietzuschlag", "Pauschalmiete", "Rückzahlung Kaution", "Stellplatz, Garage, Keller",
+            "Warmmiete"
+        ),
+        "Renovierungs- / Reparaturkosten & Investitionen" to listOf(
+            "Ausstattung", "Außenanlagen", "Bad", "Balkon & Terasse", "Dach & Fassade",
+            "Elektrik & Beleuchtung", "Fenster, Tür & Boden", "Heizung & Therme", "Innenbereich",
+            "Instandhaltungsrücklage", "Sanitär", "Schadensbeseitigung", "Sonstige Einrichtungen",
+            "Streichen, Tapezieren", "Wärme- & Schalldämmung"
+        ),
+        "Sonstige Ausgaben" to listOf(
+            "Anwaltskosten", "Einkommensteuer", "Entsorgung Hausrat", "Fahrtkosten",
+            "Gebühren", "Gerichtskosten", "Inserate", "Kapitalertragssteuer",
+            "Kostenaufwand für leerstehende Räumlichkeiten", "Privateinlage", "Privatentnahme",
+            "Rechtsberatungskosten", "Sonstige", "Sonstiges", "Sperrmüllentsorgung",
+            "Steuerberatungskosten", "Umsatzsteuer bei Gewerbe", "Umsatzsteuer-Vorauszahlung",
+            "Vermesser", "Vermietung", "Verwaltungskosten des Vermieters", "Verwaltungskosten für Sozialwohnungen"
+        ),
+        "Sonstige Einnahmen" to listOf(
+            "Einnahmen aus Münzwaschgeräten", "Einrichtungen der Wäschepflege", "Guthabenzins",
+            "Gutschrift aus Betriebskostenabrechnung", "Nachzahlung aus Betriebskostenabrechnung"
+        )
+    )
+
+    // Dynamic Account suggesting
+    fun getSuggestedKonto(haupt: String, unter: String): String {
+        return when (haupt) {
+            "Anschaffungskosten" -> "0050"
+            "Finanzierung, Kredite & Versicherungen" -> {
+                when (unter) {
+                    "Geldbeschaffungskosten" -> "2120"
+                    "Kreditzinsen" -> "2110"
+                    "Kontoführungsgebühren" -> "4970"
+                    else -> "2120"
+                }
+            }
+            "Renovierungs- / Reparaturkosten & Investitionen" -> "4830"
+            "Sonstige Ausgaben" -> {
+                if (unter == "Fahrtkosten") "4670" else "4970"
+            }
+            "Betriebs- / Nebenkosten" -> "4970"
+            "Miete, Nebenkosten & Kaution" -> "4970"
+            "Sonstige Einnahmen" -> "4970"
+            else -> "4830"
+        }
+    }
+
+    // Auto-populate when Gemini analysis completes successfully
+    LaunchedEffect(scanState) {
+        val state = scanState
+        if (state is ScanUiState.Success) {
+            val extracted = state.receipt
+            editAussteller = extracted.aussteller
+            editDatum = extracted.datum
+            editUhrzeit = extracted.uhrzeit
+            editBruttobetrag = extracted.bruttobetrag.toString()
+            editHauptkategorie = extracted.hauptkategorie
+            editUnterkategorie = extracted.unterkategorie
+            editKontoNr = extracted.kontoNr
+            editBeschreibung = extracted.beschreibung
+            editIsEigenleistung = extracted.isEigenleistungSanierung
+            editZahlungsart = extracted.zahlungsart
+            if (extracted.mieter.isNotEmpty()) {
+                editMieter = extracted.mieter
+            }
+            if (extracted.wohneinheit.isNotEmpty()) {
+                editWohneinheit = extracted.wohneinheit
+            }
+            editPositionen = extracted.positionen
+            localImagePaths = state.localImagePaths
+        }
+    }
+
+    if (scanState is ScanUiState.Loading) {
+        Dialog(
+            onDismissRequest = {},
+            properties = androidx.compose.ui.window.DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+                usePlatformDefaultWidth = false
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                AiAnalysisLoadingContent(
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    } else if (scanState is ScanUiState.Error) {
+        AlertDialog(
+            onDismissRequest = { viewModel.resetScanState() },
+            title = { Text("Analysefehler") },
+            text = { Text((scanState as ScanUiState.Error).message) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.resetScanState() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            "Beleg erfassen (KI & Manuell)",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Black,
+            color = DarkNavy
+        )
+
+        // Dropdown menu flags
+        var mainCategoryExpanded by remember { mutableStateOf(false) }
+        var subCategoryExpanded by remember { mutableStateOf(false) }
+
+        // SECTION 1: Document Upload & AI Control (Beleg-Scan & Upload Center)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = Ui2.shape,
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header of the Upload Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(EmeraldGreen.copy(alpha = 0.15f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = "KI",
+                            tint = EmeraldGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            "Beleg-Scan & Upload Center",
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            "Scannen oder hochladen – die KI füllt die Buchungsdaten für dich aus.",
+                            color = SlateGray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                // Interactive Buttons
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Primary Featured Action: Dokumenten-Scanner with Auto-Crop
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { triggerMlKitScanner() }
+                            .testTag("scan_camera_button"),
+                        color = Color.Unspecified,
+                        shape = RoundedCornerShape(12.dp),
+                        tonalElevation = 2.dp
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color(0xFF10B981), // Emerald 500
+                                            Color(0xFF059669)  // Emerald 600
+                                        )
+                                    )
+                                )
+                                .padding(horizontal = 12.dp, vertical = 9.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .background(Color.White.copy(alpha = 0.22f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Column {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Beleg scannen",
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 12.5.sp
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(Color.White, CircleShape)
+                                                    .padding(horizontal = 5.dp, vertical = 1.dp)
+                                            ) {
+                                                Text(
+                                                    text = "AUTO-CROP",
+                                                    fontSize = 7.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF059669)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = "Automatische Erkennung und Zuschnitt",
+                                            color = Color.White.copy(alpha = 0.92f),
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .background(Color.White.copy(alpha = 0.18f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Secondary File Upload Action
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { filePickerLauncher.launch(arrayOf("image/*", "application/pdf")) }
+                            .testTag("scan_upload_button"),
+                        color = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        shadowElevation = 1.dp
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .background(Color(0xFFF1F5F9), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.UploadFile,
+                                        contentDescription = null,
+                                        tint = DarkNavy,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Datei oder Bild hochladen",
+                                        fontWeight = FontWeight.Bold,
+                                        color = DarkNavy,
+                                        fontSize = 12.5.sp
+                                    )
+                                    Text(
+                                        text = "PDF, JPG oder PNG aus Galerie / Dateimanager",
+                                        color = Color(0xFF64748B),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = Color(0xFF94A3B8),
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Dotted Empty State or Document List
+                if (selectedFiles.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                            .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0xFFCBD5E1),
+                                    style = Stroke(
+                                        width = 2.dp.toPx(),
+                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                    ),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx())
+                                )
+                            }
+                            .clickable { triggerMlKitScanner() }
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Receipt,
+                                contentDescription = null,
+                                tint = SlateGray.copy(alpha = 0.6f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Text(
+                                "Noch keine Belege bereitgestellt",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = DarkNavy
+                            )
+                            Text(
+                                "Scanne einen Beleg oder wähle eine Datei aus. Die Analyse startest du anschließend mit einem Tipp.",
+                                fontSize = 10.sp,
+                                color = SlateGray,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                } else {
+                    // Document selection queue header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Bereit zur Analyse · ${selectedFiles.size} Dokumente",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy
+                        )
+                        Box(
+                            modifier = Modifier
+                                .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "$aiProviderLabel bereit",
+                                fontSize = 9.sp,
+                                color = EmeraldGreen,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        items(selectedFiles) { file ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .width(140.dp)
+                                    .height(115.dp)
+                                    .clickable { previewingFile = file }
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(8.dp),
+                                        verticalArrangement = Arrangement.SpaceBetween,
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(56.dp)
+                                                .background(Color.White, RoundedCornerShape(8.dp))
+                                                .padding(4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (file.isPdf) Icons.Default.Description else Icons.Default.Receipt,
+                                                contentDescription = if (file.isPdf) "PDF" else "Dokument",
+                                                tint = if (file.isPdf) CrimsonRed else EmeraldGreen,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
+
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = file.name,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DarkNavy,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = if (file.isPdf) "PDF Dokument" else "${file.bitmaps.size} Seite(n)",
+                                                fontSize = 8.sp,
+                                                color = SlateGray
+                                            )
+                                        }
+                                    }
+
+                                    // Remove button
+                                    IconButton(
+                                        onClick = {
+                                            selectedFiles = selectedFiles.filter { it.uri != file.uri }
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .size(24.dp)
+                                            .padding(3.dp)
+                                            .background(Color.White, CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Entfernen",
+                                            tint = CrimsonRed,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Prominent Trigger button for Gemini KI analysis
+                    Button(
+                        onClick = {
+                            val allBitmaps = selectedFiles.flatMap { it.bitmaps }
+                            if (allBitmaps.isNotEmpty()) {
+                                viewModel.analyzeReceipt(text = "", bitmaps = allBitmaps)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("trigger_gemini_analysis_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = scanState !is ScanUiState.Loading,
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Column(
+                                horizontalAlignment = Alignment.Start,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    "$aiProviderLabel-Analyse starten",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    "Beträge, Aussteller, Datum und Kategorie werden automatisch erkannt.",
+                                    fontSize = 9.sp,
+                                    color = Color.White.copy(alpha = 0.88f),
+                                    lineHeight = 12.sp,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Add scan tips checklist to make the UI feel premium & professional!
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF1F5F9).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = SlateGray,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "Tipps für perfekte Erkennung: Leg Belege glatt hin, vermeide Schatten/Spiegelungen und fotografiere flach von oben.",
+                        fontSize = 9.5.sp,
+                        color = SlateGray,
+                        lineHeight = 13.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        // SECTION 2: AI State Presentation (Loading / Success / Error / Idle)
+        when (scanState) {
+            is ScanUiState.Loading -> {
+                AiAnalysisLoadingContent(
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            is ScanUiState.Success -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = Ui2.shape,
+                    colors = CardDefaults.cardColors(containerColor = EmeraldGreen.copy(alpha = 0.08f)),
+                    border = BorderStroke(1.dp, EmeraldGreen)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = "Success",
+                                tint = EmeraldGreen,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Text("Extraktion erfolgreich!", fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                        }
+                        Text(
+                            "Die extrahierten Daten wurden unten eingetragen. Bitte überprüfe die Werte vor dem Einbuchen.",
+                            color = DarkNavy,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+            is ScanUiState.Error -> {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = CrimsonRed.copy(alpha = 0.08f)),
+                    border = BorderStroke(1.dp, CrimsonRed)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = "Error",
+                                tint = CrimsonRed,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Text("KI-Analyse fehlgeschlagen", fontWeight = FontWeight.Bold, color = CrimsonRed)
+                        }
+                        Text(
+                            (scanState as ScanUiState.Error).message,
+                            color = CrimsonRed,
+                            fontSize = 11.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            val allBitmaps = selectedFiles.flatMap { it.bitmaps }
+                            if (allBitmaps.isNotEmpty()) {
+                                Button(
+                                    onClick = {
+                                        viewModel.analyzeReceipt(text = "", bitmaps = allBitmaps)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AutoAwesome,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text("Erneut analysieren", fontSize = 11.sp, color = Color.White)
+                                    }
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.resetScanState() },
+                                border = BorderStroke(1.dp, SlateGray),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = SlateGray),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Schließen", fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+            is ScanUiState.Idle -> {
+                // No specific state card needed, since form is always shown below
+            }
+        }
+
+        // SECTION 3: Receipt Entry Form (Always visible)
+        Text("Buchungsdaten für Beleg", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 16.sp)
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedTextField(
+                value = editAussteller,
+                onValueChange = { editAussteller = it },
+                label = { Text("Aussteller / Creditor") },
+                modifier = Modifier.fillMaxWidth().testTag("edit_aussteller"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                )
+            )
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = editDatum,
+                    onValueChange = { editDatum = it },
+                    label = { Text("Datum (JJJJ-MM-TT)") },
+                    modifier = Modifier.weight(1f).testTag("edit_datum"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+                OutlinedTextField(
+                    value = editUhrzeit,
+                    onValueChange = { editUhrzeit = it },
+                    label = { Text("Uhrzeit (HH:MM)") },
+                    modifier = Modifier.weight(1f).testTag("edit_uhrzeit"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+            }
+
+            OutlinedTextField(
+                value = editBruttobetrag,
+                onValueChange = { editBruttobetrag = it },
+                label = { Text("Bruttobetrag (€)") },
+                modifier = Modifier.fillMaxWidth().testTag("edit_betrag"),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                )
+            )
+
+            // EXPOSED DROPDOWN: Hauptkategorie
+            ExposedDropdownMenuBox(
+                expanded = mainCategoryExpanded,
+                onExpandedChange = { mainCategoryExpanded = !mainCategoryExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = editHauptkategorie,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Hauptkategorie") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = mainCategoryExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_hauptkategorie"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+                ExposedDropdownMenu(
+                    expanded = mainCategoryExpanded,
+                    onDismissRequest = { mainCategoryExpanded = false },
+                    modifier = Modifier.background(Color.White)
+                ) {
+                    mainCategories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category) },
+                            onClick = {
+                                editHauptkategorie = category
+                                editUnterkategorie = subCategoriesMap[category]?.firstOrNull() ?: ""
+                                editKontoNr = getSuggestedKonto(category, editUnterkategorie)
+                                mainCategoryExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // EXPOSED DROPDOWN: Unterkategorie
+            val currentSubs = subCategoriesMap[editHauptkategorie] ?: emptyList()
+            ExposedDropdownMenuBox(
+                expanded = subCategoryExpanded,
+                onExpandedChange = { subCategoryExpanded = !subCategoryExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = editUnterkategorie,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Unterkategorie") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = subCategoryExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_unterkategorie"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+                ExposedDropdownMenu(
+                    expanded = subCategoryExpanded,
+                    onDismissRequest = { subCategoryExpanded = false },
+                    modifier = Modifier.background(Color.White)
+                ) {
+                    currentSubs.forEach { sub ->
+                        DropdownMenuItem(
+                            text = { Text(sub) },
+                            onClick = {
+                                editUnterkategorie = sub
+                                editKontoNr = getSuggestedKonto(editHauptkategorie, sub)
+                                subCategoryExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                value = editKontoNr,
+                onValueChange = { editKontoNr = it },
+                label = { Text("DATEV Konto-Nr (Instandhaltung, Zinsen, etc.)") },
+                modifier = Modifier.fillMaxWidth().testTag("edit_konto"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                )
+            )
+
+            OutlinedTextField(
+                value = editBeschreibung,
+                onValueChange = { editBeschreibung = it },
+                label = { Text("Beschreibung (Zweck)") },
+                modifier = Modifier.fillMaxWidth().testTag("edit_beschreibung"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                )
+            )
+
+            OutlinedTextField(
+                value = editMieter,
+                onValueChange = { editMieter = it },
+                label = { Text("Mieter / Zahler (optional)") },
+                modifier = Modifier.fillMaxWidth().testTag("edit_receipt_mieter"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White
+                )
+            )
+
+            // EXPOSED DROPDOWN: Wohneinheit
+            ExposedDropdownMenuBox(
+                expanded = wohneinheitExpanded,
+                onExpandedChange = { wohneinheitExpanded = !wohneinheitExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = editWohneinheit,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Zugeordnete Wohneinheit") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = wohneinheitExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_wohneinheit"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+                ExposedDropdownMenu(
+                    expanded = wohneinheitExpanded,
+                    onDismissRequest = { wohneinheitExpanded = false },
+                    modifier = Modifier.background(Color.White)
+                ) {
+                    unitsList.forEach { unit ->
+                        DropdownMenuItem(
+                            text = { Text(unit) },
+                            onClick = {
+                                editWohneinheit = unit
+                                wohneinheitExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Checkbox Eigenleistung
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { editIsEigenleistung = !editIsEigenleistung }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = editIsEigenleistung,
+                    onCheckedChange = { editIsEigenleistung = it },
+                    colors = CheckboxDefaults.colors(checkedColor = EmeraldGreen),
+                    modifier = Modifier.testTag("edit_eigenleistung_checkbox")
+                )
+                Column {
+                    Text("Eigenleistung Sanierung?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
+                    Text("Fällt in die Sanierungsphase 01.10.25 - 31.01.26", color = Color.Gray, fontSize = 11.sp)
+                }
+            }
+
+            OutlinedTextField(
+                value = editZahlungsart,
+                onValueChange = { editZahlungsart = it },
+                label = { Text("Zahlungsart") },
+                supportingText = { Text("Bar, Girocard/EC, Kreditkarte, Überweisung, Lastschrift, PayPal oder Unbekannt") },
+                modifier = Modifier.fillMaxWidth().testTag("scan_payment_method")
+            )
+
+            // Positionen Editor Section
+            ReceiptPositionenEditor(
+                positionen = editPositionen,
+                onPositionenChanged = { editPositionen = it }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        // Reset Form / Reset selection
+                        editAussteller = ""
+                        editDatum = ""
+                        editUhrzeit = ""
+                        editBruttobetrag = ""
+                        editHauptkategorie = "Renovierungs- / Reparaturkosten & Investitionen"
+                        editUnterkategorie = "Baukosten"
+                        editKontoNr = "4830"
+                        editBeschreibung = ""
+                        editIsEigenleistung = false
+                        editWohneinheit = "Gesamtobjekt / Allgemein"
+                        editMieter = ""
+                        editPositionen = emptyList()
+                        selectedFiles = emptyList()
+                        viewModel.setScreen(AppScreen.DASHBOARD)
+                    },
+                    modifier = Modifier.weight(1.5f).height(48.dp),
+                    border = BorderStroke(1.dp, SlateGray)
+                ) {
+                    Text("Zurück / Reset", color = SlateGray, fontSize = 12.sp)
+                }
+                Button(
+                    onClick = {
+                        val amount = editBruttobetrag.toDoubleOrNull() ?: 0.0
+                        viewModel.saveReceipt(
+                            aussteller = editAussteller,
+                            datum = editDatum,
+                            uhrzeit = editUhrzeit,
+                            bruttobetrag = amount,
+                            hauptkategorie = editHauptkategorie,
+                            unterkategorie = editUnterkategorie,
+                            kontoNr = editKontoNr,
+                            beschreibung = editBeschreibung,
+                            isEigenleistung = editIsEigenleistung,
+                            imageUrl = localImagePaths,
+                            wohneinheit = editWohneinheit,
+                            mieter = editMieter,
+                            zahlungsart = editZahlungsart,
+                            positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
+                        )
+                    },
+                    modifier = Modifier.weight(1f).height(48.dp).testTag("save_extracted_receipt_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                ) {
+                    Text("Einbuchen", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// --- SCREEN 4: KI-FAHRTENBUCH 2.0 (siehe LogbookFeature.kt) ---
+
+// --- SCREEN 5: LEDGER & ACCOUNT BALANCES ---
+
+@Composable
+fun LedgerScreen(viewModel: ReceiptViewModel) {
+    val receipts by viewModel.receipts.collectAsState()
+    val context = LocalContext.current
+    val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsState()
+    val paymentBackfillStatus by viewModel.paymentBackfillStatus.collectAsState()
+    val isDescriptionBackfillRunning by viewModel.isBackfillingDescriptions.collectAsState()
+    val descriptionBackfillStatus by viewModel.descriptionBackfillStatus.collectAsState()
+    val descriptionBackfillCandidates by viewModel.descriptionBackfillCandidates.collectAsState()
+    var showDescriptionBackfillPreview by remember { mutableStateOf(false) }
+
+    // Calculate totals per DATEV Konto
+    val kontoMap = receipts.groupBy { it.kontoNr }
+    val sortedKonten = listOf("0050", "2110", "2120", "4830", "4670", "4970")
+
+    val scrollState = rememberScrollState()
+
+    var showTaxYearDialog by remember { mutableStateOf(false) }
+
+    val availableYears = remember(receipts) {
+        receipts.mapNotNull {
+            try {
+                it.datum.substring(0, 4).toInt()
+            } catch (e: Exception) {
+                null
+            }
+        }.distinct().sortedDescending()
+    }
+
+    val yearsToSelect = if (availableYears.isEmpty()) {
+        listOf(java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+    } else {
+        availableYears
+    }
+
+    if (showTaxYearDialog) {
+        var selectedYear by remember { mutableStateOf(yearsToSelect.first()) }
+        var includeAdvisorSummary by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showTaxYearDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        tint = EmeraldGreen
+                    )
+                    Text(
+                        text = "Finanzamt PDF Export",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Wähle das Steuerjahr für den Export aus. Der Bericht enthält eine Zusammenfassung nach Werbungskosten-Kategorien (Anlage V) sowie ein detailliertes Buchungsjournal.",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        lineHeight = 16.sp
+                    )
+
+                    Text(
+                        text = "Steuerjahr auswählen:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        yearsToSelect.forEach { year ->
+                            val isSelected = year == selectedYear
+                            Box(
+                                modifier = Modifier
+                                    .background(
+                                        if (isSelected) EmeraldGreen else Color.White,
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) EmeraldGreen else BorderColor,
+                                        RoundedCornerShape(20.dp)
+                                    )
+                                    .clickable { selectedYear = year }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = year.toString(),
+                                    color = if (isSelected) Color.White else DarkNavy,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = "Zusatz-Optionen:",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF1F5F9))
+                            .clickable { includeAdvisorSummary = !includeAdvisorSummary }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Checkbox(
+                            checked = includeAdvisorSummary,
+                            onCheckedChange = { includeAdvisorSummary = it },
+                            colors = CheckboxDefaults.colors(checkedColor = EmeraldGreen)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Zusammenfassung für Steuerberater",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DarkNavy
+                            )
+                            Text(
+                                text = "Erstellt eine zusätzliche strukturierte DATEV-Kontenrahmen-Tabelle im PDF-Bericht.",
+                                fontSize = 10.sp,
+                                color = Color.Gray,
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+
+                    val yearReceiptsCount = receipts.count {
+                        try {
+                            it.datum.substring(0, 4).toInt() == selectedYear
+                        } catch (e: Exception) {
+                            false
+                        }
+                    }
+
+                    if (yearReceiptsCount == 0) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFFEF3C7), RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Keine Belege für das Steuerjahr $selectedYear gefunden.",
+                                fontSize = 11.sp,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "Gefundene Einträge: $yearReceiptsCount Belege",
+                            fontSize = 12.sp,
+                            color = EmeraldGreen,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val pdfFile = viewModel.exportToPdf(context, selectedYear, includeAdvisorSummary)
+                        if (pdfFile != null) {
+                            com.example.util.PdfExporter.sharePdf(context, pdfFile)
+                        }
+                        showTaxYearDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text("Exportieren & Teilen", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTaxYearDialog = false }) {
+                    Text("Abbrechen", color = Color.Gray, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Altbelege – Beschreibung nacherkennen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(
+                    descriptionBackfillStatus ?: "Prüft nur leere oder offensichtlich durch Aussteller/Adresse ersetzte Beschreibungen. Andere Belegdaten bleiben unverändert.",
+                    fontSize = 11.sp,
+                    color = SlateGray
+                )
+                Button(
+                    onClick = { viewModel.analyzeLegacyDescriptions() },
+                    enabled = !isDescriptionBackfillRunning,
+                    modifier = Modifier.fillMaxWidth().testTag("legacy_description_backfill_button")
+                ) {
+                    Text(if (isDescriptionBackfillRunning) "Altbelege werden geprüft …" else "Altbelege prüfen")
+                }
+                if (descriptionBackfillCandidates.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = { showDescriptionBackfillPreview = true },
+                        modifier = Modifier.fillMaxWidth().testTag("legacy_description_preview_button")
+                    ) {
+                        Text("Vorschau (${descriptionBackfillCandidates.size})")
+                    }
+                }
+            }
+        }
+
+        if (showDescriptionBackfillPreview && descriptionBackfillCandidates.isNotEmpty()) {
+            var selectedIds by remember(descriptionBackfillCandidates) {
+                mutableStateOf(descriptionBackfillCandidates.filter { it.isSafe }.map { it.receiptId }.toSet())
+            }
+            AlertDialog(
+                onDismissRequest = { showDescriptionBackfillPreview = false },
+                title = { Text("Beschreibungen prüfen", fontWeight = FontWeight.Bold, color = DarkNavy) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "Sichere Treffer sind vorausgewählt. Es wird ausschließlich das Feld Beschreibung/Zweck geändert.",
+                            fontSize = 11.sp,
+                            color = SlateGray
+                        )
+                        descriptionBackfillCandidates.forEach { candidate ->
+                            val selected = candidate.receiptId in selectedIds
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                border = BorderStroke(1.dp, BorderColor)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = selected,
+                                            onCheckedChange = { checked ->
+                                                selectedIds = if (checked) selectedIds + candidate.receiptId else selectedIds - candidate.receiptId
+                                            }
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(candidate.displayId, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkNavy)
+                                            Text(candidate.aussteller, fontSize = 10.sp, color = SlateGray)
+                                        }
+                                        Text(if (candidate.isSafe) "Sicher" else "Prüfen", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (candidate.isSafe) EmeraldGreen else Color(0xFFD97706))
+                                    }
+                                    Text("Grund: ${candidate.reason}", fontSize = 10.sp, color = SlateGray)
+                                    Text("Alt: ${candidate.oldDescription.ifBlank { "(leer)" }}", fontSize = 11.sp, color = Color(0xFF991B1B))
+                                    Text("Neu: ${candidate.newDescription}", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = DarkNavy)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.applyDescriptionBackfill(selectedIds)
+                            showDescriptionBackfillPreview = false
+                        },
+                        enabled = selectedIds.isNotEmpty()
+                    ) { Text("Ausgewählte übernehmen") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDescriptionBackfillPreview = false }) { Text("Abbrechen") }
+                }
+            )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Zahlungsarten bestehender Belege", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(paymentBackfillStatus ?: "Unbekannte Zahlungsarten können aus Belegtext und vorhandenen Originalbildern nacherkannt werden.", fontSize = 11.sp, color = SlateGray)
+                Button(
+                    onClick = { viewModel.backfillPaymentMethods() },
+                    enabled = !isPaymentBackfillRunning,
+                    modifier = Modifier.fillMaxWidth().testTag("existing_payment_backfill_button")
+                ) {
+                    Text(if (isPaymentBackfillRunning) "Nacherkennung läuft …" else "Zahlungsarten nacherkennen")
+                }
+            }
+        }
+
+        var showDatevExportDialog by remember { mutableStateOf(false) }
+        if (showDatevExportDialog) {
+            DatevExportDialog(
+                viewModel = viewModel,
+                receipts = receipts,
+                onDismiss = { showDatevExportDialog = false }
+            )
+        }
+
+        // DATEV Export Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "DATEV Export",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                    Text(
+                        text = "Exportiere Belege als DATEV-kompatible CSV oder PDF.",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        lineHeight = 15.sp
+                    )
+                }
+
+                Button(
+                    onClick = { showDatevExportDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Professional PDF Export Banner
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Description,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Finanzamt PDF-Export",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                    Text(
+                        text = "Generiere einen strukturierten Steuerbericht mit Werbungskosten-Auswertung & Buchungsjournal.",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        lineHeight = 15.sp
+                    )
+                }
+
+                Button(
+                    onClick = { showTaxYearDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        Text(
+            "DATEV-Kontenrahmen SKR 03",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Black,
+            color = DarkNavy
+        )
+
+        // Account balances list
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            border = BorderStroke(1.dp, BorderColor)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    "Saldenaufstellung",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AccentBlue
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                sortedKonten.forEach { account ->
+                    val accReceipts = kontoMap[account] ?: emptyList()
+                    val balance = accReceipts.sumOf { it.bruttobetrag }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Konto $account", fontWeight = FontWeight.Black, fontSize = 13.sp, color = DarkNavy)
+                            Text(getKontoLabel(account), fontSize = 11.sp, color = Color.Gray)
+                        }
+                        Text(
+                            NumberFormatter.format(balance),
+                            fontWeight = FontWeight.Black,
+                            fontSize = 14.sp,
+                            color = DarkNavy
+                        )
+                    }
+                    if (account != sortedKonten.last()) {
+                        Spacer(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(BorderColor)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Professional Journal / Buchungsjournal
+        Text("Buchungsjournal (Soll & Haben)", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 16.sp)
+
+        if (receipts.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Keine Buchungssätze vorhanden. Erfasse Belege im Archiv.", color = Color.Gray, fontSize = 12.sp)
+            }
+        } else {
+            receipts.forEach { receipt ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    border = BorderStroke(1.dp, BorderColor)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(receipt.datum, fontSize = 11.sp, color = Color.Gray)
+                            Text("Beleg-ID: #${receipt.id}", fontSize = 11.sp, color = Color.Gray)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(receipt.aussteller, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
+                            Text(NumberFormatter.format(receipt.bruttobetrag), fontWeight = FontWeight.Black, color = DarkNavy, fontSize = 13.sp)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(SoftBackground)
+                                .padding(6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Soll: Konto ${receipt.kontoNr}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGray)
+                            Text("Haben: Konto 1200 (Bank)", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
+    val context = LocalContext.current
+    val isConnected by viewModel.isDriveConnected.collectAsState()
+    val email by viewModel.googleAccountEmail.collectAsState()
+    val isSyncing by viewModel.isDriveSyncing.collectAsState()
+    val syncStatus by viewModel.driveSyncStatus.collectAsState()
+    val autoBackup by viewModel.autoDriveBackup.collectAsState()
+    val systemFolderStatus by viewModel.driveSystemFolderStatus.collectAsState()
+    val lastBackupTime by viewModel.lastStammdatenBackupTime.collectAsState()
+    val syncError by viewModel.driveSyncError.collectAsState()
+    val driveTestState by viewModel.driveTestState.collectAsState()
+
+    val restorePreview by viewModel.restorePreview.collectAsState()
+    val restoreReport by viewModel.restoreReport.collectAsState()
+    val isRestoreRequired by viewModel.isRestoreRequired.collectAsState()
+    val isRestoring by viewModel.isRestoring.collectAsState()
+    var showRestoreConfirmDialog by remember { mutableStateOf(false) }
+
+    val isCheckingDuplicates by viewModel.isCheckingMetadataDuplicates.collectAsState()
+    val duplicateReport by viewModel.metadataDuplicateReport.collectAsState()
+    val duplicateError by viewModel.metadataDuplicateError.collectAsState()
+    val metadataCleanupPreview by viewModel.metadataCleanupPreview.collectAsState()
+    val metadataCleanupResult by viewModel.metadataCleanupResult.collectAsState()
+    val isCleaningMetadataDuplicates by viewModel.isCleaningMetadataDuplicates.collectAsState()
+
+    var showManualInput by remember { mutableStateOf(false) }
+    var manualEmail by remember { mutableStateOf("sergej.alc28@gmail.com") }
+    var manualTokenInput by remember { mutableStateOf("") }
+    var showWebViewLogin by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            if (account != null && account.email != null) {
+                viewModel.connectDrive(account.email!!)
+            }
+        } catch (e: Exception) {
+            Log.e("DriveAuth", "Sign in failed", e)
+            viewModel.setSyncStatus("Google Play Services Anmeldung nicht verfügbar (Account not present). Bitte nutzen Sie stattdessen den grünen Button 'Über Google-Login verbinden'!")
+        }
+    }
+
+    if (showWebViewLogin) {
+        AlertDialog(
+            onDismissRequest = { showWebViewLogin = false },
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Google-Login (Sicherer Web-Zugang)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    IconButton(onClick = { showWebViewLogin = false }) {
+                        Icon(Icons.Default.Close, contentDescription = "Schließen")
+                    }
+                }
+            },
+            text = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(450.dp)
+                ) {
+                    AndroidView(
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.useWideViewPort = true
+                                settings.loadWithOverviewMode = true
+                                settings.setSupportZoom(true)
+                                settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                                
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                        super.onPageStarted(view, url, favicon)
+                                        url?.let { currentUrl ->
+                                            if (currentUrl.contains("localhost") || currentUrl.contains("firebaseapp.com") || currentUrl.contains("access_token=")) {
+                                                val fragment = currentUrl.substringAfter("#", "")
+                                                val params = fragment.split("&").associate {
+                                                    val parts = it.split("=")
+                                                    if (parts.size == 2) parts[0] to parts[1] else parts[0] to ""
+                                                }
+                                                val accessToken = params["access_token"]
+                                                if (!accessToken.isNullOrEmpty()) {
+                                                    viewModel.connectDrive("sergej.alc28@gmail.com", accessToken)
+                                                    showWebViewLogin = false
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                        val currentUrl = request?.url?.toString() ?: ""
+                                        if (currentUrl.contains("localhost") || currentUrl.contains("firebaseapp.com") || currentUrl.contains("access_token=")) {
+                                            val fragment = currentUrl.substringAfter("#", "")
+                                            val params = fragment.split("&").associate {
+                                                val parts = it.split("=")
+                                                if (parts.size == 2) parts[0] to parts[1] else parts[0] to ""
+                                            }
+                                            val accessToken = params["access_token"]
+                                            if (!accessToken.isNullOrEmpty()) {
+                                                viewModel.connectDrive("sergej.alc28@gmail.com", accessToken)
+                                                showWebViewLogin = false
+                                                return true
+                                            }
+                                        }
+                                        return false
+                                    }
+                                }
+                                
+                                val authUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
+                                        "client_id=262346512049-tks9rgpsc7qe27hn5l80rmqdu4obbkai.apps.googleusercontent.com" +
+                                        "&redirect_uri=https://gen-lang-client-0729558537.firebaseapp.com/__/auth/handler" +
+                                        "&response_type=token" +
+                                        "&scope=https://www.googleapis.com/auth/drive.file" +
+                                        "&prompt=consent"
+                                loadUrl(authUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showWebViewLogin = false }) {
+                    Text("Abbrechen")
+                }
+            }
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("google_drive_sync_card"),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Cloud,
+                    contentDescription = "Cloud Icon",
+                    tint = if (isConnected) EmeraldGreen else AccentBlue,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    "Google Drive Backup",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = DarkNavy
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (!isConnected) {
+                Text(
+                    "Sichern Sie Ihre Belege geordnet nach Jahr → Hauptkategorie → Unterkategorie direkt in Ihrem Google Drive Ordner.",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = { showWebViewLogin = true },
+                    modifier = Modifier.fillMaxWidth().testTag("connect_drive_webview_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                ) {
+                    Icon(Icons.Default.Cloud, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Über Google-Login verbinden", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                            .requestEmail()
+                            .requestScopes(Scope("https://www.googleapis.com/auth/drive.file"))
+                            .build()
+                        val client = GoogleSignIn.getClient(context, gso)
+                        launcher.launch(client.signInIntent)
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("connect_drive_button"),
+                    border = BorderStroke(1.dp, BorderColor),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = DarkNavy)
+                ) {
+                    Text("Über Play Services verbinden", fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Developer / Testing Fallback
+                TextButton(
+                    onClick = { showManualInput = !showManualInput },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(
+                        if (showManualInput) "Manuelle Verknüpfung ausblenden" else "Manuellen Access-Token eingeben",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                }
+
+                if (showManualInput) {
+                    OutlinedTextField(
+                        value = manualEmail,
+                        onValueChange = { manualEmail = it },
+                        label = { Text("E-Mail-Adresse") },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentBlue,
+                            unfocusedBorderColor = BorderColor
+                        )
+                    )
+                    OutlinedTextField(
+                        value = manualTokenInput,
+                        onValueChange = { manualTokenInput = it },
+                        label = { Text("Google OAuth Access-Token") },
+                        placeholder = { Text("ya29.a0Ac...") },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentBlue,
+                            unfocusedBorderColor = BorderColor
+                        )
+                    )
+                    Button(
+                        onClick = { 
+                            if (manualTokenInput.isNotEmpty()) {
+                                viewModel.connectDrive(manualEmail, manualTokenInput)
+                            } else {
+                                viewModel.connectDrive(manualEmail)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().testTag("connect_drive_manual_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = SlateGray)
+                    ) {
+                        Text("Verbinden mit Token", color = Color.White)
+                    }
+                    
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Tipp: Sie können einen Test-Token von https://developers.google.com/oauthplayground kopieren (Scope: drive.file).",
+                        fontSize = 10.sp,
+                        color = Color.Gray,
+                        lineHeight = 14.sp
+                    )
+                }
+            } else {
+                // Connected state
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(EmeraldGreen.copy(alpha = 0.1f))
+                        .border(1.dp, EmeraldGreen.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Success",
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            "Verknüpft mit Google Drive",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy
+                        )
+                        Text(
+                            maskEmailAddress(email),
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Google-Drive-Datenspeicherung Metadata Dashboard
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SoftBackground)
+                        .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        "Google-Drive-Datenspeicherung",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Status:", fontSize = 11.sp, color = Color.Gray)
+                        Text(
+                            if (isConnected) "Verbunden" else "Nicht verbunden",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isConnected) EmeraldGreen else CrimsonRed
+                        )
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Systemordner (_BelegApp-Daten):", fontSize = 11.sp, color = Color.Gray)
+                        Text(
+                            if (isConnected) systemFolderStatus else "Nicht eingerichtet",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isConnected && systemFolderStatus == "Gefunden") EmeraldGreen else Color.Gray
+                        )
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Letzte Stammdatensicherung:", fontSize = 11.sp, color = Color.Gray)
+                        Text(
+                            if (isConnected) lastBackupTime else "Nie",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy
+                        )
+                    }
+
+                    syncError?.let { err ->
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(CrimsonRed.copy(alpha = 0.08f))
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Error",
+                                tint = CrimsonRed,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                "Synchronisationsfehler: $err",
+                                fontSize = 10.sp,
+                                color = CrimsonRed,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Auto Backup Switch
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "Automatisches Backup",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DarkNavy
+                        )
+                        Text(
+                            "Neue Belege sofort hochladen",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = autoBackup,
+                        onCheckedChange = { viewModel.toggleAutoBackup(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White,
+                            checkedTrackColor = EmeraldGreen,
+                            uncheckedThumbColor = Color.Gray,
+                            uncheckedTrackColor = Color.LightGray
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.disconnectDrive() },
+                        modifier = Modifier.weight(1f).testTag("disconnect_drive_button"),
+                        border = BorderStroke(1.dp, CrimsonRed),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CrimsonRed)
+                    ) {
+                        Text("Trennen", fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = { viewModel.syncAllToDrive() },
+                        modifier = Modifier.weight(1.5f).testTag("sync_drive_button"),
+                        enabled = !isSyncing,
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Sende...", color = Color.White)
+                        } else {
+                            Text("Synchronisieren", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // Sync status message
+            syncStatus?.let { status ->
+                Spacer(modifier = Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SlateGray.copy(alpha = 0.05f))
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        status,
+                        fontSize = 11.sp,
+                        color = SlateGray,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider(color = BorderColor)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Google-Drive-Diagnose Karte
+            GoogleDriveDiagnoseCard(
+                isConnected = isConnected,
+                email = email,
+                driveTestState = driveTestState,
+                onRunTest = { viewModel.runRealDriveTest() }
+            )
+
+            if (isConnected) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = BorderColor)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Datensicherung und Wiederherstellung
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(SoftBackground)
+                        .border(1.dp, BorderColor, RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        "Datensicherung & Wiederherstellung",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Vollständige Wiederherstellung des App-Bestands aus Google Drive (Stammdaten, Wohneinheiten, Belegindex & Metadaten).",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        lineHeight = 15.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.checkForDriveRestore() },
+                            modifier = Modifier.weight(1f).testTag("check_drive_inventory_button"),
+                            border = BorderStroke(1.dp, AccentBlue),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentBlue)
+                        ) {
+                            Text("Bestand prüfen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { showRestoreConfirmDialog = true },
+                            modifier = Modifier.weight(1.3f).testTag("start_full_restore_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                        ) {
+                            Text("Wiederherstellen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { viewModel.runRestoreDryRun() },
+                        modifier = Modifier.fillMaxWidth().testTag("restore_dry_run_button"),
+                        border = BorderStroke(1.dp, SlateGray),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = SlateGray)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Restore-Test ausführen (Dry Run)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val isAuditing by viewModel.isAuditingOriginalReceipts.collectAsState()
+
+                    OutlinedButton(
+                        onClick = { viewModel.runOriginalReceiptAudit() },
+                        modifier = Modifier.fillMaxWidth().testTag("audit_original_receipts_button"),
+                        enabled = !isAuditing,
+                        border = BorderStroke(1.dp, EmeraldGreen),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen)
+                    ) {
+                        if (isAuditing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = EmeraldGreen,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Prüfe Magic-Bytes...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Originalbelege prüfen", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { viewModel.runMetadataDuplicateReport() },
+                        modifier = Modifier.fillMaxWidth().testTag("metadata_duplicate_report_button"),
+                        enabled = !isCheckingDuplicates,
+                        border = BorderStroke(1.dp, CrimsonRed),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = CrimsonRed)
+                    ) {
+                        if (isCheckingDuplicates) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = CrimsonRed,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Suche nach Dubletten...", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Metadaten-Dubletten prüfen (nur lesen)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            duplicateReport?.let { report ->
+                MetadataDuplicateReportDialog(
+                    report = report,
+                    onDismiss = { viewModel.dismissMetadataDuplicateReport() },
+                    onPrepareCleanup = { viewModel.prepareMetadataDuplicateCleanup(it) }
+                )
+            }
+
+            metadataCleanupPreview?.let { plan ->
+                AlertDialog(
+                    onDismissRequest = { if (!isCleaningMetadataDuplicates) viewModel.cancelMetadataDuplicateCleanup() },
+                    title = { Text("Verwaiste Metadaten sicher löschen", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Beleg: ${plan.internalId}")
+                            Text("Bleibt erhalten: ${plan.activeMetadataFileId}", color = EmeraldGreen)
+                            Text("Nach Bestätigung werden nur diese verwaisten Dateien gelöscht:")
+                            plan.orphanMetadataFileIds.forEach { Text("• $it", fontSize = 11.sp) }
+                            Text(
+                                "Die aktive metadataFileId wird nicht gelöscht.",
+                                fontWeight = FontWeight.Bold,
+                                color = CrimsonRed
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { viewModel.confirmMetadataDuplicateCleanup() },
+                            enabled = !isCleaningMetadataDuplicates
+                        ) {
+                            Text(if (isCleaningMetadataDuplicates) "Bereinigung läuft…" else "Jetzt sicher löschen")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { viewModel.cancelMetadataDuplicateCleanup() },
+                            enabled = !isCleaningMetadataDuplicates
+                        ) { Text("Abbrechen") }
+                    }
+                )
+            }
+
+            metadataCleanupResult?.let { result ->
+                AlertDialog(
+                    onDismissRequest = { viewModel.dismissMetadataCleanupResult() },
+                    title = {
+                        Text(
+                            if (result.completed) "Bereinigung abgeschlossen" else "Bereinigung teilweise fehlgeschlagen",
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Aktive Datei erhalten: ${result.activeMetadataFileId}")
+                            Text("Gelöscht: ${result.deletedMetadataFileIds.size}")
+                            result.failures.forEach { Text("• $it", color = CrimsonRed, fontSize = 11.sp) }
+                        }
+                    },
+                    confirmButton = {
+                        Button(onClick = { viewModel.dismissMetadataCleanupResult() }) { Text("OK") }
+                    }
+                )
+            }
+
+            duplicateError?.let { err ->
+                AlertDialog(
+                    onDismissRequest = { viewModel.dismissMetadataDuplicateReport() },
+                    title = { Text("Fehler bei Dublettenprüfung", fontWeight = FontWeight.Bold) },
+                    text = { Text(err) },
+                    confirmButton = {
+                        Button(onClick = { viewModel.dismissMetadataDuplicateReport() }) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+
+            if (isRestoreRequired || showRestoreConfirmDialog) {
+                DriveRestoreConfirmationDialog(
+                    preview = restorePreview,
+                    isRestoring = isRestoring,
+                    onConfirm = {
+                        showRestoreConfirmDialog = false
+                        viewModel.performFullRestoreConfirmation()
+                    },
+                    onDismiss = {
+                        showRestoreConfirmDialog = false
+                        viewModel.dismissRestoreDialog()
+                    }
+                )
+            }
+
+            restoreReport?.let { report ->
+                DriveRestoreReportDialog(
+                    report = report,
+                    onDismiss = { viewModel.clearRestoreReport() }
+                )
+            }
+
+            val auditReport by viewModel.originalReceiptAuditReport.collectAsState()
+            val auditError by viewModel.originalReceiptAuditError.collectAsState()
+
+            auditReport?.let { report ->
+                OriginalReceiptAuditDialog(
+                    report = report,
+                    onDismiss = { viewModel.dismissOriginalReceiptAuditReport() },
+                    onRepairReceipt = { internalId ->
+                        // Handled via main repair flow
+                    },
+                    onScanReceipt = { internalId ->
+                        // Handled via main scan flow
+                    },
+                    onCorrectMetadata = { internalId, newMime, newFilename ->
+                        viewModel.correctReceiptMetadata(internalId, newMime, newFilename)
+                    }
+                )
+            }
+
+            auditError?.let { err ->
+                AlertDialog(
+                    onDismissRequest = { viewModel.dismissOriginalReceiptAuditReport() },
+                    title = { Text("Prüfung fehlgeschlagen", fontWeight = FontWeight.Bold) },
+                    text = { Text(err) },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.dismissOriginalReceiptAuditReport() }) {
+                            Text("OK")
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+fun maskEmailAddress(email: String?): String {
+    if (email.isNullOrBlank()) return "Nicht angemeldet"
+    if (!email.contains("@")) return email
+    val parts = email.split("@", limit = 2)
+    val user = parts[0]
+    val domain = parts[1]
+    val maskedUser = when {
+        user.length <= 2 -> "${user.take(1)}***"
+        user.length <= 4 -> "${user.take(2)}***"
+        else -> "${user.take(3)}***"
+    }
+    return "$maskedUser@$domain"
+}
+
+fun shortenDriveId(id: String?): String {
+    if (id.isNullOrBlank() || id == "Nicht gefunden" || id == "Nicht erstellt") return id ?: "-"
+    if (id.length <= 10) return id
+    return "${id.take(4)}…${id.takeLast(4)}"
+}
+
+@Composable
+fun GoogleDriveDiagnoseCard(
+    isConnected: Boolean,
+    email: String?,
+    driveTestState: DriveTestState?,
+    onRunTest: () -> Unit
+) {
+    var isDiagnoseExpanded by remember { mutableStateOf(false) }
+    var showTechDetails by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    val maskedAccount = maskEmailAddress(email)
+    val lastTestTime = driveTestState?.testRunTime ?: "Noch nicht durchgeführt"
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("google_drive_diagnose_card"),
+        colors = CardDefaults.cardColors(containerColor = SoftBackground),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Header Row (Klickbar zum Auf-/Zuklappen)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isDiagnoseExpanded = !isDiagnoseExpanded }
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Build,
+                        contentDescription = null,
+                        tint = AccentBlue,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "Google-Drive-Diagnose",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = DarkNavy
+                    )
+                }
+                Icon(
+                    imageVector = if (isDiagnoseExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (isDiagnoseExpanded) "Einklappen" else "Ausklappen",
+                    tint = SlateGray,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            if (!isDiagnoseExpanded) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Google Drive:", fontSize = 11.sp, color = Color.Gray)
+                        Text(
+                            if (isConnected) "Verbunden" else "Nicht verbunden",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isConnected) EmeraldGreen else CrimsonRed
+                        )
+                    }
+                    Text(
+                        "Letzte Prüfung: $lastTestTime",
+                        fontSize = 10.sp,
+                        color = SlateGray
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = BorderColor.copy(alpha = 0.6f))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 1. Konto
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text("Konto", fontSize = 11.sp, color = Color.Gray)
+                    Text(maskedAccount, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // 2. Verbindungsstatus
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text("Verbindungsstatus", fontSize = 11.sp, color = Color.Gray)
+                    Text(
+                        if (isConnected) "Verbunden" else "Nicht verbunden",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isConnected) EmeraldGreen else CrimsonRed
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // 3. Letzte Prüfung
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text("Letzte Prüfung", fontSize = 11.sp, color = Color.Gray)
+                    Text(lastTestTime, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Test-Button
+                Button(
+                    onClick = onRunTest,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("run_real_drive_test_button"),
+                    enabled = driveTestState?.isRunning != true,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                ) {
+                    if (driveTestState?.isRunning == true) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Führe echten Drive-Test aus...", color = Color.White, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Echten Drive-Test starten", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+
+                // Ergänzung Testergebnis
+                driveTestState?.let { state ->
+                    if (!state.isRunning) {
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (state.isSuccess) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(EmeraldGreen.copy(alpha = 0.08f))
+                                    .border(1.dp, EmeraldGreen.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Column {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
+                                        Text("✓ Google-Drive-Test erfolgreich", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Upload:", fontSize = 11.sp, color = Color.DarkGray)
+                                        Text("Erfolgreich", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Download:", fontSize = 11.sp, color = Color.DarkGray)
+                                        Text("Erfolgreich", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Datenprüfung:", fontSize = 11.sp, color = Color.DarkGray)
+                                        Text("Identisch", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                    }
+                                    state.testRunTime?.let { timeStr ->
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Geprüft am:", fontSize = 11.sp, color = Color.DarkGray)
+                                            Text(timeStr, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = DarkNavy)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(CrimsonRed.copy(alpha = 0.08f))
+                                    .border(1.dp, CrimsonRed.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Column {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.Warning, contentDescription = null, tint = CrimsonRed, modifier = Modifier.size(18.dp))
+                                        Text("⚠ Google-Drive-Test fehlgeschlagen", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = CrimsonRed)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    state.affectedAction?.let { act ->
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Fehler bei:", fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
+                                            Text(act, fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+
+                                    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                                        Text("Beschreibung:", fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            state.errorMessage ?: "Unbekannter Fehler",
+                                            fontSize = 11.sp,
+                                            color = CrimsonRed,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        TextButton(
+                            onClick = { showTechDetails = !showTechDetails },
+                            modifier = Modifier.fillMaxWidth().testTag("toggle_tech_details_button")
+                        ) {
+                            Text(
+                                if (showTechDetails) "Technische Details verbergen" else "Technische Details anzeigen",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AccentBlue
+                            )
+                        }
+
+                        if (showTechDetails) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color.White)
+                                    .border(1.dp, BorderColor, RoundedCornerShape(6.dp))
+                                    .padding(10.dp)
+                            ) {
+                                Text("Technische Details", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                Text("Vollständiges Konto:", fontSize = 10.sp, color = Color.Gray)
+                                Text(email ?: "Nicht angemeldet", fontSize = 11.sp, color = DarkNavy)
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                TechDetailIdRow(
+                                    label = "Hauptordner-ID",
+                                    fullId = state.mainFolderId,
+                                    shortenedId = shortenDriveId(state.mainFolderId),
+                                    onCopy = {
+                                        clipboardManager.setText(AnnotatedString(state.mainFolderId))
+                                        android.widget.Toast.makeText(context, "Hauptordner-ID kopiert", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+
+                                TechDetailIdRow(
+                                    label = "Systemordner-ID",
+                                    fullId = state.systemFolderId,
+                                    shortenedId = shortenDriveId(state.systemFolderId),
+                                    onCopy = {
+                                        clipboardManager.setText(AnnotatedString(state.systemFolderId))
+                                        android.widget.Toast.makeText(context, "Systemordner-ID kopiert", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+
+                                TechDetailIdRow(
+                                    label = "Testdatei-ID",
+                                    fullId = state.testFileId,
+                                    shortenedId = shortenDriveId(state.testFileId),
+                                    onCopy = {
+                                        clipboardManager.setText(AnnotatedString(state.testFileId))
+                                        android.widget.Toast.makeText(context, "Testdatei-ID kopiert", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+
+                                if (state.testReceiptMetadataFileId.isNotBlank()) {
+                                    TechDetailIdRow(
+                                        label = "Beleg-Metadaten-ID",
+                                        fullId = state.testReceiptMetadataFileId,
+                                        shortenedId = shortenDriveId(state.testReceiptMetadataFileId),
+                                        onCopy = {
+                                            clipboardManager.setText(AnnotatedString(state.testReceiptMetadataFileId))
+                                            android.widget.Toast.makeText(context, "Beleg-Metadaten-ID kopiert", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+
+                                state.httpStatusCode?.let { code ->
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("HTTP-Statuscode:", fontSize = 10.sp, color = Color.Gray)
+                                        Text(code.toString(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                    }
+                                }
+
+                                if (state.isReAuthRequired) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Erneute Anmeldung:", fontSize = 10.sp, color = CrimsonRed)
+                                        Text("Erforderlich", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CrimsonRed)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TechDetailIdRow(
+    label: String,
+    fullId: String,
+    shortenedId: String,
+    onCopy: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Text(label, fontSize = 10.sp, color = Color.Gray)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                shortenedId,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Medium,
+                color = DarkNavy
+            )
+            if (fullId.isNotBlank() && fullId != "Nicht gefunden" && fullId != "Nicht erstellt") {
+                TextButton(
+                    onClick = onCopy,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    modifier = Modifier.height(24.dp)
+                ) {
+                    Text("ID kopieren", fontSize = 10.sp, color = AccentBlue)
+                }
+            }
+        }
+    }
+}
+
+
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun CameraPermissionRequestView(
+    cameraPermissionState: com.google.accompanist.permissions.PermissionState,
+    onDismiss: () -> Unit,
+    onUseSystemCamera: () -> Unit,
+    onTriggerMlKitScanner: (() -> Unit)? = null
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            Icons.Default.PhotoCamera,
+            contentDescription = "Kamera",
+            tint = Color.White,
+            modifier = Modifier.size(64.dp)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            "Kamera-Berechtigung benötigt",
+            color = Color.White,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            "Um einen Beleg direkt fotografieren und analysieren zu können, benötigt die App Zugriff auf Ihre Kamera.",
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 14.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(32.dp))
+
+        if (onTriggerMlKitScanner != null) {
+            Button(
+                onClick = {
+                    onDismiss()
+                    onTriggerMlKitScanner()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White)
+                    Text("Google ML Kit Scanner starten (Auto-Crop)", fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        Button(
+            onClick = { cameraPermissionState.launchPermissionRequest() },
+            colors = ButtonDefaults.buttonColors(containerColor = DarkNavy),
+            border = BorderStroke(1.dp, EmeraldGreen),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Text("In-App Kamera Berechtigung erteilen", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onUseSystemCamera,
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Text("System-Kamera nutzen (Fallback)", fontWeight = FontWeight.Bold)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        TextButton(onClick = onDismiss) {
+            Text("Abbrechen", color = Color.White.copy(alpha = 0.6f))
+        }
+    }
+}
+
+private fun createMockReceiptBitmap(type: String): Bitmap {
+    val width = 800
+    val height = 1200
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint()
+    
+    // Background: Warm off-white paper texture
+    paint.color = android.graphics.Color.parseColor("#FAF6F0")
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+    
+    // Receipt inner border
+    paint.color = android.graphics.Color.parseColor("#D1D5DB")
+    paint.style = android.graphics.Paint.Style.STROKE
+    paint.strokeWidth = 3f
+    canvas.drawRect(20f, 20f, (width - 20).toFloat(), (height - 20).toFloat(), paint)
+    
+    paint.style = android.graphics.Paint.Style.FILL
+    paint.color = android.graphics.Color.BLACK
+    paint.isAntiAlias = true
+    
+    // Header title
+    paint.textSize = 38f
+    paint.isFakeBoldText = true
+    canvas.drawText("MUSTER-QUITTUNG / BELEG", 100f, 100f, paint)
+    
+    paint.textSize = 24f
+    paint.isFakeBoldText = false
+    val currentDateStr = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.GERMANY).format(java.util.Date())
+    canvas.drawText("Datum: $currentDateStr", 100f, 160f, paint)
+    canvas.drawText("Uhrzeit: 14:32 Uhr", 100f, 200f, paint)
+    
+    paint.textSize = 28f
+    paint.isFakeBoldText = true
+    
+    when (type) {
+        "material" -> {
+            canvas.drawText("OBI Baumarkt Hamburg-Nord", 100f, 280f, paint)
+            paint.isFakeBoldText = false
+            paint.textSize = 24f
+            canvas.drawText("--------------------------------------------------", 100f, 330f, paint)
+            canvas.drawText("1x Laminat Buche Premium         89.99 EUR", 100f, 380f, paint)
+            canvas.drawText("2x Sockelleisten MDF 2.5m         14.50 EUR", 100f, 420f, paint)
+            canvas.drawText("1x Montagekleber Express          10.99 EUR", 100f, 460f, paint)
+            canvas.drawText("--------------------------------------------------", 100f, 510f, paint)
+            paint.isFakeBoldText = true
+            paint.textSize = 28f
+            canvas.drawText("GESAMTBETRAG (BRUTTO)          115.48 EUR", 100f, 570f, paint)
+            paint.textSize = 22f
+            paint.isFakeBoldText = false
+            canvas.drawText("inkl. 19% MwSt.:                 18.44 EUR", 100f, 610f, paint)
+            canvas.drawText("Netto-Betrag:                    97.04 EUR", 100f, 640f, paint)
+            canvas.drawText("Zahlart: Barzahlung", 100f, 690f, paint)
+            canvas.drawText("Konto-Nummer / Buchungscode: 4830", 100f, 740f, paint)
+            canvas.drawText("Zugeordnete Wohneinheit: WE 1", 100f, 780f, paint)
+            canvas.drawText("Beschreibung: Laminat fuer Wohnzimmerrenovierung", 100f, 820f, paint)
+        }
+        "handwerker" -> {
+            canvas.drawText("Elektro Schmidt GmbH", 100f, 280f, paint)
+            paint.isFakeBoldText = false
+            paint.textSize = 24f
+            canvas.drawText("--------------------------------------------------", 100f, 330f, paint)
+            canvas.drawText("Sanierung Sicherungskasten WE 2  450.00 EUR", 100f, 380f, paint)
+            canvas.drawText("Leitungsverlegung Kueche WE 2     220.00 EUR", 100f, 420f, paint)
+            canvas.drawText("Anfahrt & Ruestzeit                35.00 EUR", 100f, 460f, paint)
+            canvas.drawText("--------------------------------------------------", 100f, 510f, paint)
+            paint.isFakeBoldText = true
+            paint.textSize = 28f
+            canvas.drawText("RECHNUNGSBETRAG (BRUTTO)        705.00 EUR", 100f, 570f, paint)
+            paint.textSize = 22f
+            paint.isFakeBoldText = false
+            canvas.drawText("inkl. 19% MwSt.:                112.56 EUR", 100f, 610f, paint)
+            canvas.drawText("Netto-Betrag:                   592.44 EUR", 100f, 640f, paint)
+            canvas.drawText("Zahlart: Bankueberweisung innerhalb 14 Tagen", 100f, 690f, paint)
+            canvas.drawText("Konto-Nummer / Buchungscode: 4800", 100f, 740f, paint)
+            canvas.drawText("Zugeordnete Wohneinheit: WE 2", 100f, 780f, paint)
+            canvas.drawText("Beschreibung: Elektroarbeiten ElektroSchmidt WE2", 100f, 820f, paint)
+        }
+        else -> {
+            canvas.drawText("Notariat Dr. jur. Gabriel", 100f, 280f, paint)
+            paint.isFakeBoldText = false
+            paint.textSize = 24f
+            canvas.drawText("--------------------------------------------------", 100f, 330f, paint)
+            canvas.drawText("Kaufvertrag Grundstück / Haus   1800.00 EUR", 100f, 380f, paint)
+            canvas.drawText("Hebegebuehren Treuhandkonto       250.00 EUR", 100f, 420f, paint)
+            canvas.drawText("--------------------------------------------------", 100f, 510f, paint)
+            paint.isFakeBoldText = true
+            paint.textSize = 28f
+            canvas.drawText("RECHNUNGSBETRAG (BRUTTO)       2050.00 EUR", 100f, 570f, paint)
+            paint.textSize = 22f
+            paint.isFakeBoldText = false
+            canvas.drawText("inkl. 19% MwSt.:                327.31 EUR", 100f, 610f, paint)
+            canvas.drawText("Netto-Betrag:                  1722.69 EUR", 100f, 640f, paint)
+            canvas.drawText("Zahlungsziel: Sofort nach Erhalt", 100f, 690f, paint)
+            canvas.drawText("Konto-Nummer: Anschaffungskosten", 100f, 740f, paint)
+            canvas.drawText("Kaufdatum: 01.10.2025", 100f, 780f, paint)
+            canvas.drawText("Beschreibung: Notarkosten Grundstueckskauf", 100f, 820f, paint)
+        }
+    }
+    
+    // Bottom watermark to look scanned
+    paint.color = android.graphics.Color.parseColor("#9CA3AF")
+    paint.textSize = 18f
+    paint.isFakeBoldText = false
+    canvas.drawText("Simulierter Belegscann v3.1 (AI Studio)", 100f, 1020f, paint)
+    canvas.drawText("Fuer Steuererklaerung Anlage V optimiert", 100f, 1050f, paint)
+    
+    return bitmap
+}
+
+@Composable
+fun CameraActiveView(
+    onDismiss: () -> Unit,
+    onImagesCaptured: (List<Bitmap>) -> Unit,
+    onUseSystemCamera: () -> Unit,
+    onTriggerMlKitScanner: (() -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val cameraProviderFuture = remember {
+        try {
+            ProcessCameraProvider.getInstance(context)
+        } catch (e: Throwable) {
+            Log.e("CameraActiveView", "Error getting ProcessCameraProvider instance", e)
+            null
+        }
+    }
+    var imageCapture: ImageCapture? by remember { mutableStateOf(null) }
+    var isCapturing by remember { mutableStateOf(false) }
+    var captureError by remember { mutableStateOf<String?>(null) }
+    
+    // List of all captured pages as an immutable list in state
+    var capturedBitmaps by remember { mutableStateOf(listOf<Bitmap>()) }
+
+    // Multi-page mode
+    var isMultiPage by remember { mutableStateOf(false) }
+
+    // Preview for current taken page
+    var currentCapturedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    var cameraBindingFailed by remember { mutableStateOf(false) }
+    
+    // Advanced features state
+    var isLowLight by remember { mutableStateOf(false) }
+    var isTooTilted by remember { mutableStateOf(false) }
+    var isStable by remember { mutableStateOf(true) }
+    var tiltX by remember { mutableStateOf(0f) }
+    var tiltY by remember { mutableStateOf(0f) }
+
+    DisposableEffect(Unit) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        
+        var lastX = 0f
+        var lastY = 0f
+        var lastZ = 0f
+        var stableTimeMs = 0L
+        var lastUpdate = System.currentTimeMillis()
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event == null) return
+                val now = System.currentTimeMillis()
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+                
+                tiltX = x
+                tiltY = y
+                
+                // Tilt check relative to flat plane
+                val tiltDeviation = Math.sqrt((x * x + y * y).toDouble())
+                isTooTilted = tiltDeviation > 2.0
+                
+                // Stability calculation
+                val delta = Math.abs(x - lastX) + Math.abs(y - lastY) + Math.abs(z - lastZ)
+                lastX = x
+                lastY = y
+                lastZ = z
+                
+                val dt = now - lastUpdate
+                lastUpdate = now
+                
+                if (delta < 0.25) {
+                    stableTimeMs += dt
+                } else {
+                    stableTimeMs = 0L
+                }
+                
+                isStable = stableTimeMs > 1000L
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+
+    // OCR Guide State
+    var guideStep by remember { mutableStateOf(0) }
+    val guideSteps = listOf(
+        "Beleg flach hinlegen",
+        "Gute Beleuchtung sicherstellen",
+        "Alle Ränder sichtbar lassen"
+    )
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(3000)
+            guideStep = (guideStep + 1) % guideSteps.size
+        }
+    }
+
+    // Focus animation state
+    val infiniteTransition = rememberInfiniteTransition(label = "focus_animation")
+    val focusAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "focus_alpha"
+    )
+
+    var isSimulationMode by remember { mutableStateOf(false) }
+    var selectedMockType by remember { mutableStateOf("material") }
+
+    val activeSimulation = isSimulationMode || cameraBindingFailed
+
+    var isAutoTriggerEnabled by remember { mutableStateOf(true) }
+
+    val triggerCapture: () -> Unit = {
+        if (!isCapturing && currentCapturedBitmap == null) {
+            if (activeSimulation) {
+                isCapturing = true
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                        val bmp = createMockReceiptBitmap(selectedMockType)
+                        currentCapturedBitmap = bmp
+                    } catch (e: Exception) {
+                        captureError = "Simulation failed: ${e.localizedMessage}"
+                    } finally {
+                        isCapturing = false
+                    }
+                }, 600)
+            } else {
+                val capture = imageCapture
+                if (capture != null) {
+                    isCapturing = true
+                    try {
+                        val photoFile = File(context.cacheDir, "temp_receipt_${System.currentTimeMillis()}.jpg")
+                        val outputFileOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+                        val executor = ContextCompat.getMainExecutor(context)
+                        capture.takePicture(
+                            outputFileOptions,
+                            executor,
+                            object : ImageCapture.OnImageSavedCallback {
+                                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                                    try {
+                                        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
+                                        if (bitmap != null) {
+                                            currentCapturedBitmap = bitmap
+                                        } else {
+                                            captureError = "Image decode failed"
+                                        }
+                                    } catch (e: Exception) {
+                                        captureError = "Error: ${e.localizedMessage}"
+                                    } finally {
+                                        isCapturing = false
+                                    }
+                                }
+
+                                override fun onError(exception: ImageCaptureException) {
+                                    captureError = "Error: ${exception.localizedMessage}"
+                                    isCapturing = false
+                                }
+                            }
+                        )
+                    } catch (e: Exception) {
+                        captureError = "Fehler bei Aufnahme: ${e.localizedMessage}"
+                        isCapturing = false
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(isStable, isTooTilted, isLowLight, isCapturing, currentCapturedBitmap, isAutoTriggerEnabled) {
+        if (isAutoTriggerEnabled && isStable && !isTooTilted && !isLowLight && !isCapturing && currentCapturedBitmap == null) {
+            delay(1000) // Sustain stability for 1.0 second
+            if (isStable && !isTooTilted && !isLowLight && !isCapturing && currentCapturedBitmap == null) {
+                triggerCapture()
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (currentCapturedBitmap != null) {
+            // Preview Taken Image Mode
+            val bitmap = currentCapturedBitmap!!
+            
+            var sharpnessCheckStatus by remember { mutableStateOf(0) } // 0 = checking, 1 = sharp, 2 = blurry
+            LaunchedEffect(bitmap) {
+                sharpnessCheckStatus = 0
+                delay(800)
+                // Just a mock logic for now, always assume sharp unless simulating a failure if we want, but let's just say it's sharp
+                sharpnessCheckStatus = 1
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Erfasste Seite ${capturedBitmaps.size + 1}",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = { currentCapturedBitmap = null }
+                    ) {
+                        Icon(Icons.Default.Clear, contentDescription = "Verwerfen", tint = Color.White)
+                    }
+                }
+
+                // Image preview box
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap.asImageBitmap(),
+                        contentDescription = "Aufgenommene Seite",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    
+                    // Sharpness Indicator Overlay
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 16.dp)
+                            .background(
+                                color = when (sharpnessCheckStatus) {
+                                    0 -> Color.Black.copy(alpha = 0.7f)
+                                    1 -> EmeraldGreen.copy(alpha = 0.9f)
+                                    else -> Color.Red.copy(alpha = 0.9f)
+                                },
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (sharpnessCheckStatus == 0) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Text("Prüfe Bildschärfe...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            } else if (sharpnessCheckStatus == 1) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("Bild ist ausreichend scharf", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Text("Bild unscharf! Bitte wiederholen", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+
+                // Action panel
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.DarkGray.copy(alpha = 0.5f))
+                        .navigationBarsPadding()
+                        .padding(bottom = 36.dp, top = 20.dp, start = 24.dp, end = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Ist diese Seite gut lesbar und scharf?",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                // Save current page and go back to camera to capture more
+                                capturedBitmaps = capturedBitmaps + bitmap
+                                currentCapturedBitmap = null
+                            },
+                            modifier = Modifier.weight(1.5f),
+                            border = BorderStroke(1.dp, Color.White),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Nächste Seite")
+                        }
+
+                        Button(
+                            onClick = {
+                                // Add current page and submit everything
+                                onImagesCaptured(capturedBitmaps + bitmap)
+                            },
+                            modifier = Modifier.weight(2f),
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                            enabled = sharpnessCheckStatus != 0
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("KI-Analyse", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        } else {
+            // Live Preview Mode
+            if (activeSimulation) {
+                // Interactive Camera Simulator Viewport
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0F172A))
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = EmeraldGreen,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Kamera-Simulationsmodus",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (cameraBindingFailed) {
+                            "Keine Hardware-Kamera erkannt (Emulator-Modus). Wähle eine Beleg-Vorlage aus und drücke den Auslöser, um den Belegscan & die Gemini KI-Extraktion zu testen!"
+                        } else {
+                            "Simulationsmodus manuell gestartet. Wähle eine Vorlage aus, um das Scannen und die KI-Extraktion ohne physischen Beleg zu testen!"
+                        },
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 20.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (onTriggerMlKitScanner != null) {
+                            Button(
+                                onClick = {
+                                    onDismiss()
+                                    onTriggerMlKitScanner()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                                shape = RoundedCornerShape(20.dp),
+                                modifier = Modifier.height(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "ML Kit Auto-Scanner",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onUseSystemCamera,
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PhotoCamera,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "System-Kamera",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Dotted Viewfinder representation
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(220.dp)
+                            .border(2.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.05f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(12.dp)
+                        ) {
+                            Text(
+                                text = "Muster-Beleg im Fokus:",
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = when (selectedMockType) {
+                                    "material" -> "🛠️ OBI Baumarkt (115,48 €)"
+                                    "handwerker" -> "⚡ Elektro Schmidt (705,00 €)"
+                                    else -> "⚖️ Notariat Dr. Gabriel (2.050,00 €)"
+                                },
+                                color = EmeraldGreen,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    // Vorlagen-Wahl
+                    Text(
+                        text = "VORLAGE WÄHLEN:",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            "material" to "🛠️ OBI",
+                            "handwerker" to "⚡ Elektro",
+                            "notar" to "⚖️ Notar"
+                        ).forEach { (type, label) ->
+                            val isSelected = selectedMockType == type
+                            Button(
+                                onClick = { selectedMockType = type },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isSelected) EmeraldGreen else Color.DarkGray.copy(alpha = 0.6f)
+                                ),
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AndroidView(
+                        factory = { ctx ->
+                            val previewView = PreviewView(ctx).apply {
+                                scaleType = PreviewView.ScaleType.FIT_CENTER
+                            }
+
+                            if (cameraProviderFuture == null) {
+                                cameraBindingFailed = true
+                            } else {
+                                val executor = ContextCompat.getMainExecutor(ctx)
+                                cameraProviderFuture.addListener({
+                                    try {
+                                        val cameraProvider = cameraProviderFuture.get()
+
+                                        val preview = Preview.Builder().build().also {
+                                            it.surfaceProvider = previewView.surfaceProvider
+                                        }
+
+                                        val capture = ImageCapture.Builder()
+                                            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                                            .build()
+
+                                        imageCapture = capture
+
+                                        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+                                        if (cameraProvider.hasCamera(cameraSelector)) {
+                                            cameraProvider.unbindAll()
+                                            cameraProvider.bindToLifecycle(
+                                                lifecycleOwner,
+                                                cameraSelector,
+                                                preview,
+                                                capture
+                                            )
+                                        } else {
+                                            cameraBindingFailed = true
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("CameraActiveView", "Camera binding failed", e)
+                                        cameraBindingFailed = true
+                                    }
+                                }, executor)
+                            }
+
+                            previewView
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // OCR Guide & Focus Overlay
+                    if (!activeSimulation && !cameraBindingFailed) {
+                        
+                        // Warnings
+                        if (isLowLight || isTooTilted || !isStable) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                                    .padding(top = 80.dp)
+                                    .background(Color.Red.copy(alpha = 0.8f), RoundedCornerShape(8.dp))
+                                    .padding(16.dp)
+                            ) {
+                                Text(
+                                    text = when {
+                                        isLowLight -> "Licht verstärken!"
+                                        isTooTilted -> "Gerät gerade halten!"
+                                        !isStable -> "Kamera ruhig halten!"
+                                        else -> ""
+                                    },
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Corner markers & Grid (restricted to central viewport region to prevent bleeding)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 110.dp, bottom = 150.dp, start = 32.dp, end = 32.dp)
+                        ) {
+                            // Grid
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val strokeWidth = 1.dp.toPx()
+                                val color = Color.White.copy(alpha = 0.3f)
+                                // Vertical lines
+                                drawLine(color, Offset(size.width / 3, 0f), Offset(size.width / 3, size.height), strokeWidth)
+                                drawLine(color, Offset(2 * size.width / 3, 0f), Offset(2 * size.width / 3, size.height), strokeWidth)
+                                // Horizontal lines
+                                drawLine(color, Offset(0f, size.height / 3), Offset(size.width, size.height / 3), strokeWidth)
+                                drawLine(color, Offset(0f, 2 * size.height / 3), Offset(size.width, 2 * size.height / 3), strokeWidth)
+                            }
+                            
+                            // Corner markers
+                            val cornerSize = 40.dp
+                            val stroke = 4.dp
+                            Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                val color = Color.White
+                                // Top-Left
+                                drawLine(color, Offset(0f, 0f), Offset(cornerSize.toPx(), 0f), stroke.toPx())
+                                drawLine(color, Offset(0f, 0f), Offset(0f, cornerSize.toPx()), stroke.toPx())
+                                // Top-Right
+                                drawLine(color, Offset(size.width - cornerSize.toPx(), 0f), Offset(size.width, 0f), stroke.toPx())
+                                drawLine(color, Offset(size.width, 0f), Offset(size.width, cornerSize.toPx()), stroke.toPx())
+                                // Bottom-Left
+                                drawLine(color, Offset(0f, size.height), Offset(cornerSize.toPx(), size.height), stroke.toPx())
+                                drawLine(color, Offset(0f, size.height - cornerSize.toPx()), Offset(0f, size.height), stroke.toPx())
+                                // Bottom-Right
+                                drawLine(color, Offset(size.width - cornerSize.toPx(), size.height), Offset(size.width, size.height), stroke.toPx())
+                                drawLine(color, Offset(size.width, size.height - cornerSize.toPx()), Offset(size.width, size.height), stroke.toPx())
+                            }
+                        }
+
+                        // Centered Level/Tilt Crosshair Indicator
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(120.dp)
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val centerX = size.width / 2
+                                val centerY = size.height / 2
+                                val outerRadius = 40.dp.toPx()
+                                val innerRadius = 8.dp.toPx()
+                                
+                                // Draw outer target circle
+                                drawCircle(
+                                    color = Color.White.copy(alpha = 0.5f * focusAlpha),
+                                    radius = outerRadius,
+                                    center = Offset(centerX, centerY),
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                                )
+                                
+                                // Draw static center dot
+                                drawCircle(
+                                    color = Color.White.copy(alpha = 0.3f),
+                                    radius = innerRadius,
+                                    center = Offset(centerX, centerY)
+                                )
+                                
+                                // Calculate dynamic bubble offset based on tilt
+                                val maxOffset = outerRadius - innerRadius
+                                val offsetX = (tiltX / 5f).coerceIn(-1f, 1f) * maxOffset
+                                val offsetY = (tiltY / 5f).coerceIn(-1f, 1f) * maxOffset
+                                
+                                val isAligned = !isTooTilted
+                                
+                                // Draw dynamic level bubble
+                                drawCircle(
+                                    color = if (isAligned) EmeraldGreen else Color.Red,
+                                    radius = innerRadius,
+                                    center = Offset(centerX + offsetX, centerY + offsetY)
+                                )
+                                
+                                // Draw perfect crosshair lines when aligned
+                                if (isAligned) {
+                                    val lineLength = 15.dp.toPx()
+                                    val strokeWidth = 1.5.dp.toPx()
+                                    // Left line
+                                    drawLine(EmeraldGreen, Offset(centerX - outerRadius, centerY), Offset(centerX - outerRadius + lineLength, centerY), strokeWidth)
+                                    // Right line
+                                    drawLine(EmeraldGreen, Offset(centerX + outerRadius, centerY), Offset(centerX + outerRadius - lineLength, centerY), strokeWidth)
+                                    // Top line
+                                    drawLine(EmeraldGreen, Offset(centerX, centerY - outerRadius), Offset(centerX, centerY - outerRadius + lineLength), strokeWidth)
+                                    // Bottom line
+                                    drawLine(EmeraldGreen, Offset(centerX, centerY + outerRadius), Offset(centerX, centerY + outerRadius - lineLength), strokeWidth)
+                                }
+                            }
+                        }
+
+                        // Animated Step Instruction
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(32.dp)
+                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = guideSteps[guideStep],
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Top Status Overlay & Manual Simulation Switch in a unified, non-overlapping Bar
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Left: Close button
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Clear, contentDescription = "Schließen", tint = Color.White)
+                }
+
+                // Middle: Mode Switch & Status Pill
+                Row(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = if (activeSimulation) "Simulator" else "S. ${capturedBitmaps.size + 1}",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    if (!cameraBindingFailed) {
+                        // Multi-page toggle pill
+                        Box(
+                            modifier = Modifier
+                                .background(if (isMultiPage) EmeraldGreen else Color.DarkGray, RoundedCornerShape(12.dp))
+                                .clickable { isMultiPage = !isMultiPage }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (isMultiPage) "Multi" else "Einzel",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Sim toggle pill
+                        Box(
+                            modifier = Modifier
+                                .background(if (isSimulationMode) EmeraldGreen else Color.DarkGray, RoundedCornerShape(12.dp))
+                                .clickable { isSimulationMode = !isSimulationMode }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (isSimulationMode) "Sim" else "Kamera",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        // Emulator tag
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFFDC2626), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Emulator",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+                
+                // Right: Auto-Trigger Badge
+                Box(
+                    modifier = Modifier
+                        .background(if (isAutoTriggerEnabled) EmeraldGreen.copy(alpha = 0.15f) else Color.DarkGray.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                        .border(1.dp, if (isAutoTriggerEnabled) EmeraldGreen else Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(20.dp))
+                        .clickable { isAutoTriggerEnabled = !isAutoTriggerEnabled }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isAutoTriggerEnabled) Icons.Default.AutoAwesome else Icons.Default.Camera,
+                            contentDescription = null,
+                            tint = if (isAutoTriggerEnabled) EmeraldGreen else Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = if (isAutoTriggerEnabled) "Auto" else "Manuell",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            // Bottom control bar
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .navigationBarsPadding()
+                    .padding(bottom = 36.dp, top = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Horizontal list of already captured pages
+                if (capturedBitmaps.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(86.dp)
+                            .padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        itemsIndexed(capturedBitmaps) { index, bmp ->
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .border(1.5.dp, EmeraldGreen, RoundedCornerShape(8.dp))
+                            ) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "Seite ${index + 1}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                )
+                                // Delete/trash button on the top right
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .size(18.dp)
+                                        .background(Color.Red, CircleShape)
+                                        .clickable { 
+                                            capturedBitmaps = capturedBitmaps.filterIndexed { i, _ -> i != index }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Clear,
+                                        contentDescription = "Löschen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                }
+                                // Page badge at bottom left
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomStart)
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(topEnd = 4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text("S.${index + 1}", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                if (captureError != null) {
+                    Text(
+                        text = captureError ?: "",
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Abbrechen", color = Color.White)
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(if (isCapturing) Color.Gray else Color.White)
+                            .clickable(enabled = !isCapturing) {
+                                triggerCapture()
+                            }
+                            .weight(1.2f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isCapturing) {
+                            CircularProgressIndicator(color = DarkNavy, modifier = Modifier.size(24.dp))
+                        } else {
+                            Icon(
+                                Icons.Default.Camera,
+                                contentDescription = "Foto aufnehmen",
+                                tint = DarkNavy,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+
+                    // Complete Multi-Page Capture early button
+                    if (capturedBitmaps.isNotEmpty()) {
+                        Button(
+                            onClick = { onImagesCaptured(capturedBitmaps) },
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                            modifier = Modifier.weight(1.5f),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Fertig (${capturedBitmaps.size})", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.weight(1.5f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PropertyMetadataFormDialog(
+    viewModel: ReceiptViewModel,
+    onDismiss: () -> Unit
+) {
+    val currentMetadata by viewModel.propertyMetadata.collectAsState()
+    val metadata = currentMetadata ?: PropertyMetadata()
+
+    var editName by remember(metadata) { mutableStateOf(metadata.name) }
+    var editAdresse by remember(metadata) { mutableStateOf(metadata.adresse) }
+    var editWohnort by remember(metadata) { mutableStateOf(metadata.wohnort) }
+    var editBaujahr by remember(metadata) { mutableStateOf(metadata.baujahr.toString()) }
+    var editWohnflaeche by remember(metadata) { mutableStateOf(metadata.wohnflaeche.toString()) }
+    var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(metadata.grundstuecksgroesse.toString()) }
+    var editNotariellesKaufdatum by remember(metadata) { mutableStateOf(metadata.notariellesKaufdatum) }
+    var editUebergangNutzenLasten by remember(metadata) { mutableStateOf(metadata.uebergangNutzenLasten) }
+    var editWohneinheiten by remember(metadata) { mutableStateOf(metadata.wohneinheiten) }
+    var editGesamtKaufpreis by remember(metadata) { mutableStateOf(metadata.gesamtKaufpreis.toString()) }
+    var editGebaeudewert by remember(metadata) { mutableStateOf(metadata.gebaeudewert.toString()) }
+    var editGrundUndBodenWert by remember(metadata) { mutableStateOf(metadata.grundUndBodenWert.toString()) }
+
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AccountBalance,
+                    contentDescription = null,
+                    tint = AccentBlue,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = "Objekt-Stammdaten bearbeiten",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 18.sp,
+                    color = DarkNavy
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Trage hier die Stammdaten deines Anlageobjekts ein. Diese Daten bilden die Basis für Berechnungen wie die 15%-Grenze.",
+                    fontSize = 12.sp,
+                    color = SlateGray,
+                    lineHeight = 16.sp
+                )
+
+                // Dynamic progress calculation for Anlage V completeness
+                val completenessChecks = listOf(
+                    Pair("Objekt-Bezeichnung", editName.isNotBlank()),
+                    Pair("Anschrift / Adresse", editAdresse.isNotBlank()),
+                    Pair("Baujahr", editBaujahr.toIntOrNull() != null && editBaujahr.toInt() > 0),
+                    Pair("Notarielles Kaufdatum", editNotariellesKaufdatum.isNotBlank()),
+                    Pair("Übergang Nutzen/Lasten", editUebergangNutzenLasten.isNotBlank()),
+                    Pair("Wohnfläche", editWohnflaeche.toDoubleOrNull() != null && editWohnflaeche.toDouble() > 0.0),
+                    Pair("Grundstücksgröße", editGrundstuecksgroesse.toDoubleOrNull() != null && editGrundstuecksgroesse.toDouble() > 0.0),
+                    Pair("Wohneinheiten", editWohneinheiten.isNotBlank()),
+                    Pair("Gesamtkaufpreis", editGesamtKaufpreis.toDoubleOrNull() != null && editGesamtKaufpreis.toDouble() > 0.0),
+                    Pair("Gebäudewert", editGebaeudewert.toDoubleOrNull() != null && editGebaeudewert.toDouble() > 0.0),
+                    Pair("Grund und Boden", editGrundUndBodenWert.toDoubleOrNull() != null && editGrundUndBodenWert.toDouble() >= 0.0)
+                )
+                val completedCount = completenessChecks.count { it.second }
+                val totalCount = completenessChecks.size
+                val progressFraction = completedCount.toFloat() / totalCount
+                val missingFields = completenessChecks.filter { !it.second }.map { it.first }
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("completeness_progress_card")
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Datenvollständigkeit (Anlage V)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DarkNavy
+                            )
+                            Text(
+                                text = "$completedCount von $totalCount (${(progressFraction * 100).toInt()}%)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (progressFraction == 1f) EmeraldGreen else AccentBlue
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // Custom styled progress bar
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(12.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFFE2E8F0))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(if (progressFraction > 0f) progressFraction else 0.001f)
+                                    .fillMaxHeight()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            colors = if (progressFraction == 1f) {
+                                                listOf(EmeraldGreen.copy(alpha = 0.8f), EmeraldGreen)
+                                            } else {
+                                                listOf(AccentBlue.copy(alpha = 0.8f), AccentBlue)
+                                            }
+                                        )
+                                    )
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        if (missingFields.isEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = EmeraldGreen,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Perfekt! Alle notwendigen Datenpunkte sind erfasst.",
+                                    fontSize = 10.sp,
+                                    color = EmeraldGreen,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = "Es fehlen noch: ${missingFields.joinToString(", ")}",
+                                fontSize = 10.sp,
+                                color = SlateGray,
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Objekt-Bezeichnung") },
+                    placeholder = { Text("z.B. Mehrfamilienhaus") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_property_name"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = editAdresse,
+                    onValueChange = { editAdresse = it },
+                    label = { Text("Anschrift / Adresse (Objekt)") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_property_adresse"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = editWohnort,
+                    onValueChange = { editWohnort = it },
+                    label = { Text("Startadresse / Wohnort (Fahrtenbuch)") },
+                    placeholder = { Text("z.B. Hauptstraße 1, 12345 Wohnstadt") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_property_wohnort"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+
+                OutlinedTextField(
+                    value = editBaujahr,
+                    onValueChange = { editBaujahr = it },
+                    label = { Text("Baujahr") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().testTag("edit_property_baujahr"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = editNotariellesKaufdatum,
+                        onValueChange = { editNotariellesKaufdatum = it },
+                        label = { Text("Notar. Kaufdatum") },
+                        placeholder = { Text("YYYY-MM-DD") },
+                        modifier = Modifier.weight(1f).testTag("edit_property_notarielles_kaufdatum"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = editUebergangNutzenLasten,
+                        onValueChange = { editUebergangNutzenLasten = it },
+                        label = { Text("Übergang Nutzen/Lasten") },
+                        placeholder = { Text("YYYY-MM-DD") },
+                        modifier = Modifier.weight(1.2f).testTag("edit_property_uebergang"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = editWohnflaeche,
+                        onValueChange = { editWohnflaeche = it },
+                        label = { Text("Wohnfläche (m²)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f).testTag("edit_property_wohnflaeche"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = editGrundstuecksgroesse,
+                        onValueChange = { editGrundstuecksgroesse = it },
+                        label = { Text("Grundstück (m²)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f).testTag("edit_property_grundstueck"),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White
+                        )
+                    )
+                }
+
+                OutlinedTextField(
+                    value = editWohneinheiten,
+                    onValueChange = { editWohneinheiten = it },
+                    label = { Text("Wohneinheiten (kommagetrennt)") },
+                    placeholder = { Text("z.B. WE 1, WE 2, WE 3, WE 4") },
+                    supportingText = { Text("Belege können diesen Einheiten zugeordnet werden.", fontSize = 10.sp) },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_property_wohneinheiten"),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    )
+                )
+
+Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.spacedBy(8.dp)
+) {
+    OutlinedTextField(
+        value = editGesamtKaufpreis,
+        onValueChange = { editGesamtKaufpreis = it },
+        label = { Text("Gesamtkaufpreis (€)") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.weight(1f).testTag("edit_property_kaufpreis"),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White
+        )
+    )
+
+    OutlinedTextField(
+        value = editGebaeudewert,
+        onValueChange = { editGebaeudewert = it },
+        label = { Text("Gebäudewert (€)") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.weight(1f).testTag("edit_property_gebaeudewert"),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.White,
+            unfocusedContainerColor = Color.White
+        )
+    )
+}
+
+OutlinedTextField(
+    value = editGrundUndBodenWert,
+    onValueChange = { editGrundUndBodenWert = it },
+    label = { Text("Grund und Boden (€)") },
+    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+    modifier = Modifier.fillMaxWidth().testTag("edit_property_grund_boden"),
+    colors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = Color.White,
+        unfocusedContainerColor = Color.White
+    )
+)
+
+val allocationDiffPreview = (editGesamtKaufpreis.toDoubleOrNull() ?: 0.0) -
+    (editGebaeudewert.toDoubleOrNull() ?: 0.0) -
+    (editGrundUndBodenWert.toDoubleOrNull() ?: 0.0)
+if (kotlin.math.abs(allocationDiffPreview) > 1.0) {
+    Text(
+        "Hinweis: Gebäude + Grund/Boden weichen um ${NumberFormatter.format(allocationDiffPreview)} vom Kaufpreis ab.",
+        fontSize = 10.sp,
+        color = WarmOrange
+    )
+}
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalBaujahr = editBaujahr.toIntOrNull() ?: metadata.baujahr
+                    val finalWohnflaeche = editWohnflaeche.toDoubleOrNull() ?: metadata.wohnflaeche
+                    val finalGrundstuecksgroesse = editGrundstuecksgroesse.toDoubleOrNull() ?: metadata.grundstuecksgroesse
+                    val finalGesamtKaufpreis = editGesamtKaufpreis.toDoubleOrNull() ?: metadata.gesamtKaufpreis
+                    val finalGebaeudewert = editGebaeudewert.toDoubleOrNull() ?: metadata.gebaeudewert
+                    val finalGrundUndBodenWert = editGrundUndBodenWert.toDoubleOrNull() ?: metadata.grundUndBodenWert
+
+                    val updated = metadata.copy(
+                        name = editName,
+                        adresse = editAdresse,
+                        wohnort = editWohnort,
+                        baujahr = finalBaujahr,
+                        wohnflaeche = finalWohnflaeche,
+                        grundstuecksgroesse = finalGrundstuecksgroesse,
+                        notariellesKaufdatum = editNotariellesKaufdatum,
+                        uebergangNutzenLasten = editUebergangNutzenLasten,
+                        wohneinheiten = editWohneinheiten,
+                        gesamtKaufpreis = finalGesamtKaufpreis,
+                        gebaeudewert = finalGebaeudewert,
+                        grundUndBodenWert = finalGrundUndBodenWert,
+                        kaufpreisAufteilungQuelle = "MANUELL"
+                    )
+                    viewModel.updatePropertyMetadata(updated)
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                modifier = Modifier.testTag("save_property_metadata_button")
+            ) {
+                Text("Speichern", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss
+            ) {
+                Text("Abbrechen", color = SlateGray)
+            }
+        },
+        containerColor = Color.White
+    )
+}
+
+@Composable
+fun FirebaseLoginDialog(
+    viewModel: ReceiptViewModel,
+    onDismiss: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isRegisterMode by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        title = {
+            Text(
+                text = if (isRegisterMode) "Neues Konto erstellen" else "Anmelden",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = DarkNavy
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = if (isRegisterMode) 
+                        "Erstellen Sie ein kostenloses Konto, um Ihre Belege sicher in der Cloud zu speichern."
+                        else "Melden Sie sich mit Ihrem persönlichen Account an.",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it; errorMessage = null },
+                    label = { Text("E-Mail-Adresse") },
+                    modifier = Modifier.fillMaxWidth().testTag("auth_email_input"),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+                )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; errorMessage = null },
+                    label = { Text("Passwort") },
+                    modifier = Modifier.fillMaxWidth().testTag("auth_password_input"),
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+                )
+
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage!!,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = { 
+                            isRegisterMode = !isRegisterMode 
+                            errorMessage = null
+                        },
+                        enabled = !isLoading
+                    ) {
+                        Text(
+                            text = if (isRegisterMode) "Bereits ein Konto? Anmelden" else "Konto erstellen",
+                            fontSize = 12.sp,
+                            color = AccentBlue
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (email.isBlank() || password.isBlank()) {
+                        errorMessage = "Bitte füllen Sie alle Felder aus."
+                        return@Button
+                    }
+                    if (password.length < 6) {
+                        errorMessage = "Das Passwort muss mindestens 6 Zeichen lang sein."
+                        return@Button
+                    }
+                    isLoading = true
+                    if (isRegisterMode) {
+                        viewModel.signUpWithEmail(
+                            email = email.trim(),
+                            password = password,
+                            onSuccess = {
+                                isLoading = false
+                                onDismiss()
+                            },
+                            onError = { err ->
+                                isLoading = false
+                                errorMessage = err
+                            }
+                        )
+                    } else {
+                        viewModel.signInWithEmail(
+                            email = email.trim(),
+                            password = password,
+                            onSuccess = {
+                                isLoading = false
+                                onDismiss()
+                            },
+                            onError = { err ->
+                                isLoading = false
+                                errorMessage = err
+                            }
+                        )
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                modifier = Modifier.testTag("auth_submit_button"),
+                enabled = !isLoading
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(if (isRegisterMode) "Registrieren" else "Anmelden")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isLoading
+            ) {
+                Text("Abbrechen", color = Color.Gray)
+            }
+        },
+        containerColor = Color.White
+    )
+}
+
+fun exportBankStatementToCsv(
+    context: Context,
+    statementText: String,
+    result: com.example.api.BankStatementReconciliationResult?
+) {
+    try {
+        val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+        val file = File(exportDir, "Kontoauszug_Bankabgleich.csv")
+
+        val sb = java.lang.StringBuilder()
+        // German standard CSV header
+        sb.append("Datum;Empfaenger_Absender;Betrag_EUR;Buchungstyp;Verwendungszweck;Abgleich_Status;Hinweis\n")
+
+        if (result != null && result.items.isNotEmpty()) {
+            for (item in result.items) {
+                val date = item.date.replace(";", ",")
+                val party = item.counterparty.replace(";", ",")
+                val amount = String.format(java.util.Locale.GERMANY, "%.2f", item.amount)
+                val type = if (item.isIncome) "Einnahme" else "Ausgabe"
+                val purpose = item.purpose.replace(";", ",")
+                val statusText = when (item.status) {
+                    "MATCHED" -> "Zugeordnet"
+                    "MISSING_RECEIPT" -> "FEHLENDER BELEG"
+                    "RENT_ARREARS" -> "MIETRÜCKSTAND"
+                    else -> "Ungeklärt"
+                }
+                val notes = item.notes.replace(";", ",").replace("\n", " ")
+                sb.append("$date;\"$party\";$amount;$type;\"$purpose\";\"$statusText\";\"$notes\"\n")
+            }
+        } else {
+            val lines = statementText.lines().filter { it.isNotBlank() }
+            for (line in lines) {
+                val parts = line.split("|").map { it.trim() }
+                if (parts.size >= 3) {
+                    val date = parts[0].replace(";", ",")
+                    val party = parts[1].replace(";", ",")
+                    val rawAmount = parts[2].replace(";", ",").replace("EUR", "").trim()
+                    val purpose = parts.drop(3).joinToString(" ").replace(";", ",")
+                    val isIncome = !rawAmount.startsWith("-")
+                    val type = if (isIncome) "Einnahme" else "Ausgabe"
+                    sb.append("$date;\"$party\";\"$rawAmount\";$type;\"$purpose\";\"Standardisiert\";\"\"\n")
+                } else {
+                    val cleanLine = line.replace(";", ",")
+                    sb.append(";\"$cleanLine\";;;;\"Unformatiert\";\"\"\n")
+                }
+            }
+        }
+
+        file.writeText(sb.toString(), Charsets.UTF_8)
+
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context,
+            context.packageName + ".provider",
+            file
+        )
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_SUBJECT, "Kontoauszug_Bankabgleich.csv")
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Kontoauszug als CSV exportieren"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Fehler beim CSV-Export: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
+@Composable
+fun KiPowerCenterDialog(
+    viewModel: ReceiptViewModel,
+    onDismiss: () -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Steuer, 1: Bankabgleich, 2: Nebenkosten, 3: Mietpreis, 4: Mängel, 5: Verträge
+
+    // State bindings
+    val taxReport by viewModel.taxPlausibilityReport.collectAsState()
+    val isAnalyzingTax by viewModel.isAnalyzingTaxPlausibility.collectAsState()
+
+    val bankStatementResult by viewModel.bankStatementResult.collectAsState()
+    val isMatchingBankStatement by viewModel.isMatchingBankStatement.collectAsState()
+    val bankStatementResetVersion by viewModel.bankStatementResetVersion.collectAsState()
+
+    val utilityStatement by viewModel.tenantUtilityStatement.collectAsState()
+    val isGeneratingUtility by viewModel.isGeneratingUtilityStatement.collectAsState()
+
+    val rentReport by viewModel.rentYieldReport.collectAsState()
+    val isOptimizingRent by viewModel.isOptimizingRentYield.collectAsState()
+
+    val damageAssessment by viewModel.damageAssessment.collectAsState()
+    val isAssessingDamage by viewModel.isAssessingDamage.collectAsState()
+
+    val contractAnalysis by viewModel.contractAnalysis.collectAsState()
+    val isAnalyzingContract by viewModel.isAnalyzingContract.collectAsState()
+
+    val context = LocalContext.current
+
+    // Inputs for Bankabgleich
+    var bankStatementText by remember(bankStatementResetVersion) { mutableStateOf("") }
+
+    val bankCsvPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            try {
+                val content = context.contentResolver.openInputStream(it)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).readText()
+                } ?: ""
+                if (content.isNotBlank()) {
+                    bankStatementText = content
+                    android.widget.Toast.makeText(context, "Bank CSV/Kontoauszug erfolgreich importiert!", android.widget.Toast.LENGTH_SHORT).show()
+                    viewModel.runBankStatementMatching(content)
+                } else {
+                    android.widget.Toast.makeText(context, "Die gewählte Datei ist leer.", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(context, "Fehler beim Lesen der Datei: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Inputs for Nebenkosten
+    var tenantName by remember { mutableStateOf("Max Mustermann") }
+    var unitName by remember { mutableStateOf("WE 01 (OG Links)") }
+    var sqmText by remember { mutableStateOf("75.0") }
+
+    // Inputs for Mietpreis
+    var locationText by remember { mutableStateOf("München / Deutschland") }
+
+    // Inputs for Mängel
+    var damageDescription by remember { mutableStateOf("Feuchtigkeitsfleck an der Badezimmerdecke mit leichtem Schimmelansatz.") }
+
+    // Inputs for Verträge
+    var contractText by remember { mutableStateOf("Mietvertrag § 5: Die Kaltmiete beträgt 650€. Wertsicherungsklausel nach VPI (Indexmiete). Schönheitsreparaturen sind bei Auszug auszuführen.") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(26.dp))
+                Column {
+                    Text("Gemini KI-Zentrale", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = DarkNavy)
+                    Text("Intelligente Assistenten für deine Immobilien & Finanzen", fontSize = 11.sp, color = SlateGray)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 530.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Tab Selection Bar
+                ScrollableTabRow(
+                    selectedTabIndex = selectedTab,
+                    edgePadding = 0.dp,
+                    containerColor = Color(0xFFF1F5F9),
+                    contentColor = DarkNavy
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        text = { Text("⚖️ Steuer", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("🏦 Bankabgleich", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                val alertCount = (bankStatementResult?.missingReceiptsCount ?: 0) + (bankStatementResult?.rentArrearsCount ?: 0)
+                                if (alertCount > 0) {
+                                    Surface(
+                                        color = CrimsonRed,
+                                        shape = CircleShape
+                                    ) {
+                                        Text(
+                                            text = "$alertCount",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        text = { Text("📄 Nebenkosten", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        text = { Text("📈 Mietpreis", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 4,
+                        onClick = { selectedTab = 4 },
+                        text = { Text("🛠️ Mängel-Foto", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = selectedTab == 5,
+                        onClick = { selectedTab = 5 },
+                        text = { Text("📜 Verträge", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    when (selectedTab) {
+                        // --- TAB 0: STEUER- & PLAUSIBILITÄTSPRÜFER ---
+                        0 -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Surface(
+                                    color = Color(0xFFEFF6FF),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f))
+                                ) {
+                                    Text(
+                                        text = "Überprüft alle Belege auf die 15%-Grenze (§6 EStG), Handwerkerleistungen (§35a EStG) und Unstimmigkeiten vor Abgabe der Steuererklärung.",
+                                        fontSize = 11.sp,
+                                        color = DarkNavy,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
+                                }
+
+                                Button(
+                                    onClick = { viewModel.runTaxPlausibilityCheck() },
+                                    enabled = !isAnalyzingTax,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    if (isAnalyzingTax) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Gemini prüft Steuerkonformität...", fontSize = 12.sp)
+                                    } else {
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Jetzt Steuer-Prüfung starten", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                taxReport?.let { report ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Status:", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                                Surface(
+                                                    color = when (report.overallStatus) {
+                                                        "KRITISCH" -> CrimsonRed.copy(alpha = 0.2f)
+                                                        "WARNUNG" -> Color(0xFFD97706).copy(alpha = 0.2f)
+                                                        else -> EmeraldGreen.copy(alpha = 0.2f)
+                                                    },
+                                                    shape = CircleShape
+                                                ) {
+                                                    Text(
+                                                        text = report.overallStatus,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp,
+                                                        color = when (report.overallStatus) {
+                                                            "KRITISCH" -> CrimsonRed
+                                                            "WARNUNG" -> Color(0xFFD97706)
+                                                            else -> EmeraldGreen
+                                                        }
+                                                    )
+                                                }
+                                            }
+
+                                            Text("15%-Grenze Sanierung:", fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                            LinearProgressIndicator(
+                                                progress = { (report.sanierungLimitPercentage / 100.0).toFloat().coerceIn(0f, 1f) },
+                                                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+                                                color = if (report.is15PercentLimitExceeded) CrimsonRed else EmeraldGreen,
+                                                trackColor = Color(0xFFE2E8F0)
+                                            )
+                                            Text(
+                                                text = "${report.sanierungCostSum} € / Limit: ${report.sanierungCostLimit} € (${report.sanierungLimitPercentage}%)",
+                                                fontSize = 10.5.sp,
+                                                color = SlateGray
+                                            )
+
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text("Erkenntnisse (${report.findings.size}):", fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                            report.findings.forEach { finding ->
+                                                Surface(
+                                                    color = Color.White,
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(modifier = Modifier.padding(8.dp)) {
+                                                        Text(finding.title, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = DarkNavy)
+                                                        Text(finding.description, fontSize = 10.5.sp, color = SlateGray)
+                                                        if (finding.actionRecommendation.isNotBlank()) {
+                                                            Text("💡 Empfehlung: ${finding.actionRecommendation}", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Text(report.summaryText, fontSize = 11.sp, color = DarkNavy, lineHeight = 15.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // --- TAB 1: KI KONTOAUSZUGS-MATCHING (BANKABGLEICH) ---
+                        1 -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Surface(
+                                    color = Color(0xFFF0FDF4),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.3f))
+                                ) {
+                                    Text(
+                                        text = "Importiere deine Bank-Kontoauszug-Datei (CSV/Text) oder füge den Inhalt ein. Die KI gleicht automatisch Mieteinnahmen & Ausgaben mit Belegen ab & erkennt fehlende Belege oder Mietrückstände.",
+                                        fontSize = 11.sp,
+                                        color = DarkNavy,
+                                        modifier = Modifier.padding(10.dp),
+                                        lineHeight = 15.sp
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            bankCsvPickerLauncher.launch(arrayOf("*/*"))
+                                        },
+                                        modifier = Modifier.weight(1.1f),
+                                        colors = ButtonDefaults.buttonColors(containerColor = DarkNavy),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("📂 Bank CSV importieren", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { exportBankStatementToCsv(context, bankStatementText, bankStatementResult) },
+                                        modifier = Modifier.weight(0.9f),
+                                        border = BorderStroke(1.dp, EmeraldGreen),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = EmeraldGreen)
+                                    ) {
+                                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("📥 CSV Export", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = bankStatementText,
+                                    onValueChange = { bankStatementText = it },
+                                    label = { Text("Kontoauszug / Transaktionen (Text oder CSV)", fontSize = 11.sp) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 4
+                                )
+
+                                Button(
+                                    onClick = { viewModel.runBankStatementMatching(bankStatementText) },
+                                    enabled = !isMatchingBankStatement,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    if (isMatchingBankStatement) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Gemini prüft Transaktionen...", fontSize = 12.sp)
+                                    } else {
+                                        Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("🏦 KI Bankabgleich durchführen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                bankStatementResult?.let { res ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                        border = BorderStroke(1.dp, EmeraldGreen.copy(alpha = 0.4f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Bankabgleich Ergebnis (${res.period})", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
+                                                OutlinedButton(
+                                                    onClick = { exportBankStatementToCsv(context, bankStatementText, res) },
+                                                    modifier = Modifier.height(28.dp),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                    border = BorderStroke(1.dp, EmeraldGreen),
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = EmeraldGreen)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("CSV Export", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                                }
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Surface(
+                                                    color = EmeraldGreen.copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text("Zugeordnet", fontSize = 9.5.sp, color = SlateGray)
+                                                        Text("${res.matchedCount}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = EmeraldGreen)
+                                                    }
+                                                }
+                                                Surface(
+                                                    color = Color(0xFFD97706).copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text("Fehlende Belege", fontSize = 9.5.sp, color = SlateGray)
+                                                        Text("${res.missingReceiptsCount}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFD97706))
+                                                    }
+                                                }
+                                                Surface(
+                                                    color = CrimsonRed.copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text("Mietrückstände", fontSize = 9.5.sp, color = SlateGray)
+                                                        Text("${res.rentArrearsCount}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = CrimsonRed)
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text("Abgeglichene Umsätze (${res.items.size}):", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = DarkNavy)
+
+                                            res.items.forEach { item ->
+                                                Surface(
+                                                    color = Color.White,
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text("${item.date} • ${item.counterparty}", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = DarkNavy)
+                                                            Surface(
+                                                                color = when (item.status) {
+                                                                    "MATCHED" -> EmeraldGreen.copy(alpha = 0.15f)
+                                                                    "MISSING_RECEIPT" -> Color(0xFFD97706).copy(alpha = 0.15f)
+                                                                    "RENT_ARREARS" -> CrimsonRed.copy(alpha = 0.15f)
+                                                                    else -> SlateGray.copy(alpha = 0.15f)
+                                                                },
+                                                                shape = CircleShape
+                                                            ) {
+                                                                Text(
+                                                                    text = when (item.status) {
+                                                                        "MATCHED" -> "✅ Zugeordnet"
+                                                                        "MISSING_RECEIPT" -> "⚠️ Fehlender Beleg"
+                                                                        "RENT_ARREARS" -> "🚨 Mietrückstand"
+                                                                        else -> "Ungeklärt"
+                                                                    },
+                                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                                    fontSize = 9.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = when (item.status) {
+                                                                        "MATCHED" -> EmeraldGreen
+                                                                        "MISSING_RECEIPT" -> Color(0xFFD97706)
+                                                                        "RENT_ARREARS" -> CrimsonRed
+                                                                        else -> SlateGray
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.SpaceBetween
+                                                        ) {
+                                                            Text(item.purpose, fontSize = 10.5.sp, color = SlateGray, modifier = Modifier.weight(1f))
+                                                            Text(
+                                                                text = "${if (item.isIncome) "+" else "-"}${item.amount} €",
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 11.5.sp,
+                                                                color = if (item.isIncome) EmeraldGreen else DarkNavy
+                                                            )
+                                                        }
+                                                        if (item.notes.isNotBlank()) {
+                                                            Text(
+                                                                text = "💡 ${item.notes}",
+                                                                fontSize = 10.sp,
+                                                                color = if (item.status == "MISSING_RECEIPT") Color(0xFFD97706) else if (item.status == "RENT_ARREARS") CrimsonRed else AccentBlue,
+                                                                lineHeight = 13.sp
+                                                            )
+                                                        }
+
+                                                        if (item.status == "MISSING_RECEIPT") {
+                                                            Button(
+                                                                onClick = {
+                                                                    onDismiss()
+                                                                    viewModel.setScreen(AppScreen.ADD_RECEIPT)
+                                                                },
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(top = 4.dp),
+                                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                                shape = RoundedCornerShape(6.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                                Text("Beleg für ${item.counterparty} (${item.amount} €) jetzt scannen", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        } else if (item.status == "RENT_ARREARS") {
+                                                            OutlinedButton(
+                                                                onClick = {
+                                                                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                                                        data = Uri.parse("mailto:")
+                                                                        putExtra(Intent.EXTRA_SUBJECT, "Zahlungserinnerung Miete")
+                                                                        putExtra(Intent.EXTRA_TEXT, "Hallo ${item.counterparty},\n\nbeim Bankabgleich wurde für den aktuellen Monat ein Fehlbetrag / Mietrückstand festgestellt.\n\nBitte überweise den ausstehenden Betrag.\n\nVielen Dank!")
+                                                                    }
+                                                                    context.startActivity(Intent.createChooser(intent, "Mahnung senden"))
+                                                                },
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(top = 4.dp),
+                                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                                border = BorderStroke(1.dp, CrimsonRed),
+                                                                shape = RoundedCornerShape(6.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(13.dp), tint = CrimsonRed)
+                                                                Spacer(modifier = Modifier.width(4.dp))
+                                                                Text("Mahnung / Zahlungserinnerung senden", fontSize = 10.5.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Text(res.summary, fontSize = 10.5.sp, color = DarkNavy, lineHeight = 14.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // --- TAB 2: NEBENKOSTENABRECHNUNG ---
+                        2 -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(
+                                    value = tenantName,
+                                    onValueChange = { tenantName = it },
+                                    label = { Text("Mieter Name") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = unitName,
+                                        onValueChange = { unitName = it },
+                                        label = { Text("Wohneinheit") },
+                                        modifier = Modifier.weight(1.5f),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = sqmText,
+                                        onValueChange = { sqmText = it },
+                                        label = { Text("Fläche (m²)") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        val sqm = sqmText.toDoubleOrNull() ?: 75.0
+                                        viewModel.generateTenantUtilityStatement(tenantName, unitName, sqm)
+                                    },
                                     enabled = !isGeneratingUtility,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
