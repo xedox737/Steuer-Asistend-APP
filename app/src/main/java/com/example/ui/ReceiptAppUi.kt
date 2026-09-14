@@ -997,17 +997,18 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("☀️", fontSize = 38.sp)
+                Text("☀️", fontSize = 30.sp)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Hallo Sergej", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium,
+                    Text("Hallo Sergej", fontSize = 17.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Schön, dass du da bist!", fontSize = 12.sp, lineHeight = 15.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
                     java.time.LocalDate.now().format(
                         java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
                     ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
-                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.End
                 )
@@ -1041,19 +1042,18 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             Text("Zuletzt datierte Belege", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (receipts.isEmpty()) Text("Noch keine Belege erfasst.")
-            receipts.sortedByDescending { it.datum }.take(5).forEach { receipt ->
-                Ui2Destination(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() },
-                    "${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}",
-                    Icons.Default.Receipt) { selectedReceipt = receipt }
+            receipts.sortedByDescending { it.datum }.take(5).forEachIndexed { index, receipt ->
+                DashboardActivityRow(receipt) { selectedReceipt = receipt }
+                if (index < receipts.take(5).lastIndex) HorizontalDivider(color = BorderColor)
             }
             TextButton(onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }) { Text("Alle Belege anzeigen") }
         }
         Ui2Section("Einnahmen & Ausgaben") {
-            Ui2Grid(listOf(
-                "Einnahmen" to NumberFormatter.format(totalIncome),
-                "Ausgaben" to NumberFormatter.format(totalExpenses),
-                "Saldo" to NumberFormatter.format(netCashflow)
-            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DashboardMoneyMetric("Einnahmen", totalIncome, Modifier.weight(1f))
+                DashboardMoneyMetric("Ausgaben", totalExpenses, Modifier.weight(1f))
+                DashboardMoneyMetric("Saldo", netCashflow, Modifier.weight(1f))
+            }
         }
         LoanManagementSection(viewModel)
         Ui2Section("Weitere Übersichten") {
@@ -1086,6 +1086,36 @@ private fun DashboardQuickAction(action: Ui2Action, modifier: Modifier = Modifie
         ) {
             Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(30.dp))
             Text(action.title, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun DashboardActivityRow(receipt: Receipt, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Surface(Modifier.size(36.dp), shape = RoundedCornerShape(10.dp), color = AccentBlue.copy(alpha = 0.10f)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Receipt, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(21.dp))
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() }, fontSize = 13.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+            Text("${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}", fontSize = 11.sp, lineHeight = 14.sp, color = SlateGray, maxLines = 1)
+        }
+        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun DashboardMoneyMetric(label: String, amount: Double, modifier: Modifier = Modifier) {
+    Surface(modifier, shape = Ui2.shape, color = AccentBlue.copy(alpha = 0.08f)) {
+        Column(Modifier.padding(horizontal = 6.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(NumberFormatter.format(amount), fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2, textAlign = TextAlign.Center)
+            Text(label, fontSize = 10.sp, lineHeight = 12.sp, color = SlateGray, maxLines = 1)
         }
     }
 }
