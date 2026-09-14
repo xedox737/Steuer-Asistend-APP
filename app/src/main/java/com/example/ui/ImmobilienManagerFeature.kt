@@ -6,10 +6,12 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,6 +34,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -53,6 +56,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -143,8 +150,13 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
             item {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
                     Text("Deine Objekte im Überblick", fontSize = 14.sp, color = SlateGray)
-                    Button(onClick = { showWizard = true }, modifier = Modifier.testTag("add_property_button")) {
-                        Icon(Icons.Default.Add, null); Text(" Immobilie hinzufügen")
+                    FloatingActionButton(
+                        onClick = { showWizard = true },
+                        modifier = Modifier.testTag("add_property_button"),
+                        containerColor = AccentBlue,
+                        contentColor = Color.White
+                    ) {
+                        Icon(Icons.Default.Add, "Immobilie hinzufügen")
                     }
                 }
             }
@@ -175,16 +187,26 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
     ) {
-        Column(Modifier.padding(16.dp), Arrangement.spacedBy(7.dp)) {
-            Text(property.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            Text(property.adresse, fontSize = 13.sp, color = SlateGray)
-            HorizontalDivider(color = BorderColor)
-            Text("${summary.unitCount} Einheiten · ${summary.rentedCount} vermietet · ${summary.vacantCount} frei/prüfen", fontSize = 11.sp, color = DarkNavy)
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                Text("Soll ${NumberFormatter.format(summary.expectedRent)}", fontSize = 11.sp, color = SlateGray)
-                Text("Ist ${NumberFormatter.format(summary.actualRent)}", fontSize = 11.sp, color = EmeraldGreen)
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFFBFDBFE), Color(0xFFE0F2FE)))) ,
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.HomeWork, null, tint = AccentBlue, modifier = Modifier.size(42.dp))
             }
-            Text("Offen ${NumberFormatter.format(summary.outstandingRent)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen)
+            Column(Modifier.weight(1f), Arrangement.spacedBy(6.dp)) {
+                Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(property.adresse, fontSize = 13.sp, color = SlateGray)
+                Text("${summary.unitCount} Einheiten", fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+                    Text("Soll ${NumberFormatter.format(summary.expectedRent)}", fontSize = 11.sp, color = SlateGray)
+                    Text("Ist ${NumberFormatter.format(summary.actualRent)}", fontSize = 11.sp, color = EmeraldGreen)
+                }
+                Text("Offen ${NumberFormatter.format(summary.outstandingRent)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen)
+            }
         }
     }
 }
