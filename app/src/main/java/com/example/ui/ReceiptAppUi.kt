@@ -986,20 +986,12 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     ) {
         Ui2Section("Hallo Sergej!") {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("☀️", fontSize = 38.sp)
+                Text("☀️", fontSize = 30.sp)
                 Column(Modifier.weight(1f)) {
-                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text("Deine Immobilien und Finanzen auf einen Blick.", style = MaterialTheme.typography.bodyMedium,
+                    Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                    Text("Deine Immobilien und Finanzen auf einen Blick.", style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Text(
-                    java.time.LocalDate.now().format(
-                        java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
-                    ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.End
-                )
             }
         }
         Ui2Section("Aktueller Stand") {
@@ -1018,9 +1010,9 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         Ui2Section("Schnellaktionen") {
             Ui2ActionGrid(listOf(
                 Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Beleg hochladen", "", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Kontoauszüge\nimportieren", "", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
-                Ui2Action("Neue Buchung", "", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) }
+                Ui2Action("Kontoauszüge importieren", "", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
+                Ui2Action("Neue Buchung", "", Icons.Default.Add, EmeraldGreen) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
+                Ui2Action("Auswertung anzeigen", "", Icons.Default.Assessment, AccentBlue) { viewModel.setScreen(AppScreen.LEDGER) }
             ))
         }
         Ui2Section("Letzte Aktivitäten") {
