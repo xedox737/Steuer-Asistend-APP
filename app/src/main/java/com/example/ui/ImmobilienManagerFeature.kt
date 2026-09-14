@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
@@ -665,6 +666,29 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
             item { Ui2Section("Einstellungen") {
                 Ui2Destination("App Einstellungen", "KI, Sicherung, Belege und persönliche Angaben", Icons.Default.Settings) { showSettings = true }
             } }
+            item {
+                Card(
+                    shape = Ui2.shape,
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)),
+                    border = BorderStroke(1.dp, Color(0xFFD8E9FF))
+                ) {
+                    Row(
+                        Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(Icons.Default.Lightbulb, null, tint = AccentBlue)
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("Tipp", fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text(
+                                "Alle wichtigen Funktionen an einem Ort – für eine einfache und effiziente Verwaltung deiner Immobilien.",
+                                fontSize = 12.sp,
+                                color = SlateGray
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
