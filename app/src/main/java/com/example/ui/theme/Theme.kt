@@ -3,6 +3,9 @@ package com.example.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -65,5 +68,17 @@ fun MyApplicationTheme(
       else -> LightColorScheme
     }
 
-  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+  MaterialTheme(
+    colorScheme = colorScheme,
+    typography = Typography,
+    shapes = Shapes(
+      extraSmall = RoundedCornerShape(8.dp),
+      small = RoundedCornerShape(12.dp),
+      medium = RoundedCornerShape(16.dp),
+      large = RoundedCornerShape(16.dp),
+      extraLarge = RoundedCornerShape(24.dp)
+    ),
+    content = content
+  )
 }
+
