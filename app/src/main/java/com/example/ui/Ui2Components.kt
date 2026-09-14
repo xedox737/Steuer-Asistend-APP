@@ -116,8 +116,8 @@ internal fun Ui2Destination(
     title: String,
     subtitle: String,
     icon: ImageVector,
-    onClick: () -> Unit,
-    color: Color = AccentBlue
+    color: Color = AccentBlue,
+    onClick: () -> Unit
 ) {
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
         shape = Ui2.shape, color = MaterialTheme.colorScheme.surface,
