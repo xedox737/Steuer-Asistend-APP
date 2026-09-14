@@ -338,18 +338,13 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                                 }
                             }
                         }
-                        Column {
-                            Text(
-                                if (currentScreen == AppScreen.DASHBOARD) "ImmoPilot" else screenTitle,
-                                fontWeight = FontWeight.Bold,
-                                color = DarkNavy,
-                                fontSize = if (currentScreen == AppScreen.DASHBOARD) 25.sp else 20.sp
-                            )
-                            Text(
-                                if (currentScreen == AppScreen.DASHBOARD) "Immobilien. Finanzen. Steuern." else "Steuer-Assistent",
-                                color = SlateGray,
-                                fontSize = 11.sp
-                            )
+                        if (currentScreen == AppScreen.DASHBOARD) {
+                            Column {
+                                Text("ImmoPilot", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 25.sp)
+                                Text("Immobilien. Finanzen. Steuern.", color = SlateGray, fontSize = 11.sp)
+                            }
+                        } else {
+                            Text(screenTitle, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 20.sp)
                         }
                     }
                 },
