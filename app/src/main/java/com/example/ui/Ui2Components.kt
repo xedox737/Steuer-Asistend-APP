@@ -23,11 +23,11 @@ import androidx.compose.ui.unit.sp
 /** Shared presentation tokens. These components do not own application state. */
 object Ui2 {
     val spacing = 12.dp
-    val padding = 16.dp
+    val padding = 12.dp
     val shape = RoundedCornerShape(16.dp)
     // Standard for cards with an icon and text on phone-sized screens.
-    val compactCardPadding = 8.dp
-    val compactCardSpacing = 8.dp
+    val compactCardPadding = 6.dp
+    val compactCardSpacing = 6.dp
 }
 
 @Composable
@@ -100,7 +100,7 @@ internal fun Ui2ActionCard(
 ) {
     Card(
         onClick = action.onClick,
-        modifier = modifier.heightIn(min = 92.dp),
+        modifier = modifier.heightIn(min = 84.dp),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(
             containerColor = action.color.copy(alpha = 0.09f),
@@ -136,8 +136,8 @@ internal fun Ui2ActionCard(
 internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifier, color: Color = AccentBlue) {
     Surface(modifier, shape = Ui2.shape, color = color.copy(alpha = 0.08f)) {
         Row(
-            Modifier.padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Modifier.padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val icon = when (label) {
@@ -176,8 +176,8 @@ internal fun Ui2Destination(
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
         shape = Ui2.shape, color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Surface(
                 modifier = Modifier.size(40.dp),
                 shape = RoundedCornerShape(12.dp),
