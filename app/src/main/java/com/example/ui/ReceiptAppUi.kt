@@ -46,6 +46,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -207,6 +208,7 @@ import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -237,6 +239,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import com.example.api.ExtractedReceipt
 import com.example.api.ReceiptAnalysisProvider
@@ -975,10 +978,18 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     if (showKiPowerCenterDialog) KiPowerCenterDialog(viewModel) { showKiPowerCenterDialog = false }
     selectedReceipt?.let { receipt -> ReceiptDetailDialog(receipt, viewModel) { selectedReceipt = null } }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
-        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
-    ) {
+    // Keep the approved two-column layout at its reference typography. With a
+    // large Android font scale, normal German labels otherwise break into
+    // fragments inside standard phone-sized cards.
+    val parentDensity = LocalDensity.current
+    val dashboardDensity = remember(parentDensity.density) {
+        Density(density = parentDensity.density, fontScale = 1f)
+    }
+    CompositionLocalProvider(LocalDensity provides dashboardDensity) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
+            verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
+        ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = Ui2.shape,
@@ -1055,6 +1066,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 Text("Alle Belege anzeigen")
             }
         }
+    }
     }
 }
 
