@@ -1024,7 +1024,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 Triple("Offene Belege", missingReceiptsCount.toString(), EmeraldGreen),
                 Triple("Belege gesamt", receipts.size.toString(), Color(0xFF7C3AED)),
                 Triple("Regeln aktiv", learnedRulesCount.toString(), WarmOrange)
-            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier, metric.third) }
+            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier, metric.third, showIcon = false) }
             if (totalBankAlerts > 0) {
                 Ui2Destination(
                     "$totalBankAlerts Hinweise aus dem Bankabgleich",

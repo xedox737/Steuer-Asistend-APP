@@ -133,33 +133,55 @@ internal fun Ui2ActionCard(
 }
 
 @Composable
-internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifier, color: Color = AccentBlue) {
+internal fun Ui2Metric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    color: Color = AccentBlue,
+    showIcon: Boolean = true
+) {
     Surface(modifier, shape = Ui2.shape, color = color.copy(alpha = 0.08f)) {
         Row(
             Modifier.padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val icon = when (label) {
-                "Offene Buchungen" -> Icons.Default.AccountBalance
-                "Offene Belege", "Belege gesamt" -> Icons.Default.Description
-                "Regeln aktiv" -> Icons.Default.Rule
-                else -> Icons.Default.ReceiptLong
-            }
-            Surface(
-                modifier = Modifier.size(36.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = color.copy(alpha = 0.14f)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = color, modifier = Modifier.size(25.dp))
+            if (showIcon) {
+                val icon = when (label) {
+                    "Offene Buchungen" -> Icons.Default.AccountBalance
+                    "Offene Belege", "Belege gesamt" -> Icons.Default.Description
+                    "Regeln aktiv" -> Icons.Default.Rule
+                    else -> Icons.Default.ReceiptLong
                 }
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface)
-                Text(label, style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = color.copy(alpha = 0.14f)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, null, tint = color, modifier = Modifier.size(25.dp))
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface)
+                    Text(label, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                Text(
+                    value,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.widthIn(min = 42.dp)
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
