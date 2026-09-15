@@ -970,13 +970,6 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
     val openBankTransactions = remember(bankTransactions) { BankCompactUiPolicy.counts(bankTransactions).open }
-    val totalAnschaffung = receipts.filter { it.hauptkategorie == "Anschaffungskosten" }.sumOf { it.bruttobetrag }
-    val totalFinanzierung = receipts.filter { it.hauptkategorie == "Finanzierung, Kredite & Versicherungen" }.sumOf { it.bruttobetrag }
-    val totalRenovierung = receipts.filter { it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen" }.sumOf { it.bruttobetrag }
-    val totalSonstige = receipts.filter { it.hauptkategorie == "Sonstige Ausgaben" }.sumOf { it.bruttobetrag }
-    val totalExpenses = totalAnschaffung + totalFinanzierung + totalRenovierung + totalSonstige
-    val totalIncome = receipts.filter { it.hauptkategorie == "Miete, Nebenkosten & Kaution" || it.hauptkategorie == "Sonstige Einnahmen" }.sumOf { it.bruttobetrag }
-    val netCashflow = totalIncome - totalExpenses
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
     var selectedReceipt by remember { mutableStateOf<Receipt?>(null) }
     if (showKiPowerCenterDialog) KiPowerCenterDialog(viewModel) { showKiPowerCenterDialog = false }
@@ -984,7 +977,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(Ui2.padding),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -995,11 +988,11 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             Row(
                 Modifier.fillMaxWidth().padding(Ui2.padding),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)
             ) {
                 Text("☀️", fontSize = 38.sp)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Hallo Sergej", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Hallo Sergej!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -1007,12 +1000,13 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     java.time.LocalDate.now().format(
                         java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
                     ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.End
                 )
             }
         }
+
         Ui2Section("Aktueller Stand") {
             Ui2Grid(listOf(
                 Triple("Offene Buchungen", openBankTransactions.toString(), AccentBlue),
@@ -1021,72 +1015,71 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 Triple("Regeln aktiv", learnedRulesCount.toString(), WarmOrange)
             )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier, metric.third) }
             if (totalBankAlerts > 0) {
-                Ui2Destination("$totalBankAlerts Hinweise aus dem Bankabgleich",
+                Ui2Destination(
+                    "$totalBankAlerts Hinweise aus dem Bankabgleich",
                     "$missingReceiptsCount fehlende Belege · $rentArrearsCount Mietrückstände",
-                    Icons.Default.Warning) { showKiPowerCenterDialog = true }
+                    Icons.Default.Warning
+                ) { showKiPowerCenterDialog = true }
             }
         }
+
         Ui2Section("Schnellaktionen") {
-            val dashboardActions = listOf(
-                Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Beleg hochladen", "", Icons.Default.Description) { viewModel.setScreen(AppScreen.ADD_RECEIPT) },
-                Ui2Action("Kontoauszüge\nimportieren", "", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.BANK) },
-                Ui2Action("Auswertung anzeigen", "", Icons.Default.Assessment, EmeraldGreen) { viewModel.setScreen(AppScreen.LEDGER) }
-            )
-            Ui2Grid(dashboardActions) { action, modifier -> DashboardQuickAction(action, modifier) }
+            Ui2ActionGrid(listOf(
+                Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) {
+                    viewModel.setScreen(AppScreen.ADD_RECEIPT)
+                },
+                Ui2Action("Kontoauszüge importieren", "", Icons.Default.AccountBalance) {
+                    viewModel.setScreen(AppScreen.BANK)
+                },
+                Ui2Action("Neue Buchung", "", Icons.Default.AddCircle, EmeraldGreen) {
+                    viewModel.setScreen(AppScreen.ADD_RECEIPT)
+                },
+                Ui2Action("Auswertung anzeigen", "", Icons.Default.Assessment, EmeraldGreen) {
+                    viewModel.setScreen(AppScreen.LEDGER)
+                }
+            ))
         }
+
         Ui2Section("Letzte Aktivitäten") {
-            // The data source has receipt dates rather than a separate audit log. Keep the
-            // visual activity treatment while naming the data honestly.
             Text("Zuletzt datierte Belege", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (receipts.isEmpty()) Text("Noch keine Belege erfasst.")
-            receipts.sortedByDescending { it.datum }.take(5).forEach { receipt ->
-                Ui2Destination(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() },
-                    "${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}",
-                    Icons.Default.Receipt) { selectedReceipt = receipt }
+            if (receipts.isEmpty()) {
+                Text("Noch keine Belege erfasst.", style = MaterialTheme.typography.bodyMedium)
             }
-            TextButton(onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }) { Text("Alle Belege anzeigen") }
-        }
-        Ui2Section("Einnahmen & Ausgaben") {
-            Ui2Grid(listOf(
-                "Einnahmen" to NumberFormatter.format(totalIncome),
-                "Ausgaben" to NumberFormatter.format(totalExpenses),
-                "Saldo" to NumberFormatter.format(netCashflow)
-            )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier) }
-        }
-        LoanManagementSection(viewModel)
-        Ui2Section("Weitere Übersichten") {
-            Ui2Destination("Finanzen", "Auswertung", Icons.Default.AccountBalance) { viewModel.setScreen(AppScreen.LEDGER) }
-            Ui2Destination("Fahrtenbuch", "Fahrten erfassen", Icons.Default.DirectionsCar) { viewModel.setScreen(AppScreen.LOGBOOK) }
-            Ui2Destination("Steuerschätzung", "Anlage V", Icons.Default.Calculate) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
-            Box(Modifier.testTag("rent_overview_quick_action")) {
-                Ui2Destination("Mieteingänge", "Soll/Ist & Nebenkosten", Icons.Default.Home) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+            val recentReceipts = receipts.sortedByDescending { it.datum }.take(5)
+            recentReceipts.forEachIndexed { index, receipt ->
+                DashboardActivityRow(receipt) { selectedReceipt = receipt }
+                if (index < recentReceipts.lastIndex) HorizontalDivider(color = BorderColor)
             }
-            Ui2Destination("Dokumentenakte", "Verträge, Stammdaten und Volltextsuche", Icons.Default.Description) { viewModel.setScreen(AppScreen.DOCUMENTS) }
+            TextButton(onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }) {
+                Text("Alle Belege anzeigen")
+            }
         }
     }
 }
 
 @Composable
-private fun DashboardQuickAction(action: Ui2Action, modifier: Modifier = Modifier) {
-    Card(
-        onClick = action.onClick,
-        modifier = modifier.heightIn(min = 96.dp),
-        shape = Ui2.shape,
-        colors = CardDefaults.cardColors(
-            containerColor = action.color.copy(alpha = 0.09f),
-            contentColor = MaterialTheme.colorScheme.onSurface
-        )
+private fun DashboardActivityRow(receipt: Receipt, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(action.icon, contentDescription = null, tint = action.color, modifier = Modifier.size(30.dp))
-            Text(action.title, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.Center)
+        Surface(Modifier.size(42.dp), shape = RoundedCornerShape(12.dp),
+            color = AccentBlue.copy(alpha = 0.10f)) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Receipt, contentDescription = null, tint = AccentBlue,
+                    modifier = Modifier.size(23.dp))
+            }
         }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() },
+                fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
+            Text("${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}",
+                fontSize = 11.sp, lineHeight = 17.sp, color = SlateGray)
+        }
+        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AccentBlue,
+            modifier = Modifier.size(20.dp))
     }
 }
 

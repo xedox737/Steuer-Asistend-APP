@@ -17,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** Shared presentation tokens. These components do not own application state. */
 object Ui2 {
@@ -133,15 +134,15 @@ internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifi
                 else -> Icons.Default.ReceiptLong
             }
             Surface(
-                modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.size(36.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = color.copy(alpha = 0.14f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(icon, null, tint = color, modifier = Modifier.size(25.dp))
                 }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface)
                 Text(label, style = MaterialTheme.typography.bodyMedium,
