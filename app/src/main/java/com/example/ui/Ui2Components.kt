@@ -25,6 +25,9 @@ object Ui2 {
     val spacing = 12.dp
     val padding = 16.dp
     val shape = RoundedCornerShape(16.dp)
+    // Standard for cards with an icon and text on phone-sized screens.
+    val compactCardPadding = 8.dp
+    val compactCardSpacing = 8.dp
 }
 
 @Composable
@@ -80,8 +83,8 @@ internal data class Ui2Action(
 @Composable
 internal fun Ui2ActionGrid(
     actions: List<Ui2Action>,
-    contentPadding: Dp = 14.dp,
-    iconTextSpacing: Dp = 12.dp
+    contentPadding: Dp = Ui2.compactCardPadding,
+    iconTextSpacing: Dp = Ui2.compactCardSpacing
 ) {
     Ui2Grid(actions) { action, modifier ->
         Ui2ActionCard(action, modifier, contentPadding, iconTextSpacing)
@@ -92,8 +95,8 @@ internal fun Ui2ActionGrid(
 internal fun Ui2ActionCard(
     action: Ui2Action,
     modifier: Modifier = Modifier,
-    contentPadding: Dp = 14.dp,
-    iconTextSpacing: Dp = 12.dp
+    contentPadding: Dp = Ui2.compactCardPadding,
+    iconTextSpacing: Dp = Ui2.compactCardSpacing
 ) {
     Card(
         onClick = action.onClick,
@@ -133,8 +136,8 @@ internal fun Ui2ActionCard(
 internal fun Ui2Metric(label: String, value: String, modifier: Modifier = Modifier, color: Color = AccentBlue) {
     Surface(modifier, shape = Ui2.shape, color = color.copy(alpha = 0.08f)) {
         Row(
-            Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val icon = when (label) {
@@ -173,8 +176,8 @@ internal fun Ui2Destination(
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
         shape = Ui2.shape, color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(
                 modifier = Modifier.size(40.dp),
                 shape = RoundedCornerShape(12.dp),
