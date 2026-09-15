@@ -1035,8 +1035,9 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         }
 
         Ui2Section("Schnellaktionen") {
-            Ui2ActionGrid(listOf(
-                Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) {
+            Ui2ActionGrid(
+                actions = listOf(
+                    Ui2Action("Beleg scannen", "", Icons.Default.PhotoCamera) {
                     viewModel.setScreen(AppScreen.ADD_RECEIPT)
                 },
                 Ui2Action("Kontoauszüge importieren", "", Icons.Default.AccountBalance) {
@@ -1048,7 +1049,10 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                 Ui2Action("Auswertung anzeigen", "", Icons.Default.Assessment, EmeraldGreen) {
                     viewModel.setScreen(AppScreen.LEDGER)
                 }
-            ))
+                ),
+                contentPadding = 8.dp,
+                iconTextSpacing = 8.dp
+            )
         }
 
         Ui2Section("Letzte Aktivitäten") {

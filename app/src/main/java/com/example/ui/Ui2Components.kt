@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -77,14 +78,23 @@ internal data class Ui2Action(
 )
 
 @Composable
-internal fun Ui2ActionGrid(actions: List<Ui2Action>) {
+internal fun Ui2ActionGrid(
+    actions: List<Ui2Action>,
+    contentPadding: Dp = 14.dp,
+    iconTextSpacing: Dp = 12.dp
+) {
     Ui2Grid(actions) { action, modifier ->
-        Ui2ActionCard(action, modifier)
+        Ui2ActionCard(action, modifier, contentPadding, iconTextSpacing)
     }
 }
 
 @Composable
-internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
+internal fun Ui2ActionCard(
+    action: Ui2Action,
+    modifier: Modifier = Modifier,
+    contentPadding: Dp = 14.dp,
+    iconTextSpacing: Dp = 12.dp
+) {
     Card(
         onClick = action.onClick,
         modifier = modifier.heightIn(min = 92.dp),
@@ -95,8 +105,8 @@ internal fun Ui2ActionCard(action: Ui2Action, modifier: Modifier = Modifier) {
         )
     ) {
         Row(
-            Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.padding(contentPadding),
+            horizontalArrangement = Arrangement.spacedBy(iconTextSpacing),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
