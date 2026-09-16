@@ -86,10 +86,10 @@ class ReceiptDetailComposeTest {
 
     @Test fun renderAssignedDetailAtPhoneWidth() {
         show()
-        File("build/reports/receipt-detail").mkdirs()
-        ui.onRoot().captureRoboImage("build/reports/receipt-detail/01-top.png")
+        File("app/build/reports/receipt-detail").mkdirs()
+        ui.onRoot().captureRoboImage("app/build/reports/receipt-detail/01-top.png")
         ui.onNodeWithText("Beleg löschen").performScrollTo()
-        ui.onRoot().captureRoboImage("build/reports/receipt-detail/02-bottom.png")
+        ui.onRoot().captureRoboImage("app/build/reports/receipt-detail/02-bottom.png")
     }
 
     @Test fun unassignedReceiptHasHonestEmptyState() {
