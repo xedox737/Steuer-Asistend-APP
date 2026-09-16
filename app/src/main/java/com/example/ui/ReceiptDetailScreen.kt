@@ -68,6 +68,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var fullScreen by remember { mutableStateOf(false) }
+    var editing by remember(current.id) { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
     var deletionRequested by remember { mutableStateOf(false) }
     var pendingRepair by remember { mutableStateOf<Pair<File, FileValidationResult>?>(null) }
@@ -115,7 +116,10 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     }
     fun navigate(screen: AppScreen) { onDismiss(); viewModel.setScreen(screen) }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = { if (editing) editing = false else onDismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         ReceiptDetailLayout(
             receipt = current,
             propertyName = properties.firstOrNull { it.propertyId == current.propertyId }?.name ?: "Nicht zugeordnet",
@@ -125,6 +129,8 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
             previewMessage = status?.message ?: "Keine Vorschau verfügbar",
             message = message,
             fileIndex = selectedFile, fileCount = paths.size,
+            editing = editing,
+            onEditingChange = { editing = it },
             onFileChange = { selectedFile = it },
             onBack = onDismiss,
             onNavigate = ::navigate,
@@ -169,6 +175,8 @@ internal fun ReceiptDetailLayout(
     message: String? = null,
     fileIndex: Int = 0,
     fileCount: Int = 1,
+    editing: Boolean,
+    onEditingChange: (Boolean) -> Unit,
     onFileChange: (Int) -> Unit = {},
     onBack: () -> Unit,
     onNavigate: (AppScreen) -> Unit,
@@ -181,7 +189,6 @@ internal fun ReceiptDetailLayout(
     editor: @Composable (() -> Unit) -> Unit,
     additionalData: @Composable () -> Unit
 ) {
-    var editing by remember(receipt.id) { mutableStateOf(false) }
     var additionalExpanded by remember(receipt.id) { mutableStateOf(false) }
     var selectedLink by remember(receipt.id) { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
@@ -191,7 +198,7 @@ internal fun ReceiptDetailLayout(
     val extraTarget = remember { BringIntoViewRequester() }
     LaunchedEffect(editing) { if (editing) editorTarget.bringIntoView() }
     LaunchedEffect(additionalExpanded) { if (additionalExpanded) extraTarget.bringIntoView() }
-    BackHandler(enabled = editing) { editing = false }
+    BackHandler(enabled = editing) { onEditingChange(false) }
     val blue = Color(0xFF0066FF)
     val navy = Color(0xFF10182D)
     val slate = Color(0xFF526078)
@@ -202,8 +209,8 @@ internal fun ReceiptDetailLayout(
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF5F8FC)),
-                title = { Text("Belegdetails", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = navy) },
-                navigationIcon = { IconButton(onClick = { if (editing) editing = false else onBack() }) {
+                title = { Text(if (editing) "Beleg bearbeiten" else "Belegdetails", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = navy) },
+                navigationIcon = { IconButton(onClick = { if (editing) onEditingChange(false) else onBack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = navy)
                 } },
                 actions = {
@@ -240,7 +247,7 @@ internal fun ReceiptDetailLayout(
     ) { insets ->
         Column(Modifier.padding(insets).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("receipt_detail_scroll"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ReceiptDetailCard {
+            if (!editing) ReceiptDetailCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Surface(Modifier.width(100.dp).height(132.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFFEDF0F5)) {
                         if (bitmap != null) Image(bitmap.asImageBitmap(), "Beleg-Miniatur", contentScale = ContentScale.Fit)
@@ -255,24 +262,23 @@ internal fun ReceiptDetailLayout(
                     }
                 }
                 if (!editing) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ReceiptDetailAction("Bearbeiten", Icons.Default.Edit, Modifier.weight(1f).testTag("edit_receipt_button")) { editing = true }
+                    ReceiptDetailAction("Bearbeiten", Icons.Default.Edit, Modifier.weight(1f).testTag("edit_receipt_button")) { onEditingChange(true) }
                     ReceiptDetailAction("Teilen", Icons.Default.Share, Modifier.weight(1f), onClick = onShare)
                 }
             }
             if (editing) ReceiptDetailCard {
                 Column(Modifier.bringIntoViewRequester(editorTarget)) {
-                    Text("Beleg bearbeiten", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    editor { editing = false }
+                    editor { onEditingChange(false) }
                 }
             }
-            ReceiptDetailCard {
-                ReceiptReferenceRow("Kategorie", receipt.unterkategorie.ifBlank { receipt.hauptkategorie }, Icons.Default.Description) { editing = true }
+            if (!editing) ReceiptDetailCard {
+                ReceiptReferenceRow("Kategorie", receipt.unterkategorie.ifBlank { receipt.hauptkategorie }, Icons.Default.Description) { onEditingChange(true) }
                 ReceiptDetailDivider()
-                ReceiptReferenceRow("Lieferant", receipt.aussteller, Icons.Default.PersonOutline) { editing = true }
+                ReceiptReferenceRow("Lieferant", receipt.aussteller, Icons.Default.PersonOutline) { onEditingChange(true) }
                 ReceiptDetailDivider()
-                ReceiptReferenceRow("Zahlungsart", receipt.zahlungsart, Icons.Default.CreditCard) { editing = true }
+                ReceiptReferenceRow("Zahlungsart", receipt.zahlungsart, Icons.Default.CreditCard) { onEditingChange(true) }
                 ReceiptDetailDivider()
-                ReceiptReferenceRow("Immobilie", propertyName, Icons.Default.Home) { editing = true }
+                ReceiptReferenceRow("Immobilie", propertyName, Icons.Default.Home) { onEditingChange(true) }
                 ReceiptDetailDivider()
                 ReceiptReferenceRow("Zuordnung", when (entries.size) { 0 -> "Keine Buchung"; 1 -> "1 Buchung"; else -> "${entries.size} Buchungen" }, Icons.Default.Link) {
                     selectedLink = entries.firstOrNull()?.first?.linkId
