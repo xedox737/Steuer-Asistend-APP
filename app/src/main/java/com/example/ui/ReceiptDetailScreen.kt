@@ -285,7 +285,8 @@ internal fun ReceiptDetailLayout(
                     scope.launch { linksTarget.bringIntoView() }
                 }
             }
-            ReceiptDetailCard {
+            if (!editing) ReceiptLineItemsCard(receipt.getPositionenList(), navy, slate)
+            if (!editing) ReceiptDetailCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("Beleg", Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = navy)
                     TextButton(onClick = onFullScreen, enabled = bitmap != null, contentPadding = PaddingValues(horizontal = 4.dp)) {
@@ -314,7 +315,7 @@ internal fun ReceiptDetailLayout(
                 }
                 message?.let { Text(it, fontSize = 12.sp) }
             }
-            ReceiptDetailCard {
+            if (!editing) ReceiptDetailCard {
                 Column(Modifier.bringIntoViewRequester(linksTarget).testTag("receipt_bank_links_card"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Zugeordnete Buchungen (${entries.size})", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = navy)
                     if (entries.isEmpty()) Text("Noch keine Buchung zugeordnet.", fontSize = 12.sp, color = slate)
@@ -338,7 +339,7 @@ internal fun ReceiptDetailLayout(
                     }
                 }
             }
-            ReceiptDetailCard {
+            if (!editing) ReceiptDetailCard {
                 Column(Modifier.bringIntoViewRequester(extraTarget)) {
                     Row(Modifier.fillMaxWidth().clickable { additionalExpanded = !additionalExpanded }
                         .heightIn(min = 44.dp).testTag("receipt_more_data"), verticalAlignment = Alignment.CenterVertically,
@@ -354,10 +355,40 @@ internal fun ReceiptDetailLayout(
                     if (additionalExpanded) additionalData()
                 }
             }
-            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+            if (!editing) OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
                 shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFFFF8D99)),
                 colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFFEDF0), contentColor = Color(0xFFD00024))) {
                 Icon(Icons.Default.DeleteOutline, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("Beleg löschen", fontSize = 13.sp)
+            }
+        }
+    }
+}
+
+/** Read-only itemized receipt view. Changes are made exclusively in the edit form. */
+@Composable
+private fun ReceiptLineItemsCard(
+    items: List<com.example.data.ReceiptItem>,
+    navy: Color,
+    slate: Color
+) {
+    ReceiptDetailCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.List, null, Modifier.size(22.dp), tint = Color(0xFF009B57))
+            Spacer(Modifier.width(8.dp))
+            Text("Einzelne Positionen / Artikel (${items.size})", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = navy)
+        }
+        if (items.isEmpty()) {
+            Text("Keine einzelnen Positionen erfasst.", fontSize = 12.sp, color = slate)
+        } else {
+            items.forEachIndexed { index, item ->
+                if (index > 0) ReceiptDetailDivider()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.bezeichnung.ifBlank { "Position ${index + 1}" }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = navy)
+                        Text("${item.menge} × ${NumberFormatter.format(item.einzelpreis)}", fontSize = 11.sp, color = slate)
+                    }
+                    Text(NumberFormatter.format(item.gesamtpreis), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = navy)
+                }
             }
         }
     }

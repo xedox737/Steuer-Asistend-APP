@@ -13,6 +13,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import com.example.data.BankReceiptLink
 import com.example.data.BankTransaction
 import com.example.data.Receipt
+import com.example.data.ReceiptItem
+import com.example.data.ReceiptItemConverter
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.*
 import org.junit.Rule
@@ -30,7 +32,8 @@ class ReceiptDetailComposeTest {
     @get:Rule val ui = createComposeRule()
     private val receipt = Receipt(id = 15, aussteller = "Mieter Klaus & Sabine", datum = "2026-01-04",
         uhrzeit = "", bruttobetrag = 650.0, hauptkategorie = "Einnahmen", unterkategorie = "Mieteinnahmen",
-        kontoNr = "", beschreibung = "Miete Januar", displayId = "BLG-2026-000015", zahlungsart = "Überweisung")
+        kontoNr = "", beschreibung = "Miete Januar", displayId = "BLG-2026-000015", zahlungsart = "Überweisung",
+        positionenJson = ReceiptItemConverter.toJson(listOf(ReceiptItem("Warmmiete Januar", 1.0, 650.0, 650.0))))
     private val transaction = BankTransaction(transactionId = "test-tx", accountId = "test-account",
         bookingDate = "2026-01-04", amount = 650.0, counterparty = "Miete Januar", purpose = "Miete Januar 2026")
     private val link = BankReceiptLink(linkId = "test-link", transactionId = "test-tx", receiptId = 15, allocatedAmount = 650.0)
@@ -70,12 +73,24 @@ class ReceiptDetailComposeTest {
         ui.onNodeWithText("Editor schließen").assertExists()
         ui.onNodeWithTag("edit_receipt_button").assertDoesNotExist()
         ui.onNodeWithText("Kategorie").assertDoesNotExist()
+        ui.onNodeWithText("Einzelne Positionen / Artikel (1)").assertDoesNotExist()
+        ui.onNodeWithText("Zugeordnete Buchungen (1)").assertDoesNotExist()
         ui.onNodeWithContentDescription("Zurück").performClick()
         ui.onNodeWithText("Editor schließen").assertDoesNotExist()
         ui.onNodeWithTag("receipt_detail_screen").assertExists()
         ui.runOnIdle { assertEquals(0, backPresses) }
         ui.onNodeWithContentDescription("Zurück").performClick()
         ui.runOnIdle { assertEquals(1, backPresses) }
+    }
+
+    @Test fun lineItemsAppearOnDetailAndNotInsideTheEditor() {
+        show()
+        ui.onNodeWithText("Einzelne Positionen / Artikel (1)").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Warmmiete Januar").assertIsDisplayed()
+        ui.onNodeWithText("Bearbeiten").performScrollTo().performClick()
+        ui.onNodeWithText("Einzelne Positionen / Artikel (1)").assertDoesNotExist()
+        ui.onNodeWithText("Zugeordnete Buchungen (1)").assertDoesNotExist()
+        ui.onNodeWithText("Editor schließen").assertExists()
     }
 
     @Test fun additionalDataStayOnOneDetailPage() {
