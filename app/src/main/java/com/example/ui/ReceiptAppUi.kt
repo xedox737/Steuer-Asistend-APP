@@ -3211,7 +3211,7 @@ fun ReceiptPositionenEditor(
 }
 
 @Composable
-private fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+internal fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Beleg in den Papierkorb?", fontWeight = FontWeight.Bold) },
@@ -3226,8 +3226,8 @@ private fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: ()
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
-    var isEditing by remember { mutableStateOf(false) }
+fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit, initiallyEditing: Boolean = false) {
+    var isEditing by remember { mutableStateOf(initiallyEditing) }
     var confirmDelete by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val previewRequester = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
