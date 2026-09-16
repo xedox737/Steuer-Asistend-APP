@@ -3224,34 +3224,10 @@ internal fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: (
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+/** Shared inline editor; no nested detail dialog. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit, initiallyEditing: Boolean = false) {
-    var isEditing by remember { mutableStateOf(initiallyEditing) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val previewRequester = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
-    val actionScope = rememberCoroutineScope()
-    if (confirmDelete) ReceiptDeleteConfirmationDialog(
-        onDismiss = { confirmDelete = false },
-        onConfirm = {
-            confirmDelete = false
-            viewModel.deleteReceipt(receipt.id)
-        }
-    )
-    val bankReceiptLinks by viewModel.bankReceiptLinks.collectAsState()
-    val bankTransactions by viewModel.bankTransactions.collectAsState()
-    val linkedBankEntries = remember(receipt.id, receipt.internalId, bankReceiptLinks, bankTransactions) {
-        val transactionById = bankTransactions.associateBy { it.transactionId }
-        bankReceiptLinks
-            .filter { link ->
-                link.receiptId == receipt.id ||
-                    (receipt.internalId.isNotBlank() && link.receiptInternalId == receipt.internalId)
-            }
-            .mapNotNull { link -> transactionById[link.transactionId]?.let { transaction -> link to transaction } }
-            .sortedByDescending { (_, transaction) -> transaction.bookingDate }
-    }
-
+internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, onDone: () -> Unit) {
     // State for all editable fields
     var editAussteller by remember(receipt) { mutableStateOf(receipt.aussteller) }
     var editDatum by remember(receipt) { mutableStateOf(receipt.datum) }
@@ -3271,69 +3247,16 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
     var subCategoryExpanded by remember { mutableStateOf(false) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
 
-    val propertyMetadataState by viewModel.propertyMetadata.collectAsState()
-    val metadata = propertyMetadataState ?: PropertyMetadata()
+    val availableProperties by viewModel.properties.collectAsState()
+    var editPropertyId by remember(receipt) { mutableStateOf(receipt.propertyId) }
+    var propertyExpanded by remember { mutableStateOf(false) }
+    var amountError by remember { mutableStateOf(false) }
+    val metadata = availableProperties.firstOrNull { it.propertyId == editPropertyId } ?: PropertyMetadata()
     val unitsList = remember(metadata.wohneinheiten) {
         metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
     }
 
-    val categoryColor = when (if (isEditing) editHauptkategorie else receipt.hauptkategorie) {
-        "Anschaffungskosten" -> AccentBlue
-        "Finanzierung, Kredite & Versicherungen" -> WarmOrange
-        "Renovierungs- / Reparaturkosten & Investitionen" -> EmeraldGreen
-        else -> CrimsonRed
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isEditing) Icons.Default.Edit else Icons.Default.Receipt,
-                        contentDescription = null,
-                        tint = categoryColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = if (isEditing) "Beleg bearbeiten" else "Belegdetails",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 18.sp,
-                        color = DarkNavy
-                    )
-                }
-                if (!isEditing) {
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Schließen",
-                            tint = SlateGray,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-        },
-        text = {
-            val scrollState = rememberScrollState()
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = if (isEditing) 620.dp else 560.dp)
-                    .verticalScroll(scrollState)
-            ) {
-                if (isEditing) {
+    Column(Modifier.fillMaxWidth().testTag("receipt_inline_editor"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Edit Form
                     OutlinedTextField(
                         value = editAussteller,
@@ -3362,6 +3285,8 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
 
                     OutlinedTextField(
                         value = editBruttobetrag,
+                        isError = amountError,
+                        supportingText = { if (amountError) Text("Bitte einen gültigen Betrag eingeben.") },
                         onValueChange = { editBruttobetrag = it },
                         label = { Text("Bruttobetrag in EUR") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -3457,6 +3382,24 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
                         modifier = Modifier.fillMaxWidth().testTag("edit_receipt_payment_method")
                     )
 
+                    ExposedDropdownMenuBox(expanded = propertyExpanded, onExpandedChange = { propertyExpanded = !propertyExpanded }) {
+                        OutlinedTextField(
+                            value = availableProperties.firstOrNull { it.propertyId == editPropertyId }?.name ?: "Nicht zugeordnet",
+                            onValueChange = {}, readOnly = true, label = { Text("Immobilie") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(propertyExpanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(expanded = propertyExpanded, onDismissRequest = { propertyExpanded = false }) {
+                            availableProperties.forEach { property ->
+                                DropdownMenuItem(text = { Text(property.name) }, onClick = {
+                                    if (editPropertyId != property.propertyId) editWohneinheit = "Gesamtobjekt / Allgemein"
+                                    editPropertyId = property.propertyId
+                                    propertyExpanded = false
+                                })
+                            }
+                        }
+                    }
+
                     ExposedDropdownMenuBox(
                         expanded = wohneinheitExpanded,
                         onExpandedChange = { wohneinheitExpanded = !wohneinheitExpanded }
@@ -3508,36 +3451,64 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
                         positionen = editPositionen,
                         onPositionenChanged = { editPositionen = it }
                     )
-                } else {
-                    Ui2Section(receipt.aussteller.ifBlank { "Beleg" }) {
-                        Text(receipt.getEffectiveDisplayId(), style = MaterialTheme.typography.bodyMedium)
-                        Text(receipt.datum, style = MaterialTheme.typography.bodyMedium)
-                        Text(NumberFormatter.format(receipt.bruttobetrag), style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { onDone() },
+                        colors = ButtonDefaults.buttonColors(containerColor = SlateGray),
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Text("Abbrechen", fontWeight = FontWeight.Bold)
                     }
-                    Ui2Section("Beleg Aktionen") {
-                        Ui2ActionGrid(listOf(
-                            Ui2Action("Beleg anzeigen", "Dokumentvorschau", Icons.Default.Receipt) {
-                                actionScope.launch { previewRequester.bringIntoView() }
-                            },
-                            Ui2Action("Beleg bearbeiten", "Angaben bearbeiten", Icons.Default.Edit) { isEditing = true },
-                            Ui2Action("Beleg teilen", "Zusammenfassung senden", Icons.Default.Share) {
-                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_SUBJECT, "Beleg ${receipt.getEffectiveDisplayId()}")
-                                    putExtra(Intent.EXTRA_TEXT, "${receipt.aussteller}\n${receipt.datum}\n${NumberFormatter.format(receipt.bruttobetrag)}\n${receipt.beschreibung}")
-                                }
-                                context.startActivity(Intent.createChooser(shareIntent, "Beleg teilen"))
-                            },
-                            Ui2Action("Beleg löschen", "In den Papierkorb", Icons.Default.Delete, CrimsonRed) { confirmDelete = true }
-                        ))
+                    Button(
+                        onClick = {
+                            val parsedBetrag = parseReceiptEditAmount(editBruttobetrag)
+                            if (parsedBetrag == null) {
+                                amountError = true
+                                return@Button
+                            }
+                            val updatedReceipt = receipt.copy(
+                                aussteller = editAussteller,
+                                propertyId = editPropertyId,
+                                datum = editDatum,
+                                uhrzeit = editUhrzeit,
+                                bruttobetrag = parsedBetrag,
+                                hauptkategorie = editHauptkategorie,
+                                unterkategorie = editUnterkategorie,
+                                kontoNr = editKontoNr,
+                                beschreibung = editBeschreibung,
+                                isEigenleistungSanierung = editIsEigenleistung,
+                                wohneinheit = editWohneinheit,
+                                mieter = editMieter,
+                                zahlungsart = editZahlungsart,
+                                zahlungsartQuelle = if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartQuelle else if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) "UNBEKANNT" else "MANUELL",
+                                zahlungsartConfidence = if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) 0.0 else if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartConfidence else 1.0,
+                                positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
+                            )
+                            viewModel.updateReceipt(updatedReceipt)
+                            onDone()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
+                        modifier = Modifier.weight(1f).height(48.dp).testTag("save_edited_receipt_button")
+                    ) {
+                        Text("Speichern", fontWeight = FontWeight.Bold, color = Color.White)
                     }
-                    Box(Modifier.bringIntoViewRequester(previewRequester)) {
-                        ReceiptPreviewSection(receipt = receipt, viewModel = viewModel)
-                    }
-                    
-                    Spacer(modifier = Modifier.height(2.dp))
-                    
+                }
+    }
+}
+
+@Composable
+internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel) {
+    val categoryColor = when (receipt.hauptkategorie) {
+        "Anschaffungskosten" -> AccentBlue
+        "Finanzierung, Kredite & Versicherungen" -> WarmOrange
+        "Renovierungs- / Reparaturkosten & Investitionen" -> EmeraldGreen
+        else -> CrimsonRed
+    }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // 2. Extrahiertes Metadaten Grid / Detail-Tabelle
                     Text(
                         text = "Extrahierte Belegdaten",
@@ -3574,74 +3545,6 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
                         if (receipt.beschreibung.isNotEmpty()) {
                             HorizontalDivider()
                             DetailRow(label = "Beschreibung / Zweck", value = receipt.beschreibung)
-                        }
-                    }
-
-                    if (linkedBankEntries.isNotEmpty()) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth().testTag("receipt_bank_links_card"),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.dp, BorderColor)
-                        ) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = if (linkedBankEntries.size == 1) "Mit 1 Bankbuchung verknüpft" else "Mit ${linkedBankEntries.size} Bankbuchungen verknüpft",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = DarkNavy
-                                )
-                                linkedBankEntries.forEach { (link, transaction) ->
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .background(SoftBackground, RoundedCornerShape(8.dp))
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = transaction.counterparty.ifBlank { transaction.purpose.ifBlank { "Bankbuchung" } },
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 12.sp,
-                                                    color = DarkNavy,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                                Text(
-                                                    text = transaction.bookingDate,
-                                                    fontSize = 10.sp,
-                                                    color = SlateGray
-                                                )
-                                            }
-                                            Text(
-                                                text = NumberFormatter.format(transaction.amount),
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp,
-                                                color = DarkNavy
-                                            )
-                                        }
-                                        TextButton(
-                                            onClick = { viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
-                                            modifier = Modifier.align(Alignment.End)
-                                        ) {
-                                            Text("Verknüpfung lösen", fontSize = 11.sp, color = CrimsonRed)
-                                        }
-                                    }
-                                }
-                                Text(
-                                    "Der Beleg bleibt gespeichert, wenn nur eine einzelne Bank-Verknüpfung gelöst wird.",
-                                    fontSize = 10.sp,
-                                    color = SlateGray
-                                )
-                            }
                         }
                     }
 
@@ -3944,7 +3847,6 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
                                     .confirmDatevPreview(receipt, datevRows)
                                     ?.let { confirmedReceipt ->
                                         viewModel.updateReceipt(confirmedReceipt)
-                                        onDismiss()
                                     }
                             },
                             enabled = datevRows.isNotEmpty(),
@@ -3961,78 +3863,12 @@ fun ReceiptAdvancedDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, o
                             color = SlateGray
                         )
                     }
-
-                }
-            }
-        },
-        confirmButton = {
-            if (isEditing) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { isEditing = false },
-                        colors = ButtonDefaults.buttonColors(containerColor = SlateGray),
-                        modifier = Modifier.weight(1f).height(48.dp)
-                    ) {
-                        Text("Abbrechen", fontWeight = FontWeight.Bold)
-                    }
-                    Button(
-                        onClick = {
-                            val parsedBetrag = editBruttobetrag.toDoubleOrNull() ?: 0.0
-                            val updatedReceipt = receipt.copy(
-                                aussteller = editAussteller,
-                                datum = editDatum,
-                                uhrzeit = editUhrzeit,
-                                bruttobetrag = parsedBetrag,
-                                hauptkategorie = editHauptkategorie,
-                                unterkategorie = editUnterkategorie,
-                                kontoNr = editKontoNr,
-                                beschreibung = editBeschreibung,
-                                isEigenleistungSanierung = editIsEigenleistung,
-                                wohneinheit = editWohneinheit,
-                                mieter = editMieter,
-                                zahlungsart = editZahlungsart,
-                                zahlungsartQuelle = if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartQuelle else if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) "UNBEKANNT" else "MANUELL",
-                                zahlungsartConfidence = if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) 0.0 else if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartConfidence else 1.0,
-                                positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
-                            )
-                            viewModel.updateReceipt(updatedReceipt)
-                            isEditing = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                        modifier = Modifier.weight(1f).height(48.dp).testTag("save_edited_receipt_button")
-                    ) {
-                        Text("Speichern", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { isEditing = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                        modifier = Modifier.weight(1f).height(48.dp).testTag("edit_receipt_button")
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Bearbeiten", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = SlateGray),
-                        modifier = Modifier.weight(1f).height(48.dp)
-                    ) {
-                        Text("Schließen", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        },
-        containerColor = Color.White
-    )
+        var diagnosticsExpanded by remember { mutableStateOf(false) }
+        TextButton(onClick = { diagnosticsExpanded = !diagnosticsExpanded }) {
+            Text(if (diagnosticsExpanded) "Dokumentdiagnose schließen" else "Dokumentdiagnose / alle Seiten")
+        }
+        if (diagnosticsExpanded) ReceiptPreviewSection(receipt, viewModel)
+    }
 }
 
 @Composable

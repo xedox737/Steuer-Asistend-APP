@@ -1,9 +1,11 @@
 package com.example.ui
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -37,8 +39,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Reference detail layout. Editing and tax workflows remain in the original dialog. */
-@OptIn(ExperimentalMaterial3Api::class)
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.graphics.Color
+import com.example.data.BankReceiptLink
+import com.example.data.BankTransaction
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
+/** The only receipt detail entry point. Editor and additional data live on this page. */
 @Composable
 fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
     val receipts by viewModel.receipts.collectAsState()
@@ -58,9 +68,6 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     var loading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var fullScreen by remember { mutableStateOf(false) }
-    var menu by remember { mutableStateOf(false) }
-    var advanced by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
     var delete by remember { mutableStateOf(false) }
     var deletionRequested by remember { mutableStateOf(false) }
     var pendingRepair by remember { mutableStateOf<Pair<File, FileValidationResult>?>(null) }
@@ -109,130 +116,37 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     fun navigate(screen: AppScreen) { onDismiss(); viewModel.setScreen(screen) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize().testTag("receipt_detail_screen"),
-            containerColor = SoftBackground,
-            topBar = {
-                TopAppBar(
-                    title = { Text("Beleg Details", fontSize = 19.sp, fontWeight = FontWeight.Bold) },
-                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") } },
-                    actions = {
-                        Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Weitere Belegfunktionen") }
-                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Bearbeiten") }, onClick = { menu = false; editing = true; advanced = true })
-                                DropdownMenuItem(text = { Text("Weitere Daten / DATEV / Teilen") }, onClick = { menu = false; editing = false; advanced = true })
-                                DropdownMenuItem(text = { Text("Dokumentdiagnose / alle Seiten") }, onClick = { menu = false; editing = false; advanced = true })
-                                DropdownMenuItem(text = { Text("Beleg löschen") }, onClick = { menu = false; delete = true })
-                            }
-                        }
+        ReceiptDetailLayout(
+            receipt = current,
+            propertyName = properties.firstOrNull { it.propertyId == current.propertyId }?.name ?: "Nicht zugeordnet",
+            entries = entries,
+            bitmap = bitmap,
+            loading = loading || status?.state == DocumentState.DOWNLOADING,
+            previewMessage = status?.message ?: "Keine Vorschau verfügbar",
+            message = message,
+            fileIndex = selectedFile, fileCount = paths.size,
+            onFileChange = { selectedFile = it },
+            onBack = onDismiss,
+            onNavigate = ::navigate,
+            onShare = {
+                runCatching {
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, "Beleg ${current.getEffectiveDisplayId()}")
+                        putExtra(Intent.EXTRA_TEXT, "${current.aussteller}\n${receiptDisplayDate(current.datum)}\n${NumberFormatter.format(current.bruttobetrag)}\n${current.beschreibung}")
                     }
-                )
+                    context.startActivity(Intent.createChooser(intent, "Beleg teilen"))
+                }.onFailure { message = "Teilen nicht möglich: ${it.localizedMessage}" }
             },
-            bottomBar = {
-                NavigationBar {
-                    listOf(
-                        Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
-                        Triple(AppScreen.RECEIPTS_LIST, Icons.Default.Receipt, "Belege"),
-                        Triple(AppScreen.ADD_RECEIPT, Icons.Default.AddCircle, "Scannen"),
-                        Triple(AppScreen.PROPERTIES, Icons.Default.Apartment, "Immobilien"),
-                        Triple(AppScreen.MORE, Icons.Default.MoreHoriz, "Mehr")
-                    ).forEach { (screen, icon, label) ->
-                        NavigationBarItem(selected = screen == AppScreen.RECEIPTS_LIST,
-                            onClick = { navigate(screen) }, icon = {
-                                Icon(icon, label, Modifier.size(if (screen == AppScreen.ADD_RECEIPT) 40.dp else 24.dp),
-                                    tint = if (screen == AppScreen.ADD_RECEIPT || screen == AppScreen.RECEIPTS_LIST) AccentBlue else SlateGray)
-                            },
-                            label = { Text(label, fontSize = 10.sp, maxLines = 1) })
-                    }
-                }
-            }
-        ) { insets ->
-            Column(Modifier.padding(insets).fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReceiptDetailCard {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Surface(Modifier.width(82.dp).height(108.dp), shape = RoundedCornerShape(8.dp), color = SoftBackground) {
-                            if (bitmap != null) Image(bitmap!!.asImageBitmap(), "Beleg-Miniatur", contentScale = ContentScale.Fit)
-                            else Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Description, "Keine Miniatur verfügbar") }
-                        }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(current.aussteller.ifBlank { "Beleg" }, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                            Text(current.getEffectiveDisplayId(), fontSize = 12.sp, color = SlateGray)
-                            Text(current.datum, fontSize = 12.sp, color = SlateGray)
-                            Text(NumberFormatter.format(current.bruttobetrag), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                            ReceiptAssignmentBadge(entries.isNotEmpty())
-                        }
-                    }
-                }
-                ReceiptDetailCard {
-                    ReceiptReferenceRow("Kategorie", current.unterkategorie.ifBlank { current.hauptkategorie }, Icons.Default.Label) { editing = true; advanced = true }
-                    HorizontalDivider()
-                    ReceiptReferenceRow("Lieferant", current.aussteller, Icons.Default.Person) { editing = true; advanced = true }
-                    HorizontalDivider()
-                    ReceiptReferenceRow("Zahlungsart", current.zahlungsart, Icons.Default.CreditCard) { editing = true; advanced = true }
-                    HorizontalDivider()
-                    ReceiptReferenceRow("Immobilie", properties.firstOrNull { it.propertyId == current.propertyId }?.name ?: "Nicht zugeordnet", Icons.Default.Home)
-                    HorizontalDivider()
-                    ReceiptReferenceRow("Zuordnung", if (entries.isEmpty()) "Keine Buchung zugeordnet" else "${entries.size} Buchung(en)", Icons.Default.Link) { editing = false; advanced = true }
-                }
-                ReceiptDetailCard {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Beleg", Modifier.weight(1f), fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { fullScreen = true }, enabled = bitmap != null) {
-                            Icon(Icons.Default.Fullscreen, null); Text("Vollbild")
-                        }
-                    }
-                    Surface(Modifier.fillMaxWidth().height(180.dp), color = SoftBackground, shape = RoundedCornerShape(8.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (bitmap != null) Image(bitmap!!.asImageBitmap(), "Belegvorschau, erste Seite", Modifier.fillMaxSize().clickable { fullScreen = true }, contentScale = ContentScale.Fit)
-                            else if (loading || status?.state == DocumentState.DOWNLOADING) CircularProgressIndicator()
-                            else Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(status?.message ?: "Keine Vorschau verfügbar", fontSize = 12.sp)
-                                TextButton(onClick = { editing = false; advanced = true }) { Text("Dokument prüfen") }
-                            }
-                        }
-                    }
-                    if (paths.size > 1) Row {
-                        TextButton(onClick = { selectedFile = (selectedFile - 1).coerceAtLeast(0) }, enabled = selectedFile > 0) { Text("Zurück") }
-                        Text("Datei ${selectedFile + 1}/${paths.size}", Modifier.align(Alignment.CenterVertically), fontSize = 12.sp)
-                        TextButton(onClick = { selectedFile++ }, enabled = selectedFile < paths.lastIndex) { Text("Weiter") }
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilledTonalButton(onClick = { exportPath = path; save.launch(path?.let { File(it).name } ?: "Beleg") },
-                            enabled = path != null && bitmap != null, modifier = Modifier.weight(1f), contentPadding = PaddingValues(6.dp)) {
-                            Icon(Icons.Default.Download, null, Modifier.size(20.dp)); Text("Herunterladen", fontSize = 12.sp)
-                        }
-                        FilledTonalButton(onClick = { replace.launch(arrayOf("image/*", "application/pdf")) },
-                            modifier = Modifier.weight(1f), contentPadding = PaddingValues(6.dp)) {
-                            Icon(Icons.Default.Refresh, null, Modifier.size(20.dp)); Text("Beleg ersetzen", fontSize = 12.sp)
-                        }
-                    }
-                    message?.let { Text(it, fontSize = 12.sp) }
-                }
-                ReceiptDetailCard {
-                    Text("Zugeordnete Buchungen (${entries.size})", fontWeight = FontWeight.Bold)
-                    if (entries.isEmpty()) Text("Noch keine Buchung zugeordnet.", fontSize = 12.sp, color = SlateGray)
-                    entries.forEach { (_, transaction) ->
-                        HorizontalDivider()
-                        Row(Modifier.fillMaxWidth().clickable { editing = false; advanced = true }.padding(vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, null, tint = EmeraldGreen)
-                            Column(Modifier.weight(1f)) {
-                                Text(transaction.bookingDate, fontSize = 12.sp)
-                                Text(transaction.counterparty.ifBlank { transaction.purpose }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(NumberFormatter.format(transaction.amount), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                ReceiptAssignmentBadge(true)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+            onFullScreen = { fullScreen = true },
+            onDownload = { exportPath = path; save.launch(path?.let { File(it).name } ?: "Beleg") },
+            onReplace = { replace.launch(arrayOf("image/*", "application/pdf")) },
+            onDelete = { delete = true },
+            onUnlink = { link, transaction -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
+            editor = { done -> ReceiptInlineEditor(current, viewModel, done) },
+            additionalData = { ReceiptAdditionalData(current, viewModel) }
+        )
         if (fullScreen && bitmap != null) FullScreenReceiptPreviewDialog(bitmap!!) { fullScreen = false }
-        if (advanced) ReceiptAdvancedDetailDialog(current, viewModel, { advanced = false }, initiallyEditing = editing)
         if (delete) ReceiptDeleteConfirmationDialog({ delete = false }, {
             delete = false; deletionRequested = true; viewModel.deleteReceipt(current.id)
         })
@@ -242,31 +156,259 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     }
 }
 
+/** Stateless data inputs let the actual mobile layout be rendered in Compose UI tests. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun ReceiptDetailCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(shape = Ui2.shape, color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = content)
+internal fun ReceiptDetailLayout(
+    receipt: Receipt,
+    propertyName: String,
+    entries: List<Pair<BankReceiptLink, BankTransaction>>,
+    bitmap: Bitmap?,
+    loading: Boolean = false,
+    previewMessage: String = "Keine Vorschau verfügbar",
+    message: String? = null,
+    fileIndex: Int = 0,
+    fileCount: Int = 1,
+    onFileChange: (Int) -> Unit = {},
+    onBack: () -> Unit,
+    onNavigate: (AppScreen) -> Unit,
+    onShare: () -> Unit,
+    onFullScreen: () -> Unit,
+    onDownload: () -> Unit,
+    onReplace: () -> Unit,
+    onDelete: () -> Unit,
+    onUnlink: (BankReceiptLink, BankTransaction) -> Unit,
+    editor: @Composable (() -> Unit) -> Unit,
+    additionalData: @Composable () -> Unit
+) {
+    var editing by remember(receipt.id) { mutableStateOf(false) }
+    var additionalExpanded by remember(receipt.id) { mutableStateOf(false) }
+    var selectedLink by remember(receipt.id) { mutableStateOf<String?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val editorTarget = remember { BringIntoViewRequester() }
+    val linksTarget = remember { BringIntoViewRequester() }
+    val extraTarget = remember { BringIntoViewRequester() }
+    LaunchedEffect(editing) { if (editing) editorTarget.bringIntoView() }
+    LaunchedEffect(additionalExpanded) { if (additionalExpanded) extraTarget.bringIntoView() }
+    BackHandler(enabled = editing) { editing = false }
+    val blue = Color(0xFF0066FF)
+    val navy = Color(0xFF10182D)
+    val slate = Color(0xFF526078)
+    val paleBlue = Color(0xFFEAF3FF)
+    Scaffold(
+        modifier = Modifier.fillMaxSize().testTag("receipt_detail_screen"),
+        containerColor = Color(0xFFF5F8FC),
+        topBar = {
+            TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF5F8FC)),
+                title = { Text("Belegdetails", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = navy) },
+                navigationIcon = { IconButton(onClick = { if (editing) editing = false else onBack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = navy)
+                } },
+                actions = {
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Weitere Belegfunktionen", tint = navy) }
+                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Weitere Belegdaten") }, onClick = { menu = false; additionalExpanded = true })
+                        }
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+                listOf(
+                    Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
+                    Triple(AppScreen.RECEIPTS_LIST, Icons.Default.ReceiptLong, "Belege"),
+                    Triple(AppScreen.ADD_RECEIPT, Icons.Default.Add, "Scannen"),
+                    Triple(AppScreen.PROPERTIES, Icons.Default.Apartment, "Immobilien"),
+                    Triple(AppScreen.MORE, Icons.Default.GridView, "Mehr")
+                ).forEach { (screen, icon, label) ->
+                    NavigationBarItem(selected = screen == AppScreen.RECEIPTS_LIST,
+                        onClick = { onNavigate(screen) },
+                        colors = NavigationBarItemDefaults.colors(selectedIconColor = blue, selectedTextColor = blue,
+                            unselectedIconColor = slate, unselectedTextColor = slate, indicatorColor = paleBlue),
+                        icon = {
+                            if (screen == AppScreen.ADD_RECEIPT) Surface(color = blue, shape = RoundedCornerShape(50)) {
+                                Icon(icon, null, Modifier.padding(8.dp).size(28.dp), tint = Color.White)
+                            } else Icon(icon, null, Modifier.size(24.dp))
+                        }, label = { Text(label, fontSize = 10.sp, maxLines = 1) })
+                }
+            }
+        }
+    ) { insets ->
+        Column(Modifier.padding(insets).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("receipt_detail_scroll"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReceiptDetailCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(Modifier.width(100.dp).height(132.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFFEDF0F5)) {
+                        if (bitmap != null) Image(bitmap.asImageBitmap(), "Beleg-Miniatur", contentScale = ContentScale.Fit)
+                        else Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Description, "Keine Miniatur verfügbar", tint = slate) }
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(receipt.aussteller.ifBlank { "Beleg" }, fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = navy)
+                        Text(receipt.getEffectiveDisplayId(), fontSize = 12.sp, color = slate)
+                        Text(receiptDisplayDate(receipt.datum), fontSize = 12.sp, color = slate)
+                        Text(NumberFormatter.format(receipt.bruttobetrag), fontSize = 24.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, color = navy)
+                        ReceiptAssignmentBadge(entries.isNotEmpty())
+                    }
+                }
+                if (!editing) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ReceiptDetailAction("Bearbeiten", Icons.Default.Edit, Modifier.weight(1f).testTag("edit_receipt_button")) { editing = true }
+                    ReceiptDetailAction("Teilen", Icons.Default.Share, Modifier.weight(1f), onClick = onShare)
+                }
+            }
+            if (editing) ReceiptDetailCard {
+                Column(Modifier.bringIntoViewRequester(editorTarget)) {
+                    Text("Beleg bearbeiten", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    editor { editing = false }
+                }
+            }
+            ReceiptDetailCard {
+                ReceiptReferenceRow("Kategorie", receipt.unterkategorie.ifBlank { receipt.hauptkategorie }, Icons.Default.Description) { editing = true }
+                ReceiptDetailDivider()
+                ReceiptReferenceRow("Lieferant", receipt.aussteller, Icons.Default.PersonOutline) { editing = true }
+                ReceiptDetailDivider()
+                ReceiptReferenceRow("Zahlungsart", receipt.zahlungsart, Icons.Default.CreditCard) { editing = true }
+                ReceiptDetailDivider()
+                ReceiptReferenceRow("Immobilie", propertyName, Icons.Default.Home) { editing = true }
+                ReceiptDetailDivider()
+                ReceiptReferenceRow("Zuordnung", when (entries.size) { 0 -> "Keine Buchung"; 1 -> "1 Buchung"; else -> "${entries.size} Buchungen" }, Icons.Default.Link) {
+                    selectedLink = entries.firstOrNull()?.first?.linkId
+                    scope.launch { linksTarget.bringIntoView() }
+                }
+            }
+            ReceiptDetailCard {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Beleg", Modifier.weight(1f), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = navy)
+                    TextButton(onClick = onFullScreen, enabled = bitmap != null, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                        Icon(Icons.Default.Fullscreen, null, Modifier.size(20.dp)); Spacer(Modifier.width(4.dp)); Text("Vollbild", fontSize = 13.sp)
+                    }
+                }
+                Surface(Modifier.fillMaxWidth().height(140.dp), color = Color(0xFFEDF0F5), shape = RoundedCornerShape(8.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (bitmap != null) Image(bitmap.asImageBitmap(), "Belegvorschau, erste Seite",
+                            Modifier.fillMaxSize().clickable(onClick = onFullScreen), contentScale = ContentScale.Fit)
+                        else if (loading) CircularProgressIndicator()
+                        else Column(Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(previewMessage, fontSize = 12.sp, color = slate)
+                            TextButton(onClick = { additionalExpanded = true }) { Text("Dokument prüfen") }
+                        }
+                    }
+                }
+                if (fileCount > 1) Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { onFileChange(fileIndex - 1) }, enabled = fileIndex > 0) { Text("Zurück") }
+                    Text("Datei ${fileIndex + 1}/$fileCount", fontSize = 12.sp)
+                    TextButton(onClick = { onFileChange(fileIndex + 1) }, enabled = fileIndex < fileCount - 1) { Text("Weiter") }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ReceiptDetailAction("Herunterladen", Icons.Default.Download, Modifier.weight(1f), enabled = bitmap != null, onClick = onDownload)
+                    ReceiptDetailAction("Beleg ersetzen", Icons.Default.Refresh, Modifier.weight(1f), onClick = onReplace)
+                }
+                message?.let { Text(it, fontSize = 12.sp) }
+            }
+            ReceiptDetailCard {
+                Column(Modifier.bringIntoViewRequester(linksTarget).testTag("receipt_bank_links_card"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Zugeordnete Buchungen (${entries.size})", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = navy)
+                    if (entries.isEmpty()) Text("Noch keine Buchung zugeordnet.", fontSize = 12.sp, color = slate)
+                    entries.forEach { (link, transaction) ->
+                        ReceiptDetailDivider()
+                        Row(Modifier.fillMaxWidth().clickable { selectedLink = if (selectedLink == link.linkId) null else link.linkId }
+                            .heightIn(min = 48.dp).padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF009B57), modifier = Modifier.size(24.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(receiptDisplayDate(transaction.bookingDate), fontSize = 12.sp, color = navy)
+                                Text(transaction.counterparty.ifBlank { transaction.purpose }, fontSize = 12.sp, color = slate)
+                            }
+                            Text(NumberFormatter.format(transaction.amount), fontSize = 13.sp, color = navy)
+                            Icon(if (selectedLink == link.linkId) Icons.Default.ExpandMore else Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = slate)
+                        }
+                        if (selectedLink == link.linkId) {
+                            Text(transaction.purpose, fontSize = 12.sp, color = slate)
+                            Text("Zugeordnet: ${NumberFormatter.format(link.allocatedAmount)}", fontSize = 12.sp)
+                            TextButton(onClick = { onUnlink(link, transaction) }) { Text("Verknüpfung lösen", color = CrimsonRed) }
+                        }
+                    }
+                }
+            }
+            ReceiptDetailCard {
+                Column(Modifier.bringIntoViewRequester(extraTarget)) {
+                    Row(Modifier.fillMaxWidth().clickable { additionalExpanded = !additionalExpanded }
+                        .heightIn(min = 44.dp).testTag("receipt_more_data"), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Description, null, tint = slate, modifier = Modifier.size(24.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Weitere Belegdaten", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = navy)
+                            Text("Steuerdaten, DATEV und Dokumentdiagnose", fontSize = 11.sp, lineHeight = 14.sp, color = slate)
+                        }
+                        Icon(if (additionalExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            if (additionalExpanded) "Zuklappen" else "Aufklappen", tint = slate)
+                    }
+                    if (additionalExpanded) additionalData()
+                }
+            }
+            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, Color(0xFFFF8D99)),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFFEDF0), contentColor = Color(0xFFD00024))) {
+                Icon(Icons.Default.DeleteOutline, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("Beleg löschen", fontSize = 13.sp)
+            }
+        }
     }
 }
 
 @Composable
-private fun ReceiptReferenceRow(label: String, value: String, icon: ImageVector, onClick: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-        .heightIn(min = 44.dp).padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(22.dp), tint = SlateGray)
-        Text(label, Modifier.weight(0.8f), fontSize = 12.sp, color = SlateGray)
-        Text(value.ifBlank { "Nicht angegeben" }, Modifier.weight(1.4f), fontSize = 13.sp)
-        if (onClick != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(18.dp))
+private fun ReceiptDetailCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(shape = RoundedCornerShape(12.dp), color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFE3E8EF)), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = content)
+    }
+}
+
+@Composable
+private fun ReceiptDetailAction(label: String, icon: ImageVector, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 40.dp),
+        shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFEAF3FF), contentColor = Color(0xFF0066FF))) {
+        Icon(icon, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp))
+        Text(label, fontSize = 12.sp, lineHeight = 15.sp)
+    }
+}
+
+@Composable
+private fun ReceiptDetailDivider() { HorizontalDivider(color = Color(0xFFEEF1F6)) }
+
+@Composable
+private fun ReceiptReferenceRow(label: String, value: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 38.dp).padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(22.dp), tint = Color(0xFF526078))
+        Text(label, Modifier.weight(0.8f), fontSize = 12.sp, color = Color(0xFF526078))
+        Text(value.ifBlank { "Nicht angegeben" }, Modifier.weight(1.5f), fontSize = 12.sp, color = Color(0xFF10182D))
+        Icon(Icons.Default.Edit, "${label} bearbeiten", Modifier.size(18.dp), tint = Color(0xFF0066FF))
     }
 }
 
 @Composable
 private fun ReceiptAssignmentBadge(assigned: Boolean) {
-    Surface(color = (if (assigned) EmeraldGreen else AccentBlue).copy(alpha = 0.1f), shape = RoundedCornerShape(6.dp)) {
-        Text(if (assigned) "Zugeordnet" else "Offen", Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-            fontSize = 11.sp, color = if (assigned) EmeraldGreen else AccentBlue)
+    Surface(color = if (assigned) Color(0xFFE5F9ED) else Color(0xFFEAF3FF), shape = RoundedCornerShape(6.dp)) {
+        Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (assigned) Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp), tint = Color(0xFF009B57))
+            Text(if (assigned) "Zugeordnet" else "Offen", fontSize = 12.sp, color = if (assigned) Color(0xFF009B57) else Color(0xFF0066FF))
+        }
     }
+}
+
+internal fun receiptDisplayDate(value: String): String = runCatching {
+    LocalDate.parse(value).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+}.getOrDefault(value)
+
+/** Accept both existing decimal-dot values and German amount input without silently saving zero. */
+internal fun parseReceiptEditAmount(value: String): Double? {
+    val compact = value.trim().replace(" ", "").replace("€", "")
+    val normalized = if (compact.contains(',')) compact.replace(".", "").replace(',', '.') else compact
+    return normalized.toDoubleOrNull()?.takeIf { it.isFinite() }
 }
 
 /** Bounded first-page rendering, off the UI thread. Full document workflows remain available. */
