@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.LocationOn
@@ -320,7 +321,7 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
             OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
                 border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.45f)),
                 colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFFEDF0), contentColor = CrimsonRed)) {
-                Icon(Icons.Default.DeleteOutline, null, Modifier.size(20.dp)); Text("  Immobilie löschen", fontSize = 13.sp)
+                Icon(Icons.Default.Delete, null, Modifier.size(20.dp)); Text("  Immobilie löschen", fontSize = 13.sp)
             }
         }
     }
