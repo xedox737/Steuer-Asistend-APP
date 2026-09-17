@@ -1,5 +1,9 @@
 package com.example.ui
 
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,9 +29,11 @@ import androidx.compose.material.icons.filled.Apartment
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
@@ -39,6 +46,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
@@ -53,10 +61,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.background
@@ -73,6 +84,10 @@ import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import java.time.LocalDate
 import java.time.YearMonth
+import java.io.File
+import java.io.FileOutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 internal data class PropertyManagerSummary(
     val unitCount: Int,
@@ -145,12 +160,15 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
     if (opened == null) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().testTag("properties_overview"),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
                 Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween, Alignment.CenterVertically) {
-                    Text("Deine Objekte im Überblick", fontSize = 14.sp, color = SlateGray)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Apartment, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
+                        Text("Immobilien", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    }
                     FloatingActionButton(
                         onClick = { showWizard = true },
                         modifier = Modifier.testTag("add_property_button"),
@@ -189,15 +207,7 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFFBFDBFE), Color(0xFFE0F2FE)))) ,
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.HomeWork, null, tint = AccentBlue, modifier = Modifier.size(42.dp))
-            }
+            PropertyCoverImage(property, Modifier.size(92.dp))
             Column(Modifier.weight(1f), Arrangement.spacedBy(6.dp)) {
                 Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text(property.adresse, fontSize = 13.sp, color = SlateGray)
@@ -227,18 +237,21 @@ private fun PropertyDetailHost(
     val propertyReceipts = ImmobilienManagerProjection.receipts(property, units, receipts)
     val propertyDocuments = ImmobilienManagerProjection.documents(property, documents)
     val propertyLoans = ImmobilienManagerProjection.loans(property, loans)
+    var edit by remember(property.propertyId) { mutableStateOf(false) }
+    if (edit) {
+        PropertyEditScreen(property, viewModel) { edit = false }
+        return
+    }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, null); Text(" Zurück")
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
             }
-            Column(Modifier.weight(1f)) {
-                Text(property.name, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text(property.adresse, fontSize = 10.sp, color = SlateGray)
-            }
+            Text(if (section == PropertySection.DASHBOARD) "Immobilie" else property.name, Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            if (section == PropertySection.DASHBOARD) TextButton(onClick = { edit = true }) { Text("Bearbeiten", fontSize = 14.sp, color = AccentBlue) }
         }
         when (section) {
-            PropertySection.DASHBOARD -> PropertyDashboard(viewModel, property, units, propertyReceipts, propertyDocuments, propertyLoans, onSection)
+            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection)
             PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments)
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
@@ -253,6 +266,91 @@ private fun PropertyDetailHost(
         }
     }
 }
+
+@Composable
+private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit) {
+    val entries = listOf(
+        PropertySection.DATA to ("Stammdaten" to Icons.Default.HomeWork),
+        PropertySection.UNITS to ("Einheiten / Wohnungen" to Icons.Default.Apartment),
+        PropertySection.RENT to ("Mietverträge" to Icons.Default.Description),
+        PropertySection.UNITS to ("Mieterübersicht" to Icons.Default.AccountBalance),
+        PropertySection.UTILITIES_PREP to ("Nebenkosten" to Icons.Default.Payments),
+        PropertySection.RECEIPTS to ("Einnahmen / Ausgaben" to Icons.Default.Receipt),
+        PropertySection.DOCUMENTS to ("Objektunterlagen" to Icons.Default.Description),
+        PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment)
+    )
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box {
+                        PropertyCoverImage(property, Modifier.fillMaxWidth().height(190.dp))
+                        PropertyImagePicker(property, viewModel, Modifier.align(Alignment.BottomEnd).padding(8.dp))
+                    }
+                    Text(property.name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.LocationOn, null, Modifier.size(17.dp), tint = SlateGray); Text(property.adresse, Modifier.padding(start = 4.dp), fontSize = 13.sp, color = SlateGray) }
+                    Row(Modifier.fillMaxWidth()) {
+                        PropertyMetric("${summary.unitCount}", "Einheiten", Modifier.weight(1f))
+                        PropertyMetric(NumberFormatter.format(summary.expectedRent), "Mieteinnahmen", Modifier.weight(1f))
+                        PropertyMetric("${property.wohnflaeche.toInt()} m²", "Wohnfläche", Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        item {
+            Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column { entries.forEachIndexed { index, (target, entry) ->
+                    if (index > 0) HorizontalDivider(color = BorderColor)
+                    PropertyReferenceRow(entry.first, entry.second) { onSection(target) }
+                } }
+            }
+        }
+    }
+}
+
+@Composable private fun PropertyMetric(value: String, label: String, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) { Text(value, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1); Text(label, fontSize = 10.sp, color = SlateGray, maxLines = 1) }
+}
+
+@Composable private fun PropertyReferenceRow(label: String, icon: ImageVector, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, Modifier.size(23.dp), tint = AccentBlue); Text(label, Modifier.weight(1f).padding(start = 14.dp), fontSize = 14.sp, color = DarkNavy); Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(20.dp), tint = SlateGray)
+    }
+}
+
+@Composable private fun PropertyCoverImage(property: PropertyMetadata, modifier: Modifier = Modifier) {
+    val bitmap = remember(property.bildPfad) { property.bildPfad.takeIf { it.isNotBlank() }?.let { BitmapFactory.decodeFile(it) } }
+    Card(modifier, shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF))) {
+        if (bitmap != null) Image(bitmap.asImageBitmap(), "Foto von ${property.name}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { Icon(Icons.Default.HomeWork, null, Modifier.size(40.dp), tint = AccentBlue); Text("Noch kein Objektbild", fontSize = 11.sp, color = SlateGray) }
+    }
+}
+
+@Composable private fun PropertyImagePicker(property: PropertyMetadata, viewModel: ReceiptViewModel, modifier: Modifier = Modifier) {
+    val context = LocalContext.current; val scope = rememberCoroutineScope()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) scope.launch(Dispatchers.IO) {
+        val target = File(File(context.filesDir, "property-images").apply { mkdirs() }, "${property.propertyId}-${System.currentTimeMillis()}.jpg")
+        runCatching { context.contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } } }.onSuccess { viewModel.updatePropertyMetadata(property.copy(bildPfad = target.absolutePath)) }
+    } }
+    IconButton(onClick = { picker.launch("image/*") }, modifier = modifier.background(Color.White, androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.CameraAlt, "Objektbild hinzufügen", tint = AccentBlue) }
+}
+
+@Composable private fun PropertyEditScreen(property: PropertyMetadata, viewModel: ReceiptViewModel, onBack: () -> Unit) {
+    var name by remember(property) { mutableStateOf(property.name) }; var address by remember(property) { mutableStateOf(property.adresse) }; var type by remember(property) { mutableStateOf(property.objektart) }
+    var year by remember(property) { mutableStateOf(property.baujahr.toString()) }; var area by remember(property) { mutableStateOf(property.wohnflaeche.toString()) }; var land by remember(property) { mutableStateOf(property.grundstuecksgroesse.toString()) }; var notes by remember(property) { mutableStateOf(property.notizen) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }; Text("Immobilie bearbeiten", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            TextButton(onClick = { viewModel.updatePropertyMetadata(property.copy(name = name, adresse = address, objektart = type, baujahr = year.toIntOrNull() ?: property.baujahr, wohnflaeche = area.replace(',', '.').toDoubleOrNull() ?: property.wohnflaeche, grundstuecksgroesse = land.replace(',', '.').toDoubleOrNull() ?: property.grundstuecksgroesse, notizen = notes)); onBack() }) { Text("Speichern", fontSize = 14.sp, color = AccentBlue) }
+        }
+        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { Box { PropertyCoverImage(property, Modifier.fillMaxWidth().height(150.dp)); PropertyImagePicker(property, viewModel, Modifier.align(Alignment.BottomEnd).padding(8.dp)) } }
+            item { PropertyEditField(name, "Name *") { name = it } }; item { PropertyEditField(address, "Adresse *") { address = it } }; item { PropertyEditField(type, "Objektart *") { type = it } }; item { PropertyEditField(year, "Baujahr") { year = it.filter(Char::isDigit) } }; item { PropertyEditField(area, "Wohnfläche (m²)") { area = it } }; item { PropertyEditField(land, "Grundstücksfläche (m²)") { land = it } }; item { PropertyEditField(notes, "Beschreibung / Notizen", false) { notes = it } }
+        }
+    }
+}
+
+@Composable private fun PropertyEditField(value: String, label: String, singleLine: Boolean = true, onChange: (String) -> Unit) { OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = singleLine) }
 
 @Composable
 private fun PropertyDashboard(
