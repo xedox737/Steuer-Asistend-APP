@@ -227,7 +227,11 @@ data class PropertyMetadata(
     val gesamtKaufpreis: Double = 250000.0,
     val gebaeudewert: Double = 200000.0,
     val grundUndBodenWert: Double = 50000.0,
-    val kaufpreisAufteilungQuelle: String = "MANUELL"
+    val kaufpreisAufteilungQuelle: String = "MANUELL",
+    val bildPfad: String = "",
+    val objektart: String = "Mehrfamilienhaus",
+    val status: String = "Aktiv",
+    val notizen: String = ""
 )
 
 @Dao
@@ -660,7 +664,16 @@ val MIGRATION_29_30 = object : androidx.room.migration.Migration(29, 30) {
     }
 }
 
-@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class, BankLearningRule::class, BankRuleEvidence::class, BankRentAssignment::class, BankLoanAssignment::class, BankRecurringPattern::class], version = 30, exportSchema = false)
+val MIGRATION_30_31 = object : androidx.room.migration.Migration(30, 31) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE property_metadata ADD COLUMN bildPfad TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE property_metadata ADD COLUMN objektart TEXT NOT NULL DEFAULT 'Mehrfamilienhaus'")
+        db.execSQL("ALTER TABLE property_metadata ADD COLUMN status TEXT NOT NULL DEFAULT 'Aktiv'")
+        db.execSQL("ALTER TABLE property_metadata ADD COLUMN notizen TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+@Database(entities = [Receipt::class, PropertyMetadata::class, Loan::class, ReceiptEntity::class, Beleg::class, ExportAuditRun::class, ReceiptDocumentReference::class, LogbookTrip::class, StandardRoute::class, ManagedDocument::class, DocumentSearchFts::class, DocumentMigrationJournal::class, BankAccount::class, BankTransaction::class, BankReceiptLink::class, BankLearningRule::class, BankRuleEvidence::class, BankRentAssignment::class, BankLoanAssignment::class, BankRecurringPattern::class], version = 31, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun receiptDao(): ReceiptDao
     abstract fun propertyDao(): PropertyDao
@@ -690,7 +703,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
-                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30)
+                .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
                 .addCallback(AppDatabaseCallback(scope))
                 .build()
                 INSTANCE = instance
