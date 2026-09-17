@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.LocationOn
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
@@ -238,10 +241,12 @@ private fun PropertyDetailHost(
     val propertyDocuments = ImmobilienManagerProjection.documents(property, documents)
     val propertyLoans = ImmobilienManagerProjection.loans(property, loans)
     var edit by remember(property.propertyId) { mutableStateOf(false) }
+    var deleteRequested by remember(property.propertyId) { mutableStateOf(false) }
     if (edit) {
         PropertyEditScreen(property, viewModel) { edit = false }
         return
     }
+    BackHandler { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
@@ -251,7 +256,7 @@ private fun PropertyDetailHost(
             if (section == PropertySection.DASHBOARD) TextButton(onClick = { edit = true }) { Text("Bearbeiten", fontSize = 14.sp, color = AccentBlue) }
         }
         when (section) {
-            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection)
+            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection, onDelete = { deleteRequested = true })
             PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments)
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
@@ -265,10 +270,17 @@ private fun PropertyDetailHost(
             PropertySection.DATA -> PropertyData(viewModel, property)
         }
     }
+    if (deleteRequested) AlertDialog(
+        onDismissRequest = { deleteRequested = false },
+        title = { Text("Immobilie löschen?", fontWeight = FontWeight.Bold) },
+        text = { Text("Das Objekt wird aus der Übersicht entfernt. Belege, Unterlagen und Buchungen bleiben zur Sicherheit erhalten.") },
+        confirmButton = { Button(onClick = { viewModel.deleteProperty(property); deleteRequested = false; onBack() }, colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)) { Text("Löschen") } },
+        dismissButton = { TextButton(onClick = { deleteRequested = false }) { Text("Abbrechen") } }
+    )
 }
 
 @Composable
-private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit) {
+private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit, onDelete: () -> Unit) {
     val entries = listOf(
         PropertySection.DATA to ("Stammdaten" to Icons.Default.HomeWork),
         PropertySection.UNITS to ("Einheiten / Wohnungen" to Icons.Default.Apartment),
@@ -305,6 +317,13 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
                 } }
             }
         }
+        item {
+            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.45f)),
+                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFFEDF0), contentColor = CrimsonRed)) {
+                Icon(Icons.Default.Delete, null, Modifier.size(20.dp)); Text("  Immobilie löschen", fontSize = 13.sp)
+            }
+        }
     }
 }
 
@@ -338,6 +357,7 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
 @Composable private fun PropertyEditScreen(property: PropertyMetadata, viewModel: ReceiptViewModel, onBack: () -> Unit) {
     var name by remember(property) { mutableStateOf(property.name) }; var address by remember(property) { mutableStateOf(property.adresse) }; var type by remember(property) { mutableStateOf(property.objektart) }
     var year by remember(property) { mutableStateOf(property.baujahr.toString()) }; var area by remember(property) { mutableStateOf(property.wohnflaeche.toString()) }; var land by remember(property) { mutableStateOf(property.grundstuecksgroesse.toString()) }; var notes by remember(property) { mutableStateOf(property.notizen) }
+    BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }; Text("Immobilie bearbeiten", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -702,10 +722,29 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 @Composable private fun PropertyData(viewModel: ReceiptViewModel, property: PropertyMetadata) {
     var edit by remember { mutableStateOf(false) }
     if (edit) PropertyMetadataFormDialog(viewModel = viewModel, onDismiss = { edit = false })
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Objektdaten", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
-        item { Text("Name: ${property.name}\nAdresse: ${property.adresse}\nBaujahr: ${property.baujahr}\nKaufdatum: ${property.notariellesKaufdatum}\nKaufpreis: ${NumberFormatter.format(property.gesamtKaufpreis)}\nWohnfläche: ${property.wohnflaeche} m²\nGrundstück: ${property.grundstuecksgroesse} m²", color = DarkNavy) }
-        item { Button(onClick = { edit = true }, modifier = Modifier.fillMaxWidth()) { Text("Objektdaten bearbeiten") } }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item { Text("Objektdaten", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+        item {
+            Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+                Column {
+                    PropertyFactRow("Name", property.name); HorizontalDivider(color = BorderColor)
+                    PropertyFactRow("Adresse", property.adresse); HorizontalDivider(color = BorderColor)
+                    PropertyFactRow("Baujahr", property.baujahr.toString()); HorizontalDivider(color = BorderColor)
+                    PropertyFactRow("Kaufdatum", property.notariellesKaufdatum); HorizontalDivider(color = BorderColor)
+                    PropertyFactRow("Kaufpreis", NumberFormatter.format(property.gesamtKaufpreis)); HorizontalDivider(color = BorderColor)
+                    PropertyFactRow("Wohnfläche", "${property.wohnflaeche} m²"); HorizontalDivider(color = BorderColor)
+                    PropertyFactRow("Grundstück", "${property.grundstuecksgroesse} m²")
+                }
+            }
+        }
+        item { Button(onClick = { edit = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) { Text("Objektdaten bearbeiten") } }
+    }
+}
+
+@Composable private fun PropertyFactRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.weight(0.8f), fontSize = 12.sp, color = SlateGray)
+        Text(value, Modifier.weight(1.4f), fontSize = 13.sp, color = DarkNavy)
     }
 }
 

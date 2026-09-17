@@ -3970,6 +3970,21 @@ data class AiSearchUiState(
         }
     }
 
+    /** Removes only the object record. Receipts and documents remain untouched for safety. */
+    fun deleteProperty(property: PropertyMetadata) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deletePropertyByPropertyId(property.propertyId)
+            if (_selectedPropertyId.value == property.propertyId) {
+                _selectedPropertyId.value = ""
+                sharedPrefs.edit().remove("selected_property_id").apply()
+            }
+            property.bildPfad.takeIf { it.isNotBlank() }?.let { path ->
+                runCatching { java.io.File(path).delete() }
+            }
+            if (_isDriveConnected.value && _autoDriveBackup.value) syncAllToDrive()
+        }
+    }
+
     fun deleteReceipt(id: Int, deletedBy: String = "LocalUser", reason: String = "Vom Nutzer gelöscht") {
         viewModelScope.launch(Dispatchers.IO) {
             val receipt = repository.getReceiptById(id) ?: return@launch
