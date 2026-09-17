@@ -283,10 +283,8 @@ private fun PropertyDetailHost(
 private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit, onDelete: () -> Unit) {
     val entries = listOf(
         PropertySection.DATA to ("Stammdaten" to Icons.Default.HomeWork),
-        PropertySection.UNITS to ("Einheiten / Wohnungen" to Icons.Default.Apartment),
-        PropertySection.RENT to ("Mietverträge" to Icons.Default.Description),
-        PropertySection.UNITS to ("Mieterübersicht" to Icons.Default.AccountBalance),
-        PropertySection.UTILITIES_PREP to ("Nebenkosten" to Icons.Default.Payments),
+        PropertySection.UNITS to ("Einheiten & Mietverhältnisse" to Icons.Default.Apartment),
+        PropertySection.RENT to ("Mieteinnahmen & Nebenkosten" to Icons.Default.Payments),
         PropertySection.RECEIPTS to ("Einnahmen / Ausgaben" to Icons.Default.Receipt),
         PropertySection.DOCUMENTS to ("Objektunterlagen" to Icons.Default.Description),
         PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment)
@@ -474,7 +472,7 @@ private fun PropertyUnits(
         return
     }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Einheiten & Mieter", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
+        item { Text("Einheiten & Mietverhältnisse", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
         items(units, key = { PropertyUnitScopedData.stableUnitId(property.propertyId, it) }) { unit ->
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { selectedUnitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) },
@@ -535,7 +533,7 @@ private fun UnitDetailScreen(
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null); Text(" Einheiten") }
+            TextButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null); Text(" Einheiten & Mietverhältnisse") }
             Column(Modifier.weight(1f)) {
                 Text(unit.label, fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text(property.name, fontSize = 9.sp, color = SlateGray)
