@@ -254,6 +254,9 @@ interface PropertyDao {
     @Query("SELECT COALESCE(MAX(id), 0) + 1 FROM property_metadata")
     suspend fun nextPropertyId(): Int
 
+    @Query("DELETE FROM property_metadata WHERE propertyId = :propertyId")
+    suspend fun deletePropertyByPropertyId(propertyId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPropertyMetadata(metadata: PropertyMetadata)
 }
@@ -1225,6 +1228,10 @@ class ReceiptRepository(
     }
 
     suspend fun getAllProperties(): List<PropertyMetadata> = propertyDao.getAllProperties()
+
+    suspend fun deletePropertyByPropertyId(propertyId: String) {
+        propertyDao.deletePropertyByPropertyId(propertyId)
+    }
 
     suspend fun getPropertyByPropertyId(propertyId: String): PropertyMetadata? =
         propertyDao.getPropertyByPropertyId(propertyId)
