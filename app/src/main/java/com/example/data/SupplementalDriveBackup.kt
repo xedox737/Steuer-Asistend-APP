@@ -268,6 +268,7 @@ object SupplementalDriveBackup {
         put("uebergangNutzenLasten", uebergangNutzenLasten); put("wohneinheiten", wohneinheiten)
         put("gesamtKaufpreis", gesamtKaufpreis); put("gebaeudewert", gebaeudewert)
         put("grundUndBodenWert", grundUndBodenWert); put("kaufpreisAufteilungQuelle", kaufpreisAufteilungQuelle)
+        put("bildPfad", bildPfad); put("objektart", objektart); put("status", status); put("notizen", notizen)
     }
 
     private fun JSONObject.toPropertyMetadata() = PropertyMetadata(
@@ -279,7 +280,9 @@ object SupplementalDriveBackup {
         uebergangNutzenLasten = optString("uebergangNutzenLasten", ""),
         wohneinheiten = optString("wohneinheiten", ""), gesamtKaufpreis = optDouble("gesamtKaufpreis", 0.0),
         gebaeudewert = optDouble("gebaeudewert", 0.0), grundUndBodenWert = optDouble("grundUndBodenWert", 0.0),
-        kaufpreisAufteilungQuelle = optString("kaufpreisAufteilungQuelle", "MANUELL")
+        kaufpreisAufteilungQuelle = optString("kaufpreisAufteilungQuelle", "MANUELL"),
+        bildPfad = optString("bildPfad", ""), objektart = optString("objektart", "Mehrfamilienhaus"),
+        status = optString("status", "Aktiv"), notizen = optString("notizen", "")
     )
 
     private fun LogbookTrip.toJson() = JSONObject().apply {
