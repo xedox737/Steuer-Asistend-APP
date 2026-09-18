@@ -57,6 +57,7 @@ import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -204,25 +205,42 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
 
 @Composable
 private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyManagerSummary, onClick: () -> Unit) {
+    val addressParts = property.adresse.split(',').map { it.trim() }.filter { it.isNotBlank() }
+    val streetAndHouseNumber = addressParts.firstOrNull().orEmpty()
+    val postalCodeAndCity = addressParts.drop(1).joinToString(", ")
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).testTag("property_card_${property.propertyId}"),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
     ) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            PropertyCoverImage(property, Modifier.size(92.dp))
-            Column(Modifier.weight(1f), Arrangement.spacedBy(6.dp)) {
-                Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text(property.adresse, fontSize = 13.sp, color = SlateGray)
-                Text("${summary.unitCount} Einheiten", fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
-                Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                    Text("Soll ${NumberFormatter.format(summary.expectedRent)}", fontSize = 11.sp, color = SlateGray)
-                    Text("Ist ${NumberFormatter.format(summary.actualRent)}", fontSize = 11.sp, color = EmeraldGreen)
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                PropertyCoverImage(property, Modifier.size(108.dp))
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text(streetAndHouseNumber, fontSize = 13.sp, color = SlateGray)
+                    if (postalCodeAndCity.isNotBlank()) Text(postalCodeAndCity, fontSize = 13.sp, color = SlateGray)
+                    Text("${summary.unitCount} Einheiten", fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
                 }
-                Text("Offen ${NumberFormatter.format(summary.outstandingRent)}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen)
+            }
+            HorizontalDivider(color = BorderColor)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                PropertyOverviewMetric("Soll", NumberFormatter.format(summary.expectedRent), SlateGray, Modifier.weight(1f))
+                VerticalDivider(Modifier.height(36.dp), color = BorderColor)
+                PropertyOverviewMetric("Ist", NumberFormatter.format(summary.actualRent), EmeraldGreen, Modifier.weight(1f))
+                VerticalDivider(Modifier.height(36.dp), color = BorderColor)
+                PropertyOverviewMetric("Offen", NumberFormatter.format(summary.outstandingRent), if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen, Modifier.weight(1f))
             }
         }
+    }
+}
+
+@Composable
+private fun PropertyOverviewMetric(label: String, value: String, valueColor: Color, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, fontSize = 11.sp, color = SlateGray)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
     }
 }
 
