@@ -720,23 +720,71 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 @Composable private fun PropertyData(viewModel: ReceiptViewModel, property: PropertyMetadata) {
     var edit by remember { mutableStateOf(false) }
     if (edit) PropertyMetadataFormDialog(viewModel = viewModel, onDismiss = { edit = false })
+    val unitCount = property.wohneinheiten
+        .split(',')
+        .map { it.trim() }
+        .count { it.isNotBlank() }
+    val allocationSource = when (property.kaufpreisAufteilungQuelle.uppercase()) {
+        "MANUELL" -> "Manuell"
+        "ABGELEITET" -> "Abgeleitet"
+        else -> property.kaufpreisAufteilungQuelle.ifBlank { "Nicht hinterlegt" }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Objektdaten", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+        item { Text("Stammdaten", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
         item {
             Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
                 Column {
-                    PropertyFactRow("Name", property.name); HorizontalDivider(color = BorderColor)
-                    PropertyFactRow("Adresse", property.adresse); HorizontalDivider(color = BorderColor)
-                    PropertyFactRow("Baujahr", property.baujahr.toString()); HorizontalDivider(color = BorderColor)
-                    PropertyFactRow("Kaufdatum", property.notariellesKaufdatum); HorizontalDivider(color = BorderColor)
-                    PropertyFactRow("Kaufpreis", NumberFormatter.format(property.gesamtKaufpreis)); HorizontalDivider(color = BorderColor)
-                    PropertyFactRow("Wohnfläche", "${property.wohnflaeche} m²"); HorizontalDivider(color = BorderColor)
-                    PropertyFactRow("Grundstück", "${property.grundstuecksgroesse} m²")
+                    PropertyCoverImage(property, Modifier.fillMaxWidth().height(190.dp).padding(10.dp))
+                    PropertyDataSection("Objekt") {
+                        PropertyFactRow("Name", property.name)
+                        PropertyFactDivider()
+                        PropertyFactRow("Adresse", property.adresse)
+                        PropertyFactDivider()
+                        PropertyFactRow("Objektart · Status", "${property.objektart} · ${property.status}")
+                    }
+                    PropertyDataSection("Flächen & Einheiten") {
+                        PropertyFactRow("Wohnfläche", "${property.wohnflaeche} m²")
+                        PropertyFactDivider()
+                        PropertyFactRow("Grundstücksfläche", "${property.grundstuecksgroesse} m²")
+                        PropertyFactDivider()
+                        PropertyFactRow("Anzahl Einheiten", unitCount.toString())
+                    }
+                    PropertyDataSection("Kauf & Steuer") {
+                        PropertyFactRow("Notarielles Kaufdatum", property.notariellesKaufdatum)
+                        PropertyFactDivider()
+                        PropertyFactRow("Übergang Nutzen/Lasten", property.uebergangNutzenLasten)
+                        PropertyFactDivider()
+                        PropertyFactRow("Gesamtkaufpreis", NumberFormatter.format(property.gesamtKaufpreis))
+                        PropertyFactDivider()
+                        PropertyFactRow("Gebäudewert", NumberFormatter.format(property.gebaeudewert))
+                        PropertyFactDivider()
+                        PropertyFactRow("Grund und Boden", NumberFormatter.format(property.grundUndBodenWert))
+                        PropertyFactDivider()
+                        PropertyFactRow("Aufteilungsquelle", allocationSource)
+                    }
+                    PropertyDataSection("Notizen", showDivider = false) {
+                        Text(
+                            property.notizen.ifBlank { "Keine Notizen hinterlegt." },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            fontSize = 13.sp,
+                            color = if (property.notizen.isBlank()) SlateGray else DarkNavy
+                        )
+                    }
                 }
             }
         }
-        item { Button(onClick = { edit = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)) { Text("Objektdaten bearbeiten") } }
+        item { Button(onClick = { edit = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Stammdaten bearbeiten") } }
     }
+}
+
+@Composable private fun PropertyDataSection(title: String, showDivider: Boolean = true, content: @Composable () -> Unit) {
+    if (showDivider) HorizontalDivider(color = BorderColor)
+    Text(title, modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+    content()
+}
+
+@Composable private fun PropertyFactDivider() {
+    HorizontalDivider(modifier = Modifier.padding(horizontal = 12.dp), color = BorderColor)
 }
 
 @Composable private fun PropertyFactRow(label: String, value: String) {
