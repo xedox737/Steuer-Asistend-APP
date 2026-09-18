@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ManagedDocument
@@ -215,10 +216,10 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(property.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                PropertyCoverImage(property, Modifier.size(108.dp))
+                PropertyCoverImage(property, Modifier.size(96.dp), compactPlaceholder = true)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(property.name, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                     Text(streetAndHouseNumber, fontSize = 13.sp, color = SlateGray)
                     if (postalCodeAndCity.isNotBlank()) Text(postalCodeAndCity, fontSize = 13.sp, color = SlateGray)
                     Text("${summary.unitCount} Einheiten", fontSize = 12.sp, color = AccentBlue, fontWeight = FontWeight.SemiBold)
@@ -226,11 +227,11 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
             }
             HorizontalDivider(color = BorderColor)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                PropertyOverviewMetric("Soll", NumberFormatter.format(summary.expectedRent), SlateGray, Modifier.weight(1f))
+                PropertyOverviewMetric("Soll", NumberFormatter.format(summary.expectedRent), SlateGray, Modifier.weight(1f).padding(end = 12.dp))
                 VerticalDivider(Modifier.height(36.dp), color = BorderColor)
-                PropertyOverviewMetric("Ist", NumberFormatter.format(summary.actualRent), EmeraldGreen, Modifier.weight(1f))
+                PropertyOverviewMetric("Ist", NumberFormatter.format(summary.actualRent), EmeraldGreen, Modifier.weight(1f).padding(horizontal = 12.dp))
                 VerticalDivider(Modifier.height(36.dp), color = BorderColor)
-                PropertyOverviewMetric("Offen", NumberFormatter.format(summary.outstandingRent), if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen, Modifier.weight(1f))
+                PropertyOverviewMetric("Offen", NumberFormatter.format(summary.outstandingRent), if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen, Modifier.weight(1f).padding(start = 12.dp))
             }
         }
     }
@@ -354,11 +355,14 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
     }
 }
 
-@Composable private fun PropertyCoverImage(property: PropertyMetadata, modifier: Modifier = Modifier) {
+@Composable private fun PropertyCoverImage(property: PropertyMetadata, modifier: Modifier = Modifier, compactPlaceholder: Boolean = false) {
     val bitmap = remember(property.bildPfad) { property.bildPfad.takeIf { it.isNotBlank() }?.let { BitmapFactory.decodeFile(it) } }
     Card(modifier, shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF))) {
         if (bitmap != null) Image(bitmap.asImageBitmap(), "Foto von ${property.name}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) { Icon(Icons.Default.HomeWork, null, Modifier.size(40.dp), tint = AccentBlue); Text("Noch kein Objektbild", fontSize = 11.sp, color = SlateGray) }
+        else Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(Icons.Default.HomeWork, null, Modifier.size(if (compactPlaceholder) 32.dp else 40.dp), tint = AccentBlue)
+            Text(if (compactPlaceholder) "Bild hinzufügen" else "Noch kein Objektbild", fontSize = if (compactPlaceholder) 9.sp else 11.sp, color = SlateGray, maxLines = 1)
+        }
     }
 }
 
