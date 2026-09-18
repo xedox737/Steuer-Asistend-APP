@@ -46,6 +46,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -881,6 +882,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
     var step by remember { mutableIntStateOf(0) }
     val generatedPropertyId = remember { java.util.UUID.randomUUID().toString() }
     var name by remember { mutableStateOf("") }; var street by remember { mutableStateOf("") }; var zip by remember { mutableStateOf("") }; var city by remember { mutableStateOf("") }
+    var objectType by remember { mutableStateOf("Mehrfamilienhaus") }
     var purchaseDate by remember { mutableStateOf("") }; var purchasePrice by remember { mutableStateOf("") }; var yearBuilt by remember { mutableStateOf("") }
     var livingArea by remember { mutableStateOf("") }; var landArea by remember { mutableStateOf("") }; var unitCount by remember { mutableStateOf("1") }
     var buildingValue by remember { mutableStateOf("") }; var landValue by remember { mutableStateOf("") }
@@ -895,7 +897,27 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (step) {
-                    0 -> { field(name, "Objektname") { name = it }; field(street, "Straße und Hausnummer") { street = it }; field(zip, "PLZ") { zip = it }; field(city, "Ort") { city = it }; field(purchaseDate, "Kaufdatum YYYY-MM-DD") { purchaseDate = it }; field(purchasePrice, "Kaufpreis €") { purchasePrice = it } }
+                    0 -> {
+                        field(name, "Objektname") { name = it }
+                        Text("Objektart", fontSize = 12.sp, color = SlateGray)
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Eigentumswohnung", "Einfamilienhaus", "Mehrfamilienhaus", "Gewerbeeinheit", "Grundstück").forEach { type ->
+                                FilterChip(
+                                    selected = objectType == type,
+                                    onClick = {
+                                        objectType = type
+                                        if (type == "Eigentumswohnung") unitCount = "1"
+                                    },
+                                    label = { Text(type, fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                        field(street, "Straße und Hausnummer") { street = it }
+                        field(zip, "PLZ") { zip = it }
+                        field(city, "Ort") { city = it }
+                        field(purchaseDate, "Kaufdatum YYYY-MM-DD") { purchaseDate = it }
+                        field(purchasePrice, "Kaufpreis €") { purchasePrice = it }
+                    }
                     1 -> { field(yearBuilt, "Baujahr") { yearBuilt = it }; field(livingArea, "Wohnfläche m²") { livingArea = it }; field(landArea, "Grundstücksfläche m²") { landArea = it }; field(unitCount, "Anzahl Einheiten (max. 20)") { unitCount = it.filter(Char::isDigit).take(2) } }
                     2 -> { Text("Finanzierung (optional)", fontWeight = FontWeight.Bold); field(loanName, "Darlehensbezeichnung") { loanName = it }; field(loanBank, "Bank") { loanBank = it }; field(loanAmount, "Darlehensbetrag €") { loanAmount = it } }
                     3 -> LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -916,7 +938,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                     val count = (unitCount.toIntOrNull() ?: 1).coerceIn(1, 20)
                     val savedUnitNames = (0 until count).map { unitNames[it].ifBlank { "WE ${(it + 1).toString().padStart(2, '0')}" } }
                     val metadata = PropertyMetadata(
-                        propertyId = generatedPropertyId, name = name.ifBlank { street.ifBlank { "Neue Immobilie" } },
+                        propertyId = generatedPropertyId, name = name.ifBlank { street.ifBlank { "Neue Immobilie" } }, objektart = objectType,
                         adresse = listOf(street, "$zip $city".trim()).filter(String::isNotBlank).joinToString(", "),
                         baujahr = yearBuilt.toIntOrNull() ?: 0, wohnflaeche = livingArea.replace(',', '.').toDoubleOrNull() ?: 0.0,
                         grundstuecksgroesse = landArea.replace(',', '.').toDoubleOrNull() ?: 0.0, notariellesKaufdatum = purchaseDate,
