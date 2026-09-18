@@ -228,9 +228,9 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
             HorizontalDivider(color = BorderColor)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 PropertyOverviewMetric("Soll", NumberFormatter.format(summary.expectedRent), SlateGray, Modifier.weight(1f).padding(end = 12.dp))
-                VerticalDivider(Modifier.height(36.dp), color = BorderColor)
+                VerticalDivider(Modifier.height(52.dp), color = BorderColor)
                 PropertyOverviewMetric("Ist", NumberFormatter.format(summary.actualRent), EmeraldGreen, Modifier.weight(1f).padding(horizontal = 12.dp))
-                VerticalDivider(Modifier.height(36.dp), color = BorderColor)
+                VerticalDivider(Modifier.height(52.dp), color = BorderColor)
                 PropertyOverviewMetric("Offen", NumberFormatter.format(summary.outstandingRent), if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen, Modifier.weight(1f).padding(start = 12.dp))
             }
         }
@@ -239,7 +239,7 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
 
 @Composable
 private fun PropertyOverviewMetric(label: String, value: String, valueColor: Color, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Text(label, fontSize = 11.sp, color = SlateGray)
         Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
     }
