@@ -61,6 +61,7 @@ import com.example.data.DocumentFieldDecision
 import com.example.data.DocumentFieldProposal
 import com.example.data.ManagedDocument
 import com.example.data.ManagedDocumentType
+import java.io.File
 
 @Composable
 fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
@@ -150,7 +151,7 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                 modifier = Modifier.weight(1f).testTag("document_import_button")
             ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
-            OutlinedButton(onClick = startDocumentScanner, modifier = Modifier.weight(1f).testTag("document_scan_button")) { Text("Scannen") }
+            OutlinedButton(onClick = { startDocumentScanner(); Unit }, modifier = Modifier.weight(1f).testTag("document_scan_button")) { Text("Scannen") }
         }
         Card(
             Modifier.fillMaxWidth(),
