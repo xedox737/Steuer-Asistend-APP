@@ -260,12 +260,7 @@ private fun PropertyDetailHost(
     val propertyReceipts = ImmobilienManagerProjection.receipts(property, units, receipts)
     val propertyDocuments = ImmobilienManagerProjection.documents(property, documents)
     val propertyLoans = ImmobilienManagerProjection.loans(property, loans)
-    var edit by remember(property.propertyId) { mutableStateOf(false) }
     var deleteRequested by remember(property.propertyId) { mutableStateOf(false) }
-    if (edit) {
-        PropertyEditScreen(property, viewModel) { edit = false }
-        return
-    }
     BackHandler { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }
     Column(Modifier.fillMaxSize()) {
         if (section != PropertySection.UNITS) {
@@ -274,11 +269,15 @@ private fun PropertyDetailHost(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
                 }
                 Text(if (section == PropertySection.DASHBOARD) "Immobilie" else property.name, Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                if (section == PropertySection.DASHBOARD) TextButton(onClick = { edit = true }) { Text("Bearbeiten", fontSize = 14.sp, color = AccentBlue) }
+                if (section == PropertySection.DASHBOARD) {
+                    IconButton(onClick = { deleteRequested = true }) {
+                        Icon(Icons.Default.Delete, "Immobilie löschen", tint = CrimsonRed)
+                    }
+                }
             }
         }
         when (section) {
-            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection, onDelete = { deleteRequested = true })
+            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection)
             PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
@@ -302,7 +301,7 @@ private fun PropertyDetailHost(
 }
 
 @Composable
-private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit, onDelete: () -> Unit) {
+private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit) {
     val entries = listOf(
         PropertySection.DATA to ("Stammdaten" to Icons.Default.HomeWork),
         PropertySection.UNITS to ("Einheiten & Mietverhältnisse" to Icons.Default.Apartment),
@@ -335,13 +334,6 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
                     if (index > 0) HorizontalDivider(color = BorderColor)
                     PropertyReferenceRow(entry.first, entry.second) { onSection(target) }
                 } }
-            }
-        }
-        item {
-            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
-                border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.45f)),
-                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFFEDF0), contentColor = CrimsonRed)) {
-                Icon(Icons.Default.Delete, null, Modifier.size(20.dp)); Text("  Immobilie löschen", fontSize = 13.sp)
             }
         }
     }
