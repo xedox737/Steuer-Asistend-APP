@@ -278,126 +278,37 @@ val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
 fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()
     val receipts by viewModel.receipts.collectAsState()
-    val bankStatementResult by viewModel.bankStatementResult.collectAsState()
-    val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
-    val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
-    val totalBankAlerts = missingReceiptsCount + rentArrearsCount
-    val screenTitle = when (currentScreen) {
-        AppScreen.DASHBOARD -> "Start"
-        AppScreen.RECEIPTS_LIST -> "Belege"
-        AppScreen.ADD_RECEIPT -> "Beleg erfassen"
-        AppScreen.LOGBOOK -> "Fahrtenbuch"
-        AppScreen.LEDGER -> "Finanzen"
-        AppScreen.RENT_OVERVIEW -> "Mieteingänge"
-        AppScreen.TAX_CALCULATOR -> "Steuerschätzung"
-        AppScreen.DOCUMENTS -> "Dokumentenakte"
-        AppScreen.PROPERTIES -> "Immobilien"
-        AppScreen.BANK -> "Bank & Belege"
-        AppScreen.MORE -> "Mehr"
-    }
-    val headerIcon = when (currentScreen) {
-        AppScreen.DASHBOARD -> Icons.Default.Home
-        AppScreen.RECEIPTS_LIST -> Icons.Default.Receipt
-        AppScreen.ADD_RECEIPT -> Icons.Default.AddCircle
-        AppScreen.PROPERTIES -> Icons.Default.Apartment
-        AppScreen.MORE -> Icons.Default.MoreHoriz
-        else -> null
-    }
-
-    var showAccountSettingsDialog by remember { mutableStateOf(false) }
-    var showKiPowerCenterDialog by remember { mutableStateOf(false) }
     var bankDetailsOpen by remember { mutableStateOf(false) }
-
-    if (showAccountSettingsDialog) {
-        AccountSettingsDialog(
-            viewModel = viewModel,
-            onDismiss = { showAccountSettingsDialog = false }
-        )
-    }
-
-    if (showKiPowerCenterDialog) {
-        KiPowerCenterDialog(
-            viewModel = viewModel,
-            onDismiss = { showKiPowerCenterDialog = false }
-        )
-    }
 
     Scaffold(
         topBar = {
-            if (!(currentScreen == AppScreen.BANK && bankDetailsOpen)) {
             TopAppBar(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        headerIcon?.let { icon ->
-                            Surface(
-                                modifier = Modifier.size(44.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                color = AccentBlue.copy(alpha = 0.12f)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(icon, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
-                                }
-                            }
-                        }
-                        if (currentScreen == AppScreen.DASHBOARD) {
-                            Column {
-                                Text("ImmoPilot", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 25.sp)
-                                Text("Immobilien. Finanzen. Steuern.", color = SlateGray, fontSize = 11.sp)
-                            }
-                        } else {
-                            Text(screenTitle, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 20.sp)
-                        }
-                    }
-                },
-                actions = {
-                    Box {
-                        IconButton(
-                            onClick = { showKiPowerCenterDialog = true },
-                            modifier = Modifier.testTag("ki_power_center_button")
+                        Surface(
+                            modifier = Modifier.size(44.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = AccentBlue.copy(alpha = 0.12f)
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = "KI-Assistenten", tint = Color(0xFF7C3AED))
-                        }
-                        if (totalBankAlerts > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(top = 4.dp, end = 4.dp)
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(CrimsonRed),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "$totalBankAlerts",
-                                    color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Home, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
                             }
                         }
-                    }
-                    IconButton(
-                        onClick = { viewModel.setScreen(AppScreen.BANK) },
-                        modifier = Modifier.testTag("bank_navigation_button")
-                    ) {
-                        Icon(Icons.Default.AccountBalance, contentDescription = "Bank & Belege", tint = DarkNavy)
-                    }
-                    IconButton(
-                        onClick = { showAccountSettingsDialog = true },
-                        modifier = Modifier.testTag("account_settings_button")
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Einstellungen", tint = DarkNavy)
+                        Column {
+                            Text("ImmoPilot", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 25.sp)
+                            Text("Immobilien. Finanzen. Steuern.", color = SlateGray, fontSize = 11.sp)
+                        }
                     }
                 },
+                actions = {},
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.White,
                     scrolledContainerColor = Color.White
                 )
             )
-            }
         },
         bottomBar = {
             Column {
