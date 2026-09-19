@@ -1,10 +1,11 @@
 package com.example.ui
 
+import android.app.Activity
 import android.content.Intent
-import android.Manifest
-import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,16 +54,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.example.data.DocumentFieldDecision
 import com.example.data.DocumentFieldProposal
 import com.example.data.ManagedDocument
 import com.example.data.ManagedDocumentType
-import java.io.File
 
 @Composable
 fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
+    val activity = context as? Activity
     val documents by viewModel.managedDocuments.collectAsState()
     val results by viewModel.documentSearchResults.collectAsState()
     val operationStatus by viewModel.documentOperationStatus.collectAsState()
@@ -75,24 +78,49 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
     var year by remember { mutableStateOf("") }
     var typeFilter by remember { mutableStateOf("") }
     var unitFilter by remember { mutableStateOf("") }
+    var importUnitId by remember { mutableStateOf("") }
+    var importUnitMenuOpen by remember { mutableStateOf(false) }
     var categoryFilter by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<ManagedDocument?>(null) }
     var hasSearched by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { viewModel.importManagedDocument(it) }
+        uri?.let {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            viewModel.importManagedDocument(it, importUnitId.ifBlank { null })
+        }
     }
-    var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) cameraUri?.let(viewModel::importManagedDocument)
+    val mlKitScannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+            val pageUris = scanResult?.pages?.map { it.imageUri }.orEmpty()
+            if (pageUris.isEmpty()) {
+                viewModel.setDocumentOperationStatus("Der Scan wurde ohne Dokument abgeschlossen.")
+            } else {
+                pageUris.forEach { pageUri -> viewModel.importManagedDocument(pageUri, importUnitId.ifBlank { null }) }
+            }
+        }
     }
-    val startCameraScan = {
-        val target = File(context.cacheDir, "document_scan_${System.currentTimeMillis()}.jpg")
-        val scanUri = FileProvider.getUriForFile(context, "${context.packageName}.provider", target)
-        cameraUri = scanUri
-        cameraLauncher.launch(scanUri)
-    }
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startCameraScan()
+    val startDocumentScanner = {
+        val options = GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true)
+            .setPageLimit(10)
+            .setResultFormats(GmsDocumentScannerOptions.RESULT_FORMAT_JPEG, GmsDocumentScannerOptions.RESULT_FORMAT_PDF)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+            .build()
+        if (activity != null) {
+            GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
+                .addOnSuccessListener { intentSender -> mlKitScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build()) }
+                .addOnFailureListener { error ->
+                    Log.e("DocumentScanner", "ML Kit scanner could not start", error)
+                    viewModel.setDocumentOperationStatus("Scanner konnte nicht gestartet werden. Bitte Datei importieren.")
+                }
+        } else {
+            viewModel.setDocumentOperationStatus("Scanner ist in dieser Ansicht nicht verfügbar.")
+        }
     }
     val propertyFilter = if (propertyScoped) property?.propertyId.orEmpty() else ""
     val shown = if (hasSearched) results else documents.filter {
@@ -105,16 +133,38 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
                 Text("Dokumentenakte", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text(if (propertyScoped) property?.name ?: "Immobilie" else "Alle Immobilien", fontSize = 11.sp, color = SlateGray)
             }
+        }
+        OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+            Text(if (importUnitId.isBlank()) "Zuordnung: Gesamtobjekt" else "Zuordnung: ${units.firstOrNull { it.unitId == importUnitId }?.label ?: importUnitId}")
+        }
+        DropdownMenu(expanded = importUnitMenuOpen, onDismissRequest = { importUnitMenuOpen = false }) {
+            DropdownMenuItem(text = { Text("Gesamtobjekt") }, onClick = { importUnitId = ""; importUnitMenuOpen = false })
+            units.forEach { unit ->
+                val stableId = PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), unit)
+                DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = { importUnitId = stableId; importUnitMenuOpen = false })
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = { launcher.launch(arrayOf("application/pdf", "image/*", "text/plain")) },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                modifier = Modifier.testTag("document_import_button")
+                modifier = Modifier.weight(1f).testTag("document_import_button")
             ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
+            OutlinedButton(onClick = startDocumentScanner, modifier = Modifier.weight(1f).testTag("document_scan_button")) { Text("Scannen") }
         }
-        OutlinedButton(onClick = {
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCameraScan()
-            else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }, modifier = Modifier.fillMaxWidth().testTag("document_scan_button")) { Text("Dokument scannen") }
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFEAF2FF)),
+            border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.25f))
+        ) {
+            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue)
+                Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                    Text("KI-Dokumentenanalyse", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                    Text("Importierte und gescannte Dokumente werden automatisch gelesen und zur Prüfung vorbereitet.", fontSize = 11.sp, color = SlateGray)
+                }
+            }
+        }
         OutlinedTextField(query, { query = it }, label = { Text("Dokumente und OCR-Text durchsuchen") }, leadingIcon = { Icon(Icons.Default.Search, null) }, modifier = Modifier.fillMaxWidth().testTag("document_search_query"))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(year, { year = it.filter(Char::isDigit).take(4) }, label = { Text("Jahr") }, modifier = Modifier.weight(1f))
