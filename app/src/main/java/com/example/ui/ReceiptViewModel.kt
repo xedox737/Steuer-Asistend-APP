@@ -3234,6 +3234,10 @@ data class AiSearchUiState(
         }
     }
 
+    fun setDocumentOperationStatus(message: String) {
+        _documentOperationStatus.value = message
+    }
+
     fun resolvePossibleDocumentDuplicate(useExisting: Boolean, keepSeparate: Boolean = false) {
         val pending = _pendingDocumentDuplicate.value ?: return
         val uri = pendingDocumentDuplicateUri
