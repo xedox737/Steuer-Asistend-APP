@@ -555,22 +555,30 @@ private fun UnitDetailScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null); Text(" Einheiten & Mietverhältnisse") }
-            Column(Modifier.weight(1f)) {
-                Text(unit.label, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text(property.name, fontSize = 9.sp, color = SlateGray)
-            }
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }
+            Text(unit.name, modifier = Modifier.weight(1f), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            IconButton(onClick = { showStatus = true }) { Icon(Icons.Default.Settings, "Optionen", tint = DarkNavy) }
         }
+        UnitContextCard(property = property, unit = unit, onStatusClick = { showStatus = true })
         val tabs = listOf(
             UnitDetailSection.OVERVIEW to "Übersicht",
             UnitDetailSection.TENANT to "Mieter",
             UnitDetailSection.RENT to "Miete",
-            UnitDetailSection.DOCUMENTS to "Dokumente",
-            UnitDetailSection.COSTS to "Kosten"
+            UnitDetailSection.DOCUMENTS to "Dokumente"
         )
-        ScrollableTabRow(selectedTabIndex = tabs.indexOfFirst { it.first == tab }.coerceAtLeast(0)) {
-            tabs.forEach { (value, label) -> Tab(selected = tab == value, onClick = { tab = value }, text = { Text(label) }) }
+        Row(Modifier.fillMaxWidth()) {
+            tabs.forEach { (value, label) ->
+                Tab(
+                    selected = tab == value,
+                    onClick = { tab = value },
+                    modifier = Modifier.weight(1f),
+                    text = { Text(label, maxLines = 1, fontSize = 12.sp) }
+                )
+            }
         }
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             when (tab) {
@@ -599,13 +607,38 @@ private fun UnitDetailScreen(
                         }
                     }
                 }
-                UnitDetailSection.COSTS -> {
-                    if (unitReceipts.isEmpty()) item { Text("Keine Belege dieser Einheit.", color = SlateGray) }
-                    items(unitReceipts, key = { it.id }) { receipt ->
-                        Text("${receipt.datum} · ${receipt.beschreibung.ifBlank { receipt.aussteller }} · ${NumberFormatter.format(receipt.bruttobetrag)}", Modifier.fillMaxWidth().padding(vertical = 6.dp))
-                    }
-                }
+                UnitDetailSection.COSTS -> Unit
             }
+        }
+    }
+}
+
+@Composable
+private fun UnitContextCard(property: PropertyMetadata, unit: WohneinheitStatus, onStatusClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = Ui2.shape,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF))) {
+                Icon(Icons.Default.Apartment, null, Modifier.padding(12.dp).size(28.dp), tint = AccentBlue)
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("${unit.name} · ${unit.label}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(property.name, fontSize = 12.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(property.adresse, fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(
+                onClick = onStatusClick,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                border = BorderStroke(1.dp, AccentBlue)
+            ) { Text(unit.status, fontSize = 10.sp, color = AccentBlue, maxLines = 1) }
         }
     }
 }
