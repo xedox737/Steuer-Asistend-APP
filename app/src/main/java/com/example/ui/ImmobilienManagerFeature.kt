@@ -268,16 +268,18 @@ private fun PropertyDetailHost(
     }
     BackHandler { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
+        if (section != PropertySection.UNITS) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
+                }
+                Text(if (section == PropertySection.DASHBOARD) "Immobilie" else property.name, Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                if (section == PropertySection.DASHBOARD) TextButton(onClick = { edit = true }) { Text("Bearbeiten", fontSize = 14.sp, color = AccentBlue) }
             }
-            Text(if (section == PropertySection.DASHBOARD) "Immobilie" else property.name, Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            if (section == PropertySection.DASHBOARD) TextButton(onClick = { edit = true }) { Text("Bearbeiten", fontSize = 14.sp, color = AccentBlue) }
         }
         when (section) {
             PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection, onDelete = { deleteRequested = true })
-            PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments)
+            PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
@@ -486,7 +488,8 @@ private fun PropertyUnits(
     property: PropertyMetadata,
     units: List<WohneinheitStatus>,
     receipts: List<Receipt>,
-    documents: List<ManagedDocument>
+    documents: List<ManagedDocument>,
+    onBackToProperty: () -> Unit
 ) {
     var selectedUnitId by remember { mutableStateOf<String?>(null) }
     val selected = units.firstOrNull { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == selectedUnitId }
@@ -495,7 +498,12 @@ private fun PropertyUnits(
         return
     }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item { Text("Einheiten & Mietverhältnisse", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy) }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBackToProperty) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }
+                Text("Einheiten & Mietverhältnisse", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+            }
+        }
         items(units, key = { PropertyUnitScopedData.stableUnitId(property.propertyId, it) }) { unit ->
             Card(
                 modifier = Modifier.fillMaxWidth().clickable { selectedUnitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) },
@@ -576,7 +584,7 @@ private fun UnitDetailScreen(
                     selected = tab == value,
                     onClick = { tab = value },
                     modifier = Modifier.weight(1f),
-                    text = { Text(label, maxLines = 1, fontSize = 12.sp) }
+                    text = { Text(label, maxLines = 1, fontSize = 11.sp) }
                 )
             }
         }
@@ -615,6 +623,9 @@ private fun UnitDetailScreen(
 
 @Composable
 private fun UnitContextCard(property: PropertyMetadata, unit: WohneinheitStatus, onStatusClick: () -> Unit) {
+    val addressParts = property.adresse.split(',').map { it.trim() }.filter { it.isNotBlank() }
+    val street = addressParts.firstOrNull().orEmpty()
+    val postalCodeAndCity = addressParts.drop(1).joinToString(", ")
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         shape = Ui2.shape,
@@ -630,9 +641,10 @@ private fun UnitContextCard(property: PropertyMetadata, unit: WohneinheitStatus,
                 Icon(Icons.Default.Apartment, null, Modifier.padding(12.dp).size(28.dp), tint = AccentBlue)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("${unit.name} · ${unit.label}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(unit.label.ifBlank { unit.name }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(property.name, fontSize = 12.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(property.adresse, fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(street, fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (postalCodeAndCity.isNotBlank()) Text(postalCodeAndCity, fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             OutlinedButton(
                 onClick = onStatusClick,
