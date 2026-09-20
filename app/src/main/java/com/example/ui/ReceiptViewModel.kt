@@ -3343,15 +3343,39 @@ data class AiSearchUiState(
         ignoreAutoBackupSetting: Boolean = false
     ): Boolean {
         if (!ignoreAutoBackupSetting && !_autoDriveBackup.value) return false
-        val email = _googleAccountEmail.value ?: return false
-        if (!_isDriveConnected.value) return false
+        if (sharedPrefs.getBoolean("user_disconnected", false)) return false
+        val email = _googleAccountEmail.value?.takeIf(String::isNotBlank) ?: return false
         return try {
             val token = getValidToken(email)
-            val config = drivePersistenceRepository.getDriveAppConfig(token) ?: return false
-            drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
+            val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+            val config = when (initResult) {
+                is com.example.data.DriveInitializationResult.SuccessCreatedNew -> initResult.config
+                is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> initResult.config
+                is com.example.data.DriveInitializationResult.Failure -> return false
+            }
+            val synced = drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
+            if (synced) {
+                _isDriveConnected.value = true
+            }
+            synced
         } catch (e: Exception) {
             Log.w("ReceiptViewModel", "Managed document Drive sync deferred", e)
             false
+        }
+    }
+
+    fun ensureManagedDocumentReady(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            var document = repository.getManagedDocument(documentId) ?: return@launch
+
+            if (document.ocrText.isBlank() && java.io.File(document.localUri).isFile) {
+                managedDocumentService.runOcr(documentId)
+                document = repository.getManagedDocument(documentId) ?: document
+            }
+
+            if (document.driveFileId.isNullOrBlank() || document.migrationStatus != "SYNCED") {
+                tryAutoSyncManagedDocument(documentId)
+            }
         }
     }
 
