@@ -3215,11 +3215,20 @@ data class AiSearchUiState(
                     _documentOperationStatus.value = "Dokument importiert. OCR und KI-Zuordnung laufen …"
                     managedDocumentService.runOcr(result.document.documentId)
                     val analysis = managedDocumentService.analyze(result.document.documentId, property, _wohneinheitenStatus.value)
+                    val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
                     if (analysis != null) {
                         _documentAiReview.value = result.document.documentId to analysis
-                        _documentOperationStatus.value = "Erkannte Daten müssen vor der Übernahme geprüft werden."
+                        _documentOperationStatus.value = if (driveSynced) {
+                            "Dokument in Drive gesichert. Erkannte Daten müssen vor der Übernahme geprüft werden."
+                        } else {
+                            "Erkannte Daten müssen vor der Übernahme geprüft werden."
+                        }
                     } else {
-                        _documentOperationStatus.value = "Dokument und OCR-Text gespeichert. KI-Analyse derzeit nicht verfügbar."
+                        _documentOperationStatus.value = if (driveSynced) {
+                            "Dokument und OCR-Text gespeichert und in Drive gesichert. KI-Analyse derzeit nicht verfügbar."
+                        } else {
+                            "Dokument und OCR-Text gespeichert. KI-Analyse derzeit nicht verfügbar."
+                        }
                     }
                 }
                 is com.example.data.ManagedDocumentImportResult.ExactDuplicate ->
@@ -3250,7 +3259,12 @@ data class AiSearchUiState(
                         managedDocumentService.runOcr(result.document.documentId)
                         val analysis = managedDocumentService.analyze(result.document.documentId, propertyMetadata.value ?: com.example.data.PropertyMetadata(), _wohneinheitenStatus.value)
                         if (analysis != null) _documentAiReview.value = result.document.documentId to analysis
-                        _documentOperationStatus.value = "Dokument separat importiert und zur Prüfung vorbereitet."
+                        val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
+                        _documentOperationStatus.value = if (driveSynced) {
+                            "Dokument separat importiert, in Drive gesichert und zur Prüfung vorbereitet."
+                        } else {
+                            "Dokument separat importiert und zur Prüfung vorbereitet."
+                        }
                     } else _documentOperationStatus.value = "Separater Import fehlgeschlagen."
                 }
                 else -> _documentOperationStatus.value = "Import abgebrochen."
@@ -3309,6 +3323,56 @@ data class AiSearchUiState(
                 _documentAiReview.value = documentId to result
                 _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
             } else _documentOperationStatus.value = "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen."
+        }
+    }
+
+    fun syncManagedDocumentNow(documentId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _documentOperationStatus.value = "Dokument wird in Google Drive gesichert …"
+            val synced = tryAutoSyncManagedDocument(documentId, ignoreAutoBackupSetting = true)
+            _documentOperationStatus.value = if (synced) {
+                "Dokument ist in Google Drive gesichert."
+            } else {
+                "Drive-Sicherung nicht möglich. Bitte Drive-Verbindung prüfen."
+            }
+        }
+    }
+
+    private suspend fun tryAutoSyncManagedDocument(
+        documentId: String,
+        ignoreAutoBackupSetting: Boolean = false
+    ): Boolean {
+        if (!ignoreAutoBackupSetting && !_autoDriveBackup.value) return false
+        val email = _googleAccountEmail.value ?: return false
+        if (!_isDriveConnected.value) return false
+        return try {
+            val token = getValidToken(email)
+            val config = drivePersistenceRepository.getDriveAppConfig(token) ?: return false
+            drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
+        } catch (e: Exception) {
+            Log.w("ReceiptViewModel", "Managed document Drive sync deferred", e)
+            false
+        }
+    }
+
+    fun updateManagedDocumentPresentation(documentId: String, title: String, description: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val document = repository.getManagedDocument(documentId) ?: return@launch
+            val metadata = try {
+                org.json.JSONObject(document.extractedFieldsJson.ifBlank { "{}" })
+            } catch (_: Exception) {
+                org.json.JSONObject()
+            }
+            metadata.put("_displayDescription", description)
+            repository.upsertManagedDocument(
+                document.copy(
+                    title = title.ifBlank { document.title },
+                    extractedFieldsJson = metadata.toString(),
+                    updatedAt = java.time.Instant.now().toString()
+                )
+            )
+            _documentOperationStatus.value = "Titel und Kurzbeschreibung gespeichert."
+            tryAutoSyncManagedDocument(documentId)
         }
     }
 
