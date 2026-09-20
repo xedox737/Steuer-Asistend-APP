@@ -119,7 +119,7 @@ internal fun UnifiedPropertyUnitsScreen(
 
         item {
             Text("Einheiten", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-            Text("Ist-Einnahmen aus Belegen · Sollwerte aus den Mietdaten", fontSize = 12.sp, color = SlateGray)
+            Text("Mietverhältnisse, Zahlungen und Nebenkosten im Überblick", fontSize = 12.sp, color = SlateGray)
         }
 
         item {
@@ -180,7 +180,7 @@ internal fun UnifiedPropertyUnitsScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         UnifiedAnnualMetric(
                             "Ist-Einnahmen",
-                            NumberFormatter.format(totalActual),
+                            unifiedMoney(totalActual),
                             "aus Belegen",
                             Icons.Default.Assessment,
                             EmeraldGreen,
@@ -189,7 +189,7 @@ internal fun UnifiedPropertyUnitsScreen(
                         )
                         UnifiedAnnualMetric(
                             "Soll-Hochrechnung",
-                            NumberFormatter.format(totalExpected),
+                            unifiedMoney(totalExpected),
                             "aus aktuellen Verträgen",
                             Icons.Default.Payments,
                             DarkNavy,
@@ -198,7 +198,7 @@ internal fun UnifiedPropertyUnitsScreen(
                         )
                         UnifiedAnnualMetric(
                             "Differenz / Rückstand",
-                            NumberFormatter.format(totalMissing),
+                            unifiedMoney(totalMissing),
                             "offen",
                             Icons.Default.Assessment,
                             CrimsonRed,
@@ -277,9 +277,9 @@ private fun UnifiedAnnualMetric(
             ) {
                 Icon(icon, null, tint = valueColor, modifier = Modifier.padding(7.dp).size(18.dp))
             }
-            Text(title, fontSize = 9.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, overflow = TextOverflow.Clip)
-            Text(subtitle, fontSize = 8.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, fontSize = 8.sp, lineHeight = 10.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(value, fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, overflow = TextOverflow.Clip)
+            Text(subtitle, fontSize = 7.sp, lineHeight = 9.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -328,7 +328,7 @@ private fun UnifiedUnitOverviewCard(
                 UnifiedMiniMetric(
                     Icons.Default.Receipt,
                     "Nebenkosten",
-                    NumberFormatter.format(nk),
+                    unifiedMoney(nk),
                     "laut Vertrag",
                     Modifier.weight(1f)
                 )
@@ -336,7 +336,7 @@ private fun UnifiedUnitOverviewCard(
                 UnifiedMiniMetric(
                     Icons.Default.Payments,
                     "Sonstiges",
-                    NumberFormatter.format(other),
+                    unifiedMoney(other),
                     "z. B. Garage",
                     Modifier.weight(1f)
                 )
@@ -607,12 +607,12 @@ private fun UnifiedUnitDetailScreen(
             item {
                 UnifiedDetailCard("Wohneinheit im Überblick") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        UnifiedDetailMetric("Kaltmiete", NumberFormatter.format(coldRent), Icons.Default.HomeWork, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
-                        UnifiedDetailMetric("Nebenkosten", NumberFormatter.format(nk), Icons.Default.Payments, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
+                        UnifiedDetailMetric("Kaltmiete", unifiedMoney(coldRent), Icons.Default.HomeWork, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
+                        UnifiedDetailMetric("Nebenkosten", unifiedMoney(nk), Icons.Default.Payments, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        UnifiedDetailMetric("Sonstiges", NumberFormatter.format(other), Icons.Default.Receipt, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
-                        UnifiedDetailMetric("Gesamtmiete", NumberFormatter.format(totalRent), Icons.Default.Assessment, EmeraldGreen, Color(0xFFF0FAF5), Modifier.weight(1f))
+                        UnifiedDetailMetric("Sonstiges", unifiedMoney(other), Icons.Default.Receipt, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
+                        UnifiedDetailMetric("Gesamtmiete", unifiedMoney(totalRent), Icons.Default.Assessment, EmeraldGreen, Color(0xFFF0FAF5), Modifier.weight(1f))
                     }
                 }
             }
@@ -668,7 +668,7 @@ private fun UnifiedUnitDetailScreen(
                         )
                         UnifiedStatusMetric(
                             "Offener Betrag",
-                            NumberFormatter.format(month.missing),
+                            unifiedMoney(month.missing),
                             "",
                             if (month.missing > 0.01) CrimsonRed else DarkNavy,
                             if (month.missing > 0.01) Color(0xFFFFF3F3) else Color(0xFFF6F7FA),
@@ -910,6 +910,11 @@ private fun UnitRentalDetailsDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }
+
+private fun unifiedMoney(value: Double): String =
+    NumberFormatter.format(value).let { formatted ->
+        if (formatted.contains("€")) formatted else "$formatted €"
+    }
 
 private fun formatGermanDate(raw: String): String =
     runCatching {
