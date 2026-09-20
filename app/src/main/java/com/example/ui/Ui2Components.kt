@@ -121,7 +121,7 @@ internal fun Ui2ActionCard(
         ) {
             Surface(
                 modifier = Modifier.size(42.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = Ui2.iconShape,
                 color = action.color.copy(alpha = 0.14f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -149,8 +149,8 @@ internal fun Ui2Metric(
 ) {
     Surface(modifier, shape = Ui2.shape, color = color.copy(alpha = 0.08f)) {
         Row(
-            Modifier.padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            Modifier.padding(Ui2.padding),
+            horizontalArrangement = Arrangement.spacedBy(Ui2.spacing),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (showIcon) {
@@ -162,7 +162,7 @@ internal fun Ui2Metric(
                 }
                 Surface(
                     modifier = Modifier.size(36.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = Ui2.iconShape,
                     color = color.copy(alpha = 0.14f)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -205,11 +205,11 @@ internal fun Ui2Destination(
     Surface(onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
         shape = Ui2.shape, color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
-        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.padding(Ui2.padding), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
             Surface(
                 modifier = Modifier.size(40.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = Ui2.iconShape,
                 color = color.copy(alpha = 0.10f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
