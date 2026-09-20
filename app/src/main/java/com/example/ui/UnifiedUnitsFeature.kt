@@ -868,6 +868,47 @@ private fun unifiedDocumentLabel(document: ManagedDocument): String {
 }
 
 
+@Composable
+private fun UnifiedUnitStatusDialog(
+    unit: WohneinheitStatus,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    val states = listOf(
+        "Vermietet",
+        "Kündigung / Auszug geplant",
+        "Leerstand",
+        "Renovierung",
+        "Vermarktung / Inseriert",
+        "Neuvermietung geplant"
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = Ui2.shape,
+        title = { Text("Status ändern · ${unit.label.ifBlank { unit.name }}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                states.forEach { state ->
+                    OutlinedButton(
+                        onClick = { onSave(state) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = Ui2.controlShape
+                    ) {
+                        Text(state)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+private fun currentMonthLabel(): String =
+    YearMonth.now()
+        .format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN))
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
+
 private data class UnitRentalDetail(
     val paymentMethod: String = "",
     val dueDate: String = "",
