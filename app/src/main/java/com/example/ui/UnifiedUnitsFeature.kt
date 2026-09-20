@@ -60,6 +60,7 @@ import com.example.data.Receipt
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 internal fun UnifiedPropertyUnitsScreen(
@@ -94,7 +95,7 @@ internal fun UnifiedPropertyUnitsScreen(
     }
     val totalExpected = yearRows.sumOf { it.expected }
     val totalActual = yearRows.sumOf { it.actual }
-    val totalMissing = yearRows.sumOf { it.missing }
+    val totalMissing = (totalExpected - totalActual).coerceAtLeast(0.0)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -177,7 +178,7 @@ internal fun UnifiedPropertyUnitsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = AccentBlue, modifier = Modifier.size(17.dp))
                     }
 
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         UnifiedAnnualMetric(
                             "Ist-Einnahmen",
                             unifiedMoney(totalActual),
@@ -185,7 +186,7 @@ internal fun UnifiedPropertyUnitsScreen(
                             Icons.Default.Assessment,
                             EmeraldGreen,
                             Color(0xFFF0FAF5),
-                            Modifier.weight(1f)
+                            Modifier.fillMaxWidth()
                         )
                         UnifiedAnnualMetric(
                             "Soll-Hochrechnung",
@@ -194,7 +195,7 @@ internal fun UnifiedPropertyUnitsScreen(
                             Icons.Default.Payments,
                             DarkNavy,
                             Color(0xFFF3F7FD),
-                            Modifier.weight(1f)
+                            Modifier.fillMaxWidth()
                         )
                         UnifiedAnnualMetric(
                             "Differenz / Rückstand",
@@ -203,7 +204,7 @@ internal fun UnifiedPropertyUnitsScreen(
                             Icons.Default.Assessment,
                             CrimsonRed,
                             Color(0xFFFFF3F3),
-                            Modifier.weight(1f)
+                            Modifier.fillMaxWidth()
                         )
                     }
 
@@ -270,16 +271,22 @@ private fun UnifiedAnnualMetric(
     modifier: Modifier
 ) {
     Card(modifier = modifier, shape = Ui2.controlShape, colors = CardDefaults.cardColors(containerColor = background)) {
-        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Card(
                 shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.55f))
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.60f))
             ) {
-                Icon(icon, null, tint = valueColor, modifier = Modifier.padding(7.dp).size(18.dp))
+                Icon(icon, null, tint = valueColor, modifier = Modifier.padding(9.dp).size(20.dp))
             }
-            Text(title, fontSize = 8.sp, lineHeight = 10.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(value, fontSize = 11.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, overflow = TextOverflow.Clip)
-            Text(subtitle, fontSize = 7.sp, lineHeight = 9.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, fontSize = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, fontSize = 9.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
         }
     }
 }
@@ -320,7 +327,7 @@ private fun UnifiedUnitOverviewCard(
                 UnifiedMiniMetric(
                     Icons.Default.HomeWork,
                     "Monatliches Soll",
-                    NumberFormatter.format(unit.kaltmiete),
+                    unifiedMoney(unit.kaltmiete),
                     "Kaltmiete",
                     Modifier.weight(1f)
                 )
@@ -364,7 +371,7 @@ private fun UnifiedUnitOverviewCard(
                     }
                 }
                 if (missing > 0.01) {
-                    Text("Offener Betrag aktuell: ${NumberFormatter.format(missing)}", fontSize = 9.sp, color = CrimsonRed)
+                    Text("${currentMonthLabel()}: ${unifiedMoney(missing)} offen", fontSize = 9.sp, color = CrimsonRed)
                 }
             } else {
                 OutlinedButton(onClick = onOpen, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
@@ -400,8 +407,9 @@ private fun UnifiedMiniMetric(
 }
 
 @Composable
-private fun UnifiedStatusPill(label: String, positive: Boolean) {
+private fun UnifiedStatusPill(label: String, positive: Boolean, onClick: (() -> Unit)? = null) {
     Card(
+        modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (positive) Color(0xFFE8F8EF) else Color(0xFFFFEEEE)
@@ -432,10 +440,11 @@ private fun UnifiedUnitDetailScreen(
     var showDocuments by remember { mutableStateOf(false) }
     var selectedDocumentId by remember { mutableStateOf<String?>(null) }
     var editRentalDetails by remember { mutableStateOf(false) }
+    var showStatusDialog by remember { mutableStateOf(false) }
     var detailsVersion by remember { mutableIntStateOf(0) }
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
-    val unitReceipts = receipts.filter { it.wohneinheit == unit.name }
+    val unitReceipts = receipts.filter { it.wohneinheit == unit.name || it.wohneinheit == unit.label }
     val unitDocs = documents.filter { it.unitId == unitId }
     val periods = remember(unitId, unit, detailsVersion) {
         TenantHistoryStore.ensureCurrentPeriod(
@@ -456,6 +465,7 @@ private fun UnifiedUnitDetailScreen(
     val coldRent = activePeriod?.kaltmiete ?: unit.kaltmiete
     val totalRent = coldRent + nk + other
     val lastPayment = unitReceipts.filter { isRentalIncomeReceipt(it) }.maxByOrNull { it.datum }
+    val paymentMonthLabel = currentMonthLabel()
     val paidOnTime = month.expected > 0.01 && month.missing <= 0.01
 
     val selectedDocument = selectedDocumentId?.let { id -> unitDocs.firstOrNull { it.documentId == id } }
@@ -560,6 +570,17 @@ private fun UnifiedUnitDetailScreen(
         )
     }
 
+    if (showStatusDialog) {
+        UnifiedUnitStatusDialog(
+            unit = unit,
+            onDismiss = { showStatusDialog = false },
+            onSave = { status ->
+                viewModel.updateWohneinheit(unit.copy(status = status))
+                showStatusDialog = false
+            }
+        )
+    }
+
     if (editRentalDetails) {
         UnitRentalDetailsDialog(
             initial = extraDetails,
@@ -593,7 +614,8 @@ private fun UnifiedUnitDetailScreen(
                     Text(unit.mieter.ifBlank { "Kein Mieter" }, fontSize = 12.sp, color = SlateGray)
                     UnifiedStatusPill(
                         if (unit.status == "Vermietet") "Vermietet" else unit.status,
-                        unit.status == "Vermietet"
+                        unit.status == "Vermietet",
+                        onClick = { showStatusDialog = true }
                     )
                 }
             }
@@ -656,7 +678,7 @@ private fun UnifiedUnitDetailScreen(
             }
 
             item {
-                UnifiedDetailCard("Zahlungsstatus") {
+                UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         UnifiedStatusMetric(
                             "Letzte Zahlung",
@@ -669,7 +691,7 @@ private fun UnifiedUnitDetailScreen(
                         UnifiedStatusMetric(
                             "Offener Betrag",
                             unifiedMoney(month.missing),
-                            "",
+                            paymentMonthLabel,
                             if (month.missing > 0.01) CrimsonRed else DarkNavy,
                             if (month.missing > 0.01) Color(0xFFFFF3F3) else Color(0xFFF6F7FA),
                             Modifier.weight(1f)
@@ -686,7 +708,7 @@ private fun UnifiedUnitDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("i", color = AccentBlue, fontWeight = FontWeight.Bold)
                         Text(
-                            "Monatscheck zeigt Ist-Zahlungen im Vergleich zum Soll.",
+                            "Monatscheck zeigt Ist-Zahlungen für $paymentMonthLabel im Vergleich zum Soll.",
                             fontSize = 10.sp,
                             color = SlateGray
                         )
@@ -713,46 +735,45 @@ private fun UnifiedUnitDetailScreen(
                             }
                         }
                     }
-                    OutlinedButton(
-                        onClick = { showDocuments = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = Ui2.controlShape
-                    ) {
-                        Icon(Icons.Default.Description, null)
-                        Text(" Alle Dokumente")
+                    if (unitDocs.size > 3 || unitDocs.isEmpty()) {
+                        OutlinedButton(
+                            onClick = { showDocuments = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
+                        ) {
+                            Icon(Icons.Default.Description, null)
+                            Text(if (unitDocs.isEmpty()) " Dokumente öffnen" else " Alle Dokumente")
+                        }
                     }
                 }
             }
 
             item {
                 UnifiedDetailCard("Aktionen") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         OutlinedButton(
                             onClick = { showMonthCheck = true },
-                            modifier = Modifier.weight(1f),
-                            shape = Ui2.controlShape,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
                         ) {
                             Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(17.dp))
-                            Text(" Monatscheck", fontSize = 10.sp, maxLines = 1)
+                            Text(" Monatscheck")
                         }
                         OutlinedButton(
                             onClick = { showHistory = true },
-                            modifier = Modifier.weight(1f),
-                            shape = Ui2.controlShape,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
                         ) {
                             Icon(Icons.Default.Settings, null, modifier = Modifier.size(17.dp))
-                            Text(" Mieterwechsel", fontSize = 10.sp, maxLines = 1)
+                            Text(" Mieterwechsel")
                         }
                         OutlinedButton(
                             onClick = { showDocuments = true },
-                            modifier = Modifier.weight(1f),
-                            shape = Ui2.controlShape,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
                         ) {
                             Icon(Icons.Default.Description, null, modifier = Modifier.size(17.dp))
-                            Text(" Dokumente öffnen", fontSize = 9.sp, maxLines = 1)
+                            Text(" Dokumente öffnen")
                         }
                     }
                 }
@@ -835,14 +856,58 @@ private fun UnifiedStatusMetric(
 
 private fun unifiedDocumentLabel(document: ManagedDocument): String {
     val label = documentTypeLabel(document)
+    val searchable = listOf(document.title, document.originalFilename, document.ocrText.take(400)).joinToString(" ")
     return when {
-        label.contains("Mietvertrag", true) -> "Mietvertrag"
-        label.contains("Übergabe", true) -> "Übergabeprotokoll"
-        label.contains("Rechnung", true) -> "Nebenkostenabrechnung"
+        label.contains("Mietvertrag", true) || searchable.contains("mietvertrag", true) -> "Mietvertrag"
+        label.contains("Übergabe", true) || searchable.contains("übergabe", true) -> "Übergabeprotokoll"
+        searchable.contains("nebenkosten", true) || searchable.contains("betriebskosten", true) -> "Nebenkostenabrechnung"
+        label.contains("Rechnung", true) -> "Rechnung"
+        label == "Unterlage" -> documentDisplayTitle(document, null).take(28)
         else -> label
     }
 }
 
+
+@Composable
+private fun UnifiedUnitStatusDialog(
+    unit: WohneinheitStatus,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    val states = listOf(
+        "Vermietet",
+        "Kündigung / Auszug geplant",
+        "Leerstand",
+        "Renovierung",
+        "Vermarktung / Inseriert",
+        "Neuvermietung geplant"
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = Ui2.shape,
+        title = { Text("Status ändern · ${unit.label.ifBlank { unit.name }}", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                states.forEach { state ->
+                    OutlinedButton(
+                        onClick = { onSave(state) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = Ui2.controlShape
+                    ) {
+                        Text(state)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+private fun currentMonthLabel(): String =
+    YearMonth.now()
+        .format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN))
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
 
 private data class UnitRentalDetail(
     val paymentMethod: String = "",
