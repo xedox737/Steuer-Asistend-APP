@@ -209,7 +209,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                         onValueChange = { searchText = it },
                         modifier = Modifier.weight(1f).height(52.dp),
                         singleLine = true,
-                        shape = RoundedCornerShape(26.dp),
+                        shape = Ui2.controlShape,
                         placeholder = { Text("Buchungen durchsuchen …") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suche") }
                     )
@@ -368,7 +368,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             border = BorderStroke(1.dp, BorderColor),
-                            shape = RoundedCornerShape(14.dp)
+                            shape = Ui2.shape
                         ) {
                             Column {
                                 group.transactions.forEachIndexed { index, transaction ->
