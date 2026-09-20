@@ -44,6 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -146,6 +147,9 @@ fun DocumentManagementScreen(
     val selectedDocument = selectedDocumentId?.let { id -> documents.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
         BackHandler { selectedDocumentId = null }
+        LaunchedEffect(selectedDocument.documentId) {
+            viewModel.ensureManagedDocumentReady(selectedDocument.documentId)
+        }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = property,
