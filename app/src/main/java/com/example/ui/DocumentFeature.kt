@@ -143,7 +143,7 @@ fun DocumentManagementScreen(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
         if (propertyScoped && onBack != null) {
             item {
@@ -165,28 +165,31 @@ fun DocumentManagementScreen(
                     fontSize = 13.sp,
                     color = SlateGray
                 )
-                OutlinedButton(onClick = { activeFilter = "Alle" }) { Text("Alle Dokumente") }
+                OutlinedButton(onClick = { activeFilter = "Alle" }, shape = Ui2.controlShape) { Text("Alle Dokumente") }
             }
         }
         item {
             Card(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
-                border = BorderStroke(1.dp, BorderColor)
+                border = BorderStroke(1.dp, BorderColor),
+                shape = Ui2.shape
             ) {
                 Row(
-                    Modifier.fillMaxWidth().padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    Modifier.fillMaxWidth().padding(Ui2.padding),
+                    horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)
                 ) {
                     Button(
                         onClick = { assignmentRequest = "import" },
                         modifier = Modifier.weight(1f).testTag("document_import_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
+                        shape = Ui2.controlShape
                     ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
                     Button(
                         onClick = { assignmentRequest = "scan" },
                         modifier = Modifier.weight(1f).testTag("document_scan_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFE8F1FF), contentColor = AccentBlue)
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFE8F1FF), contentColor = AccentBlue),
+                        shape = Ui2.controlShape
                     ) { Icon(Icons.Default.Description, null); Text(" Scannen") }
                 }
             }
@@ -195,12 +198,13 @@ fun DocumentManagementScreen(
             Card(
                 Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFF0F4FF)),
-                border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.2f))
+                border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.2f)),
+                shape = Ui2.shape
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.AutoAwesome, null, tint = androidx.compose.ui.graphics.Color(0xFF7B3FF2))
-                        Column(Modifier.padding(start = 12.dp)) {
+                        Column(Modifier.padding(start = Ui2.padding)) {
                             Text("KI-Dokumentenanalyse", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = DarkNavy)
                             Text("Inhalt erkennen, Dokumenttyp zuordnen und Daten übernehmen", fontSize = 12.sp, color = SlateGray)
                         }
@@ -211,7 +215,8 @@ fun DocumentManagementScreen(
                             if (document == null) viewModel.setDocumentOperationStatus("Bitte zuerst ein Dokument importieren.")
                             else viewModel.analyzeManagedDocument(document.documentId)
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = Ui2.controlShape
                     ) { Icon(Icons.Default.AutoAwesome, null); Text(" Dokument analysieren") }
                 }
             }
@@ -223,6 +228,7 @@ fun DocumentManagementScreen(
                 label = { Text("Dokumente durchsuchen") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 singleLine = true,
+                shape = Ui2.controlShape,
                 modifier = Modifier.fillMaxWidth().testTag("document_search_query")
             )
         }
@@ -230,9 +236,9 @@ fun DocumentManagementScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("Alle", "Verträge", "Rechnungen", "Unterlagen").forEach { label ->
                     if (activeFilter == label) {
-                        Button(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
+                        Button(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), shape = Ui2.controlShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
                     } else {
-                        OutlinedButton(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
+                        OutlinedButton(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), shape = Ui2.controlShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
                     }
                 }
             }
@@ -248,11 +254,12 @@ fun DocumentManagementScreen(
                 Card(
                     Modifier.fillMaxWidth().clickable { selected = document }.testTag("document_${document.documentId}"),
                     colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
-                    border = BorderStroke(1.dp, BorderColor)
+                    border = BorderStroke(1.dp, BorderColor),
+                    shape = Ui2.shape
                 ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(Ui2.padding), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Description, null, tint = AccentBlue)
-                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Column(Modifier.weight(1f).padding(start = Ui2.padding)) {
                             Text(document.title.ifBlank { document.storedFilename }, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
                             Text("${document.documentDate} · ${document.documentType.lowercase().replaceFirstChar { it.titlecase() }}", fontSize = 11.sp, color = SlateGray)
                         }
@@ -271,11 +278,12 @@ fun DocumentManagementScreen(
     assignmentRequest?.let { request ->
         AlertDialog(
             onDismissRequest = { assignmentRequest = null },
+            shape = Ui2.shape,
             title = { Text("Dokument zuordnen") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Wähle, ob das Dokument zum Gesamtobjekt oder zu einer Wohnung gehört.", fontSize = 12.sp, color = SlateGray)
-                    OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
                         Text(if (importUnitId.isBlank()) "Gesamtobjekt" else units.firstOrNull { PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), it) == importUnitId }?.label ?: "Wohneinheit")
                     }
                     DropdownMenu(expanded = importUnitMenuOpen, onDismissRequest = { importUnitMenuOpen = false }) {
@@ -295,7 +303,7 @@ fun DocumentManagementScreen(
                     } else {
                         startDocumentScanner()
                     }
-                }) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
+                }, shape = Ui2.controlShape) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
             },
             dismissButton = { TextButton(onClick = { assignmentRequest = null }) { Text("Abbrechen") } }
         )
@@ -304,6 +312,7 @@ fun DocumentManagementScreen(
     duplicate?.let { pair ->
         AlertDialog(
             onDismissRequest = { viewModel.resolvePossibleDocumentDuplicate(false) },
+            shape = Ui2.shape,
             title = { Text("Mögliche Dublette gefunden") },
             text = { Text("${pair.first.originalFilename} ähnelt dem vorhandenen Dokument ${pair.second.title}. Das Original wird nicht automatisch dupliziert.") },
             confirmButton = { TextButton(onClick = { viewModel.resolvePossibleDocumentDuplicate(true) }) { Text("Vorhandenes verwenden") } },
@@ -317,9 +326,10 @@ fun DocumentManagementScreen(
     migrationPreview?.let { preview ->
         AlertDialog(
             onDismissRequest = viewModel::dismissDocumentMigrationPreview,
+            shape = Ui2.shape,
             title = { Text("Dokumentenablage aktualisieren") },
             text = { Text("Insgesamt geprüft: ${preview.found}\nKorrekt abgelegt: ${preview.alreadyNew}\nLegacy-Struktur: ${preview.inventoryItems.count { it.status == com.example.data.DriveDocumentInventoryStatus.LEGACY_LAYOUT }}\nWerden verschoben: ${preview.willMove}\nWerden umbenannt: ${preview.willRename}\nMögliche Dubletten: ${preview.possibleDuplicates}\nVerwaiste App-Dateien: ${preview.orphanedAppFiles}\nFehlende lokale Referenzen: ${preview.missingLocalReferences}\nIndex-Konflikte: ${preview.indexConflicts}\nManuell prüfen: ${preview.manualReview}\n\nEs werden keine Originale gelöscht oder kopiert. Unklare Dateien bleiben unverändert. Drive-Datei-ID und Inhalt werden nach jeder bestätigten Änderung geprüft.") },
-            confirmButton = { Button(onClick = viewModel::confirmDocumentStorageMigration, modifier = Modifier.testTag("confirm_document_migration")) { Text("Migration bestätigen") } },
+            confirmButton = { Button(onClick = viewModel::confirmDocumentStorageMigration, modifier = Modifier.testTag("confirm_document_migration"), shape = Ui2.controlShape) { Text("Migration bestätigen") } },
             dismissButton = { TextButton(onClick = viewModel::dismissDocumentMigrationPreview) { Text("Abbrechen") } }
         )
     }
@@ -330,6 +340,7 @@ private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptVi
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = Ui2.shape,
         title = { Text(document.title.ifBlank { "Dokumentdetail" }) },
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -340,17 +351,17 @@ private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptVi
                 DetailRow("Confidence", "${(document.aiConfidence * 100).toInt()} %"); DetailRow("Prüfstatus", document.reviewStatus)
                 if (document.extractedFieldsJson.isNotBlank()) { HorizontalDivider(); Text("Extrahierte Daten", fontWeight = FontWeight.Bold); Text(document.extractedFieldsJson, fontSize = 10.sp) }
                 if (document.ocrText.isNotBlank()) { HorizontalDivider(); Text("Erkannter Text", fontWeight = FontWeight.Bold); Text(document.ocrText.take(4000), fontSize = 10.sp) }
-                OutlinedButton(onClick = { viewModel.runDocumentOcr(document.documentId) }, modifier = Modifier.fillMaxWidth()) { Text("OCR erneut ausführen") }
-                Button(onClick = { viewModel.analyzeManagedDocument(document.documentId) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.AutoAwesome, null); Text(" Erneut analysieren") }
+                OutlinedButton(onClick = { viewModel.runDocumentOcr(document.documentId) }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("OCR erneut ausführen") }
+                Button(onClick = { viewModel.analyzeManagedDocument(document.documentId) }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Icon(Icons.Default.AutoAwesome, null); Text(" Erneut analysieren") }
                 OutlinedButton(onClick = {
                     val file = File(document.localUri)
                     if (file.exists()) {
                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
                         context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, document.mimeType).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
                     }
-                }, modifier = Modifier.fillMaxWidth()) { Text("Original öffnen") }
+                }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Original öffnen") }
                 if (!File(document.localUri).isFile && !document.driveFileId.isNullOrBlank()) {
-                    OutlinedButton(onClick = { viewModel.downloadManagedDocument(document.documentId) }, modifier = Modifier.fillMaxWidth()) { Text("Original aus Drive laden") }
+                    OutlinedButton(onClick = { viewModel.downloadManagedDocument(document.documentId) }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Original aus Drive laden") }
                 }
             }
         },
@@ -375,21 +386,22 @@ private fun DocumentAiReviewDialog(document: ManagedDocument, result: com.exampl
     var typeMenu by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = viewModel::dismissDocumentAiReview,
+        shape = Ui2.shape,
         title = { Text("Erkannte Daten prüfen") },
         text = {
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("KI-Vorschlag ${(result.confidence * 100).toInt()} %. Nichts wird ohne Auswahl übernommen.", fontSize = 11.sp, color = SlateGray)
-                OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth()) { Text("Dokumenttyp: ${selectedType.name}") }
+                OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${selectedType.name}") }
                 DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(type.name) }, { selectedType = type; typeMenu = false }) } }
-                OutlinedTextField(selectedDate, { selectedDate = it }, label = { Text("Dokumentdatum") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(selectedUnitId, { selectedUnitId = it }, label = { Text("Wohneinheit-ID (optional)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(selectedDate, { selectedDate = it }, label = { Text("Dokumentdatum") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
+                OutlinedTextField(selectedUnitId, { selectedUnitId = it }, label = { Text("Wohneinheit-ID (optional)") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
                 proposals.forEachIndexed { index, proposal ->
-                    Card(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor)) {
-                        Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Card(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), shape = Ui2.shape) {
+                        Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                             Text(proposal.label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Text("Erkannt: ${proposal.detectedValue} • ${(proposal.confidence * 100).toInt()} %${proposal.sourcePage.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", fontSize = 10.sp)
                             if (proposal.currentValue.isNotBlank()) Text("Aktuell: ${proposal.currentValue}", fontSize = 10.sp, color = SlateGray)
-                            OutlinedTextField(proposal.editedValue ?: proposal.detectedValue, { value -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(editedValue = value) } }, label = { Text("Geprüfter Wert") }, modifier = Modifier.fillMaxWidth())
+                            OutlinedTextField(proposal.editedValue ?: proposal.detectedValue, { value -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(editedValue = value) } }, label = { Text("Geprüfter Wert") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(proposal.decision == DocumentFieldDecision.UEBERNEHMEN, { checked -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(decision = if (checked) DocumentFieldDecision.UEBERNEHMEN else DocumentFieldDecision.AUSSTEHEND) } })
                                 Text("Übernehmen", fontSize = 11.sp)
@@ -401,7 +413,7 @@ private fun DocumentAiReviewDialog(document: ManagedDocument, result: com.exampl
                 }
             }
         },
-        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.ifBlank { null }, proposals) }, modifier = Modifier.testTag("confirm_document_ai_review")) { Text("Geprüfte Werte übernehmen") } },
+        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.ifBlank { null }, proposals) }, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
         dismissButton = { TextButton(onClick = viewModel::dismissDocumentAiReview) { Text("Abbrechen") } }
     )
 }
