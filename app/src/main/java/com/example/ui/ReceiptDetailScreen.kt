@@ -118,9 +118,19 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
 
     Dialog(
         onDismissRequest = { if (editing) editing = false else onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = true
+        )
     ) {
-        ReceiptDetailLayout(
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding(),
+            color = Color(0xFFF5F8FC)
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                ReceiptDetailLayout(
             receipt = current,
             propertyName = properties.firstOrNull { it.propertyId == current.propertyId }?.name ?: "Nicht zugeordnet",
             entries = entries,
@@ -156,8 +166,10 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
         if (delete) ReceiptDeleteConfirmationDialog({ delete = false }, {
             delete = false; deletionRequested = true; viewModel.deleteReceipt(current.id)
         })
-        pendingRepair?.let { (file, validation) ->
-            ConfirmRepairDocumentDialog(current, file, validation, viewModel) { pendingRepair = null }
+                pendingRepair?.let { (file, validation) ->
+                    ConfirmRepairDocumentDialog(current, file, validation, viewModel) { pendingRepair = null }
+                }
+            }
         }
     }
 }
@@ -207,24 +219,74 @@ internal fun ReceiptDetailLayout(
         modifier = Modifier.fillMaxSize().testTag("receipt_detail_screen"),
         containerColor = Color(0xFFF5F8FC),
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF5F8FC)),
-                title = { Text(if (editing) "Beleg bearbeiten" else "Belegdetails", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = navy) },
-                navigationIcon = { IconButton(onClick = { if (editing) onEditingChange(false) else onBack() }) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = navy)
-                } },
-                actions = {
-                    Box {
-                        IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Weitere Belegfunktionen", tint = navy) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Weitere Belegdaten") }, onClick = { menu = false; additionalExpanded = true })
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
+                    title = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(44.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = AccentBlue.copy(alpha = 0.12f)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Home,
+                                        contentDescription = null,
+                                        tint = AccentBlue,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text("ImmoPilot", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 25.sp)
+                                Text("Immobilien. Finanzen. Steuern.", color = SlateGray, fontSize = 11.sp)
+                            }
                         }
                     }
-                }
-            )
+                )
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFF5F8FC)),
+                    title = {
+                        Text(
+                            if (editing) "Beleg bearbeiten" else "Belegdetails",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = navy
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { if (editing) onEditingChange(false) else onBack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = navy)
+                        }
+                    },
+                    actions = {
+                        Box {
+                            IconButton(onClick = { menu = true }) {
+                                Icon(Icons.Default.MoreVert, "Weitere Belegfunktionen", tint = navy)
+                            }
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Weitere Belegdaten") },
+                                    onClick = { menu = false; additionalExpanded = true }
+                                )
+                            }
+                        }
+                    }
+                )
+            }
         },
         bottomBar = {
-            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+            NavigationBar(
+                containerColor = Color.White,
+                tonalElevation = 0.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("receipt_detail_bottom_navigation")
+            ) {
                 listOf(
                     Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
                     Triple(AppScreen.RECEIPTS_LIST, Icons.Default.ReceiptLong, "Belege"),

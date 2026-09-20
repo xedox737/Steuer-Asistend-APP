@@ -95,6 +95,8 @@ class ReceiptDetailComposeTest {
 
     @Test fun additionalDataStayOnOneDetailPage() {
         show()
+        ui.onNodeWithText("ImmoPilot").assertExists()
+        ui.onNodeWithText("Immobilien. Finanzen. Steuern.").assertExists()
         ui.onAllNodesWithText("Belegdetails").assertCountEquals(1)
         ui.onNodeWithText("Beleg Aktionen").assertDoesNotExist()
         ui.onNodeWithTag("receipt_more_data").performScrollTo().performClick()
