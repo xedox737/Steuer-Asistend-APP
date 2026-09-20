@@ -263,7 +263,7 @@ private fun PropertyDetailHost(
     var deleteRequested by remember(property.propertyId) { mutableStateOf(false) }
     BackHandler { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }
     Column(Modifier.fillMaxSize()) {
-        if (section != PropertySection.UNITS) {
+        if (section != PropertySection.UNITS && section != PropertySection.DOCUMENTS) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
@@ -284,7 +284,7 @@ private fun PropertyDetailHost(
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
             PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true) } }
             PropertySection.RENOVATIONS -> PropertyRenovations(propertyReceipts)
-            PropertySection.DOCUMENTS -> DocumentManagementScreen(viewModel, propertyScoped = true)
+            PropertySection.DOCUMENTS -> DocumentManagementScreen(viewModel, propertyScoped = true, onBack = { onSection(PropertySection.DASHBOARD) })
             PropertySection.TAX -> AnnualTaxAssistantScreen(viewModel)
             PropertySection.TASKS -> PropertyTasksScreen(property.propertyId, units)
             PropertySection.UTILITIES_PREP -> PropertyUtilitiesPreparation()
