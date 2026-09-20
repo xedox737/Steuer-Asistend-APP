@@ -183,23 +183,26 @@ internal fun ManagedDocumentDetailScreen(
     val localAvailable = remember(document.localUri, document.updatedAt) { File(document.localUri).isFile }
     val driveSynced = !document.driveFileId.isNullOrBlank() && document.migrationStatus == "SYNCED"
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text("Dokumentendetail", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                    Text(property?.name ?: "Immobilie", fontSize = 12.sp, color = SlateGray)
-                }
-                Icon(Icons.Default.MoreVert, null, tint = DarkNavy)
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
             }
+            Column(Modifier.weight(1f)) {
+                Text("Dokumentendetail", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(property?.name ?: "Immobilie", fontSize = 12.sp, color = SlateGray)
+            }
+            Icon(Icons.Default.MoreVert, null, tint = DarkNavy)
         }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
+        ) {
         item {
             Card(
                 Modifier.fillMaxWidth(),
@@ -208,14 +211,14 @@ internal fun ManagedDocumentDetailScreen(
                 border = BorderStroke(1.dp, BorderColor)
             ) {
                 Box(
-                    Modifier.fillMaxWidth().height(260.dp).padding(Ui2.padding),
+                    Modifier.fillMaxWidth().height(230.dp).padding(Ui2.padding),
                     contentAlignment = Alignment.Center
                 ) {
                     preview.bitmap?.let { bitmap ->
                         Image(
                             bitmap.asImageBitmap(),
                             "Dokumentvorschau",
-                            modifier = Modifier.height(238.dp)
+                            modifier = Modifier.height(208.dp)
                                 .aspectRatio(bitmap.width.toFloat() / bitmap.height.toFloat())
                                 .clip(Ui2.controlShape),
                             contentScale = ContentScale.Fit
@@ -231,7 +234,7 @@ internal fun ManagedDocumentDetailScreen(
                             color = DarkNavy.copy(alpha = 0.72f)
                         ) {
                             Text(
-                                "1 / \${preview.pageCount}",
+                                "1 / ${preview.pageCount}",
                                 color = androidx.compose.ui.graphics.Color.White,
                                 fontSize = 11.sp,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -315,34 +318,42 @@ internal fun ManagedDocumentDetailScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                     Button(
                         onClick = { if (localAvailable) openManagedDocument(context, document) else onDownload() },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(46.dp),
                         shape = Ui2.controlShape,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
                     ) {
                         Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(18.dp))
-                        Text(" Original öffnen", fontSize = 11.sp)
+                        Text(" Original öffnen", fontSize = 11.sp, maxLines = 1)
                     }
                     OutlinedButton(
                         onClick = { if (localAvailable) openManagedDocument(context, document) else onDownload() },
-                        modifier = Modifier.weight(1f),
-                        shape = Ui2.controlShape
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        shape = Ui2.controlShape,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(Icons.Default.Description, null, modifier = Modifier.size(18.dp))
-                        Text(if (document.mimeType == "application/pdf") " PDF ansehen" else " Vorschau", fontSize = 11.sp)
+                        Text(if (document.mimeType == "application/pdf") " PDF ansehen" else " Vorschau", fontSize = 11.sp, maxLines = 1)
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
-                    OutlinedButton(onClick = onAnalyze, modifier = Modifier.weight(1f), shape = Ui2.controlShape) {
+                    OutlinedButton(
+                        onClick = onAnalyze,
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        shape = Ui2.controlShape,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Icon(Icons.Default.Sync, null, modifier = Modifier.size(18.dp))
-                        Text(" Erneut analysieren", fontSize = 11.sp)
+                        Text(" Neu analysieren", fontSize = 11.sp, maxLines = 1)
                     }
                     OutlinedButton(
                         onClick = { editPresentation = true },
-                        modifier = Modifier.weight(1f),
-                        shape = Ui2.controlShape
+                        modifier = Modifier.weight(1f).height(46.dp),
+                        shape = Ui2.controlShape,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp))
-                        Text(" Beschreibung", fontSize = 11.sp)
+                        Text(" Beschreibung", fontSize = 11.sp, maxLines = 1)
                     }
                 }
                 if (!driveSynced) {
@@ -368,7 +379,7 @@ internal fun ManagedDocumentDetailScreen(
                     }
                     Text(
                         if (showText) document.ocrText.ifBlank { "Noch kein Text erkannt." }
-                        else document.ocrText.ifBlank { "Noch kein Text erkannt." }.replace("\\n", " ").take(140),
+                        else document.ocrText.ifBlank { "Noch kein Text erkannt." }.replace("\n", " ").take(140),
                         color = SlateGray,
                         fontSize = 11.sp,
                         maxLines = if (showText) Int.MAX_VALUE else 2,
@@ -378,6 +389,7 @@ internal fun ManagedDocumentDetailScreen(
             }
         }
         item { Spacer(Modifier.height(8.dp)) }
+        }
     }
 
     if (editPresentation) {
@@ -566,10 +578,14 @@ internal fun documentDisplayDescription(document: ManagedDocument, property: Pro
                 compactOcr.contains("Einfamilienhaus", true) -> "Einfamilienhaus"
                 else -> property?.name?.substringBefore(" (") ?: "Immobilie"
             }
-            buildString {
-                append(objectType)
-                place?.let { append(" in $it") }
-                append(". Objekt- und Eckdaten erkannt.")
+            if (compactOcr.isBlank()) {
+                "Exposé für $objectType. Texterkennung wird vorbereitet."
+            } else {
+                buildString {
+                    append(objectType)
+                    place?.let { append(" in $it") }
+                    append(". Objekt- und Eckdaten erkannt.")
+                }
             }
         }
         "Mietvertrag" -> "Mietvertrag für $assignment mit erkannten Vertrags- und Mietdaten."
@@ -620,17 +636,18 @@ private fun customDocumentDescription(document: ManagedDocument): String? = runC
 }.getOrNull()
 
 private fun extractedDocumentFields(document: ManagedDocument): List<Pair<String, String>> {
-    val json = runCatching { JSONObject(document.extractedFieldsJson.ifBlank { "{}" }) }.getOrNull() ?: return emptyList()
     val result = mutableListOf<Pair<String, String>>()
-    val fields = json.optJSONArray("fields")
+    val json = runCatching { JSONObject(document.extractedFieldsJson.ifBlank { "{}" }) }.getOrNull()
+
+    val fields = json?.optJSONArray("fields")
     if (fields != null) {
         for (index in 0 until fields.length()) {
             val field = fields.optJSONObject(index) ?: continue
             val label = field.optString("label").ifBlank { field.optString("key") }
-            val value = field.optString("value")
+            val value = field.optString("value").ifBlank { field.optString("detectedValue") }
             if (label.isNotBlank() && value.isNotBlank()) result += label to value
         }
-    } else {
+    } else if (json != null) {
         val keys = json.keys()
         while (keys.hasNext()) {
             val key = keys.next()
@@ -640,12 +657,30 @@ private fun extractedDocumentFields(document: ManagedDocument): List<Pair<String
         }
     }
     if (result.isNotEmpty()) return result.distinctBy { it.first.lowercase() }
-    val compact = document.ocrText.replace(Regex("\\s+"), " ")
-    Regex("\\\\b(\\\\d{5}\\\\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)").find(compact)?.groupValues?.getOrNull(1)?.let {
-        result += "Ort" to it
+
+    val compact = document.ocrText.replace(Regex("\\s+"), " ").trim()
+    if (compact.isBlank()) return emptyList()
+
+    Regex("\\b(\\d{5}\\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)")
+        .find(compact)?.groupValues?.getOrNull(1)?.let { result += "Ort" to it }
+
+    when {
+        compact.contains("Mehrfamilienhaus", true) -> result += "Objektart" to "Mehrfamilienhaus"
+        compact.contains("Einfamilienhaus", true) -> result += "Objektart" to "Einfamilienhaus"
     }
-    if (compact.contains("Mehrfamilienhaus", true)) result += "Objektart" to "Mehrfamilienhaus"
-    return result
+
+    Regex("Kaufpreis\\s*:?\\s*([0-9.]+(?:,[0-9]{1,2})?\\s*€?)", RegexOption.IGNORE_CASE)
+        .find(compact)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { result += "Kaufpreis" to it.trim() }
+    Regex("Wohnfläche\\s*:?\\s*(?:ca\\.?\\s*)?([0-9.,]+\\s*m²)", RegexOption.IGNORE_CASE)
+        .find(compact)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { result += "Wohnfläche" to it.trim() }
+    Regex("Zimmer\\s*:?\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+        .find(compact)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { result += "Zimmer" to it.trim() }
+    Regex("(?:Wohnungen|Wohneinheiten)\\s*:?\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+        .find(compact)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { result += "Wohnungen" to it.trim() }
+    Regex("Garagen\\s*:?\\s*([0-9]+)", RegexOption.IGNORE_CASE)
+        .find(compact)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { result += "Garagen" to it.trim() }
+
+    return result.distinctBy { it.first.lowercase() }
 }
 
 private fun prettyFieldLabel(key: String): String = key
