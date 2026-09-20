@@ -118,9 +118,19 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
 
     Dialog(
         onDismissRequest = { if (editing) editing = false else onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = true
+        )
     ) {
-        ReceiptDetailLayout(
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding(),
+            color = Color(0xFFF5F8FC)
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                ReceiptDetailLayout(
             receipt = current,
             propertyName = properties.firstOrNull { it.propertyId == current.propertyId }?.name ?: "Nicht zugeordnet",
             entries = entries,
@@ -156,8 +166,10 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
         if (delete) ReceiptDeleteConfirmationDialog({ delete = false }, {
             delete = false; deletionRequested = true; viewModel.deleteReceipt(current.id)
         })
-        pendingRepair?.let { (file, validation) ->
-            ConfirmRepairDocumentDialog(current, file, validation, viewModel) { pendingRepair = null }
+                pendingRepair?.let { (file, validation) ->
+                    ConfirmRepairDocumentDialog(current, file, validation, viewModel) { pendingRepair = null }
+                }
+            }
         }
     }
 }
@@ -224,7 +236,13 @@ internal fun ReceiptDetailLayout(
             )
         },
         bottomBar = {
-            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
+            NavigationBar(
+                containerColor = Color.White,
+                tonalElevation = 0.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("receipt_detail_bottom_navigation")
+            ) {
                 listOf(
                     Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
                     Triple(AppScreen.RECEIPTS_LIST, Icons.Default.ReceiptLong, "Belege"),
