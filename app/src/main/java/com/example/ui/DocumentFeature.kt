@@ -64,11 +64,14 @@ import com.example.data.ManagedDocumentType
 import java.io.File
 
 @Composable
-fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
+fun DocumentManagementScreen(
+    viewModel: ReceiptViewModel,
+    propertyScoped: Boolean = false,
+    onBack: (() -> Unit)? = null
+) {
     val context = LocalContext.current
     val activity = context as? Activity
     val documents by viewModel.managedDocuments.collectAsState()
-    val results by viewModel.documentSearchResults.collectAsState()
     val operationStatus by viewModel.documentOperationStatus.collectAsState()
     val duplicate by viewModel.pendingDocumentDuplicate.collectAsState()
     val aiReview by viewModel.documentAiReview.collectAsState()
@@ -76,19 +79,15 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
     val units by viewModel.wohneinheitenStatus.collectAsState()
     val property by viewModel.propertyMetadata.collectAsState()
     var query by remember { mutableStateOf("") }
-    var year by remember { mutableStateOf("") }
-    var typeFilter by remember { mutableStateOf("") }
-    var unitFilter by remember { mutableStateOf("") }
+    var activeFilter by remember { mutableStateOf("Alle") }
     var importUnitId by remember { mutableStateOf("") }
     var importUnitMenuOpen by remember { mutableStateOf(false) }
-    var categoryFilter by remember { mutableStateOf("") }
+    var assignmentRequest by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<ManagedDocument?>(null) }
-    var hasSearched by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
+            runCatching { context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             viewModel.importManagedDocument(it, importUnitId.ifBlank { null })
         }
     }
@@ -105,7 +104,7 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
             }
         }
     }
-    val startDocumentScanner = {
+    val startDocumentScanner: () -> Unit = {
         val options = GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true)
             .setPageLimit(10)
@@ -122,86 +121,184 @@ fun DocumentManagementScreen(viewModel: ReceiptViewModel, propertyScoped: Boolea
         } else {
             viewModel.setDocumentOperationStatus("Scanner ist in dieser Ansicht nicht verfügbar.")
         }
-    }
-    val propertyFilter = if (propertyScoped) property?.propertyId.orEmpty() else ""
-    val shown = if (hasSearched) results else documents.filter {
-        propertyFilter.isBlank() || it.propertyId == propertyFilter
+        Unit
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Dokumentenakte", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text(if (propertyScoped) property?.name ?: "Immobilie" else "Alle Immobilien", fontSize = 11.sp, color = SlateGray)
+    val propertyFilter = if (propertyScoped) property?.propertyId.orEmpty() else ""
+    val propertyDocuments = documents.filter { propertyFilter.isBlank() || it.propertyId == propertyFilter }
+    val shown = propertyDocuments.filter { document ->
+        val matchesQuery = query.isBlank() || listOf(document.title, document.originalFilename, document.ocrText)
+            .any { it.contains(query, ignoreCase = true) }
+        val matchesFilter = when (activeFilter) {
+            "Verträge" -> document.documentType.contains("VERTRAG", ignoreCase = true)
+            "Rechnungen" -> document.documentType.contains("RECHNUNG", ignoreCase = true)
+            "Unterlagen" -> !document.documentType.contains("VERTRAG", ignoreCase = true) &&
+                !document.documentType.contains("RECHNUNG", ignoreCase = true)
+            else -> true
+        }
+        matchesQuery && matchesFilter
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (propertyScoped && onBack != null) {
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
+                    }
+                    Text("Dokumentenakte", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                }
+            }
+        } else {
+            item { Text("Dokumentenakte", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (propertyScoped) property?.name ?: "Immobilie" else "Alle Immobilien",
+                    modifier = Modifier.weight(1f),
+                    fontSize = 13.sp,
+                    color = SlateGray
+                )
+                OutlinedButton(onClick = { activeFilter = "Alle" }) { Text("Alle Dokumente") }
             }
         }
-        OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (importUnitId.isBlank()) "Zuordnung: Gesamtobjekt" else "Zuordnung: ${units.firstOrNull { it.unitId == importUnitId }?.label ?: importUnitId}")
-        }
-        DropdownMenu(expanded = importUnitMenuOpen, onDismissRequest = { importUnitMenuOpen = false }) {
-            DropdownMenuItem(text = { Text("Gesamtobjekt") }, onClick = { importUnitId = ""; importUnitMenuOpen = false })
-            units.forEach { unit ->
-                val stableId = PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), unit)
-                DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = { importUnitId = stableId; importUnitMenuOpen = false })
-            }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { launcher.launch(arrayOf("application/pdf", "image/*", "text/plain")) },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                modifier = Modifier.weight(1f).testTag("document_import_button")
-            ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
-            OutlinedButton(onClick = { startDocumentScanner(); Unit }, modifier = Modifier.weight(1f).testTag("document_scan_button")) { Text("Scannen") }
-        }
-        Card(
-            Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFEAF2FF)),
-            border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.25f))
-        ) {
-            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue)
-                Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                    Text("KI-Dokumentenanalyse", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                    Text("Importierte und gescannte Dokumente werden automatisch gelesen und zur Prüfung vorbereitet.", fontSize = 11.sp, color = SlateGray)
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = { assignmentRequest = "import" },
+                        modifier = Modifier.weight(1f).testTag("document_import_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                    ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
+                    Button(
+                        onClick = { assignmentRequest = "scan" },
+                        modifier = Modifier.weight(1f).testTag("document_scan_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFE8F1FF), contentColor = AccentBlue)
+                    ) { Icon(Icons.Default.Description, null); Text(" Scannen") }
                 }
             }
         }
-        OutlinedTextField(query, { query = it }, label = { Text("Dokumente und OCR-Text durchsuchen") }, leadingIcon = { Icon(Icons.Default.Search, null) }, modifier = Modifier.fillMaxWidth().testTag("document_search_query"))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(year, { year = it.filter(Char::isDigit).take(4) }, label = { Text("Jahr") }, modifier = Modifier.weight(1f))
-            OutlinedTextField(unitFilter, { unitFilter = it }, label = { Text("Unit-ID") }, modifier = Modifier.weight(1f))
-            OutlinedTextField(typeFilter, { typeFilter = it.uppercase() }, label = { Text("Typ") }, modifier = Modifier.weight(1f))
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFF0F4FF)),
+                border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.2f))
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AutoAwesome, null, tint = androidx.compose.ui.graphics.Color(0xFF7B3FF2))
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text("KI-Dokumentenanalyse", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = DarkNavy)
+                            Text("Inhalt erkennen, Dokumenttyp zuordnen und Daten übernehmen", fontSize = 12.sp, color = SlateGray)
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val document = shown.firstOrNull()
+                            if (document == null) viewModel.setDocumentOperationStatus("Bitte zuerst ein Dokument importieren.")
+                            else viewModel.analyzeManagedDocument(document.documentId)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Icon(Icons.Default.AutoAwesome, null); Text(" Dokument analysieren") }
+                }
+            }
         }
-        OutlinedTextField(categoryFilter, { categoryFilter = it }, label = { Text("Dokumentbereich/Kategorie") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = {
-            hasSearched = true
-            viewModel.searchDocuments(query, propertyFilter, unitFilter, year, typeFilter, categoryFilter)
-        }, modifier = Modifier.fillMaxWidth().testTag("document_search_button")) { Text("Suchen") }
-        OutlinedButton(onClick = viewModel::previewDocumentStorageMigration, modifier = Modifier.fillMaxWidth().testTag("document_migration_preview")) {
-            Text("Bestehende Drive-Ablage prüfen")
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Dokumente durchsuchen") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().testTag("document_search_query")
+            )
         }
-        operationStatus?.let { Text(it, fontSize = 11.sp, color = SlateGray) }
-        LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (shown.isEmpty()) item { Text("Keine Dokumente gefunden.", color = SlateGray) }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Alle", "Verträge", "Rechnungen", "Unterlagen").forEach { label ->
+                    if (activeFilter == label) {
+                        Button(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
+                    } else {
+                        OutlinedButton(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
+                    }
+                }
+            }
+        }
+        operationStatus?.let { status ->
+            item { Text(status, fontSize = 11.sp, color = SlateGray) }
+        }
+        item { Text("Zuletzt hinzugefügt", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+        if (shown.isEmpty()) {
+            item { Text("Noch keine Dokumente vorhanden.", color = SlateGray) }
+        } else {
             items(shown, key = { it.documentId }) { document ->
                 Card(
                     Modifier.fillMaxWidth().clickable { selected = document }.testTag("document_${document.documentId}"),
                     colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
                     border = BorderStroke(1.dp, BorderColor)
                 ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Description, null, tint = AccentBlue)
-                        Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                            Text(document.title.ifBlank { document.storedFilename }, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text("${document.documentType} • ${document.documentDate} • ${document.reviewStatus}", fontSize = 10.sp, color = SlateGray)
-                            if (document.ocrText.isNotBlank()) Text(document.ocrText.replace('\n', ' ').take(120), fontSize = 10.sp, color = SlateGray, maxLines = 2)
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text(document.title.ifBlank { document.storedFilename }, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
+                            Text("${document.documentDate} · ${document.documentType.lowercase().replaceFirstChar { it.titlecase() }}", fontSize = 11.sp, color = SlateGray)
                         }
+                        Text(
+                            if (document.aiAnalysisStatus == "ERFOLGREICH") "Analysiert" else if (document.reviewStatus == "PRUEFEN") "Prüfen" else "Neu",
+                            fontSize = 10.sp,
+                            color = AccentBlue,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
         }
     }
 
+    assignmentRequest?.let { request ->
+        AlertDialog(
+            onDismissRequest = { assignmentRequest = null },
+            title = { Text("Dokument zuordnen") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Wähle, ob das Dokument zum Gesamtobjekt oder zu einer Wohnung gehört.", fontSize = 12.sp, color = SlateGray)
+                    OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (importUnitId.isBlank()) "Gesamtobjekt" else units.firstOrNull { PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), it) == importUnitId }?.label ?: "Wohneinheit")
+                    }
+                    DropdownMenu(expanded = importUnitMenuOpen, onDismissRequest = { importUnitMenuOpen = false }) {
+                        DropdownMenuItem(text = { Text("Gesamtobjekt") }, onClick = { importUnitId = ""; importUnitMenuOpen = false })
+                        units.forEach { unit ->
+                            val stableId = PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), unit)
+                            DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = { importUnitId = stableId; importUnitMenuOpen = false })
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    assignmentRequest = null
+                    if (request == "import") {
+                        launcher.launch(arrayOf("*/*"))
+                    } else {
+                        startDocumentScanner()
+                    }
+                }) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
+            },
+            dismissButton = { TextButton(onClick = { assignmentRequest = null }) { Text("Abbrechen") } }
+        )
+    }
     selected?.let { document -> DocumentDetailDialog(document, viewModel, { selected = null }) }
     duplicate?.let { pair ->
         AlertDialog(
