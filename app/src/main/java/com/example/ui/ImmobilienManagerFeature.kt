@@ -278,7 +278,7 @@ private fun PropertyDetailHost(
         }
         when (section) {
             PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection)
-            PropertySection.UNITS -> PropertyUnits(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
+            PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
@@ -304,8 +304,7 @@ private fun PropertyDetailHost(
 private fun PropertyReferenceDetail(property: PropertyMetadata, summary: PropertyManagerSummary, viewModel: ReceiptViewModel, onSection: (PropertySection) -> Unit) {
     val entries = listOf(
         PropertySection.DATA to ("Stammdaten" to Icons.Default.HomeWork),
-        PropertySection.UNITS to ("Einheiten & Mietverhältnisse" to Icons.Default.Apartment),
-        PropertySection.RENT to ("Mieteinnahmen & Nebenkosten" to Icons.Default.Payments),
+        PropertySection.UNITS to ("Einheiten" to Icons.Default.Apartment),
         PropertySection.RECEIPTS to ("Einnahmen / Ausgaben" to Icons.Default.Receipt),
         PropertySection.DOCUMENTS to ("Objektunterlagen" to Icons.Default.Description),
         PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment)
