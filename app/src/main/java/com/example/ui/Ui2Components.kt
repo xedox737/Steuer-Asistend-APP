@@ -22,12 +22,19 @@ import androidx.compose.ui.unit.sp
 
 /** Shared presentation tokens. These components do not own application state. */
 object Ui2 {
-    val spacing = 12.dp
-    val padding = 12.dp
-    val shape = RoundedCornerShape(16.dp)
-    // Standard for cards with an icon and text on phone-sized screens.
-    val compactCardPadding = 6.dp
-    val compactCardSpacing = 6.dp
+    val cardRadius = 16.dp
+    val iconRadius = 12.dp
+    val controlRadius = 8.dp
+    val padding = 8.dp
+    val spacing = 6.dp
+
+    val shape = RoundedCornerShape(cardRadius)
+    val iconShape = RoundedCornerShape(iconRadius)
+    val controlShape = RoundedCornerShape(controlRadius)
+
+    // Standard for compact cards with an icon and text on phone-sized screens.
+    val compactCardPadding = padding
+    val compactCardSpacing = spacing
 }
 
 @Composable
