@@ -3,11 +3,13 @@ package com.example.ui
 import android.app.Activity
 import android.content.Intent
 import android.util.Log
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.IntentSenderRequest
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -84,7 +86,7 @@ fun DocumentManagementScreen(
     var importUnitId by remember { mutableStateOf("") }
     var importUnitMenuOpen by remember { mutableStateOf(false) }
     var assignmentRequest by remember { mutableStateOf<String?>(null) }
-    var selected by remember { mutableStateOf<ManagedDocument?>(null) }
+    var selectedDocumentId by remember { mutableStateOf<String?>(null) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
@@ -130,14 +132,33 @@ fun DocumentManagementScreen(
     val shown = propertyDocuments.filter { document ->
         val matchesQuery = query.isBlank() || listOf(document.title, document.originalFilename, document.ocrText)
             .any { it.contains(query, ignoreCase = true) }
+        val typeLabel = documentTypeLabel(document)
         val matchesFilter = when (activeFilter) {
-            "Verträge" -> document.documentType.contains("VERTRAG", ignoreCase = true)
-            "Rechnungen" -> document.documentType.contains("RECHNUNG", ignoreCase = true)
-            "Unterlagen" -> !document.documentType.contains("VERTRAG", ignoreCase = true) &&
-                !document.documentType.contains("RECHNUNG", ignoreCase = true)
+            "Exposés" -> typeLabel == "Exposé"
+            "Mietverträge" -> typeLabel == "Mietvertrag"
+            "Rechnungen" -> typeLabel == "Rechnung"
+            "Unterlagen" -> typeLabel !in setOf("Exposé", "Mietvertrag", "Rechnung")
             else -> true
         }
         matchesQuery && matchesFilter
+    }
+
+    val selectedDocument = selectedDocumentId?.let { id -> documents.firstOrNull { it.documentId == id } }
+    if (selectedDocument != null) {
+        BackHandler { selectedDocumentId = null }
+        ManagedDocumentDetailScreen(
+            document = selectedDocument,
+            property = property,
+            units = units,
+            onBack = { selectedDocumentId = null },
+            onAnalyze = { viewModel.analyzeManagedDocument(selectedDocument.documentId) },
+            onDownload = { viewModel.downloadManagedDocument(selectedDocument.documentId) },
+            onSync = { viewModel.syncManagedDocumentNow(selectedDocument.documentId) },
+            onUpdatePresentation = { title, description ->
+                viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
+            }
+        )
+        return
     }
 
     LazyColumn(
@@ -179,45 +200,17 @@ fun DocumentManagementScreen(
                     Modifier.fillMaxWidth().padding(Ui2.padding),
                     horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)
                 ) {
-                    Button(
+                    OutlinedButton(
                         onClick = { assignmentRequest = "import" },
                         modifier = Modifier.weight(1f).testTag("document_import_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                         shape = Ui2.controlShape
                     ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
                     Button(
                         onClick = { assignmentRequest = "scan" },
                         modifier = Modifier.weight(1f).testTag("document_scan_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFE8F1FF), contentColor = AccentBlue),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                         shape = Ui2.controlShape
                     ) { Icon(Icons.Default.Description, null); Text(" Scannen") }
-                }
-            }
-        }
-        item {
-            Card(
-                Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFF0F4FF)),
-                border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.2f)),
-                shape = Ui2.shape
-            ) {
-                Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.AutoAwesome, null, tint = androidx.compose.ui.graphics.Color(0xFF7B3FF2))
-                        Column(Modifier.padding(start = Ui2.padding)) {
-                            Text("KI-Dokumentenanalyse", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = DarkNavy)
-                            Text("Inhalt erkennen, Dokumenttyp zuordnen und Daten übernehmen", fontSize = 12.sp, color = SlateGray)
-                        }
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            val document = shown.firstOrNull()
-                            if (document == null) viewModel.setDocumentOperationStatus("Bitte zuerst ein Dokument importieren.")
-                            else viewModel.analyzeManagedDocument(document.documentId)
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = Ui2.controlShape
-                    ) { Icon(Icons.Default.AutoAwesome, null); Text(" Dokument analysieren") }
                 }
             }
         }
@@ -233,12 +226,23 @@ fun DocumentManagementScreen(
             )
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("Alle", "Verträge", "Rechnungen", "Unterlagen").forEach { label ->
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)
+            ) {
+                listOf("Alle", "Exposés", "Mietverträge", "Rechnungen", "Unterlagen").forEach { label ->
                     if (activeFilter == label) {
-                        Button(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), shape = Ui2.controlShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
+                        Button(
+                            onClick = { activeFilter = label },
+                            shape = Ui2.controlShape,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) { Text(label, fontSize = 10.sp) }
                     } else {
-                        OutlinedButton(onClick = { activeFilter = label }, modifier = Modifier.weight(1f), shape = Ui2.controlShape, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)) { Text(label, fontSize = 10.sp) }
+                        OutlinedButton(
+                            onClick = { activeFilter = label },
+                            shape = Ui2.controlShape,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) { Text(label, fontSize = 10.sp) }
                     }
                 }
             }
@@ -246,31 +250,16 @@ fun DocumentManagementScreen(
         operationStatus?.let { status ->
             item { Text(status, fontSize = 11.sp, color = SlateGray) }
         }
-        item { Text("Zuletzt hinzugefügt", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
         if (shown.isEmpty()) {
             item { Text("Noch keine Dokumente vorhanden.", color = SlateGray) }
         } else {
             items(shown, key = { it.documentId }) { document ->
-                Card(
-                    Modifier.fillMaxWidth().clickable { selected = document }.testTag("document_${document.documentId}"),
-                    colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
-                    border = BorderStroke(1.dp, BorderColor),
-                    shape = Ui2.shape
-                ) {
-                    Row(Modifier.padding(Ui2.padding), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Description, null, tint = AccentBlue)
-                        Column(Modifier.weight(1f).padding(start = Ui2.padding)) {
-                            Text(document.title.ifBlank { document.storedFilename }, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DarkNavy)
-                            Text("${document.documentDate} · ${document.documentType.lowercase().replaceFirstChar { it.titlecase() }}", fontSize = 11.sp, color = SlateGray)
-                        }
-                        Text(
-                            if (document.aiAnalysisStatus == "ERFOLGREICH") "Analysiert" else if (document.reviewStatus == "PRUEFEN") "Prüfen" else "Neu",
-                            fontSize = 10.sp,
-                            color = AccentBlue,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                ManagedDocumentCard(
+                    document = document,
+                    property = property,
+                    units = units,
+                    onClick = { selectedDocumentId = document.documentId }
+                )
             }
         }
     }
@@ -308,7 +297,6 @@ fun DocumentManagementScreen(
             dismissButton = { TextButton(onClick = { assignmentRequest = null }) { Text("Abbrechen") } }
         )
     }
-    selected?.let { document -> DocumentDetailDialog(document, viewModel, { selected = null }) }
     duplicate?.let { pair ->
         AlertDialog(
             onDismissRequest = { viewModel.resolvePossibleDocumentDuplicate(false) },
