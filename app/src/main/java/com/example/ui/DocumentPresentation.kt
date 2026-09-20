@@ -544,7 +544,7 @@ private fun loadPreview(document: ManagedDocument): DocumentPreviewState {
 internal fun documentDisplayTitle(document: ManagedDocument, property: PropertyMetadata?): String {
     val raw = document.title.ifBlank { document.originalFilename.substringBeforeLast('.') }.trim()
     val type = documentTypeLabel(document)
-    if (type == "Exposé" && (raw.startsWith("PDF-Exposé", true) || raw.matches(Regex(".*#\\\\d+.*")))) {
+    if (type == "Exposé" && (raw.startsWith("PDF-Exposé", true) || raw.matches(Regex(".*#\\d+.*")))) {
         val propertyName = property?.name?.substringBefore(" (")?.takeIf(String::isNotBlank)
         return listOfNotNull("Exposé", propertyName).joinToString(" ")
     }
@@ -555,12 +555,12 @@ internal fun documentDisplayDescription(document: ManagedDocument, property: Pro
     customDocumentDescription(document)?.takeIf(String::isNotBlank)?.let { return it }
     val type = documentTypeLabel(document)
     val compactOcr = document.ocrText
-        .replace(Regex("\\\\[Seite \\\\d+]"), " ")
-        .replace(Regex("\\\\s+"), " ")
+        .replace(Regex("\\[Seite \\d+]"), " ")
+        .replace(Regex("\\s+"), " ")
         .trim()
     return when (type) {
         "Exposé" -> {
-            val place = Regex("\\\\b\\\\d{5}\\\\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+").find(compactOcr)?.value
+            val place = Regex("\\b\\d{5}\\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+").find(compactOcr)?.value
             val objectType = when {
                 compactOcr.contains("Mehrfamilienhaus", true) -> "Mehrfamilienhaus"
                 compactOcr.contains("Einfamilienhaus", true) -> "Einfamilienhaus"
@@ -640,7 +640,7 @@ private fun extractedDocumentFields(document: ManagedDocument): List<Pair<String
         }
     }
     if (result.isNotEmpty()) return result.distinctBy { it.first.lowercase() }
-    val compact = document.ocrText.replace(Regex("\\\\s+"), " ")
+    val compact = document.ocrText.replace(Regex("\\s+"), " ")
     Regex("\\\\b(\\\\d{5}\\\\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]+)").find(compact)?.groupValues?.getOrNull(1)?.let {
         result += "Ort" to it
     }
