@@ -33,7 +33,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -57,6 +59,7 @@ import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 
 @Composable
 internal fun UnifiedPropertyUnitsScreen(
@@ -95,7 +98,7 @@ internal fun UnifiedPropertyUnitsScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -115,7 +118,7 @@ internal fun UnifiedPropertyUnitsScreen(
         }
 
         item {
-            Text("Mieteinnahmen & Nebenkosten", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+            Text("Einheiten", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
             Text("Ist-Einnahmen aus Belegen · Sollwerte aus den Mietdaten", fontSize = 12.sp, color = SlateGray)
         }
 
@@ -274,9 +277,9 @@ private fun UnifiedAnnualMetric(
             ) {
                 Icon(icon, null, tint = valueColor, modifier = Modifier.padding(7.dp).size(18.dp))
             }
-            Text(title, fontSize = 10.sp, color = SlateGray, maxLines = 2)
-            Text(value, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
-            Text(subtitle, fontSize = 9.sp, color = SlateGray, maxLines = 2)
+            Text(title, fontSize = 9.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, overflow = TextOverflow.Clip)
+            Text(subtitle, fontSize = 8.sp, color = SlateGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -428,14 +431,30 @@ private fun UnifiedUnitDetailScreen(
     var showMonthCheck by remember { mutableStateOf(false) }
     var showDocuments by remember { mutableStateOf(false) }
     var selectedDocumentId by remember { mutableStateOf<String?>(null) }
+    var editRentalDetails by remember { mutableStateOf(false) }
+    var detailsVersion by remember { mutableIntStateOf(0) }
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
     val unitReceipts = receipts.filter { it.wohneinheit == unit.name }
     val unitDocs = documents.filter { it.unitId == unitId }
+    val periods = remember(unitId, unit, detailsVersion) {
+        TenantHistoryStore.ensureCurrentPeriod(
+            context = context,
+            unit = unit,
+            nebenkosten = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk"),
+            sonstige = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other"),
+            propertyId = property.propertyId
+        )
+    }
+    val activePeriod = periods.lastOrNull { it.active } ?: periods.maxByOrNull { it.startDate }
+    val extraDetails = remember(unitId, detailsVersion) {
+        UnitRentalDetailStore.load(context, property.propertyId, unitId)
+    }
     val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
-    val nk = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")
-    val other = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other")
-    val totalRent = unit.kaltmiete + nk + other
+    val nk = activePeriod?.nebenkosten ?: PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")
+    val other = activePeriod?.sonstige ?: PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other")
+    val coldRent = activePeriod?.kaltmiete ?: unit.kaltmiete
+    val totalRent = coldRent + nk + other
     val lastPayment = unitReceipts.filter { isRentalIncomeReceipt(it) }.maxByOrNull { it.datum }
     val paidOnTime = month.expected > 0.01 && month.missing <= 0.01
 
@@ -541,6 +560,18 @@ private fun UnifiedUnitDetailScreen(
         )
     }
 
+    if (editRentalDetails) {
+        UnitRentalDetailsDialog(
+            initial = extraDetails,
+            onDismiss = { editRentalDetails = false },
+            onSave = { updated ->
+                UnitRentalDetailStore.save(context, property.propertyId, unitId, updated)
+                detailsVersion++
+                editRentalDetails = false
+            }
+        )
+    }
+
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -570,44 +601,18 @@ private fun UnifiedUnitDetailScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 130.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
             item {
                 UnifiedDetailCard("Wohneinheit im Überblick") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        UnifiedDetailMetric(
-                            "Kaltmiete",
-                            NumberFormatter.format(unit.kaltmiete),
-                            Icons.Default.HomeWork,
-                            DarkNavy,
-                            Color(0xFFF4F8FD),
-                            Modifier.weight(1f)
-                        )
-                        UnifiedDetailMetric(
-                            "Nebenkosten",
-                            NumberFormatter.format(nk),
-                            Icons.Default.Payments,
-                            DarkNavy,
-                            Color(0xFFF4F8FD),
-                            Modifier.weight(1f)
-                        )
-                        UnifiedDetailMetric(
-                            "Sonstiges",
-                            NumberFormatter.format(other),
-                            Icons.Default.Receipt,
-                            DarkNavy,
-                            Color(0xFFF4F8FD),
-                            Modifier.weight(1f)
-                        )
-                        UnifiedDetailMetric(
-                            "Gesamtmiete",
-                            NumberFormatter.format(totalRent),
-                            Icons.Default.Assessment,
-                            EmeraldGreen,
-                            Color(0xFFF0FAF5),
-                            Modifier.weight(1f)
-                        )
+                        UnifiedDetailMetric("Kaltmiete", NumberFormatter.format(coldRent), Icons.Default.HomeWork, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
+                        UnifiedDetailMetric("Nebenkosten", NumberFormatter.format(nk), Icons.Default.Payments, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        UnifiedDetailMetric("Sonstiges", NumberFormatter.format(other), Icons.Default.Receipt, DarkNavy, Color(0xFFF4F8FD), Modifier.weight(1f))
+                        UnifiedDetailMetric("Gesamtmiete", NumberFormatter.format(totalRent), Icons.Default.Assessment, EmeraldGreen, Color(0xFFF0FAF5), Modifier.weight(1f))
                     }
                 }
             }
@@ -619,24 +624,33 @@ private fun UnifiedUnitDetailScreen(
                             UnifiedDetailFact(
                                 Icons.Default.CalendarMonth,
                                 "Mietbeginn",
-                                unit.mietvertragsstart.ifBlank { "–" }
+                                activePeriod?.startDate?.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
+                                    ?: unit.mietvertragsstart.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
+                                    ?: "–"
                             )
-                            UnifiedDetailFact(Icons.Default.Payments, "Zahlungsweise", "Nicht hinterlegt")
-                            UnifiedDetailFact(Icons.Default.CalendarMonth, "Fälligkeit", "Nicht hinterlegt")
+                            UnifiedDetailFact(Icons.Default.Payments, "Zahlungsweise", extraDetails.paymentMethod.ifBlank { "Nicht hinterlegt" })
+                            UnifiedDetailFact(Icons.Default.CalendarMonth, "Fälligkeit", extraDetails.dueDate.ifBlank { "Nicht hinterlegt" })
                         }
                         VerticalDivider(Modifier.height(132.dp), color = BorderColor)
                         Column(
                             Modifier.weight(1f).padding(start = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            UnifiedDetailFact(Icons.Default.AccountBalance, "Kaution", "Nicht hinterlegt")
+                            UnifiedDetailFact(Icons.Default.AccountBalance, "Kaution", extraDetails.deposit.ifBlank { "Nicht hinterlegt" })
                             UnifiedDetailFact(
                                 Icons.Default.HomeWork,
                                 "Wohnfläche",
                                 "${unit.wohnflaeche.toInt()} m²"
                             )
-                            UnifiedDetailFact(Icons.Default.Apartment, "Zimmer", "Nicht hinterlegt")
+                            UnifiedDetailFact(Icons.Default.Apartment, "Zimmer", extraDetails.rooms.ifBlank { "Nicht hinterlegt" })
                         }
+                    }
+                    OutlinedButton(
+                        onClick = { editRentalDetails = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = Ui2.controlShape
+                    ) {
+                        Text("Mietdaten bearbeiten")
                     }
                 }
             }
@@ -647,7 +661,7 @@ private fun UnifiedUnitDetailScreen(
                         UnifiedStatusMetric(
                             "Letzte Zahlung",
                             lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
-                            lastPayment?.datum?.let { "am $it" } ?: "keine Zahlung",
+                            lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
                             EmeraldGreen,
                             Color(0xFFF0FAF5),
                             Modifier.weight(1f)
@@ -782,8 +796,8 @@ private fun UnifiedDetailMetric(
                 tint = if (valueColor == EmeraldGreen) EmeraldGreen else AccentBlue,
                 modifier = Modifier.size(19.dp)
             )
-            Text(label, fontSize = 9.sp, color = SlateGray)
-            Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
+            Text(label, fontSize = 10.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -828,6 +842,79 @@ private fun unifiedDocumentLabel(document: ManagedDocument): String {
         else -> label
     }
 }
+
+
+private data class UnitRentalDetail(
+    val paymentMethod: String = "",
+    val dueDate: String = "",
+    val deposit: String = "",
+    val rooms: String = ""
+)
+
+private object UnitRentalDetailStore {
+    private const val PREFS = "unit_rental_detail_prefs"
+
+    private fun key(propertyId: String, unitId: String, field: String) =
+        "${propertyId}_${unitId}_$field"
+
+    fun load(context: android.content.Context, propertyId: String, unitId: String): UnitRentalDetail {
+        val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        return UnitRentalDetail(
+            paymentMethod = prefs.getString(key(propertyId, unitId, "paymentMethod"), "").orEmpty(),
+            dueDate = prefs.getString(key(propertyId, unitId, "dueDate"), "").orEmpty(),
+            deposit = prefs.getString(key(propertyId, unitId, "deposit"), "").orEmpty(),
+            rooms = prefs.getString(key(propertyId, unitId, "rooms"), "").orEmpty()
+        )
+    }
+
+    fun save(context: android.content.Context, propertyId: String, unitId: String, detail: UnitRentalDetail) {
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putString(key(propertyId, unitId, "paymentMethod"), detail.paymentMethod)
+            .putString(key(propertyId, unitId, "dueDate"), detail.dueDate)
+            .putString(key(propertyId, unitId, "deposit"), detail.deposit)
+            .putString(key(propertyId, unitId, "rooms"), detail.rooms)
+            .apply()
+    }
+}
+
+@Composable
+private fun UnitRentalDetailsDialog(
+    initial: UnitRentalDetail,
+    onDismiss: () -> Unit,
+    onSave: (UnitRentalDetail) -> Unit
+) {
+    var paymentMethod by remember(initial) { mutableStateOf(initial.paymentMethod) }
+    var dueDate by remember(initial) { mutableStateOf(initial.dueDate) }
+    var deposit by remember(initial) { mutableStateOf(initial.deposit) }
+    var rooms by remember(initial) { mutableStateOf(initial.rooms) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = Ui2.shape,
+        title = { Text("Mietdaten bearbeiten", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+                OutlinedTextField(paymentMethod, { paymentMethod = it }, label = { Text("Zahlungsweise") }, placeholder = { Text("z. B. Überweisung") }, shape = Ui2.controlShape, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(dueDate, { dueDate = it }, label = { Text("Fälligkeit") }, placeholder = { Text("z. B. 3. Werktag") }, shape = Ui2.controlShape, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(deposit, { deposit = it }, label = { Text("Kaution") }, placeholder = { Text("z. B. 960,00 €") }, shape = Ui2.controlShape, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(rooms, { rooms = it }, label = { Text("Zimmer") }, placeholder = { Text("z. B. 3") }, shape = Ui2.controlShape, singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSave(UnitRentalDetail(paymentMethod.trim(), dueDate.trim(), deposit.trim(), rooms.trim())) },
+                shape = Ui2.controlShape
+            ) { Text("Speichern") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+}
+
+private fun formatGermanDate(raw: String): String =
+    runCatching {
+        LocalDate.parse(raw).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+    }.getOrDefault(raw)
 
 @Composable
 private fun UnifiedMonthlyCheckDialog(
