@@ -195,7 +195,6 @@ internal fun ManagedDocumentDetailScreen(
                 Text("Dokumentendetail", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text(property?.name ?: "Immobilie", fontSize = 12.sp, color = SlateGray)
             }
-            Icon(Icons.Default.MoreVert, null, tint = DarkNavy)
         }
 
         LazyColumn(
@@ -205,7 +204,10 @@ internal fun ManagedDocumentDetailScreen(
         ) {
         item {
             Card(
-                Modifier.fillMaxWidth(),
+                onClick = {
+                    if (localAvailable) openManagedDocument(context, document) else onDownload()
+                },
+                modifier = Modifier.fillMaxWidth(),
                 shape = Ui2.shape,
                 colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color(0xFFF5F8FD)),
                 border = BorderStroke(1.dp, BorderColor)
