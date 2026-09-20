@@ -209,7 +209,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                         onValueChange = { searchText = it },
                         modifier = Modifier.weight(1f).height(52.dp),
                         singleLine = true,
-                        shape = RoundedCornerShape(26.dp),
+                        shape = Ui2.controlShape,
                         placeholder = { Text("Buchungen durchsuchen …") },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Suche") }
                     )
