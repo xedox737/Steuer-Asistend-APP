@@ -570,6 +570,17 @@ private fun UnifiedUnitDetailScreen(
         )
     }
 
+    if (showStatusDialog) {
+        UnifiedUnitStatusDialog(
+            unit = unit,
+            onDismiss = { showStatusDialog = false },
+            onSave = { status ->
+                viewModel.updateWohneinheit(unit.copy(status = status))
+                showStatusDialog = false
+            }
+        )
+    }
+
     if (editRentalDetails) {
         UnitRentalDetailsDialog(
             initial = extraDetails,
@@ -603,7 +614,8 @@ private fun UnifiedUnitDetailScreen(
                     Text(unit.mieter.ifBlank { "Kein Mieter" }, fontSize = 12.sp, color = SlateGray)
                     UnifiedStatusPill(
                         if (unit.status == "Vermietet") "Vermietet" else unit.status,
-                        unit.status == "Vermietet"
+                        unit.status == "Vermietet",
+                        onClick = { showStatusDialog = true }
                     )
                 }
             }
@@ -666,7 +678,7 @@ private fun UnifiedUnitDetailScreen(
             }
 
             item {
-                UnifiedDetailCard("Zahlungsstatus") {
+                UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         UnifiedStatusMetric(
                             "Letzte Zahlung",
@@ -679,7 +691,7 @@ private fun UnifiedUnitDetailScreen(
                         UnifiedStatusMetric(
                             "Offener Betrag",
                             unifiedMoney(month.missing),
-                            "",
+                            paymentMonthLabel,
                             if (month.missing > 0.01) CrimsonRed else DarkNavy,
                             if (month.missing > 0.01) Color(0xFFFFF3F3) else Color(0xFFF6F7FA),
                             Modifier.weight(1f)
@@ -696,7 +708,7 @@ private fun UnifiedUnitDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("i", color = AccentBlue, fontWeight = FontWeight.Bold)
                         Text(
-                            "Monatscheck zeigt Ist-Zahlungen im Vergleich zum Soll.",
+                            "Monatscheck zeigt Ist-Zahlungen für $paymentMonthLabel im Vergleich zum Soll.",
                             fontSize = 10.sp,
                             color = SlateGray
                         )
@@ -723,46 +735,45 @@ private fun UnifiedUnitDetailScreen(
                             }
                         }
                     }
-                    OutlinedButton(
-                        onClick = { showDocuments = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = Ui2.controlShape
-                    ) {
-                        Icon(Icons.Default.Description, null)
-                        Text(" Alle Dokumente")
+                    if (unitDocs.size > 3 || unitDocs.isEmpty()) {
+                        OutlinedButton(
+                            onClick = { showDocuments = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
+                        ) {
+                            Icon(Icons.Default.Description, null)
+                            Text(if (unitDocs.isEmpty()) " Dokumente öffnen" else " Alle Dokumente")
+                        }
                     }
                 }
             }
 
             item {
                 UnifiedDetailCard("Aktionen") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                         OutlinedButton(
                             onClick = { showMonthCheck = true },
-                            modifier = Modifier.weight(1f),
-                            shape = Ui2.controlShape,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
                         ) {
                             Icon(Icons.Default.CalendarMonth, null, modifier = Modifier.size(17.dp))
-                            Text(" Monatscheck", fontSize = 10.sp, maxLines = 1)
+                            Text(" Monatscheck")
                         }
                         OutlinedButton(
                             onClick = { showHistory = true },
-                            modifier = Modifier.weight(1f),
-                            shape = Ui2.controlShape,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
                         ) {
                             Icon(Icons.Default.Settings, null, modifier = Modifier.size(17.dp))
-                            Text(" Mieterwechsel", fontSize = 10.sp, maxLines = 1)
+                            Text(" Mieterwechsel")
                         }
                         OutlinedButton(
                             onClick = { showDocuments = true },
-                            modifier = Modifier.weight(1f),
-                            shape = Ui2.controlShape,
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
                         ) {
                             Icon(Icons.Default.Description, null, modifier = Modifier.size(17.dp))
-                            Text(" Dokumente öffnen", fontSize = 9.sp, maxLines = 1)
+                            Text(" Dokumente öffnen")
                         }
                     }
                 }
@@ -845,10 +856,13 @@ private fun UnifiedStatusMetric(
 
 private fun unifiedDocumentLabel(document: ManagedDocument): String {
     val label = documentTypeLabel(document)
+    val searchable = listOf(document.title, document.originalFilename, document.ocrText.take(400)).joinToString(" ")
     return when {
-        label.contains("Mietvertrag", true) -> "Mietvertrag"
-        label.contains("Übergabe", true) -> "Übergabeprotokoll"
-        label.contains("Rechnung", true) -> "Nebenkostenabrechnung"
+        label.contains("Mietvertrag", true) || searchable.contains("mietvertrag", true) -> "Mietvertrag"
+        label.contains("Übergabe", true) || searchable.contains("übergabe", true) -> "Übergabeprotokoll"
+        searchable.contains("nebenkosten", true) || searchable.contains("betriebskosten", true) -> "Nebenkostenabrechnung"
+        label.contains("Rechnung", true) -> "Rechnung"
+        label == "Unterlage" -> documentDisplayTitle(document, null).take(28)
         else -> label
     }
 }
