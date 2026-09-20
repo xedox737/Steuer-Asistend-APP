@@ -368,7 +368,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             border = BorderStroke(1.dp, BorderColor),
-                            shape = RoundedCornerShape(14.dp)
+                            shape = Ui2.shape
                         ) {
                             Column {
                                 group.transactions.forEachIndexed { index, transaction ->
