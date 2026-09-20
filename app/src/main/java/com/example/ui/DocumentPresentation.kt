@@ -576,12 +576,12 @@ internal fun documentDisplayDescription(document: ManagedDocument, property: Pro
         "Rechnung" -> "Rechnung mit erkanntem Inhalt, Rechnungsdatum und relevanten Angaben."
         "Energieausweis" -> "Energieausweis mit erkannten Gebäude- und Energiedaten."
         "Grundriss" -> "Grundriss bzw. Planunterlage für $assignment."
-        else -> compactOcr.take(150).takeIf(String::isNotBlank) ?: "Dokument für \${property?.name ?: "diese Immobilie"}."
+        else -> compactOcr.take(150).takeIf(String::isNotBlank) ?: ("Dokument für " + (property?.name ?: "diese Immobilie") + ".")
     }
 }
 
 internal fun documentTypeLabel(document: ManagedDocument): String {
-    val text = "\${document.title} \${document.originalFilename} \${document.ocrText.take(600)}"
+    val text = document.title + " " + document.originalFilename + " " + document.ocrText.take(600)
     if (text.contains("exposé", true) || text.contains("expose", true)) return "Exposé"
     return when (runCatching { ManagedDocumentType.valueOf(document.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)) {
         ManagedDocumentType.KAUFVERTRAG -> "Kaufvertrag"
@@ -656,7 +656,7 @@ private fun prettyFieldLabel(key: String): String = key
 private fun openManagedDocument(context: Context, document: ManagedDocument) {
     val file = File(document.localUri)
     if (!file.isFile) return
-    val uri = FileProvider.getUriForFile(context, "\${context.packageName}.provider", file)
+    val uri = FileProvider.getUriForFile(context, context.packageName + ".provider", file)
     val intent = Intent(Intent.ACTION_VIEW)
         .setDataAndType(uri, document.mimeType.ifBlank { "*/*" })
         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
