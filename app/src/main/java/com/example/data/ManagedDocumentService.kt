@@ -131,13 +131,22 @@ class ManagedDocumentService(
         val targetFilename = DocumentFilenameGenerator.document(type, date, document.title, extension, document.documentId)
         val targetRelevantFieldsChanged = document.documentType != type.name || document.documentDate != date ||
             document.unitId != unitId || document.storedFilename != targetFilename
+        val preservedDescription = runCatching {
+            JSONObject(document.extractedFieldsJson.ifBlank { "{}" }).optString("_displayDescription")
+        }.getOrDefault("")
+        val mergedFieldsJson = runCatching { JSONObject(fieldsJson.ifBlank { "{}" }) }
+            .getOrDefault(JSONObject())
+            .apply {
+                if (preservedDescription.isNotBlank()) put("_displayDescription", preservedDescription)
+            }
+            .toString()
         val updated = document.copy(
             documentType = type.name,
             documentCategory = DocumentDrivePathResolver.route(document.propertyId, "", "", type, date, unitId).segments.drop(1).joinToString("/"),
             documentDate = date,
             unitId = unitId,
             storedFilename = targetFilename,
-            extractedFieldsJson = fieldsJson,
+            extractedFieldsJson = mergedFieldsJson,
             reviewStatus = DocumentReviewStatus.GEPRUEFT.name,
             migrationStatus = ManagedDocumentDriveReorganization.statusAfterConfirmedChange(
                 !document.driveFileId.isNullOrBlank(), targetRelevantFieldsChanged, document.migrationStatus
