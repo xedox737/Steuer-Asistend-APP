@@ -783,18 +783,10 @@ private fun BankTransactionDetailsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    BankReferenceAction(
-                        label = "Beleg suchen",
-                        icon = Icons.Default.Search,
-                        modifier = Modifier.weight(1f),
-                        onClick = onPickReceipt
-                    )
-                    BankReferenceAction(
-                        label = "Beleg anlegen",
-                        icon = Icons.Default.Description,
-                        modifier = Modifier.weight(1f),
-                        onClick = { viewModel.startReceiptFromBankTransaction(transaction) }
-                    )
+                    BankReferenceAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
+                    BankReferenceAction("Beleg anlegen", Icons.Default.Description, Modifier.weight(1f)) {
+                        viewModel.startReceiptFromBankTransaction(transaction)
+                    }
                     Column(Modifier.weight(1f)) {
                         BankTransactionSplitActions(
                             viewModel = viewModel,
@@ -804,9 +796,9 @@ private fun BankTransactionDetailsScreen(
                         )
                     }
                     BankReferenceAction(
-                        label = "Kein Beleg erforderlich",
-                        icon = Icons.Default.CheckCircle,
-                        modifier = Modifier.weight(1f),
+                        "Kein Beleg erforderlich",
+                        Icons.Default.CheckCircle,
+                        Modifier.weight(1f),
                         tint = EmeraldGreen,
                         onClick = onNoReceipt
                     )
