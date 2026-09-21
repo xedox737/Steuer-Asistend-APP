@@ -846,7 +846,7 @@ private fun UnifiedUnitDetailScreen(
                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp, vertical = 7.dp)
                                 ) {
                                     Icon(Icons.Default.Description, null, modifier = Modifier.size(16.dp))
-                                    Text(" ${unifiedDocumentLabel(doc)}", fontSize = 9.sp, maxLines = 2)
+                                    Text(" ${unitDocumentDisplayName(doc)}", fontSize = 9.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
@@ -962,11 +962,22 @@ private fun UnifiedStatusMetric(
     modifier: Modifier
 ) {
     Card(modifier = modifier, shape = Ui2.controlShape, colors = CardDefaults.cardColors(containerColor = background)) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(label, fontSize = 9.sp, color = SlateGray)
-            Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
-            if (subtitle.isNotBlank()) Text(subtitle, fontSize = 8.sp, color = SlateGray, maxLines = 1)
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(label, fontSize = 9.sp, lineHeight = 10.sp, color = SlateGray)
+            Text(value, fontSize = 12.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
+            if (subtitle.isNotBlank()) Text(subtitle, fontSize = 8.sp, lineHeight = 9.sp, color = SlateGray, maxLines = 1)
         }
+    }
+}
+
+private fun unitDocumentDisplayName(document: ManagedDocument): String {
+    val title = document.title.trim()
+    val filename = document.originalFilename.trim()
+    return when {
+        title.isNotBlank() && title != documentTypeLabel(document) -> title
+        filename.isNotBlank() -> filename
+        title.isNotBlank() -> title
+        else -> unifiedDocumentLabel(document)
     }
 }
 
