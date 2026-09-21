@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -704,28 +705,65 @@ private fun BankTransactionDetailsScreen(
     onNoReceipt: () -> Unit,
     onReceiptDetails: (Receipt) -> Unit
 ) {
+    val context = LocalContext.current
     val linkedReceipts = linkedLinks.mapNotNull { link -> receiptById[link.receiptId]?.let { link to it } }
+    var note by remember(transaction.transactionId) {
+        mutableStateOf(
+            context.getSharedPreferences("bank_transaction_notes", android.content.Context.MODE_PRIVATE)
+                .getString(transaction.transactionId, "")
+                .orEmpty()
+        )
+    }
+    var editNote by remember(transaction.transactionId) { mutableStateOf(false) }
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
-                Text("Buchungsdetails", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 19.sp, modifier = Modifier.weight(1f))
+            Row(
+                Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück", tint = DarkNavy)
+                }
+                Text(
+                    "Buchungsdetails",
+                    fontWeight = FontWeight.Bold,
+                    color = DarkNavy,
+                    fontSize = 20.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text("•••", color = DarkNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Card(
+                shape = Ui2.shape,
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         val visual = bankTransactionVisual(transaction)
                         Box(Modifier.size(54.dp).clip(CircleShape).background(visual.background), contentAlignment = Alignment.Center) {
                             Icon(visual.icon, contentDescription = null, tint = visual.foreground, modifier = Modifier.size(28.dp))
                         }
                         Spacer(Modifier.size(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" }, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 17.sp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                transaction.counterparty.ifBlank { "Unbekannter Zahlungspartner" },
+                                fontWeight = FontWeight.Bold,
+                                color = DarkNavy,
+                                fontSize = 18.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                             BankPrimaryStatusBadge(transaction)
                         }
-                        Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, fontSize = 18.sp, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy)
+                        Text(
+                            NumberFormatter.format(transaction.amount),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 19.sp,
+                            color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy
+                        )
                     }
                     HorizontalDivider()
                     BankDetailLine("Buchungsdatum", formatDate(transaction.bookingDate), Icons.Default.CalendarMonth)
@@ -739,16 +777,67 @@ private fun BankTransactionDetailsScreen(
                 }
             }
         }
-        item {
-            val labels = BankDetailActionPolicy.labels(transaction)
-            Ui2Section("Was möchtest du tun?") {
-                Ui2ActionGrid(listOf(
-                    Ui2Action(labels.privateAction, "Nicht in die Steuer übernehmen", Icons.Default.Person, CrimsonRed) {
-                        if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) viewModel.resetBankTransactionClassification(transaction.transactionId)
-                        else viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
-                    },
-                    Ui2Action(labels.transferAction, "Zwischen eigenen Konten", Icons.Default.SwapHoriz) {
-                        if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
+        if (transaction.classification == BankTransactionClassification.NORMAL) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    BankReferenceAction(
+                        label = "Beleg suchen",
+                        icon = Icons.Default.Search,
+                        modifier = Modifier.weight(1f),
+                        onClick = onPickReceipt
+                    )
+                    BankReferenceAction(
+                        label = "Beleg anlegen",
+                        icon = Icons.Default.Description,
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.startReceiptFromBankTransaction(transaction) }
+                    )
+                    Column(Modifier.weight(1f)) {
+                        BankTransactionSplitActions(
+                            viewModel = viewModel,
+                            transaction = transaction,
+                            compactTrigger = true,
+                            showAssignments = false
+                        )
+                    }
+                    BankReferenceAction(
+                        label = "Kein Beleg erforderlich",
+                        icon = Icons.Default.CheckCircle,
+                        modifier = Modifier.weight(1f),
+                        tint = EmeraldGreen,
+                        onClick = onNoReceipt
+                    )
+                }
+            }
+        } else {
+            item {
+                val labels = BankDetailActionPolicy.labels(transaction)
+                Ui2Section("Weitere Aktionen") {
+                    Ui2ActionGrid(listOf(
+                        Ui2Action(labels.privateAction, "Nicht in die Steuer übernehmen", Icons.Default.Person, CrimsonRed) {
+                            if (transaction.classification == BankTransactionClassification.PRIVATE_IGNORED) viewModel.resetBankTransactionClassification(transaction.transactionId)
+                            else viewModel.markBankTransactionPrivateIgnored(transaction.transactionId)
+                        },
+                        Ui2Action(labels.transferAction, "Zwischen eigenen Konten", Icons.Default.SwapHoriz) {
+                            if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
+                            else viewModel.markBankTransactionTransfer(transaction.transactionId)
+                        },
+                        Ui2Action(labels.reviewAction, labels.reviewSubtitle, Icons.Default.CheckCircle, EmeraldGreen) {
+                            if (transaction.reviewState == BankReviewState.DONE) viewModel.reopenBankTransactionReview(transaction.transactionId)
+                            else viewModel.markBankTransactionReviewDone(transaction.transactionId)
+                        },
+                        Ui2Action("Manuell prüfen", "Später bearbeiten", Icons.Default.Visibility, WarmOrange) {
+                            viewModel.markBankTransactionForReview(transaction.transactionId)
+                        }
+                    ))
+                }
+            }
+        }
+
+        if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
                         else viewModel.markBankTransactionTransfer(transaction.transactionId)
                     },
                     Ui2Action(labels.reviewAction, labels.reviewSubtitle, Icons.Default.CheckCircle, EmeraldGreen) {
@@ -913,11 +1002,16 @@ private fun BankTransactionDetailsScreen(
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("✨ KI-Vorschläge (1)", fontWeight = FontWeight.Bold, color = DarkNavy)
-                                Text("${suggestion.score}%", fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                Text(
+                                    "${suggestion.score}%",
+                                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFFE8F8EF)).padding(horizontal = 8.dp, vertical = 3.dp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = EmeraldGreen
+                                )
                             }
-                            Text(receipt.getEffectiveDisplayId(), fontWeight = FontWeight.SemiBold, color = DarkNavy)
-                            Text(receipt.aussteller, fontSize = 12.sp, color = SlateGray)
-                            Text("${NumberFormatter.format(receipt.bruttobetrag)} • ${formatDate(receipt.datum)} • ${suggestion.confidence}", fontSize = 11.sp, color = SlateGray)
+                            Text(receipt.getEffectiveDisplayId(), fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 14.sp)
+                            Text(receipt.aussteller, fontSize = 11.sp, color = SlateGray)
+                            Text("${NumberFormatter.format(receipt.bruttobetrag)} • ${formatDate(receipt.datum)} • ${suggestion.confidence}", fontSize = 10.sp, color = SlateGray)
                             if (suggestion.reasons.isNotEmpty()) Text(suggestion.reasons.take(3).joinToString(" • "), fontSize = 11.sp, color = SlateGray)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { viewModel.confirmBankReceiptLink(transaction.transactionId, receipt.id) }, modifier = Modifier.weight(1f)) { Text("Beleg zuordnen") }
@@ -944,6 +1038,56 @@ private fun BankTransactionDetailsScreen(
             }
         }
 
+        item {
+            Card(
+                shape = Ui2.shape,
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderColor)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Description, contentDescription = null, tint = DarkNavy)
+                        Spacer(Modifier.size(8.dp))
+                        Text("Notizen", fontWeight = FontWeight.Bold, color = DarkNavy, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { editNote = !editNote }) {
+                            Text(if (editNote) "Fertig" else if (note.isBlank()) "Notiz hinzufügen" else "Bearbeiten")
+                        }
+                    }
+                    if (editNote) {
+                        OutlinedTextField(
+                            value = note,
+                            onValueChange = { value ->
+                                note = value
+                                context.getSharedPreferences("bank_transaction_notes", android.content.Context.MODE_PRIVATE)
+                                    .edit()
+                                    .putString(transaction.transactionId, value)
+                                    .apply()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Notiz zur Buchung") },
+                            minLines = 2,
+                            shape = Ui2.controlShape
+                        )
+                    } else if (note.isNotBlank()) {
+                        Text(note, color = SlateGray, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        if (transaction.classification == BankTransactionClassification.NORMAL) {
+            item {
+                OutlinedButton(
+                    onClick = { viewModel.markBankTransactionPrivateIgnored(transaction.transactionId) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = Ui2.controlShape,
+                    border = BorderStroke(1.dp, CrimsonRed)
+                ) {
+                    Text("Buchung ignorieren", color = CrimsonRed, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
         if (transaction.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
@@ -956,6 +1100,40 @@ private fun BankTransactionDetailsScreen(
             }
         }
         item { Spacer(Modifier.height(20.dp)) }
+    }
+}
+
+@Composable
+private fun BankReferenceAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    tint: Color = AccentBlue,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier.heightIn(min = 94.dp).clickable(onClick = onClick),
+        shape = Ui2.controlShape,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.height(6.dp))
+            Text(
+                label,
+                fontSize = 9.sp,
+                lineHeight = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = DarkNavy,
+                maxLines = 3,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
     }
 }
 
