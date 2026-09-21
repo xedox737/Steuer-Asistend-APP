@@ -717,6 +717,78 @@ private fun UnifiedUnitDetailScreen(
             }
 
             item {
+                UnifiedDetailCard("Miethistorie") {
+                    if (periods.isEmpty()) {
+                        Text(
+                            "Noch keine Mietverhältnisse gespeichert.",
+                            fontSize = 10.sp,
+                            color = SlateGray
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            periods.sortedByDescending { it.startDate }.forEach { period ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = Ui2.controlShape,
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (period.active) Color(0xFFF0FAF5) else Color(0xFFF7F8FA)
+                                    ),
+                                    border = BorderStroke(1.dp, BorderColor)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                period.tenantName.ifBlank { "Mieter ohne Namen" },
+                                                modifier = Modifier.weight(1f),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DarkNavy
+                                            )
+                                            Text(
+                                                if (period.active) "AKTUELL" else "BEENDET",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (period.active) EmeraldGreen else SlateGray
+                                            )
+                                        }
+                                        val start = period.startDate.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
+                                            ?: "Start unbekannt"
+                                        val end = period.endDate.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
+                                            ?: "heute"
+                                        Text("$start – $end", fontSize = 10.sp, color = SlateGray)
+                                        Text(
+                                            "Kalt ${unifiedMoney(period.kaltmiete)} · NK ${unifiedMoney(period.nebenkosten)} · Sonstiges ${unifiedMoney(period.sonstige)}",
+                                            fontSize = 9.sp,
+                                            color = SlateGray
+                                        )
+                                        Text(
+                                            "Monatliches Soll ${unifiedMoney(period.monatSoll)}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = DarkNavy
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        onClick = { showHistory = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = Ui2.controlShape
+                    ) {
+                        Text(if (unit.status == "Vermietet") "Mieterwechsel / Historie bearbeiten" else "Miethistorie öffnen")
+                    }
+                }
+            }
+
+            item {
                 UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         UnifiedStatusMetric(
@@ -740,7 +812,7 @@ private fun UnifiedUnitDetailScreen(
                             if (!isCurrentlyRented) "Kein Soll" else if (paidOnTime) "Pünktlich" else if (currentExpected <= 0.01) "Kein Soll" else "Offen",
                             "",
                             if (!isCurrentlyRented) SlateGray else if (paidOnTime) EmeraldGreen else if (currentExpected <= 0.01) SlateGray else CrimsonRed,
-                            if (paidOnTime) Color(0xFFF0FAF5) else Color(0xFFFFF3F3),
+                            if (!isCurrentlyRented || currentExpected <= 0.01) Color(0xFFF6F7FA) else if (paidOnTime) Color(0xFFF0FAF5) else Color(0xFFFFF3F3),
                             Modifier.weight(1f)
                         )
                     }
