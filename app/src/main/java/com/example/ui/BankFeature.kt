@@ -717,20 +717,11 @@ private fun BankTransactionDetailsScreen(
     var editNote by remember(transaction.transactionId) { mutableStateOf(false) }
     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück", tint = DarkNavy)
                 }
-                Text(
-                    "Buchungsdetails",
-                    fontWeight = FontWeight.Bold,
-                    color = DarkNavy,
-                    fontSize = 20.sp,
-                    modifier = Modifier.weight(1f)
-                )
+                Text("Buchungsdetails", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 20.sp, modifier = Modifier.weight(1f))
                 Text("•••", color = DarkNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -758,12 +749,7 @@ private fun BankTransactionDetailsScreen(
                             )
                             BankPrimaryStatusBadge(transaction)
                         }
-                        Text(
-                            NumberFormatter.format(transaction.amount),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 19.sp,
-                            color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy
-                        )
+                        Text(NumberFormatter.format(transaction.amount), fontWeight = FontWeight.Bold, fontSize = 19.sp, color = if (transaction.amount >= 0) EmeraldGreen else DarkNavy)
                     }
                     HorizontalDivider()
                     BankDetailLine("Buchungsdatum", formatDate(transaction.bookingDate), Icons.Default.CalendarMonth)
@@ -779,10 +765,7 @@ private fun BankTransactionDetailsScreen(
         }
         if (transaction.classification == BankTransactionClassification.NORMAL) {
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     BankReferenceAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
                     BankReferenceAction("Beleg anlegen", Icons.Default.Description, Modifier.weight(1f)) {
                         viewModel.startReceiptFromBankTransaction(transaction)
@@ -825,39 +808,6 @@ private fun BankTransactionDetailsScreen(
                             viewModel.markBankTransactionForReview(transaction.transactionId)
                         }
                     ))
-                }
-            }
-        }
-
-        if (transaction.classification == BankTransactionClassification.TRANSFER) viewModel.resetBankTransactionClassification(transaction.transactionId)
-                        else viewModel.markBankTransactionTransfer(transaction.transactionId)
-                    },
-                    Ui2Action(labels.reviewAction, labels.reviewSubtitle, Icons.Default.CheckCircle, EmeraldGreen) {
-                        if (transaction.reviewState == BankReviewState.DONE) viewModel.reopenBankTransactionReview(transaction.transactionId)
-                        else viewModel.markBankTransactionReviewDone(transaction.transactionId)
-                    },
-                    Ui2Action("Manuell prüfen", "Später bearbeiten", Icons.Default.Visibility, WarmOrange) {
-                        viewModel.markBankTransactionForReview(transaction.transactionId)
-                    }
-                ))
-            }
-        }
-
-        if (transaction.classification == BankTransactionClassification.NORMAL) item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
-                Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("Beleg zuordnen", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 15.sp)
-                    BankReceiptActionGrid(viewModel, transaction, onPickReceipt, onNoReceipt)
-                    Text(
-                        when {
-                            linkedLinks.isNotEmpty() -> "Beleg zugeordnet."
-                            suggestion != null -> "Passender Belegvorschlag gefunden."
-                            else -> "Noch kein passender Beleg gefunden."
-                        },
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFF1F5F9)).padding(10.dp),
-                        color = SlateGray,
-                        fontSize = 12.sp
-                    )
                 }
             }
         }
@@ -1051,9 +1001,7 @@ private fun BankTransactionDetailsScreen(
                             onValueChange = { value ->
                                 note = value
                                 context.getSharedPreferences("bank_transaction_notes", android.content.Context.MODE_PRIVATE)
-                                    .edit()
-                                    .putString(transaction.transactionId, value)
-                                    .apply()
+                                    .edit().putString(transaction.transactionId, value).apply()
                             },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text("Notiz zur Buchung") },
