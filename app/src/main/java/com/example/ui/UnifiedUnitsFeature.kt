@@ -34,6 +34,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -580,6 +581,7 @@ private fun UnifiedUnitDetailScreen(
             unit = unit,
             onDismiss = { showStatusDialog = false },
             onSave = { status, effectiveDate ->
+                UnitStatusMetaStore.save(context, property.propertyId, unitId, status, effectiveDate)
                 val endsCurrentLease = status in setOf(
                     "Leerstand",
                     "Renovierung",
@@ -1091,10 +1093,24 @@ private fun UnifiedUnitStatusDialog(
                             effectiveDateText = it
                             dateError = null
                         },
-                        label = { Text("Gültig ab") },
+                        label = {
+                            Text(
+                                if (status == "Kündigung / Auszug geplant") "Geplanter Auszug"
+                                else "Gültig ab"
+                            )
+                        },
                         placeholder = { Text("TT.MM.JJJJ") },
                         supportingText = {
-                            Text(dateError ?: "Heute oder rückwirkend. Dieses Datum wird bei einem beendeten Mietverhältnis in die Miethistorie übernommen.")
+                            Text(
+                                dateError ?: when {
+                                    status == "Kündigung / Auszug geplant" ->
+                                        "Das geplante Auszugsdatum darf auch in der Zukunft liegen. Das Mietverhältnis bleibt bis zur tatsächlichen Beendigung aktiv."
+                                    endsLease ->
+                                        "Heute oder rückwirkend. Dieses Datum wird als Mietende in die Miethistorie übernommen."
+                                    else ->
+                                        "Datum, ab dem der neue Status gelten soll."
+                                }
+                            )
                         },
                         isError = dateError != null,
                         singleLine = true,
@@ -1115,9 +1131,17 @@ private fun UnifiedUnitStatusDialog(
                                 DateTimeFormatter.ofPattern("dd.MM.yyyy")
                             )
                         }.getOrNull()
+                        val activeStart = unit.mietvertragsstart
+                            .takeIf { it.isNotBlank() }
+                            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        val futureAllowed = status == "Kündigung / Auszug geplant"
                         when {
-                            parsed == null -> dateError = "Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben."
-                            parsed.isAfter(LocalDate.now()) -> dateError = "Das Datum darf nicht in der Zukunft liegen."
+                            parsed == null ->
+                                dateError = "Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben."
+                            !futureAllowed && parsed.isAfter(LocalDate.now()) ->
+                                dateError = "Für diesen Status darf das Datum nicht in der Zukunft liegen."
+                            status in destructiveStatuses && activeStart != null && parsed.isBefore(activeStart) ->
+                                dateError = "Das Mietende darf nicht vor dem Mietbeginn liegen."
                             else -> onSave(status, parsed.toString())
                         }
                     },
@@ -1155,6 +1179,27 @@ private fun currentMonthLabel(): String =
     YearMonth.now()
         .format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN))
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.GERMAN) else it.toString() }
+
+private object UnitStatusMetaStore {
+    private const val PREFS = "unit_status_meta_prefs"
+
+    private fun key(propertyId: String, unitId: String, field: String) =
+        "${propertyId}_${unitId}_$field"
+
+    fun save(
+        context: android.content.Context,
+        propertyId: String,
+        unitId: String,
+        status: String,
+        effectiveDate: String
+    ) {
+        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putString(key(propertyId, unitId, "status"), status)
+            .putString(key(propertyId, unitId, "effectiveDate"), effectiveDate)
+            .apply()
+    }
+}
 
 private data class UnitRentalDetail(
     val paymentMethod: String = "",
