@@ -579,7 +579,7 @@ private fun UnifiedUnitDetailScreen(
         UnifiedUnitStatusDialog(
             unit = unit,
             onDismiss = { showStatusDialog = false },
-            onSave = { status ->
+            onSave = { status, effectiveDate ->
                 val endsCurrentLease = status in setOf(
                     "Leerstand",
                     "Renovierung",
@@ -587,9 +587,8 @@ private fun UnifiedUnitDetailScreen(
                     "Neuvermietung geplant"
                 )
                 if (endsCurrentLease) {
-                    val endDate = LocalDate.now().toString()
                     val updatedPeriods = periods.map { period ->
-                        if (period.active) period.copy(endDate = endDate) else period
+                        if (period.active) period.copy(endDate = effectiveDate) else period
                     }
                     TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)
                     viewModel.updateWohneinheit(
@@ -987,7 +986,7 @@ private fun unifiedDocumentLabel(document: ManagedDocument): String {
 private fun UnifiedUnitStatusDialog(
     unit: WohneinheitStatus,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit
+    onSave: (String, String) -> Unit
 ) {
     val states = listOf(
         "Vermietet",
@@ -997,25 +996,158 @@ private fun UnifiedUnitStatusDialog(
         "Vermarktung / Inseriert",
         "Neuvermietung geplant"
     )
+    var selectedStatus by remember { mutableStateOf<String?>(null) }
+    var effectiveDateText by remember { mutableStateOf(LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))) }
+    var dateError by remember { mutableStateOf<String?>(null) }
+
+    val destructiveStatuses = setOf(
+        "Leerstand",
+        "Renovierung",
+        "Vermarktung / Inseriert",
+        "Neuvermietung geplant"
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = Ui2.shape,
-        title = { Text("Status ändern · ${unit.label.ifBlank { unit.name }}", fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                if (selectedStatus == null) {
+                    "Status ändern · ${unit.label.ifBlank { unit.name }}"
+                } else {
+                    "Änderung bestätigen"
+                },
+                fontWeight = FontWeight.Bold
+            )
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                states.forEach { state ->
-                    OutlinedButton(
-                        onClick = { onSave(state) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = Ui2.controlShape
-                    ) {
-                        Text(state)
+            if (selectedStatus == null) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Wähle den neuen Status. Vor dem Speichern wird die Änderung noch einmal bestätigt.",
+                        fontSize = 10.sp,
+                        color = SlateGray
+                    )
+                    states.forEach { state ->
+                        OutlinedButton(
+                            onClick = {
+                                selectedStatus = state
+                                effectiveDateText = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+                                dateError = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = Ui2.controlShape
+                        ) {
+                            Text(state)
+                        }
                     }
+                }
+            } else {
+                val status = selectedStatus.orEmpty()
+                val endsLease = status in destructiveStatuses
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = Ui2.controlShape,
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (endsLease) Color(0xFFFFF3F3) else Color(0xFFF3F7FD)
+                        ),
+                        border = BorderStroke(1.dp, if (endsLease) Color(0xFFFFD6D6) else BorderColor)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text(
+                                "Neuer Status: $status",
+                                fontWeight = FontWeight.Bold,
+                                color = if (endsLease) CrimsonRed else DarkNavy
+                            )
+                            Text(
+                                when (status) {
+                                    "Leerstand" ->
+                                        "Das aktive Mietverhältnis wird zum angegebenen Datum beendet. Der bisherige Mieter bleibt in der Miethistorie erhalten. Ab diesem Datum wird kein Miet-Soll mehr erzeugt."
+                                    "Renovierung" ->
+                                        "Das aktive Mietverhältnis wird zum angegebenen Datum beendet und die Einheit als Renovierung geführt. Die Miethistorie bleibt erhalten."
+                                    "Vermarktung / Inseriert" ->
+                                        "Das aktive Mietverhältnis wird zum angegebenen Datum beendet. Danach wird die Einheit als in Vermarktung geführt und es entsteht kein Miet-Soll."
+                                    "Neuvermietung geplant" ->
+                                        "Das aktive Mietverhältnis wird zum angegebenen Datum beendet. Danach wird die Einheit für eine Neuvermietung vorbereitet."
+                                    "Kündigung / Auszug geplant" ->
+                                        "Das Mietverhältnis bleibt vorerst aktiv. Der Status weist nur darauf hin, dass ein Auszug geplant ist."
+                                    "Vermietet" ->
+                                        "Der Status wird auf Vermietet gesetzt. Ein neues Mietverhältnis sollte über „Mieterwechsel“ mit Mietbeginn und Mietdaten angelegt werden."
+                                    else -> "Der Status der Wohneinheit wird geändert."
+                                },
+                                fontSize = 10.sp,
+                                color = SlateGray
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = effectiveDateText,
+                        onValueChange = {
+                            effectiveDateText = it
+                            dateError = null
+                        },
+                        label = { Text("Gültig ab") },
+                        placeholder = { Text("TT.MM.JJJJ") },
+                        supportingText = {
+                            Text(dateError ?: "Heute oder rückwirkend. Dieses Datum wird bei einem beendeten Mietverhältnis in die Miethistorie übernommen.")
+                        },
+                        isError = dateError != null,
+                        singleLine = true,
+                        shape = Ui2.controlShape,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+        confirmButton = {
+            val status = selectedStatus
+            if (status != null) {
+                Button(
+                    onClick = {
+                        val parsed = runCatching {
+                            LocalDate.parse(
+                                effectiveDateText.trim(),
+                                DateTimeFormatter.ofPattern("dd.MM.yyyy")
+                            )
+                        }.getOrNull()
+                        when {
+                            parsed == null -> dateError = "Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben."
+                            parsed.isAfter(LocalDate.now()) -> dateError = "Das Datum darf nicht in der Zukunft liegen."
+                            else -> onSave(status, parsed.toString())
+                        }
+                    },
+                    shape = Ui2.controlShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (status in destructiveStatuses) CrimsonRed else AccentBlue
+                    )
+                ) {
+                    Text(
+                        if (status in destructiveStatuses) {
+                            "Änderung bestätigen"
+                        } else {
+                            "Status übernehmen"
+                        }
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = {
+                    if (selectedStatus == null) onDismiss() else {
+                        selectedStatus = null
+                        dateError = null
+                    }
+                }
+            ) {
+                Text(if (selectedStatus == null) "Abbrechen" else "Zurück")
+            }
+        }
     )
 }
 
