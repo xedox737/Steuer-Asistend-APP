@@ -251,9 +251,9 @@ internal fun UnifiedPropertyUnitsScreen(
             val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
             UnifiedUnitOverviewCard(
                 unit = unit,
-                nk = nk,
-                other = other,
-                missing = month.missing,
+                nk = if (unit.status == "Vermietet") nk else 0.0,
+                other = if (unit.status == "Vermietet") other else 0.0,
+                missing = if (unit.status == "Vermietet") month.missing else 0.0,
                 onOpen = { selectedUnitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) }
             )
         }
@@ -314,7 +314,7 @@ private fun UnifiedUnitOverviewCard(
                         UnifiedStatusPill(if (rented) "Vermietet" else unit.status, rented)
                     }
                     Text(
-                        if (rented) unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else "Leerstand",
+                        if (rented) unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else "Kein aktueller Mieter",
                         fontSize = 11.sp,
                         color = SlateGray
                     )
@@ -327,7 +327,7 @@ private fun UnifiedUnitOverviewCard(
                 UnifiedMiniMetric(
                     Icons.Default.HomeWork,
                     "Monatliches Soll",
-                    unifiedMoney(unit.kaltmiete),
+                    unifiedMoney(if (rented) unit.kaltmiete else 0.0),
                     "Kaltmiete",
                     Modifier.weight(1f)
                 )
@@ -445,7 +445,7 @@ private fun UnifiedUnitDetailScreen(
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
     val unitReceipts = receipts.filter { it.wohneinheit == unit.name || it.wohneinheit == unit.label }
-    val unitDocs = documents.filter { it.unitId == unitId }
+    val unitDocs = documents.filter { it.unitId == unitId && !documentTypeLabel(it).contains("Exposé", true) }
     val periods = remember(unitId, unit, detailsVersion) {
         TenantHistoryStore.ensureCurrentPeriod(
             context = context,
@@ -455,18 +455,23 @@ private fun UnifiedUnitDetailScreen(
             propertyId = property.propertyId
         )
     }
-    val activePeriod = periods.lastOrNull { it.active } ?: periods.maxByOrNull { it.startDate }
+    val activePeriod = periods.lastOrNull { it.active }
+    val latestPeriod = periods.maxByOrNull { it.startDate }
     val extraDetails = remember(unitId, detailsVersion) {
         UnitRentalDetailStore.load(context, property.propertyId, unitId)
     }
     val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
-    val nk = activePeriod?.nebenkosten ?: PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")
-    val other = activePeriod?.sonstige ?: PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other")
-    val coldRent = activePeriod?.kaltmiete ?: unit.kaltmiete
+    val isCurrentlyRented = unit.status == "Vermietet" && activePeriod != null
+    val nk = if (isCurrentlyRented) activePeriod?.nebenkosten ?: 0.0 else 0.0
+    val other = if (isCurrentlyRented) activePeriod?.sonstige ?: 0.0 else 0.0
+    val coldRent = if (isCurrentlyRented) activePeriod?.kaltmiete ?: 0.0 else 0.0
     val totalRent = coldRent + nk + other
+    val currentExpected = if (isCurrentlyRented) month.expected else 0.0
+    val currentActual = if (isCurrentlyRented) month.actual else 0.0
+    val currentMissing = if (isCurrentlyRented) month.missing else 0.0
     val lastPayment = unitReceipts.filter { isRentalIncomeReceipt(it) }.maxByOrNull { it.datum }
     val paymentMonthLabel = currentMonthLabel()
-    val paidOnTime = month.expected > 0.01 && month.missing <= 0.01
+    val paidOnTime = currentExpected > 0.01 && currentMissing <= 0.01
 
     val selectedDocument = selectedDocumentId?.let { id -> unitDocs.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
@@ -488,8 +493,8 @@ private fun UnifiedUnitDetailScreen(
     if (showHistory) {
         TenantHistoryDialog(
             unit = unit,
-            nebenkostenCurrent = nk,
-            sonstigeCurrent = other,
+            nebenkostenCurrent = activePeriod?.nebenkosten ?: latestPeriod?.nebenkosten ?: PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk"),
+            sonstigeCurrent = activePeriod?.sonstige ?: latestPeriod?.sonstige ?: PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other"),
             onDismiss = { showHistory = false },
             onCurrentTenantChanged = { newPeriod ->
                 PropertyUnitScopedData.setRentValues(
@@ -516,9 +521,9 @@ private fun UnifiedUnitDetailScreen(
     if (showMonthCheck) {
         UnifiedMonthlyCheckDialog(
             title = unit.label.ifBlank { unit.name },
-            expected = month.expected,
-            actual = month.actual,
-            missing = month.missing,
+            expected = currentExpected,
+            actual = currentActual,
+            missing = currentMissing,
             onDismiss = { showMonthCheck = false }
         )
     }
@@ -575,7 +580,29 @@ private fun UnifiedUnitDetailScreen(
             unit = unit,
             onDismiss = { showStatusDialog = false },
             onSave = { status ->
-                viewModel.updateWohneinheit(unit.copy(status = status))
+                val endsCurrentLease = status in setOf(
+                    "Leerstand",
+                    "Renovierung",
+                    "Vermarktung / Inseriert",
+                    "Neuvermietung geplant"
+                )
+                if (endsCurrentLease) {
+                    val endDate = LocalDate.now().toString()
+                    val updatedPeriods = periods.map { period ->
+                        if (period.active) period.copy(endDate = endDate) else period
+                    }
+                    TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)
+                    viewModel.updateWohneinheit(
+                        unit.copy(
+                            status = status,
+                            mieter = "",
+                            mietvertragsstart = ""
+                        )
+                    )
+                    detailsVersion++
+                } else {
+                    viewModel.updateWohneinheit(unit.copy(status = status))
+                }
                 showStatusDialog = false
             }
         )
@@ -611,7 +638,15 @@ private fun UnifiedUnitDetailScreen(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(unit.mieter.ifBlank { "Kein Mieter" }, fontSize = 12.sp, color = SlateGray)
+                    Text(
+                        if (unit.status == "Vermietet" && activePeriod != null) {
+                            activePeriod.tenantName.ifBlank { unit.mieter.ifBlank { "Mieter nicht hinterlegt" } }
+                        } else {
+                            "Kein aktueller Mieter"
+                        },
+                        fontSize = 12.sp,
+                        color = SlateGray
+                    )
                     UnifiedStatusPill(
                         if (unit.status == "Vermietet") "Vermietet" else unit.status,
                         unit.status == "Vermietet",
@@ -646,9 +681,13 @@ private fun UnifiedUnitDetailScreen(
                             UnifiedDetailFact(
                                 Icons.Default.CalendarMonth,
                                 "Mietbeginn",
-                                activePeriod?.startDate?.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
-                                    ?: unit.mietvertragsstart.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
-                                    ?: "–"
+                                if (isCurrentlyRented) {
+                                    activePeriod?.startDate?.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
+                                        ?: unit.mietvertragsstart.takeIf { it.isNotBlank() }?.let(::formatGermanDate)
+                                        ?: "–"
+                                } else {
+                                    "–"
+                                }
                             )
                             UnifiedDetailFact(Icons.Default.Payments, "Zahlungsweise", extraDetails.paymentMethod.ifBlank { "Nicht hinterlegt" })
                             UnifiedDetailFact(Icons.Default.CalendarMonth, "Fälligkeit", extraDetails.dueDate.ifBlank { "Nicht hinterlegt" })
@@ -681,7 +720,7 @@ private fun UnifiedUnitDetailScreen(
                 UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         UnifiedStatusMetric(
-                            "Letzte Zahlung",
+                            if (isCurrentlyRented) "Letzte Zahlung" else "Letzte Mieterzahlung",
                             lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
                             lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
                             EmeraldGreen,
@@ -690,17 +729,17 @@ private fun UnifiedUnitDetailScreen(
                         )
                         UnifiedStatusMetric(
                             "Offener Betrag",
-                            unifiedMoney(month.missing),
+                            unifiedMoney(currentMissing),
                             paymentMonthLabel,
-                            if (month.missing > 0.01) CrimsonRed else DarkNavy,
-                            if (month.missing > 0.01) Color(0xFFFFF3F3) else Color(0xFFF6F7FA),
+                            if (currentMissing > 0.01) CrimsonRed else DarkNavy,
+                            if (currentMissing > 0.01) Color(0xFFFFF3F3) else Color(0xFFF6F7FA),
                             Modifier.weight(1f)
                         )
                         UnifiedStatusMetric(
                             "Status",
-                            if (paidOnTime) "Pünktlich" else if (month.expected <= 0.01) "Kein Soll" else "Offen",
+                            if (!isCurrentlyRented) "Kein Soll" else if (paidOnTime) "Pünktlich" else if (currentExpected <= 0.01) "Kein Soll" else "Offen",
                             "",
-                            if (paidOnTime) EmeraldGreen else if (month.expected <= 0.01) SlateGray else CrimsonRed,
+                            if (!isCurrentlyRented) SlateGray else if (paidOnTime) EmeraldGreen else if (currentExpected <= 0.01) SlateGray else CrimsonRed,
                             if (paidOnTime) Color(0xFFF0FAF5) else Color(0xFFFFF3F3),
                             Modifier.weight(1f)
                         )
@@ -708,7 +747,11 @@ private fun UnifiedUnitDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Text("i", color = AccentBlue, fontWeight = FontWeight.Bold)
                         Text(
-                            "Monatscheck zeigt Ist-Zahlungen für $paymentMonthLabel im Vergleich zum Soll.",
+                            if (isCurrentlyRented) {
+                                "Monatscheck zeigt Ist-Zahlungen für $paymentMonthLabel im Vergleich zum Soll."
+                            } else {
+                                "Kein aktives Mietverhältnis: Für $paymentMonthLabel wird kein Soll erzeugt."
+                            },
                             fontSize = 10.sp,
                             color = SlateGray
                         )
