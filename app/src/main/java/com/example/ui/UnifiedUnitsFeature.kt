@@ -446,7 +446,7 @@ private fun UnifiedUnitDetailScreen(
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
     val unitReceipts = receipts.filter { it.wohneinheit == unit.name || it.wohneinheit == unit.label }
-    val unitDocs = documents.filter { it.unitId == unitId && !documentTypeLabel(it).contains("Exposé", true) }
+    val unitDocs = documents.filter { it.unitId == unitId }
     val periods = remember(unitId, unit, detailsVersion) {
         TenantHistoryStore.ensureCurrentPeriod(
             context = context,
