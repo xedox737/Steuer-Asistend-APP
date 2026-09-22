@@ -113,6 +113,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val importStatus by viewModel.bankImportStatus.collectAsState()
     val learningRules by viewModel.bankLearningRules.collectAsState()
     val undoNotice by viewModel.bankUndoNotice.collectAsState()
+    val returnToTransactionId by viewModel.bankTransactionDetailsReturnId.collectAsState()
 
     var searchText by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(BankCompactFilter.ALL) }
@@ -173,6 +174,14 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
 
     LaunchedEffect(selectedTransaction != null) {
         onDetailVisibilityChanged(selectedTransaction != null)
+    }
+
+    LaunchedEffect(returnToTransactionId, transactions) {
+        val transactionId = returnToTransactionId
+        if (!transactionId.isNullOrBlank() && transactions.any { it.transactionId == transactionId }) {
+            selectedTransactionId = transactionId
+            viewModel.consumeBankTransactionDetailsReturn()
+        }
     }
 
     BackHandler(enabled = selectedTransaction != null) { selectedTransactionId = null }
@@ -730,7 +739,6 @@ private fun BankTransactionDetailsScreen(
                 fontSize = 20.sp,
                 modifier = Modifier.weight(1f)
             )
-            Text("•••", color = DarkNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
@@ -1281,7 +1289,11 @@ private fun BankReceiptPickerDialog(
     val ranked = remember(transaction.transactionId, receipts, links) { BankReceiptMatcher.rankReceipts(transaction, receipts, links) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Vorhandenen Beleg zuordnen") },
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text("Vorhandenen Beleg zuordnen", fontWeight = FontWeight.Bold) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (ranked.isEmpty()) item { Text("Keine passenden Belege gefunden.") }
@@ -1368,10 +1380,30 @@ private fun NoReceiptReasonDialog(onDismiss: () -> Unit, onSelect: (String) -> U
     val reasons = listOf("Eigene Umbuchung", "Mieteinnahme", "Darlehen / Tilgung", "Privat", "Bankgebühr", "Sonstiges")
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Warum ist kein Beleg nötig?") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            reasons.forEach { reason -> TextButton(onClick = { onSelect(reason) }, modifier = Modifier.fillMaxWidth()) { Text(reason, modifier = Modifier.fillMaxWidth()) } }
-        } },
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text("Warum ist kein Beleg nötig?", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                reasons.forEach { reason ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelect(reason) },
+                        shape = Ui2.controlShape,
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
+                        Text(
+                            reason,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
+                            color = DarkNavy,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        },
         confirmButton = {},
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
