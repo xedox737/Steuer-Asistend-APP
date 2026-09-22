@@ -124,9 +124,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
         )
     ) {
         Surface(
-            modifier = Modifier
-                .fillMaxSize()
-                .navigationBarsPadding(),
+            modifier = Modifier.fillMaxSize(),
             color = Color(0xFFF5F8FC)
         ) {
             Box(Modifier.fillMaxSize()) {
@@ -285,6 +283,7 @@ internal fun ReceiptDetailLayout(
                 tonalElevation = 0.dp,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .testTag("receipt_detail_bottom_navigation")
             ) {
                 listOf(
