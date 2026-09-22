@@ -4010,7 +4010,8 @@ data class AiSearchUiState(
             val newId = repository.insert(newReceipt)
             val savedReceipt = newReceipt.copy(id = newId.toInt())
 
-            _pendingBankTransactionId.value?.let { pendingTransactionId ->
+            val originatingBankTransactionId = _pendingBankTransactionId.value
+            originatingBankTransactionId?.let { pendingTransactionId ->
                 database.bankDao().getTransaction(pendingTransactionId)?.let { transaction ->
                     _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, savedReceipt)
                 }
@@ -4027,7 +4028,12 @@ data class AiSearchUiState(
             }
 
             _scanState.value = ScanUiState.Idle
-            _currentScreen.value = AppScreen.RECEIPTS_LIST
+            if (!originatingBankTransactionId.isNullOrBlank()) {
+                _bankTransactionDetailsReturnId.value = originatingBankTransactionId
+                _currentScreen.value = AppScreen.BANK
+            } else {
+                _currentScreen.value = AppScreen.RECEIPTS_LIST
+            }
         }
     }
 
