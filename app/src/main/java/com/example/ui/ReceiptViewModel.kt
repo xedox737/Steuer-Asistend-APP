@@ -266,6 +266,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private var bankUndoSnapshot: List<com.example.data.BankTransaction> = emptyList()
     private val _pendingBankTransactionId = MutableStateFlow<String?>(null)
     val pendingBankTransactionId: StateFlow<String?> = _pendingBankTransactionId.asStateFlow()
+    private val _bankTransactionDetailsReturnId = MutableStateFlow<String?>(null)
+    val bankTransactionDetailsReturnId: StateFlow<String?> = _bankTransactionDetailsReturnId.asStateFlow()
 
     // Google Drive Sync State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
@@ -1863,6 +1865,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun startReceiptFromBankTransaction(transaction: com.example.data.BankTransaction) {
+        _bankTransactionDetailsReturnId.value = null
         _pendingBankTransactionId.value = transaction.transactionId
         _scanState.value = ScanUiState.Success(
             com.example.api.ExtractedReceipt(
@@ -3172,8 +3175,28 @@ data class AiSearchUiState(
         if (screen != AppScreen.ADD_RECEIPT) {
             _pendingBankTransactionId.value = null
         }
+        if (screen != AppScreen.BANK) {
+            _bankTransactionDetailsReturnId.value = null
+        }
         _currentScreen.value = screen
         _scanState.value = ScanUiState.Idle
+    }
+
+    fun returnFromBankReceiptCreation() {
+        val transactionId = _pendingBankTransactionId.value
+        _pendingBankTransactionId.value = null
+        _scanState.value = ScanUiState.Idle
+        if (transactionId.isNullOrBlank()) {
+            _bankTransactionDetailsReturnId.value = null
+            _currentScreen.value = AppScreen.DASHBOARD
+        } else {
+            _bankTransactionDetailsReturnId.value = transactionId
+            _currentScreen.value = AppScreen.BANK
+        }
+    }
+
+    fun consumeBankTransactionDetailsReturn() {
+        _bankTransactionDetailsReturnId.value = null
     }
 
     fun selectProperty(propertyId: String) {
@@ -3987,7 +4010,8 @@ data class AiSearchUiState(
             val newId = repository.insert(newReceipt)
             val savedReceipt = newReceipt.copy(id = newId.toInt())
 
-            _pendingBankTransactionId.value?.let { pendingTransactionId ->
+            val originatingBankTransactionId = _pendingBankTransactionId.value
+            originatingBankTransactionId?.let { pendingTransactionId ->
                 database.bankDao().getTransaction(pendingTransactionId)?.let { transaction ->
                     _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, savedReceipt)
                 }
@@ -4004,7 +4028,12 @@ data class AiSearchUiState(
             }
 
             _scanState.value = ScanUiState.Idle
-            _currentScreen.value = AppScreen.RECEIPTS_LIST
+            if (!originatingBankTransactionId.isNullOrBlank()) {
+                _bankTransactionDetailsReturnId.value = originatingBankTransactionId
+                _currentScreen.value = AppScreen.BANK
+            } else {
+                _currentScreen.value = AppScreen.RECEIPTS_LIST
+            }
         }
     }
 

@@ -113,6 +113,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val importStatus by viewModel.bankImportStatus.collectAsState()
     val learningRules by viewModel.bankLearningRules.collectAsState()
     val undoNotice by viewModel.bankUndoNotice.collectAsState()
+    val returnToTransactionId by viewModel.bankTransactionDetailsReturnId.collectAsState()
 
     var searchText by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(BankCompactFilter.ALL) }
@@ -173,6 +174,14 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
 
     LaunchedEffect(selectedTransaction != null) {
         onDetailVisibilityChanged(selectedTransaction != null)
+    }
+
+    LaunchedEffect(returnToTransactionId, transactions) {
+        val transactionId = returnToTransactionId
+        if (!transactionId.isNullOrBlank() && transactions.any { it.transactionId == transactionId }) {
+            selectedTransactionId = transactionId
+            viewModel.consumeBankTransactionDetailsReturn()
+        }
     }
 
     BackHandler(enabled = selectedTransaction != null) { selectedTransactionId = null }
@@ -438,7 +447,11 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     if (showImportDetails && !importStatus.isNullOrBlank()) {
         AlertDialog(
             onDismissRequest = { showImportDetails = false },
-            title = { Text("Importdetails") },
+            shape = Ui2.shape,
+            containerColor = Color.White,
+            titleContentColor = DarkNavy,
+            textContentColor = SlateGray,
+            title = { Text("Importdetails", fontWeight = FontWeight.Bold) },
             text = {
                 Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
                     Text(importStatus.orEmpty(), fontSize = 11.sp, color = SlateGray)
@@ -479,7 +492,11 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         val propertyIds = (transactions.map { it.propertyId } + receipts.map { it.propertyId }).filter { it.isNotBlank() }.distinct().sorted()
         AlertDialog(
             onDismissRequest = { pendingPropertyChoice = false },
-            title = { Text("Immobilie zuweisen") },
+            shape = Ui2.shape,
+            containerColor = Color.White,
+            titleContentColor = DarkNavy,
+            textContentColor = SlateGray,
+            title = { Text("Immobilie zuweisen", fontWeight = FontWeight.Bold) },
             text = { Column { propertyIds.forEach { propertyId -> TextButton(onClick = {
                 viewModel.applyBankBatchAction(selectedTransactionIds, com.example.data.BankBatchAction.PROPERTY, propertyId)
                 selectedTransactionIds = emptySet(); pendingPropertyChoice = false
@@ -494,7 +511,11 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         }
         AlertDialog(
             onDismissRequest = { pendingCategoryChoice = false },
-            title = { Text("Kategorie zuweisen") },
+            shape = Ui2.shape,
+            containerColor = Color.White,
+            titleContentColor = DarkNavy,
+            textContentColor = SlateGray,
+            title = { Text("Kategorie zuweisen", fontWeight = FontWeight.Bold) },
             text = {
                 LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
                     if (favorites.isEmpty()) item { Text("Noch keine Kategorien aus bestätigten Belegen vorhanden.") }
@@ -541,7 +562,11 @@ private fun BankBatchConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Massenänderung prüfen") },
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text("Massenänderung prüfen", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("$selected Bankbuchungen ausgewählt.")
@@ -730,7 +755,6 @@ private fun BankTransactionDetailsScreen(
                 fontSize = 20.sp,
                 modifier = Modifier.weight(1f)
             )
-            Text("•••", color = DarkNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
@@ -1278,29 +1302,110 @@ private fun BankReceiptPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (Receipt) -> Unit
 ) {
-    val ranked = remember(transaction.transactionId, receipts, links) { BankReceiptMatcher.rankReceipts(transaction, receipts, links) }
+    val ranked = remember(transaction.transactionId, receipts, links) {
+        BankReceiptMatcher.rankReceipts(transaction, receipts, links)
+    }
+    var query by remember(transaction.transactionId) { mutableStateOf("") }
+    var selectedReceiptId by remember(transaction.transactionId) { mutableStateOf<Int?>(null) }
+    val visible = remember(ranked, query, receipts) {
+        val needle = query.trim().lowercase(Locale.GERMANY)
+        if (needle.isBlank()) ranked else ranked.filter { suggestion ->
+            receipts.firstOrNull { it.id == suggestion.receiptId }?.let { receipt ->
+                listOf(
+                    receipt.aussteller,
+                    receipt.datum,
+                    receipt.beschreibung,
+                    receipt.bruttobetrag.toString()
+                ).any { it.lowercase(Locale.GERMANY).contains(needle) }
+            } == true
+        }
+    }
+    val selectedReceipt = selectedReceiptId?.let { id -> receipts.firstOrNull { it.id == id } }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Vorhandenen Beleg zuordnen") },
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text("Vorhandenen Beleg zuordnen", fontWeight = FontWeight.Bold) },
         text = {
-            LazyColumn(modifier = Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (ranked.isEmpty()) item { Text("Keine passenden Belege gefunden.") }
-                else items(ranked, key = { it.receiptId }) { suggestion ->
-                    val receipt = receipts.firstOrNull { it.id == suggestion.receiptId }
-                    if (receipt != null) {
-                        Card(modifier = Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                            Column(Modifier.padding(10.dp)) {
-                                Text(receipt.aussteller, fontWeight = FontWeight.SemiBold)
-                                Text("${formatDate(receipt.datum)} • ${NumberFormatter.format(receipt.bruttobetrag)} • ${suggestion.score}%", fontSize = 12.sp)
-                                TextButton(onClick = { onSelect(receipt) }) { Text("Zuordnen") }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = Ui2.controlShape,
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    placeholder = { Text("Belege durchsuchen …") }
+                )
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 390.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    if (visible.isEmpty()) {
+                        item { Text(if (query.isBlank()) "Keine passenden Belege gefunden." else "Kein Beleg passt zur Suche.") }
+                    } else {
+                        items(visible, key = { it.receiptId }) { suggestion ->
+                            val receipt = receipts.firstOrNull { it.id == suggestion.receiptId }
+                            if (receipt != null) {
+                                val selected = receipt.id == selectedReceiptId
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedReceiptId = receipt.id },
+                                    shape = Ui2.controlShape,
+                                    border = BorderStroke(1.dp, if (selected) AccentBlue else BorderColor),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (selected) AccentBlue.copy(alpha = 0.06f) else Color.White
+                                    )
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(11.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Description,
+                                            contentDescription = null,
+                                            tint = if (selected) AccentBlue else SlateGray
+                                        )
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                receipt.aussteller.ifBlank { "Beleg" },
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = DarkNavy,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                "${formatDate(receipt.datum)} • ${NumberFormatter.format(receipt.bruttobetrag)}",
+                                                fontSize = 11.sp,
+                                                color = SlateGray
+                                            )
+                                        }
+                                        Text(
+                                            "${suggestion.score}%",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = AccentBlue
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
+        confirmButton = {
+            Button(
+                onClick = { selectedReceipt?.let(onSelect) },
+                enabled = selectedReceipt != null
+            ) { Text("Beleg zuordnen") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }
 
@@ -1326,7 +1431,11 @@ private fun BankTransactionPickerDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Weitere Bankbuchungen verknüpfen") },
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text("Weitere Bankbuchungen verknüpfen", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Offene Bankbuchungen durchsuchen") })
@@ -1366,13 +1475,61 @@ private fun BankTransactionPickerDialog(
 @Composable
 private fun NoReceiptReasonDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
     val reasons = listOf("Eigene Umbuchung", "Mieteinnahme", "Darlehen / Tilgung", "Privat", "Bankgebühr", "Sonstiges")
+    var selectedReason by remember { mutableStateOf<String?>(null) }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Warum ist kein Beleg nötig?") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            reasons.forEach { reason -> TextButton(onClick = { onSelect(reason) }, modifier = Modifier.fillMaxWidth()) { Text(reason, modifier = Modifier.fillMaxWidth()) } }
-        } },
-        confirmButton = {},
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text("Kein Beleg erforderlich", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Warum wird für diese Buchung kein Beleg benötigt?",
+                    fontSize = 12.sp,
+                    color = SlateGray
+                )
+                reasons.forEach { reason ->
+                    val selected = selectedReason == reason
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedReason = reason },
+                        shape = Ui2.controlShape,
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) AccentBlue.copy(alpha = 0.06f) else Color.White
+                        ),
+                        border = BorderStroke(1.dp, if (selected) AccentBlue else BorderColor)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (selected) Icons.Default.CheckCircle else Icons.Default.Description,
+                                contentDescription = null,
+                                tint = if (selected) AccentBlue else SlateGray
+                            )
+                            Text(
+                                reason,
+                                modifier = Modifier.weight(1f),
+                                color = DarkNavy,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { selectedReason?.let(onSelect) },
+                enabled = selectedReason != null
+            ) { Text("Bestätigen") }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
 }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.content.Context
 import androidx.activity.result.IntentSenderRequest
+import androidx.activity.compose.BackHandler
 import com.google.mlkit.vision.documentscanner.*
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -4942,7 +4943,12 @@ fun AiAnalysisLoadingContent(
 @Composable
 fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     val scanState by viewModel.scanState.collectAsState()
+    val pendingBankTransactionId by viewModel.pendingBankTransactionId.collectAsState()
     val aiProviderState by viewModel.aiProviderState.collectAsState()
+
+    BackHandler(enabled = !pendingBankTransactionId.isNullOrBlank()) {
+        viewModel.returnFromBankReceiptCreation()
+    }
     val aiProviderLabel = if (aiProviderState.provider == ReceiptAnalysisProvider.OPENAI) "OpenAI" else "Gemini"
 
     var selectedFiles by remember { mutableStateOf<List<SelectedFile>>(emptyList()) }
@@ -6147,7 +6153,11 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         editMieter = ""
                         editPositionen = emptyList()
                         selectedFiles = emptyList()
-                        viewModel.setScreen(AppScreen.DASHBOARD)
+                        if (!pendingBankTransactionId.isNullOrBlank()) {
+                            viewModel.returnFromBankReceiptCreation()
+                        } else {
+                            viewModel.setScreen(AppScreen.DASHBOARD)
+                        }
                     },
                     modifier = Modifier.weight(1.5f).height(48.dp),
                     border = BorderStroke(1.dp, SlateGray)
