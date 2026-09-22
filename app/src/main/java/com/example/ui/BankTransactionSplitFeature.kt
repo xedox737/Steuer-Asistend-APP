@@ -167,7 +167,11 @@ fun BankTransactionSplitActions(
     editing?.let { assignment ->
         AlertDialog(
             onDismissRequest = { editing = null },
-            title = { Text("Teilbetrag ändern") },
+            shape = Ui2.shape,
+            containerColor = Color.White,
+            titleContentColor = DarkNavy,
+            textContentColor = SlateGray,
+            title = { Text("Teilbetrag ändern", fontWeight = FontWeight.Bold) },
             text = { OutlinedTextField(value = editAmount, onValueChange = { editAmount = it }, label = { Text("Betrag") }) },
             confirmButton = {
                 Button(onClick = {
@@ -221,7 +225,11 @@ private fun BankTransactionSplitDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (previewMode) "Aufteilung prüfen" else "Buchung aufteilen") },
+        shape = Ui2.shape,
+        containerColor = Color.White,
+        titleContentColor = DarkNavy,
+        textContentColor = SlateGray,
+        title = { Text(if (previewMode) "Aufteilung prüfen" else "Buchung aufteilen", fontWeight = FontWeight.Bold) },
         text = {
             LazyColumn(Modifier.heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
@@ -234,7 +242,11 @@ private fun BankTransactionSplitDialog(
                 }
                 items(drafts.indices.toList()) { index ->
                     val draft = drafts[index]
-                    Card(border = BorderStroke(1.dp, BorderColor)) {
+                    Card(
+                        shape = Ui2.controlShape,
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, BorderColor)
+                    ) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("Teilposition ${index + 1}", fontWeight = FontWeight.SemiBold)
                             OutlinedTextField(value = draft.amount, onValueChange = { value -> drafts = drafts.toMutableList().also { it[index] = draft.copy(amount = value) } }, label = { Text("Betrag") }, enabled = !previewMode)
