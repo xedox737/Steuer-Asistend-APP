@@ -715,16 +715,27 @@ private fun BankTransactionDetailsScreen(
         )
     }
     var editNote by remember(transaction.transactionId) { mutableStateOf(false) }
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück", tint = DarkNavy)
-                }
-                Text("Buchungsdetails", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 20.sp, modifier = Modifier.weight(1f))
-                Text("•••", color = DarkNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück", tint = DarkNavy)
             }
+            Text(
+                "Buchungsdetails",
+                fontWeight = FontWeight.Bold,
+                color = DarkNavy,
+                fontSize = 20.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text("•••", color = DarkNavy, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
         item {
             Card(
                 shape = Ui2.shape,
@@ -765,26 +776,45 @@ private fun BankTransactionDetailsScreen(
         }
         if (transaction.classification == BankTransactionClassification.NORMAL) {
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    BankReferenceAction("Beleg suchen", Icons.Default.Search, Modifier.weight(1f), onClick = onPickReceipt)
-                    BankReferenceAction("Beleg anlegen", Icons.Default.Description, Modifier.weight(1f)) {
-                        viewModel.startReceiptFromBankTransaction(transaction)
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        BankReferenceAction(
+                            "Beleg suchen",
+                            Icons.Default.Search,
+                            Modifier.weight(1f),
+                            onClick = onPickReceipt
+                        )
+                        BankReferenceAction(
+                            "Beleg anlegen",
+                            Icons.Default.Description,
+                            Modifier.weight(1f)
+                        ) {
+                            viewModel.startReceiptFromBankTransaction(transaction)
+                        }
                     }
-                    Column(Modifier.weight(1f)) {
-                        BankTransactionSplitActions(
-                            viewModel = viewModel,
-                            transaction = transaction,
-                            compactTrigger = true,
-                            showAssignments = false
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            BankTransactionSplitActions(
+                                viewModel = viewModel,
+                                transaction = transaction,
+                                compactTrigger = true,
+                                showAssignments = false
+                            )
+                        }
+                        BankReferenceAction(
+                            "Kein Beleg erforderlich",
+                            Icons.Default.CheckCircle,
+                            Modifier.weight(1f),
+                            tint = EmeraldGreen,
+                            onClick = onNoReceipt
                         )
                     }
-                    BankReferenceAction(
-                        "Kein Beleg erforderlich",
-                        Icons.Default.CheckCircle,
-                        Modifier.weight(1f),
-                        tint = EmeraldGreen,
-                        onClick = onNoReceipt
-                    )
                 }
             }
         } else {
@@ -1040,6 +1070,7 @@ private fun BankTransactionDetailsScreen(
             }
         }
         item { Spacer(Modifier.height(20.dp)) }
+        }
     }
 }
 
@@ -1052,7 +1083,7 @@ private fun BankReferenceAction(
     onClick: () -> Unit
 ) {
     Card(
-        modifier = modifier.heightIn(min = 94.dp).clickable(onClick = onClick),
+        modifier = modifier.height(94.dp).clickable(onClick = onClick),
         shape = Ui2.controlShape,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
@@ -1070,7 +1101,7 @@ private fun BankReferenceAction(
                 lineHeight = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = DarkNavy,
-                maxLines = 3,
+                maxLines = 2,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
@@ -1159,13 +1190,35 @@ private fun BankMoneySummaryCard(title: String, amount: Double, positiveStyle: B
 
 @Composable
 private fun BankDetailLine(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.size(12.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 7.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.size(9.dp))
+            Text(
+                label,
+                modifier = Modifier.weight(0.9f),
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                value,
+                modifier = Modifier.weight(1.35f),
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
+        HorizontalDivider(color = BorderColor.copy(alpha = 0.65f))
     }
 }
 
