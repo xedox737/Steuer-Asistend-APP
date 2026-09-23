@@ -120,11 +120,13 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
         onDismissRequest = { if (editing) editing = false else onDismiss() },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = true
+            decorFitsSystemWindows = false
         )
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
             color = Color(0xFFF5F8FC)
         ) {
             Box(Modifier.fillMaxSize()) {
@@ -216,6 +218,7 @@ internal fun ReceiptDetailLayout(
     Scaffold(
         modifier = Modifier.fillMaxSize().testTag("receipt_detail_screen"),
         containerColor = Color(0xFFF5F8FC),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Column {
                 TopAppBar(
@@ -283,7 +286,6 @@ internal fun ReceiptDetailLayout(
                 tonalElevation = 0.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
                     .testTag("receipt_detail_bottom_navigation")
             ) {
                 listOf(
