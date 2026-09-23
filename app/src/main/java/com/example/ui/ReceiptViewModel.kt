@@ -53,6 +53,7 @@ enum class AppScreen {
     DOCUMENTS,
     PROPERTIES,
     BANK,
+    RECEIPT_DETAIL,
     MORE
 }
 
@@ -2434,6 +2435,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _currentScreen = MutableStateFlow(AppScreen.DASHBOARD)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
 
+    private val _receiptDetailId = MutableStateFlow<Int?>(null)
+    val receiptDetailId: StateFlow<Int?> = _receiptDetailId.asStateFlow()
+    private var receiptDetailReturnScreen: AppScreen = AppScreen.RECEIPTS_LIST
+    private var receiptDetailReturnBankTransactionId: String? = null
+
     // Scanner UI state
     private val _scanState = MutableStateFlow<ScanUiState>(ScanUiState.Idle)
     val scanState: StateFlow<ScanUiState> = _scanState.asStateFlow()
@@ -3171,12 +3177,38 @@ data class AiSearchUiState(
         initialValue = emptyMap()
     )
 
+    fun openReceiptDetail(
+        receipt: Receipt,
+        returnScreen: AppScreen = _currentScreen.value,
+        returnBankTransactionId: String? = null
+    ) {
+        receiptDetailReturnScreen = if (returnScreen == AppScreen.RECEIPT_DETAIL) AppScreen.RECEIPTS_LIST else returnScreen
+        receiptDetailReturnBankTransactionId = returnBankTransactionId
+        _receiptDetailId.value = receipt.id
+        _currentScreen.value = AppScreen.RECEIPT_DETAIL
+    }
+
+    fun closeReceiptDetail() {
+        val target = receiptDetailReturnScreen
+        val bankTransactionId = receiptDetailReturnBankTransactionId
+        _receiptDetailId.value = null
+        receiptDetailReturnBankTransactionId = null
+        if (target == AppScreen.BANK && !bankTransactionId.isNullOrBlank()) {
+            _bankTransactionDetailsReturnId.value = bankTransactionId
+        }
+        _currentScreen.value = target
+    }
+
     fun setScreen(screen: AppScreen) {
         if (screen != AppScreen.ADD_RECEIPT) {
             _pendingBankTransactionId.value = null
         }
         if (screen != AppScreen.BANK) {
             _bankTransactionDetailsReturnId.value = null
+        }
+        if (screen != AppScreen.RECEIPT_DETAIL) {
+            _receiptDetailId.value = null
+            receiptDetailReturnBankTransactionId = null
         }
         _currentScreen.value = screen
         _scanState.value = ScanUiState.Idle
