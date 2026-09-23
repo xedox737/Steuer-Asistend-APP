@@ -48,9 +48,34 @@ import com.example.data.BankTransaction
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-/** The only receipt detail entry point. Editor and additional data live on this page. */
+/** Native app-screen entry point. Uses the main app scaffold and bottom navigation. */
 @Composable
-fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
+fun ReceiptDetailScreen(viewModel: ReceiptViewModel) {
+    val receipts by viewModel.receipts.collectAsState()
+    val receiptId by viewModel.receiptDetailId.collectAsState()
+    val receipt = receipts.firstOrNull { it.id == receiptId }
+    if (receipt == null) {
+        LaunchedEffect(receiptId) {
+            if (receiptId != null) viewModel.closeReceiptDetail()
+        }
+        return
+    }
+    ReceiptDetailDialog(
+        receipt = receipt,
+        viewModel = viewModel,
+        onDismiss = { viewModel.closeReceiptDetail() },
+        asScreen = true
+    )
+}
+
+/** Shared receipt detail host. Dialog mode remains available for legacy/test call sites. */
+@Composable
+fun ReceiptDetailDialog(
+    receipt: Receipt,
+    viewModel: ReceiptViewModel,
+    onDismiss: () -> Unit,
+    asScreen: Boolean = false
+) {
     val receipts by viewModel.receipts.collectAsState()
     val current = receipts.firstOrNull { it.id == receipt.id } ?: receipt
     val links by viewModel.bankReceiptLinks.collectAsState()
@@ -116,13 +141,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     }
     fun navigate(screen: AppScreen) { onDismiss(); viewModel.setScreen(screen) }
 
-    Dialog(
-        onDismissRequest = { if (editing) editing = false else onDismiss() },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = true
-        )
-    ) {
+    val detailContent: @Composable () -> Unit = {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color(0xFFF5F8FC)
@@ -157,6 +176,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
             onReplace = { replace.launch(arrayOf("image/*", "application/pdf")) },
             onDelete = { delete = true },
             onUnlink = { link, transaction -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
+            embeddedInAppScaffold = asScreen,
             editor = { done -> ReceiptInlineEditor(current, viewModel, done) },
             additionalData = { ReceiptAdditionalData(current, viewModel) }
         )
@@ -168,6 +188,20 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
                     ConfirmRepairDocumentDialog(current, file, validation, viewModel) { pendingRepair = null }
                 }
             }
+        }
+    }
+
+    if (asScreen) {
+        detailContent()
+    } else {
+        Dialog(
+            onDismissRequest = { if (editing) editing = false else onDismiss() },
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                decorFitsSystemWindows = true
+            )
+        ) {
+            detailContent()
         }
     }
 }
@@ -196,6 +230,7 @@ internal fun ReceiptDetailLayout(
     onReplace: () -> Unit,
     onDelete: () -> Unit,
     onUnlink: (BankReceiptLink, BankTransaction) -> Unit,
+    embeddedInAppScaffold: Boolean = false,
     editor: @Composable (() -> Unit) -> Unit,
     additionalData: @Composable () -> Unit
 ) {
@@ -216,9 +251,10 @@ internal fun ReceiptDetailLayout(
     Scaffold(
         modifier = Modifier.fillMaxSize().testTag("receipt_detail_screen"),
         containerColor = Color(0xFFF5F8FC),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             Column {
-                TopAppBar(
+                if (!embeddedInAppScaffold) TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
                     title = {
                         Row(
@@ -278,7 +314,7 @@ internal fun ReceiptDetailLayout(
             }
         },
         bottomBar = {
-            NavigationBar(
+            if (!embeddedInAppScaffold) NavigationBar(
                 containerColor = Color.White,
                 tonalElevation = 0.dp,
                 modifier = Modifier
