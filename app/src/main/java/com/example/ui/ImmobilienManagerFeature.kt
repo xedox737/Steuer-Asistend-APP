@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,7 +37,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
@@ -887,50 +887,84 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
                 } }
             }
         } else {
-            item { Ui2Section("Finanzen") {
-                Ui2Destination("Bank / Kontoauszüge", "Kontoauszüge importieren und zuordnen", Icons.Default.AccountBalance, AccentBlue) { viewModel.setScreen(AppScreen.BANK) }
-                Ui2Destination("Einnahmen / Ausgaben", "Mieteinnahmen und Ausgaben erfassen", Icons.Default.Payments, CrimsonRed) { viewModel.setScreen(AppScreen.LEDGER) }
-                Ui2Destination("DATEV Export", "Buchungen für den Steuerberater", Icons.Default.Description, EmeraldGreen) { showDatev = true }
-                Ui2Destination("Steuerliche Übersicht", "Wichtige Kennzahlen", Icons.Default.Assessment, WarmOrange) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
-                Ui2Destination("Mieteingänge", "Soll/Ist & Nebenkosten", Icons.Default.HomeWork) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+            // The More screen deliberately uses compact destination rows.  It mirrors the
+            // reference navigation pattern while keeping every existing destination intact.
+            item { MoreMenuGroup("Finanzen") {
+                MoreMenuItem("Bank / Kontoauszüge", Icons.Default.AccountBalance, AccentBlue) { viewModel.setScreen(AppScreen.BANK) }
+                MoreMenuItem("Einnahmen / Ausgaben", Icons.Default.Payments, CrimsonRed) { viewModel.setScreen(AppScreen.LEDGER) }
+                MoreMenuItem("DATEV Export", Icons.Default.Description, EmeraldGreen) { showDatev = true }
+                MoreMenuItem("Steuerliche Übersicht", Icons.Default.Assessment, WarmOrange) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+                MoreMenuItem("Mieteingänge", Icons.Default.HomeWork, AccentBlue) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
             } }
-            item { Ui2Section("Verwaltung") {
-                Ui2Destination("Dokumentenakte", "Dokumente und Volltextsuche", Icons.Default.Description, AccentBlue) { viewModel.setScreen(AppScreen.DOCUMENTS) }
-                Ui2Destination("Regeln", "Automatische Zuordnung", Icons.Default.Settings, Color(0xFF7C3AED)) { page = "rules" }
-                Ui2Destination("Backup & Cloud", "Sicherung und Wiederherstellung", Icons.Default.Description, EmeraldGreen) { page = "backup" }
+            item { MoreMenuGroup("Verwaltung") {
+                MoreMenuItem("Dokumentenakte", Icons.Default.Description, AccentBlue) { viewModel.setScreen(AppScreen.DOCUMENTS) }
+                MoreMenuItem("Regeln", Icons.Default.Settings, Color(0xFF7C3AED)) { page = "rules" }
+                MoreMenuItem("Backup & Cloud", Icons.Default.Description, EmeraldGreen) { page = "backup" }
             } }
-            item { Ui2Section("Objekte & Steuern") {
-                Ui2Destination("Immobilien verwalten", "Objekte, Einheiten und Stammdaten", Icons.Default.Apartment, AccentBlue) { viewModel.setScreen(AppScreen.PROPERTIES) }
-                Ui2Destination("AfA Gebäude", "Abschreibung berechnen und verwalten", Icons.Default.Assessment, AccentBlue) { page = "afa" }
-                Ui2Destination("Sanierungs-Monitor", "Maßnahmen, Kosten und Zeitplan", Icons.Default.Build, EmeraldGreen) { page = "monitor" }
-                Ui2Destination("Fahrtenbuch", "Dienst- und Objektfahrten erfassen", Icons.Default.DirectionsCar, AccentBlue) { viewModel.setScreen(AppScreen.LOGBOOK) }
+            item { MoreMenuGroup("Objekte & Steuern") {
+                MoreMenuItem("Immobilien verwalten", Icons.Default.Apartment, AccentBlue) { viewModel.setScreen(AppScreen.PROPERTIES) }
+                MoreMenuItem("AfA Gebäude", Icons.Default.Assessment, AccentBlue) { page = "afa" }
+                MoreMenuItem("Sanierungs-Monitor", Icons.Default.Build, EmeraldGreen) { page = "monitor" }
+                MoreMenuItem("Fahrtenbuch", Icons.Default.DirectionsCar, AccentBlue) { viewModel.setScreen(AppScreen.LOGBOOK) }
             } }
-            item { Ui2Section("Einstellungen") {
-                Ui2Destination("App Einstellungen", "KI, Sicherung, Belege und persönliche Angaben", Icons.Default.Settings) { showSettings = true }
+            item { MoreMenuGroup("Einstellungen") {
+                MoreMenuItem("App Einstellungen", Icons.Default.Settings, SlateGray) { showSettings = true }
             } }
-            item {
-                Card(
-                    shape = Ui2.shape,
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)),
-                    border = BorderStroke(1.dp, Color(0xFFD8E9FF))
-                ) {
-                    Row(
-                        Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(Icons.Default.Lightbulb, null, tint = AccentBlue)
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("Tipp", fontWeight = FontWeight.Bold, color = DarkNavy)
-                            Text(
-                                "Alle wichtigen Funktionen an einem Ort – für eine einfache und effiziente Verwaltung deiner Immobilien.",
-                                fontSize = 12.sp,
-                                color = SlateGray
-                            )
-                        }
-                    }
-                }
-            }
+        }
+    }
+}
+
+/** Compact navigation used only on the More screen. */
+@Composable
+private fun MoreMenuGroup(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = Ui2.shape,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Column(Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                title,
+                modifier = Modifier.padding(start = 6.dp, top = 2.dp, bottom = 4.dp),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = DarkNavy
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun MoreMenuItem(
+    title: String,
+    icon: ImageVector,
+    iconTint: Color,
+    onClick: () -> Unit
+) {
+    androidx.compose.material3.Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+        shape = Ui2.controlShape,
+        color = Color(0xFFF7F9FC)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            Text(title, modifier = Modifier.weight(1f), fontSize = 13.sp, color = DarkNavy)
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = SlateGray,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
