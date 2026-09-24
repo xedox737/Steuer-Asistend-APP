@@ -122,7 +122,6 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     var receiptPickerFor by remember { mutableStateOf<BankTransaction?>(null) }
     var bankPickerForReceipt by remember { mutableStateOf<Receipt?>(null) }
     var noReceiptFor by remember { mutableStateOf<BankTransaction?>(null) }
-    var receiptDetails by remember { mutableStateOf<Receipt?>(null) }
     var accountMenuOpen by remember { mutableStateOf(false) }
     var toolsMenuOpen by remember { mutableStateOf(false) }
     var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }
@@ -204,7 +203,13 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             onBack = { selectedTransactionId = null },
             onPickReceipt = { receiptPickerFor = selectedTransaction },
             onNoReceipt = { noReceiptFor = selectedTransaction },
-            onReceiptDetails = { receiptDetails = it }
+            onReceiptDetails = { receipt ->
+                viewModel.openReceiptDetail(
+                    receiptId = receipt.id,
+                    returnTo = AppScreen.BANK,
+                    bankTransactionId = selectedTransaction.transactionId
+                )
+            }
         )
     } else {
         LazyColumn(
@@ -440,9 +445,6 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 noReceiptFor = null
             }
         )
-    }
-    receiptDetails?.let { receipt ->
-        ReceiptDetailDialog(receipt = receipt, viewModel = viewModel, onDismiss = { receiptDetails = null })
     }
     if (showImportDetails && !importStatus.isNullOrBlank()) {
         AlertDialog(

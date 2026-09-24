@@ -53,6 +53,7 @@ enum class AppScreen {
     DOCUMENTS,
     PROPERTIES,
     BANK,
+    RECEIPT_DETAIL,
     MORE
 }
 
@@ -2434,6 +2435,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _currentScreen = MutableStateFlow(AppScreen.DASHBOARD)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
 
+    private val _selectedReceiptDetailId = MutableStateFlow<Int?>(null)
+    val selectedReceiptDetailId: StateFlow<Int?> = _selectedReceiptDetailId.asStateFlow()
+    private var receiptDetailReturnScreen: AppScreen = AppScreen.RECEIPTS_LIST
+
     // Scanner UI state
     private val _scanState = MutableStateFlow<ScanUiState>(ScanUiState.Idle)
     val scanState: StateFlow<ScanUiState> = _scanState.asStateFlow()
@@ -3178,8 +3183,29 @@ data class AiSearchUiState(
         if (screen != AppScreen.BANK) {
             _bankTransactionDetailsReturnId.value = null
         }
+        if (screen != AppScreen.RECEIPT_DETAIL) {
+            _selectedReceiptDetailId.value = null
+        }
         _currentScreen.value = screen
         _scanState.value = ScanUiState.Idle
+    }
+
+    fun openReceiptDetail(
+        receiptId: Int,
+        returnTo: AppScreen = _currentScreen.value,
+        bankTransactionId: String? = null
+    ) {
+        receiptDetailReturnScreen = if (returnTo == AppScreen.RECEIPT_DETAIL) AppScreen.RECEIPTS_LIST else returnTo
+        if (returnTo == AppScreen.BANK && !bankTransactionId.isNullOrBlank()) {
+            _bankTransactionDetailsReturnId.value = bankTransactionId
+        }
+        _selectedReceiptDetailId.value = receiptId
+        _currentScreen.value = AppScreen.RECEIPT_DETAIL
+    }
+
+    fun closeReceiptDetail() {
+        _selectedReceiptDetailId.value = null
+        _currentScreen.value = receiptDetailReturnScreen
     }
 
     fun returnFromBankReceiptCreation() {
