@@ -279,6 +279,7 @@ val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
 fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsState()
     val receipts by viewModel.receipts.collectAsState()
+    val selectedReceiptDetailId by viewModel.selectedReceiptDetailId.collectAsState()
     var bankDetailsOpen by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -336,6 +337,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                                 AppScreen.RENT_OVERVIEW,
                                 AppScreen.TAX_CALCULATOR
                             )) ||
+                            (screen == AppScreen.RECEIPTS_LIST && currentScreen == AppScreen.RECEIPT_DETAIL) ||
                             (screen == AppScreen.MORE && currentScreen == AppScreen.BANK)
                         NavigationBarItem(
                             selected = isSelected,
@@ -401,6 +403,14 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.DOCUMENTS -> DocumentManagementScreen(viewModel)
                 AppScreen.PROPERTIES -> ImmobilienManagerScreen(viewModel)
                 AppScreen.BANK -> BankScreen(viewModel, onDetailVisibilityChanged = { bankDetailsOpen = it })
+                AppScreen.RECEIPT_DETAIL -> {
+                    val receiptId = selectedReceiptDetailId
+                    if (receiptId != null) {
+                        ReceiptDetailScreen(viewModel = viewModel, receiptId = receiptId, onBack = { viewModel.closeReceiptDetail() })
+                    } else {
+                        LaunchedEffect(Unit) { viewModel.closeReceiptDetail() }
+                    }
+                }
                 AppScreen.MORE -> MoreScreen(viewModel)
             }
             }
@@ -886,9 +896,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
     val openBankTransactions = remember(bankTransactions) { BankCompactUiPolicy.counts(bankTransactions).open }
     var showKiPowerCenterDialog by remember { mutableStateOf(false) }
-    var selectedReceipt by remember { mutableStateOf<Receipt?>(null) }
     if (showKiPowerCenterDialog) KiPowerCenterDialog(viewModel) { showKiPowerCenterDialog = false }
-    selectedReceipt?.let { receipt -> ReceiptDetailDialog(receipt, viewModel) { selectedReceipt = null } }
 
     // Keep the approved two-column layout at its reference typography. With a
     // large Android font scale, normal German labels otherwise break into
@@ -975,7 +983,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             }
             val recentReceipts = receipts.sortedByDescending { it.datum }.take(5)
             recentReceipts.forEachIndexed { index, receipt ->
-                DashboardActivityRow(receipt) { selectedReceipt = receipt }
+                DashboardActivityRow(receipt) { viewModel.openReceiptDetail(receipt.id, AppScreen.DASHBOARD) }
                 if (index < recentReceipts.lastIndex) HorizontalDivider(color = BorderColor)
             }
             TextButton(onClick = { viewModel.setScreen(AppScreen.RECEIPTS_LIST) }) {
@@ -1940,7 +1948,6 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
     val query by viewModel.searchQuery.collectAsState()
     val filter by viewModel.selectedCategoryFilter.collectAsState()
     val receipts by viewModel.filteredReceipts.collectAsState()
-    var selectedReceiptForDetail by remember { mutableStateOf<Receipt?>(null) }
     var fullScreenPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     // Toggle for View Modes: "grid", "list", "table"
@@ -2227,7 +2234,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                             ) {
                                 ReceiptGridCard(
                                     receipt = pair[0],
-                                    onItemClick = { selectedReceiptForDetail = pair[0] },
+                                    onItemClick = { viewModel.openReceiptDetail(pair[0].id, AppScreen.RECEIPTS_LIST) },
                                     onDeleteClick = { receiptToDelete = pair[0] },
                                     onZoomClick = { bmp -> fullScreenPreviewBitmap = bmp },
                                     modifier = Modifier.fillMaxSize()
@@ -2241,7 +2248,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                                 ) {
                                     ReceiptGridCard(
                                         receipt = pair[1],
-                                        onItemClick = { selectedReceiptForDetail = pair[1] },
+                                        onItemClick = { viewModel.openReceiptDetail(pair[1].id, AppScreen.RECEIPTS_LIST) },
                                         onDeleteClick = { receiptToDelete = pair[1] },
                                         onZoomClick = { bmp -> fullScreenPreviewBitmap = bmp },
                                         modifier = Modifier.fillMaxSize()
@@ -2285,7 +2292,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                     receipts.forEach { receipt ->
                         ReceiptRowItem(
                             receipt = receipt,
-                            onItemClick = { selectedReceiptForDetail = receipt },
+                            onItemClick = { viewModel.openReceiptDetail(receipt.id, AppScreen.RECEIPTS_LIST) },
                             onDeleteClick = { receiptToDelete = receipt },
                             onZoomClick = { bmp -> fullScreenPreviewBitmap = bmp }
                         )
@@ -2515,7 +2522,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                                     Row(
                                         modifier = Modifier
                                             .background(rowBgColor)
-                                            .clickable { selectedReceiptForDetail = receipt }
+                                            .clickable { viewModel.openReceiptDetail(receipt.id, AppScreen.RECEIPTS_LIST) }
                                             .padding(vertical = 10.dp, horizontal = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -2720,14 +2727,6 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
         }
     }
 
-    // Detail Dialog
-    selectedReceiptForDetail?.let { receipt ->
-        ReceiptDetailDialog(
-            receipt = receipt,
-            viewModel = viewModel,
-            onDismiss = { selectedReceiptForDetail = null }
-        )
-    }
 }
 
 @Composable
