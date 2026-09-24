@@ -3190,8 +3190,15 @@ data class AiSearchUiState(
         _scanState.value = ScanUiState.Idle
     }
 
-    fun openReceiptDetail(receiptId: Int, returnTo: AppScreen = _currentScreen.value) {
+    fun openReceiptDetail(
+        receiptId: Int,
+        returnTo: AppScreen = _currentScreen.value,
+        bankTransactionId: String? = null
+    ) {
         receiptDetailReturnScreen = if (returnTo == AppScreen.RECEIPT_DETAIL) AppScreen.RECEIPTS_LIST else returnTo
+        if (returnTo == AppScreen.BANK && !bankTransactionId.isNullOrBlank()) {
+            _bankTransactionDetailsReturnId.value = bankTransactionId
+        }
         _selectedReceiptDetailId.value = receiptId
         _currentScreen.value = AppScreen.RECEIPT_DETAIL
     }
