@@ -172,6 +172,138 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     }
 }
 
+/** Receipt details rendered as a normal app screen inside the main app Scaffold. */
+@Composable
+fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () -> Unit) {
+    val receipts by viewModel.receipts.collectAsState()
+    val current = receipts.firstOrNull { it.id == receiptId }
+    if (current == null) {
+        LaunchedEffect(receiptId) { onBack() }
+        return
+    }
+
+    val links by viewModel.bankReceiptLinks.collectAsState()
+    val transactions by viewModel.bankTransactions.collectAsState()
+    val properties by viewModel.properties.collectAsState()
+    val downloads by viewModel.documentDownloadStatus.collectAsState()
+    val entries = links.filter {
+        it.receiptId == current.id || (current.internalId.isNotBlank() && it.receiptInternalId == current.internalId)
+    }.mapNotNull { link ->
+        transactions.firstOrNull { it.transactionId == link.transactionId }?.let { link to it }
+    }
+    val status = downloads[current.internalId]
+    val paths = (status?.localPath ?: current.imageUrl).split(',').filter { it.isNotBlank() }
+    var selectedFile by remember(current.id) { mutableIntStateOf(0) }
+    val path = paths.getOrNull(selectedFile) ?: paths.firstOrNull()
+    var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var fullScreen by remember { mutableStateOf(false) }
+    var editing by remember(current.id) { mutableStateOf(false) }
+    var delete by remember { mutableStateOf(false) }
+    var deletionRequested by remember { mutableStateOf(false) }
+    var pendingRepair by remember { mutableStateOf<Pair<File, FileValidationResult>?>(null) }
+    var exportPath by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    BackHandler(enabled = !editing) { onBack() }
+
+    val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val source = exportPath
+        if (uri != null && source != null) scope.launch {
+            message = withContext(Dispatchers.IO) {
+                runCatching {
+                    File(source).inputStream().use { input ->
+                        requireNotNull(context.contentResolver.openOutputStream(uri)).use { input.copyTo(it) }
+                    }
+                }.fold({ "Beleg gespeichert." }, { "Speichern fehlgeschlagen: ${it.localizedMessage}" })
+            }
+        }
+    }
+    val replace = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File.createTempFile("receipt_replacement_", ".tmp", context.cacheDir)
+                    requireNotNull(context.contentResolver.openInputStream(uri)).use { input ->
+                        file.outputStream().use { input.copyTo(it) }
+                    }
+                    file to viewModel.validateFileForRepair(context, file)
+                }
+            }
+            result.onSuccess { pair ->
+                if (pair.second.isValid) pendingRepair = pair
+                else message = pair.second.errorMessage ?: "Ungültiges Dokument"
+            }.onFailure { message = "Datei konnte nicht gelesen werden: ${it.localizedMessage}" }
+        }
+    }
+
+    LaunchedEffect(current.internalId, current.imageUrl) { viewModel.checkDocumentStatus(current) }
+    LaunchedEffect(receipts, deletionRequested) {
+        if (deletionRequested && receipts.none { it.id == receiptId }) onBack()
+    }
+    LaunchedEffect(path, status) {
+        bitmap = null
+        loading = true
+        bitmap = withContext(Dispatchers.IO) { path?.let { receiptDetailBitmap(it) } }
+        loading = false
+    }
+
+    ReceiptDetailLayout(
+        receipt = current,
+        propertyName = properties.firstOrNull { it.propertyId == current.propertyId }?.name ?: "Nicht zugeordnet",
+        entries = entries,
+        bitmap = bitmap,
+        loading = loading || status?.state == DocumentState.DOWNLOADING,
+        previewMessage = status?.message ?: "Keine Vorschau verfügbar",
+        message = message,
+        fileIndex = selectedFile,
+        fileCount = paths.size,
+        editing = editing,
+        onEditingChange = { editing = it },
+        onFileChange = { selectedFile = it },
+        onBack = onBack,
+        onNavigate = { screen -> viewModel.setScreen(screen) },
+        onShare = {
+            runCatching {
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "Beleg ${current.getEffectiveDisplayId()}")
+                    putExtra(
+                        Intent.EXTRA_TEXT,
+                        "${current.aussteller}\n${receiptDisplayDate(current.datum)}\n${NumberFormatter.format(current.bruttobetrag)}\n${current.beschreibung}"
+                    )
+                }
+                context.startActivity(Intent.createChooser(intent, "Beleg teilen"))
+            }.onFailure { message = "Teilen nicht möglich: ${it.localizedMessage}" }
+        },
+        onFullScreen = { fullScreen = true },
+        onDownload = { exportPath = path; save.launch(path?.let { File(it).name } ?: "Beleg") },
+        onReplace = { replace.launch(arrayOf("image/*", "application/pdf")) },
+        onDelete = { delete = true },
+        onUnlink = { link, transaction -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
+        editor = { done -> ReceiptInlineEditor(current, viewModel, done) },
+        additionalData = { ReceiptAdditionalData(current, viewModel) },
+        embeddedInAppScaffold = true
+    )
+
+    if (fullScreen && bitmap != null) FullScreenReceiptPreviewDialog(bitmap!!) { fullScreen = false }
+    if (delete) {
+        ReceiptDeleteConfirmationDialog(
+            onDismiss = { delete = false },
+            onConfirm = {
+                delete = false
+                deletionRequested = true
+                viewModel.deleteReceipt(current.id)
+            }
+        )
+    }
+    pendingRepair?.let { (file, validation) ->
+        ConfirmRepairDocumentDialog(current, file, validation, viewModel) { pendingRepair = null }
+    }
+}
+
 /** Stateless data inputs let the actual mobile layout be rendered in Compose UI tests. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -197,7 +329,8 @@ internal fun ReceiptDetailLayout(
     onDelete: () -> Unit,
     onUnlink: (BankReceiptLink, BankTransaction) -> Unit,
     editor: @Composable (() -> Unit) -> Unit,
-    additionalData: @Composable () -> Unit
+    additionalData: @Composable () -> Unit,
+    embeddedInAppScaffold: Boolean = false
 ) {
     var additionalExpanded by remember(receipt.id) { mutableStateOf(false) }
     var selectedLink by remember(receipt.id) { mutableStateOf<String?>(null) }
@@ -218,7 +351,7 @@ internal fun ReceiptDetailLayout(
         containerColor = Color(0xFFF5F8FC),
         topBar = {
             Column {
-                TopAppBar(
+                if (!embeddedInAppScaffold) TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
                     title = {
                         Row(
@@ -278,7 +411,7 @@ internal fun ReceiptDetailLayout(
             }
         },
         bottomBar = {
-            NavigationBar(
+            if (!embeddedInAppScaffold) NavigationBar(
                 containerColor = Color.White,
                 tonalElevation = 0.dp,
                 modifier = Modifier
