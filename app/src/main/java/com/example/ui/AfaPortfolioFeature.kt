@@ -229,11 +229,30 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                         Text("Für die Prognose fehlen AfA-Beginn oder Bemessungsgrundlage.", color = SlateGray)
                     } else {
                         var remaining = summary.buildingAcquisitionCosts
-                        repeat(10) { index ->
-                            val year = start.year + index
-                            val planned = (if (index == 0) summary.firstYearAfa else summary.annualAfa).coerceAtMost(remaining)
-                            remaining = (remaining - planned).coerceAtLeast(0.0)
-                            AfaValueRow(year.toString(), NumberFormatter.format(planned))
+                        val forecast = (0 until 10).map { index ->
+                            val amount = (if (index == 0) summary.firstYearAfa else summary.annualAfa)
+                                .coerceIn(0.0, remaining)
+                            remaining = (remaining - amount).coerceAtLeast(0.0)
+                            start.year + index to amount
+                        }
+                        val chartMax = forecast.maxOf { it.second }.coerceAtLeast(1.0)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalAlignment = Alignment.Bottom) {
+                            forecast.forEach { (year, amount) ->
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    Box(Modifier.fillMaxWidth().height(94.dp), contentAlignment = Alignment.BottomCenter) {
+                                        Box(Modifier.fillMaxWidth(0.8f)
+                                            .height(((amount / chartMax) * 90).toInt().coerceAtLeast(2).dp)
+                                            .background(AccentBlue.copy(alpha = 0.75f), RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)))
+                                    }
+                                    Text((year % 100).toString().padStart(2, '0'), fontSize = 9.sp, color = SlateGray)
+                                }
+                            }
+                        }
+                        Text("Jahreswerte", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                        forecast.forEach { (year, amount) ->
+                            AfaValueRow(year.toString(), NumberFormatter.format(amount))
                         }
                     }
                     HorizontalDivider()
