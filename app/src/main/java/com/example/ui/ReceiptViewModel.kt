@@ -54,6 +54,7 @@ enum class AppScreen {
     PROPERTIES,
     BANK,
     RECEIPT_DETAIL,
+    DATEV_EXPORT,
     MORE
 }
 
@@ -3188,6 +3189,18 @@ data class AiSearchUiState(
         }
         _currentScreen.value = screen
         _scanState.value = ScanUiState.Idle
+    }
+
+    private var datevReturnScreen = AppScreen.MORE
+
+    fun openDatevExport() {
+        datevReturnScreen = _currentScreen.value
+        setWizardStep(1)
+        setScreen(AppScreen.DATEV_EXPORT)
+    }
+
+    fun closeDatevExport() {
+        setScreen(datevReturnScreen)
     }
 
     fun openReceiptDetail(

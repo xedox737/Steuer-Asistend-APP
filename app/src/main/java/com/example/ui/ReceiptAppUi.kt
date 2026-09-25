@@ -338,7 +338,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                                 AppScreen.TAX_CALCULATOR
                             )) ||
                             (screen == AppScreen.RECEIPTS_LIST && currentScreen == AppScreen.RECEIPT_DETAIL) ||
-                            (screen == AppScreen.MORE && currentScreen == AppScreen.BANK)
+                            (screen == AppScreen.MORE && currentScreen in setOf(AppScreen.BANK, AppScreen.DATEV_EXPORT))
                         NavigationBarItem(
                             selected = isSelected,
                             onClick = { viewModel.setScreen(screen) },
@@ -403,6 +403,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                 AppScreen.DOCUMENTS -> DocumentManagementScreen(viewModel)
                 AppScreen.PROPERTIES -> ImmobilienManagerScreen(viewModel)
                 AppScreen.BANK -> BankScreen(viewModel, onDetailVisibilityChanged = { bankDetailsOpen = it })
+                AppScreen.DATEV_EXPORT -> DatevExportScreen(viewModel, receipts, viewModel::closeDatevExport)
                 AppScreen.RECEIPT_DETAIL -> {
                     val receiptId = selectedReceiptDetailId
                     if (receiptId != null) {
@@ -6534,15 +6535,6 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
             }
         }
 
-        var showDatevExportDialog by remember { mutableStateOf(false) }
-        if (showDatevExportDialog) {
-            DatevExportDialog(
-                viewModel = viewModel,
-                receipts = receipts,
-                onDismiss = { showDatevExportDialog = false }
-            )
-        }
-
         // DATEV Export Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -6586,7 +6578,7 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
                 }
 
                 Button(
-                    onClick = { showDatevExportDialog = true },
+                    onClick = viewModel::openDatevExport,
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
                 ) {
@@ -11456,7 +11448,7 @@ fun TenantItem(
 }
 
 @Composable
-fun DatevExportDialog(
+fun DatevExportScreen(
     viewModel: ReceiptViewModel,
     receipts: List<Receipt>,
     onDismiss: () -> Unit
@@ -11488,14 +11480,13 @@ fun DatevExportDialog(
         viewModel.recalculateWizardStepData()
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+    BackHandler(onBack = {
+        if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
+    })
+    Box(modifier = Modifier.fillMaxSize()) {
         Card(
             modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .fillMaxSize(),
             shape = RoundedCornerShape(0.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
@@ -12181,27 +12172,6 @@ fun DatevExportDialog(
                         Button(onClick = onDismiss) {
                             Text("Fertigstellen")
                         }
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                HorizontalDivider(color = BorderColor)
-                NavigationBar(containerColor = Color.White) {
-                    listOf(
-                        Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
-                        Triple(AppScreen.RECEIPTS_LIST, Icons.Default.Receipt, "Belege"),
-                        Triple(AppScreen.ADD_RECEIPT, Icons.Default.AddCircle, "Scannen"),
-                        Triple(AppScreen.PROPERTIES, Icons.Default.Apartment, "Immobilien"),
-                        Triple(AppScreen.MORE, Icons.Default.MoreHoriz, "Mehr")
-                    ).forEach { (screen, icon, label) ->
-                        NavigationBarItem(
-                            selected = screen == AppScreen.MORE,
-                            onClick = {
-                                onDismiss()
-                                viewModel.setScreen(screen)
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label, fontSize = 10.sp) }
-                        )
                     }
                 }
             }
