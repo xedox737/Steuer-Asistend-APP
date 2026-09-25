@@ -11493,10 +11493,9 @@ fun DatevExportDialog(
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.92f)
-                .padding(12.dp),
-            shape = RoundedCornerShape(16.dp),
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+            shape = RoundedCornerShape(0.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(
@@ -11510,15 +11509,20 @@ fun DatevExportDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    IconButton(onClick = {
+                        if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "DATEV Export-Assistent (Redesign v2.5)",
+                            text = "DATEV Export",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Schritt $step von 6: " + when (step) {
+                            text = "Schritt $step von 6 · " + when (step) {
                                 1 -> "Umfang & Filterung"
                                 2 -> "Kanzleiprofil & Mapping"
                                 3 -> "Vorprüfung & Plausibilität"
@@ -11557,8 +11561,6 @@ fun DatevExportDialog(
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
 
                 // Step Content Area
                 Box(
@@ -11575,7 +11577,70 @@ fun DatevExportDialog(
                                     .verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text("Select property filter & period scope:", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) Color(0xFFE6F7ED) else Color(0xFFFFF4E5))
+                                ) {
+                                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) Icons.Default.CheckCircle else Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) Color(0xFF16834B) else Color(0xFFAD6800)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) "Vorprüfung erfolgreich" else "Exportumfang prüfen",
+                                                fontWeight = FontWeight.Bold,
+                                                color = DarkNavy
+                                            )
+                                            Text("${mappedRecords.size} Buchungssätze · ${excludedReceipts.size} Belege ausgeschlossen", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, BorderColor)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Exportierbare Buchungssätze", color = DarkNavy)
+                                            Text("${mappedRecords.size}", fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                        }
+                                        HorizontalDivider()
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Ausgeschlossene Belege", color = DarkNavy)
+                                            Text("${excludedReceipts.size}", fontWeight = FontWeight.Bold, color = WarmOrange)
+                                        }
+                                        HorizontalDivider()
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Prüfhinweise", color = DarkNavy)
+                                            Text("${validationReport?.warnings?.size ?: 0}", fontWeight = FontWeight.Bold, color = AccentBlue)
+                                        }
+                                    }
+                                }
+
+                                Button(onClick = { viewModel.setWizardStep(2) }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(8.dp)) {
+                                    Text("DATEV Export vorbereiten", fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(onClick = { viewModel.setWizardStep(4) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+                                    Text("Vorschau anzeigen")
+                                }
+                                OutlinedButton(onClick = { viewModel.setWizardStep(3) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+                                    Text("Vorprüfung anzeigen")
+                                }
+                                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4FF))) {
+                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                                        Icon(Icons.Default.Info, contentDescription = null, tint = AccentBlue)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Nur geprüfte und vollständig zugeordnete Belege werden exportiert. Profil und Format wählst du in den nächsten Schritten.", fontSize = 12.sp, color = DarkNavy)
+                                    }
+                                }
+                                Text("Exportumfang", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = DarkNavy)
 
                                 Column(
                                     modifier = Modifier.fillMaxWidth(),
