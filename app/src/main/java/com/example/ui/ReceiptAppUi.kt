@@ -11482,6 +11482,7 @@ fun DatevExportDialog(
     var editableMandantenNr by remember(activeProfile) { mutableStateOf(activeProfile.mandantenNummer) }
     var editableMandantenName by remember(activeProfile) { mutableStateOf(activeProfile.mandantenName) }
     var editableSachkontenLaenge by remember(activeProfile) { mutableStateOf(activeProfile.sachkontenLaenge.toString()) }
+    var showAllExclusions by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.recalculateWizardStepData()
@@ -11618,16 +11619,30 @@ fun DatevExportDialog(
                                         }
                                         HorizontalDivider()
                                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Prüfhinweise", color = DarkNavy)
-                                            Text("${validationReport?.warnings?.size ?: 0}", fontWeight = FontWeight.Bold, color = AccentBlue)
+                                            Text("Prüfblocker", color = DarkNavy)
+                                            Text("${validationReport?.errors?.size ?: 0}", fontWeight = FontWeight.Bold, color = CrimsonRed)
                                         }
                                     }
                                 }
 
-                                Button(onClick = { viewModel.setWizardStep(2) }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(8.dp)) {
-                                    Text("DATEV Export vorbereiten", fontWeight = FontWeight.Bold)
+                                if (excludedReceipts.isNotEmpty()) {
+                                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED))) {
+                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text("Warum Belege ausgeschlossen sind", fontWeight = FontWeight.Bold, color = DarkNavy)
+                                            excludedReceipts.take(if (showAllExclusions) excludedReceipts.size else 3).forEach { receipt ->
+                                                val reasons = exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)].orEmpty()
+                                                Text("${receipt.getEffectiveDisplayId()}: ${if (showAllExclusions) reasons.joinToString(" ") else reasons.firstOrNull() ?: "Bitte Beleg prüfen"}", fontSize = 12.sp, color = DarkNavy)
+                                            }
+                                            if (excludedReceipts.size > 3) TextButton(onClick = { showAllExclusions = !showAllExclusions }) {
+                                                Text(if (showAllExclusions) "Weniger anzeigen" else "Alle ${excludedReceipts.size} Gründe anzeigen")
+                                            }
+                                        }
+                                    }
                                 }
-                                OutlinedButton(onClick = { viewModel.setWizardStep(4) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
+                                Button(onClick = { viewModel.setWizardStep(2) }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(8.dp)) {
+                                    Text(if (mappedRecords.isEmpty()) "Weiter zum Kanzleiprofil" else "DATEV Export vorbereiten", fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(onClick = { viewModel.setWizardStep(4) }, enabled = mappedRecords.isNotEmpty(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
                                     Text("Vorschau anzeigen")
                                 }
                                 OutlinedButton(onClick = { viewModel.setWizardStep(3) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
@@ -11637,7 +11652,7 @@ fun DatevExportDialog(
                                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
                                         Icon(Icons.Default.Info, contentDescription = null, tint = AccentBlue)
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Nur geprüfte und vollständig zugeordnete Belege werden exportiert. Profil und Format wählst du in den nächsten Schritten.", fontSize = 12.sp, color = DarkNavy)
+                                        Text("Nur geprüfte und vollständig zugeordnete Belege werden exportiert.", fontSize = 12.sp, color = DarkNavy)
                                     }
                                 }
                                 Text("Exportumfang", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = DarkNavy)
@@ -11721,30 +11736,7 @@ fun DatevExportDialog(
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary
                                         )
-                                        if (excludedReceipts.isNotEmpty()) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Text(
-                                                "Warum Belege ausgeschlossen sind:",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            excludedReceipts.take(10).forEach { receipt ->
-                                                val key = com.example.util.DatevReceiptEligibility.key(receipt)
-                                                val reasons = exclusionReasons[key].orEmpty()
-                                                Text(
-                                                    "• ${receipt.getEffectiveDisplayId()}: ${reasons.joinToString(" ")}",
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.error
-                                                )
-                                            }
-                                            if (excludedReceipts.size > 10) {
-                                                Text(
-                                                    "Weitere ${excludedReceipts.size - 10} Belege sind ausgeschlossen.",
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
+
                                     }
                                 }
                             }
@@ -12189,6 +12181,27 @@ fun DatevExportDialog(
                         Button(onClick = onDismiss) {
                             Text("Fertigstellen")
                         }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(color = BorderColor)
+                NavigationBar(containerColor = Color.White) {
+                    listOf(
+                        Triple(AppScreen.DASHBOARD, Icons.Default.Home, "Start"),
+                        Triple(AppScreen.RECEIPTS_LIST, Icons.Default.Receipt, "Belege"),
+                        Triple(AppScreen.ADD_RECEIPT, Icons.Default.AddCircle, "Scannen"),
+                        Triple(AppScreen.PROPERTIES, Icons.Default.Apartment, "Immobilien"),
+                        Triple(AppScreen.MORE, Icons.Default.MoreHoriz, "Mehr")
+                    ).forEach { (screen, icon, label) ->
+                        NavigationBarItem(
+                            selected = screen == AppScreen.MORE,
+                            onClick = {
+                                onDismiss()
+                                viewModel.setScreen(screen)
+                            },
+                            icon = { Icon(icon, contentDescription = label) },
+                            label = { Text(label, fontSize = 10.sp) }
+                        )
                     }
                 }
             }
