@@ -856,13 +856,11 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 @Composable
 fun MoreScreen(viewModel: ReceiptViewModel) {
     var showSettings by remember { mutableStateOf(false) }
-    var showDatev by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
     var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val receipts by viewModel.receipts.collectAsState()
     val rules by viewModel.bankLearningRules.collectAsState()
     if (showSettings) AccountSettingsDialog(viewModel = viewModel, onDismiss = { showSettings = false })
-    if (showDatev) DatevExportDialog(viewModel, receipts) { showDatev = false }
     if (showLearnedRules) KiLearnedRulesDialog(viewModel) { showLearnedRules = false }
     if (page == "afa" || page == "monitor") {
         if (page == "afa") AfaPortfolioScreen(viewModel) { page = null }
@@ -893,7 +891,7 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
             item { MoreMenuGroup("Finanzen") {
                 MoreMenuItem("Bank / Kontoauszüge", Icons.Default.AccountBalance, AccentBlue) { viewModel.setScreen(AppScreen.BANK) }
                 MoreMenuItem("Einnahmen / Ausgaben", Icons.Default.Payments, CrimsonRed) { viewModel.setScreen(AppScreen.LEDGER) }
-                MoreMenuItem("DATEV Export", Icons.Default.Description, EmeraldGreen) { showDatev = true }
+                MoreMenuItem("DATEV Export", Icons.Default.Description, EmeraldGreen) { viewModel.openDatevExport() }
                 MoreMenuItem("Steuerliche Übersicht", Icons.Default.Assessment, WarmOrange) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
                 MoreMenuItem("Mieteingänge", Icons.Default.HomeWork, AccentBlue) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
             } }
