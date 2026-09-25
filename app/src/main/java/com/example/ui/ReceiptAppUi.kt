@@ -361,7 +361,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                             label = {
                       Text(
                           label,
-                          fontSize = if (screen == AppScreen.LOGBOOK) 9.sp else 11.sp,
+                          fontSize = 9.sp,
                           fontWeight = FontWeight.SemiBold,
                           maxLines = 1
                       )
@@ -11483,17 +11483,22 @@ fun DatevExportScreen(
     BackHandler(onBack = {
         if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
     })
+    val datevParentDensity = LocalDensity.current
+    val datevDensity = remember(datevParentDensity.density) {
+        Density(density = datevParentDensity.density, fontScale = 1f)
+    }
+    CompositionLocalProvider(LocalDensity provides datevDensity) {
     Box(modifier = Modifier.fillMaxSize()) {
         Card(
             modifier = Modifier
                 .fillMaxSize(),
             shape = RoundedCornerShape(0.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            colors = CardDefaults.cardColors(containerColor = SoftBackground)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(Ui2.padding)
             ) {
                 // Header & Step Indicator
                 Row(
@@ -11509,7 +11514,7 @@ fun DatevExportScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "DATEV Export",
-                            style = MaterialTheme.typography.titleMedium,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -11522,14 +11527,11 @@ fun DatevExportScreen(
                                 5 -> "Paketerzeugung"
                                 else -> "Ergebnis & Exporthistorie"
                             },
-                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Schließen")
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -11552,7 +11554,7 @@ fun DatevExportScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Ui2.spacing))
 
                 // Step Content Area
                 Box(
@@ -11562,174 +11564,83 @@ fun DatevExportScreen(
                 ) {
                     when (step) {
                         1 -> {
-                            // SCHRITT 1: Umfang
                             Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .verticalScroll(rememberScrollState()),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
                             ) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) Color(0xFFE6F7ED) else Color(0xFFFFF4E5))
+                                    shape = Ui2.shape,
+                                    colors = CardDefaults.cardColors(containerColor = if (mappedRecords.isNotEmpty() && validationReport?.isValidForExport == true) Color(0xFFE8F7EF) else Color(0xFFFFF7ED)),
+                                    border = BorderStroke(1.dp, BorderColor)
                                 ) {
-                                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) Icons.Default.CheckCircle else Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) Color(0xFF16834B) else Color(0xFFAD6800)
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text(
-                                                if (validationReport?.isValidForExport == true && mappedRecords.isNotEmpty()) "Vorprüfung erfolgreich" else "Exportumfang prüfen",
-                                                fontWeight = FontWeight.Bold,
-                                                color = DarkNavy
-                                            )
-                                            Text("${mappedRecords.size} Buchungssätze · ${excludedReceipts.size} Belege ausgeschlossen", fontSize = 12.sp)
+                                    Row(Modifier.fillMaxWidth().padding(Ui2.padding), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+                                        Icon(if (mappedRecords.isNotEmpty() && validationReport?.isValidForExport == true) Icons.Default.CheckCircle else Icons.Default.Info, contentDescription = null, tint = if (mappedRecords.isNotEmpty()) EmeraldGreen else WarmOrange, modifier = Modifier.size(20.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(if (mappedRecords.isEmpty()) "Exportumfang prüfen" else "Bereit zur Vorprüfung", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                            Text("${mappedRecords.size} Buchungssätze · ${excludedReceipts.size} Belege ausgeschlossen", fontSize = 11.sp, color = SlateGray)
                                         }
                                     }
                                 }
 
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, BorderColor)
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Exportierbare Buchungssätze", color = DarkNavy)
-                                            Text("${mappedRecords.size}", fontWeight = FontWeight.Bold, color = EmeraldGreen)
-                                        }
-                                        HorizontalDivider()
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Ausgeschlossene Belege", color = DarkNavy)
-                                            Text("${excludedReceipts.size}", fontWeight = FontWeight.Bold, color = WarmOrange)
-                                        }
-                                        HorizontalDivider()
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Prüfblocker", color = DarkNavy)
-                                            Text("${validationReport?.errors?.size ?: 0}", fontWeight = FontWeight.Bold, color = CrimsonRed)
-                                        }
+                                Ui2Section("Übersicht") {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Exportierbar", fontSize = 12.sp, color = DarkNavy)
+                                        Text("${mappedRecords.size}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+                                    }
+                                    HorizontalDivider(color = BorderColor)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Ausgeschlossen", fontSize = 12.sp, color = DarkNavy)
+                                        Text("${excludedReceipts.size}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = WarmOrange)
+                                    }
+                                    if ((validationReport?.errors?.size ?: 0) > 0) {
+                                        HorizontalDivider(color = BorderColor)
+                                        Text("${validationReport?.errors?.size} Prüfblocker", fontSize = 11.sp, color = CrimsonRed)
                                     }
                                 }
 
                                 if (excludedReceipts.isNotEmpty()) {
-                                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED))) {
-                                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text("Warum Belege ausgeschlossen sind", fontWeight = FontWeight.Bold, color = DarkNavy)
-                                            excludedReceipts.take(if (showAllExclusions) excludedReceipts.size else 3).forEach { receipt ->
-                                                val reasons = exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)].orEmpty()
-                                                Text("${receipt.getEffectiveDisplayId()}: ${if (showAllExclusions) reasons.joinToString(" ") else reasons.firstOrNull() ?: "Bitte Beleg prüfen"}", fontSize = 12.sp, color = DarkNavy)
-                                            }
-                                            if (excludedReceipts.size > 3) TextButton(onClick = { showAllExclusions = !showAllExclusions }) {
-                                                Text(if (showAllExclusions) "Weniger anzeigen" else "Alle ${excludedReceipts.size} Gründe anzeigen")
-                                            }
+                                    Ui2Section("Ausgeschlossene Belege") {
+                                        val visible = excludedReceipts.take(if (showAllExclusions) excludedReceipts.size else 1)
+                                        visible.forEach { receipt ->
+                                            val reasons = exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)].orEmpty()
+                                            Text("${receipt.getEffectiveDisplayId()}: ${if (showAllExclusions) reasons.joinToString(" ") else reasons.firstOrNull() ?: "Bitte Beleg prüfen"}", fontSize = 11.sp, color = SlateGray)
                                         }
-                                    }
-                                }
-                                Button(onClick = { viewModel.setWizardStep(2) }, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(8.dp)) {
-                                    Text(if (mappedRecords.isEmpty()) "Weiter zum Kanzleiprofil" else "DATEV Export vorbereiten", fontWeight = FontWeight.Bold)
-                                }
-                                OutlinedButton(onClick = { viewModel.setWizardStep(4) }, enabled = mappedRecords.isNotEmpty(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
-                                    Text("Vorschau anzeigen")
-                                }
-                                OutlinedButton(onClick = { viewModel.setWizardStep(3) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp)) {
-                                    Text("Vorprüfung anzeigen")
-                                }
-                                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4FF))) {
-                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
-                                        Icon(Icons.Default.Info, contentDescription = null, tint = AccentBlue)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Nur geprüfte und vollständig zugeordnete Belege werden exportiert.", fontSize = 12.sp, color = DarkNavy)
-                                    }
-                                }
-                                Text("Exportumfang", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = DarkNavy)
-
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text("Wirtschaftsjahr:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf("2026", "2025", "ALLE").forEach { yr ->
-                                                FilterChip(
-                                                    selected = yearFilter == yr,
-                                                    onClick = { viewModel.setWizardFilters(year = yr) },
-                                                    label = { Text(yr, fontSize = 12.sp) }
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text("Belegtyp:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            listOf("ALLE", "AUSGABEN", "EINNAHMEN").forEach { tp ->
-                                                FilterChip(
-                                                    selected = typeFilter == tp,
-                                                    onClick = { viewModel.setWizardFilters(categoryType = tp) },
-                                                    label = { Text(tp.take(3), fontSize = 11.sp) }
-                                                )
-                                            }
+                                        if (excludedReceipts.size > 1) TextButton(onClick = { showAllExclusions = !showAllExclusions }, contentPadding = PaddingValues(0.dp)) {
+                                            Text(if (showAllExclusions) "Weniger anzeigen" else "Alle ${excludedReceipts.size} Gründe anzeigen", fontSize = 11.sp)
                                         }
                                     }
                                 }
 
-                                Column {
-                                    Text("Wohneinheit:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Row(
-                                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
+                                Ui2Section("Exportumfang") {
+                                    Text("Wirtschaftsjahr", fontSize = 11.sp, color = SlateGray)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+                                        listOf("2026", "2025", "ALLE").forEach { year ->
+                                            FilterChip(selected = yearFilter == year, onClick = { viewModel.setWizardFilters(year = year) }, label = { Text(year, fontSize = 11.sp) })
+                                        }
+                                    }
+                                    Text("Belegtyp", fontSize = 11.sp, color = SlateGray)
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+                                        listOf("ALLE", "AUSGABEN", "EINNAHMEN").forEach { type ->
+                                            FilterChip(selected = typeFilter == type, onClick = { viewModel.setWizardFilters(categoryType = type) }, label = { Text(type.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 10.sp) })
+                                        }
+                                    }
+                                    Text("Wohneinheit", fontSize = 11.sp, color = SlateGray)
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                                         listOf("ALLE", "WE 1", "WE 2", "WE 3", "WE 4", "WE 5", "WE 6", "WE 7").forEach { unit ->
-                                            FilterChip(
-                                                selected = unitFilter == unit,
-                                                onClick = { viewModel.setWizardFilters(unit = unit) },
-                                                label = { Text(unit, fontSize = 12.sp) }
-                                            )
+                                            FilterChip(selected = unitFilter == unit, onClick = { viewModel.setWizardFilters(unit = unit) }, label = { Text(unit, fontSize = 11.sp) })
                                         }
                                     }
                                 }
 
-                                HorizontalDivider()
-
-                                Card(
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = Color(0xFFFFF7ED)
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        "Bereits exportierte Belege werden aus Sicherheitsgründen immer ausgeschlossen. Nach einer fachlichen Änderung muss die DATEV-Aufteilung erneut freigegeben werden.",
-                                        modifier = Modifier.padding(10.dp),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = Color(0xFF9A3412)
-                                    )
+                                Button(onClick = { viewModel.setWizardStep(2) }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
+                                    Text(if (mappedRecords.isEmpty()) "Weiter zum Kanzleiprofil" else "DATEV Export vorbereiten", fontSize = 12.sp)
                                 }
-
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Text("Export-Umfang Vorschau:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("• Eingeschlossene Buchungssätze: ${mappedRecords.size}", fontSize = 12.sp)
-                                        Text("• Ausgeschlossene Belege: ${excludedReceipts.size}", fontSize = 12.sp)
-                                        Text(
-                                            "• Gesamtsumme Brutto: ${String.format(Locale.GERMANY, "%.2f", validationReport?.totalAmount ?: 0.0)} EUR",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-
-                                    }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+                                    OutlinedButton(onClick = { viewModel.setWizardStep(4) }, enabled = mappedRecords.isNotEmpty(), modifier = Modifier.weight(1f), shape = Ui2.controlShape, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Vorschau", fontSize = 11.sp) }
+                                    OutlinedButton(onClick = { viewModel.setWizardStep(3) }, modifier = Modifier.weight(1f), shape = Ui2.controlShape, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Vorprüfung", fontSize = 11.sp) }
                                 }
+                                Text("Nur geprüfte und vollständig zugeordnete Belege werden exportiert.", fontSize = 10.sp, color = SlateGray)
                             }
                         }
 
@@ -12142,11 +12053,12 @@ fun DatevExportScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                if (step > 1) {
+                Spacer(modifier = Modifier.height(Ui2.spacing))
                 HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(Ui2.spacing))
 
-                // Bottom Navigation Buttons
+                // Navigation between the remaining wizard steps
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -12174,8 +12086,10 @@ fun DatevExportScreen(
                         }
                     }
                 }
+                }
             }
         }
+    }
     }
 }
 
