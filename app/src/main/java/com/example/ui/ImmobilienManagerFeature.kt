@@ -865,7 +865,8 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
     if (showDatev) DatevExportDialog(viewModel, receipts) { showDatev = false }
     if (showLearnedRules) KiLearnedRulesDialog(viewModel) { showLearnedRules = false }
     if (page == "afa" || page == "monitor") {
-        PropertyTaxUi2Screen(viewModel, monitor = page == "monitor") { page = null }
+        if (page == "afa") AfaPortfolioScreen(viewModel) { page = null }
+        else PropertyTaxUi2Screen(viewModel, monitor = true) { page = null }
         return
     }
     androidx.activity.compose.BackHandler(enabled = page != null) { page = null }
