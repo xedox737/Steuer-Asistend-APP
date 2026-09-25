@@ -38,6 +38,10 @@ data class TaxPhase1Summary(
     val acquisitionCostDetails: List<AcquisitionCostDetail>,
     val afaRatePercent: Double,
     val annualAfa: Double,
+    val standardAnnualAfa: Double,
+    val shorterAnnualAfa: Double,
+    val shorterScenarioValid: Boolean,
+    val shorterMethodActive: Boolean,
     val firstYearAfa: Double,
     val afaStartDate: String,
     val monitorStartDate: String,
@@ -99,9 +103,21 @@ object TaxPropertyCalculator {
             metadata.baujahr < 2023 -> 2.0
             else -> 3.0
         }
-        val annualAfa = buildingAcquisitionCosts * afaRate / 100.0
         val startText = metadata.uebergangNutzenLasten.ifBlank { metadata.notariellesKaufdatum }
         val startDate = parseDate(startText)
+        val standardAnnualAfa = buildingAcquisitionCosts * afaRate / 100.0
+        // The alternative only applies after an explicit confirmation with a linked
+        // document, a reason and a matching acquisition start date. Existing records
+        // continue to use the previous standard calculation by default.
+        val standardYears = if (afaRate > 0.0) 100.0 / afaRate else 0.0
+        val shorterDurationPlausible = metadata.afaShorterYears in 1..100 &&
+            standardYears > 0 && metadata.afaShorterYears < standardYears
+        val shorterScenarioValid = shorterDurationPlausible &&
+            startDate != null && parseDate(metadata.afaShorterStartDate) == startDate &&
+            metadata.afaShorterReason.isNotBlank() && metadata.afaShorterDocumentId.isNotBlank()
+        val shorterAnnualAfa = if (shorterDurationPlausible) buildingAcquisitionCosts / metadata.afaShorterYears else 0.0
+        val shorterMethodActive = shorterScenarioValid && metadata.afaShorterConfirmed
+        val annualAfa = if (shorterMethodActive) shorterAnnualAfa else standardAnnualAfa
         val firstYearAfa = if (startDate != null && annualAfa > 0.0) {
             val cal = Calendar.getInstance(Locale.GERMANY).apply { time = startDate }
             annualAfa * (13 - (cal.get(Calendar.MONTH) + 1)) / 12.0
@@ -159,8 +175,12 @@ object TaxPropertyCalculator {
             buildingAncillaryShare = buildingAncillary,
             buildingAcquisitionCosts = buildingAcquisitionCosts,
             acquisitionCostDetails = acquisitionDetails,
-            afaRatePercent = afaRate,
+            afaRatePercent = if (shorterMethodActive) 100.0 / metadata.afaShorterYears else afaRate,
             annualAfa = annualAfa,
+            standardAnnualAfa = standardAnnualAfa,
+            shorterAnnualAfa = shorterAnnualAfa,
+            shorterScenarioValid = shorterScenarioValid,
+            shorterMethodActive = shorterMethodActive,
             firstYearAfa = firstYearAfa,
             afaStartDate = startDate?.let(germanDate::format).orEmpty(),
             monitorStartDate = startDate?.let(germanDate::format).orEmpty(),

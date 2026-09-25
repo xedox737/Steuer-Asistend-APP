@@ -285,6 +285,11 @@ class DrivePersistenceRepository(
             put("objektart", objektart)
             put("status", status)
             put("notizen", notizen)
+            put("afaShorterYears", afaShorterYears)
+            put("afaShorterStartDate", afaShorterStartDate)
+            put("afaShorterReason", afaShorterReason)
+            put("afaShorterDocumentId", afaShorterDocumentId)
+            put("afaShorterConfirmed", afaShorterConfirmed)
         }.toString(4)
     }
 
@@ -307,7 +312,12 @@ class DrivePersistenceRepository(
             grundUndBodenWert = if (json.has("grundUndBodenWert")) json.optDouble("grundUndBodenWert", 0.0) else (json.optDouble("gesamtKaufpreis", 0.0) - json.optDouble("gebaeudewert", 0.0)).coerceAtLeast(0.0),
             kaufpreisAufteilungQuelle = json.optString("kaufpreisAufteilungQuelle", "ABGELEITET"),
             bildPfad = json.optString("bildPfad", ""), objektart = json.optString("objektart", "Mehrfamilienhaus"),
-            status = json.optString("status", "Aktiv"), notizen = json.optString("notizen", "")
+            status = json.optString("status", "Aktiv"), notizen = json.optString("notizen", ""),
+            afaShorterYears = json.optInt("afaShorterYears", 0),
+            afaShorterStartDate = json.optString("afaShorterStartDate", ""),
+            afaShorterReason = json.optString("afaShorterReason", ""),
+            afaShorterDocumentId = json.optString("afaShorterDocumentId", ""),
+            afaShorterConfirmed = json.optBoolean("afaShorterConfirmed", false)
         )
     }
 

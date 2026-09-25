@@ -269,6 +269,9 @@ object SupplementalDriveBackup {
         put("gesamtKaufpreis", gesamtKaufpreis); put("gebaeudewert", gebaeudewert)
         put("grundUndBodenWert", grundUndBodenWert); put("kaufpreisAufteilungQuelle", kaufpreisAufteilungQuelle)
         put("bildPfad", bildPfad); put("objektart", objektart); put("status", status); put("notizen", notizen)
+        put("afaShorterYears", afaShorterYears); put("afaShorterStartDate", afaShorterStartDate)
+        put("afaShorterReason", afaShorterReason); put("afaShorterDocumentId", afaShorterDocumentId)
+        put("afaShorterConfirmed", afaShorterConfirmed)
     }
 
     private fun JSONObject.toPropertyMetadata() = PropertyMetadata(
@@ -282,7 +285,12 @@ object SupplementalDriveBackup {
         gebaeudewert = optDouble("gebaeudewert", 0.0), grundUndBodenWert = optDouble("grundUndBodenWert", 0.0),
         kaufpreisAufteilungQuelle = optString("kaufpreisAufteilungQuelle", "MANUELL"),
         bildPfad = optString("bildPfad", ""), objektart = optString("objektart", "Mehrfamilienhaus"),
-        status = optString("status", "Aktiv"), notizen = optString("notizen", "")
+        status = optString("status", "Aktiv"), notizen = optString("notizen", ""),
+        afaShorterYears = optInt("afaShorterYears", 0),
+        afaShorterStartDate = optString("afaShorterStartDate", ""),
+        afaShorterReason = optString("afaShorterReason", ""),
+        afaShorterDocumentId = optString("afaShorterDocumentId", ""),
+        afaShorterConfirmed = optBoolean("afaShorterConfirmed", false)
     )
 
     private fun LogbookTrip.toJson() = JSONObject().apply {
