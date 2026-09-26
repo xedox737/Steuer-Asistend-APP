@@ -11452,6 +11452,7 @@ private fun DatevLandingRow(
     label: String,
     value: Int,
     color: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     showDivider: Boolean = true
 ) {
     Row(
@@ -11459,7 +11460,10 @@ private fun DatevLandingRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, fontSize = 12.sp, color = DarkNavy)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+            Text(label, fontSize = 12.sp, color = DarkNavy)
+        }
         Text(value.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = color)
     }
     if (showDivider) HorizontalDivider(color = BorderColor)
@@ -11516,7 +11520,7 @@ fun DatevExportScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(Ui2.padding)
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 // Header & Step Indicator
                 Row(
@@ -11646,11 +11650,11 @@ fun DatevExportScreen(
                                     border = BorderStroke(1.dp, BorderColor)
                                 ) {
                                     Column(modifier = Modifier.padding(Ui2.padding)) {
-                                        DatevLandingRow("Exportierbar", mappedRecords.size, EmeraldGreen)
-                                        DatevLandingRow("Privat / ignoriert", ignoredCount, CrimsonRed)
-                                        DatevLandingRow("Umbuchungen", transferCount, AccentBlue)
-                                        DatevLandingRow("Kein Beleg erforderlich", noReceiptCount, WarmOrange)
-                                        DatevLandingRow("Noch offen", openCount, WarmOrange, showDivider = false)
+                                        DatevLandingRow("Exportierbar", mappedRecords.size, EmeraldGreen, Icons.Default.CheckCircle)
+                                        DatevLandingRow("Privat / ignoriert", ignoredCount, CrimsonRed, Icons.Default.Clear)
+                                        DatevLandingRow("Umbuchungen", transferCount, AccentBlue, Icons.Default.Refresh)
+                                        DatevLandingRow("Kein Beleg erforderlich", noReceiptCount, WarmOrange, Icons.Default.Description)
+                                        DatevLandingRow("Noch offen", openCount, WarmOrange, Icons.Default.Warning, showDivider = false)
                                     }
                                 }
 

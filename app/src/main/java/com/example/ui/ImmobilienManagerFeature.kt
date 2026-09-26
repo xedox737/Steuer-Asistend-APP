@@ -870,7 +870,7 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
     androidx.activity.compose.BackHandler(enabled = page != null) { page = null }
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(Ui2.padding),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
         if (page != null) {
