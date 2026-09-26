@@ -11496,7 +11496,7 @@ fun DatevExportScreen(
     var editableMandantenNr by remember(activeProfile) { mutableStateOf(activeProfile.mandantenNummer) }
     var editableMandantenName by remember(activeProfile) { mutableStateOf(activeProfile.mandantenName) }
     var editableSachkontenLaenge by remember(activeProfile) { mutableStateOf(activeProfile.sachkontenLaenge.toString()) }
-    var showAllExclusions by remember { mutableStateOf(false) }
+    var showOpenBookings by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.recalculateWizardStepData()
@@ -11603,6 +11603,11 @@ fun DatevExportScreen(
                             val openCount = (excludedReceipts.size - ignoredCount - transferCount - noReceiptCount).coerceAtLeast(0)
                             val hasExportableRecords = mappedRecords.isNotEmpty()
                             val totalCount = mappedRecords.size + excludedReceipts.size
+                            val openReceipts = excludedReceipts.filter { receipt ->
+                                val reasonText = exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)]
+                                    .orEmpty().joinToString(" ")
+                                !reasonText.contains(Regex("privat|ignor|umbuch|kein beleg erforderlich", RegexOption.IGNORE_CASE))
+                            }
 
                             Column(
                                 modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
@@ -11635,7 +11640,11 @@ fun DatevExportScreen(
                                                 color = DarkNavy
                                             )
                                             Text(
-                                                text = "$mappedRecords von $totalCount Buchungen exportierbar",
+                                                text = when {
+                                                    hasExportableRecords -> "$mappedRecords von $totalCount Buchungen exportierbar"
+                                                    totalCount > 0 -> "Derzeit keine Buchungen exportierbar"
+                                                    else -> "Noch keine Buchungen vorhanden"
+                                                },
                                                 fontSize = 11.sp,
                                                 color = SlateGray
                                             )
@@ -11665,7 +11674,7 @@ fun DatevExportScreen(
                                 ) {
                                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(Ui2.spacing))
-                                    Text("DATEV Export erstellen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (hasExportableRecords) "DATEV Export erstellen" else "Export vorbereiten", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                                 OutlinedButton(
                                     onClick = { viewModel.setWizardStep(4) },
@@ -11676,11 +11685,20 @@ fun DatevExportScreen(
                                     Text("Vorschau anzeigen", fontSize = 12.sp)
                                 }
                                 OutlinedButton(
-                                    onClick = { viewModel.setWizardStep(3) },
+                                    onClick = { showOpenBookings = !showOpenBookings },
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = Ui2.controlShape
                                 ) {
-                                    Text("Offene Buchungen anzeigen", fontSize = 12.sp)
+                                    Text(if (showOpenBookings) "Offene Buchungen ausblenden" else "Offene Buchungen anzeigen", fontSize = 12.sp)
+                                }
+                                if (showOpenBookings && openReceipts.isNotEmpty()) {
+                                    Ui2Section("Offene Buchungen") {
+                                        openReceipts.forEach { receipt ->
+                                            val reasons = exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)].orEmpty()
+                                            Text(receipt.getEffectiveDisplayId(), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
+                                            Text(reasons.joinToString(" "), fontSize = 10.sp, color = SlateGray)
+                                        }
+                                    }
                                 }
 
                                 Card(
