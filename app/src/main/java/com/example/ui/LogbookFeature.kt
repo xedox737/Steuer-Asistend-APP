@@ -18,6 +18,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Route
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -72,17 +78,11 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
     Column(
         modifier = Modifier.fillMaxSize().background(SoftBackground)
             .verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Ui2Section("KI-Fahrtenbuch 2.0") {
-            Text(
-                "Die KI erkennt Belegdatum, Händler, Objektbezug und einen möglichen Fahrtzweck. " +
-                    "Ihre Kilometerangabe bleibt ein gekennzeichneter Vorschlag und wird nie allein steuerlich eingebucht.",
-                fontSize = 12.sp, color = SlateGray, lineHeight = 17.sp
-            )
-        }
+        LogbookHero(trips.size, trips.sumOf { it.taxDistanceKm })
         if (trips.isNotEmpty()) {
-            Ui2Section("Gespeicherte Fahrten") {
+            Ui2Section("Letzte Fahrten") {
                 trips.take(5).forEach { SavedTripCard(it) }
             }
         }
@@ -99,17 +99,51 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
 }
 
 @Composable
+private fun LogbookHero(tripCount: Int, totalKm: Double) {
+    Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(40.dp).background(AccentBlue.copy(alpha = .12f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.DirectionsCar, null, tint = AccentBlue, modifier = Modifier.size(21.dp)) }
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("KI-Fahrtenbuch 2.0", fontWeight = FontWeight.Black, fontSize = 16.sp, color = DarkNavy)
+                    Text("Fahrten erfassen, prüfen und nachvollziehbar speichern", fontSize = 11.sp, color = SlateGray)
+                }
+                Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(18.dp))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LogbookMetric(Modifier.weight(1f), "Gespeichert", tripCount.toString(), AccentBlue)
+                LogbookMetric(Modifier.weight(1f), "Gesamtstrecke", totalKm.germanKm(), EmeraldGreen)
+            }
+            Text("Kilometerangaben der KI sind immer nur Vorschläge und werden erst nach Ihrer Prüfung steuerlich verwendet.", fontSize = 10.sp, color = SlateGray, lineHeight = 14.sp)
+        }
+    }
+}
+
+@Composable
+private fun LogbookMetric(modifier: Modifier, label: String, value: String, tint: Color) {
+    Column(modifier = modifier.background(tint.copy(alpha = .08f), Ui2.shape).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, fontSize = 10.sp, color = SlateGray)
+        Text(value, fontSize = 14.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+    }
+}
+
+@Composable
 private fun SavedTripCard(trip: LogbookTrip) {
     Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(trip.date, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text(trip.taxDistanceKm.germanKm(), fontWeight = FontWeight.Black, color = EmeraldGreen)
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(38.dp).background(EmeraldGreen.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.Route, null, tint = EmeraldGreen, modifier = Modifier.size(20.dp)) }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(trip.date, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = SlateGray)
+                    Text(trip.taxDistanceKm.germanKm(), fontWeight = FontWeight.Black, color = EmeraldGreen)
+                }
+                Text(trip.purpose, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, maxLines = 1)
+                Text(trip.stops.joinToString(" → ") { it.label.ifBlank { it.address } }, fontSize = 10.sp, color = SlateGray, maxLines = 1)
+                Text("${trip.kilometerSource.replace('_', ' ')} · ${trip.plausibilityStatus.replace('_', ' ')}", fontSize = 9.sp, color = AccentBlue, fontWeight = FontWeight.Bold, maxLines = 1)
             }
-            Text(trip.purpose, fontSize = 12.sp, color = DarkNavy)
-            Text("Quelle: ${trip.kilometerSource.replace('_', ' ')}", fontSize = 10.sp, color = SlateGray)
-            Text("Status: ${trip.plausibilityStatus.replace('_', ' ')}", fontSize = 10.sp, color = SlateGray)
-            Text(trip.stops.joinToString(" → ") { it.label.ifBlank { it.address } }, fontSize = 10.sp, color = SlateGray)
+            Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -261,13 +295,18 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(38.dp).background(AccentBlue.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(19.dp)) }
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(receipt.datum, fontWeight = FontWeight.Bold, color = DarkNavy)
-                    Text("KI-Vorschlag: ${receipt.aussteller}", fontSize = 11.sp, color = AccentBlue)
-                    Text("Objekt: ${receipt.wohneinheit.ifBlank { metadata.name }}", fontSize = 10.sp, color = SlateGray)
+                    Text("Fahrtvorschlag", fontWeight = FontWeight.Black, color = DarkNavy)
+                    Text("${receipt.datum} · ${receipt.aussteller}", fontSize = 11.sp, color = AccentBlue, maxLines = 1)
+                    Text("Objekt: ${receipt.wohneinheit.ifBlank { metadata.name }}", fontSize = 10.sp, color = SlateGray, maxLines = 1)
                 }
-                decision.taxDistanceKm?.let { Text(it.germanKm(), fontWeight = FontWeight.Black, color = EmeraldGreen) }
+                Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                    decision.taxDistanceKm?.let { Text(it.germanKm(), fontWeight = FontWeight.Black, color = EmeraldGreen) }
+                    Text("KI-Entwurf", fontSize = 9.sp, color = SlateGray)
+                }
             }
             OutlinedTextField(purpose, { purpose = it }, label = { Text("Fahrtzweck") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(start, { start = it; confirmed = false }, label = { Text("Startadresse") }, modifier = Modifier.fillMaxWidth())
