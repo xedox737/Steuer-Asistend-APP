@@ -103,10 +103,7 @@ private fun LogbookHero(tripCount: Int, totalKm: Double) {
     Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(40.dp).background(AccentBlue.copy(alpha = .12f), Ui2.shape),
-                    contentAlignment = androidx.compose.ui.Alignment.Center
-                ) { Icon(Icons.Default.DirectionsCar, null, tint = AccentBlue, modifier = Modifier.size(21.dp)) }
+                Box(modifier = Modifier.size(40.dp).background(AccentBlue.copy(alpha = .12f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.DirectionsCar, null, tint = AccentBlue, modifier = Modifier.size(21.dp)) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("KI-Fahrtenbuch 2.0", fontWeight = FontWeight.Black, fontSize = 16.sp, color = DarkNavy)
@@ -135,9 +132,7 @@ private fun LogbookMetric(modifier: Modifier, label: String, value: String, tint
 private fun SavedTripCard(trip: LogbookTrip) {
     Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(38.dp).background(EmeraldGreen.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Icon(Icons.Default.Route, null, tint = EmeraldGreen, modifier = Modifier.size(20.dp))
-            }
+            Box(modifier = Modifier.size(38.dp).background(EmeraldGreen.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.Route, null, tint = EmeraldGreen, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -301,9 +296,7 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(38.dp).background(AccentBlue.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                    Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(19.dp))
-                }
+                Box(modifier = Modifier.size(38.dp).background(AccentBlue.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(19.dp)) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Fahrtvorschlag", fontWeight = FontWeight.Black, color = DarkNavy)
