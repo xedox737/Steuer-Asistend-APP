@@ -259,6 +259,7 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
     var confirmed by remember(receipt.id) { mutableStateOf(false) }
     var message by remember(receipt.id) { mutableStateOf<String?>(null) }
     var busy by remember(receipt.id) { mutableStateOf(false) }
+    var detailsExpanded by remember(receipt.id) { mutableStateOf(false) }
 
     val normalizedRoute = runCatching {
         TripRouteNormalizer.normalize(
@@ -308,6 +309,41 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                     Text("KI-Entwurf", fontSize = 9.sp, color = SlateGray)
                 }
             }
+            if (!detailsExpanded) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(SoftBackground, Ui2.shape).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Text(purpose, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, maxLines = 2)
+                    Text("Start: ${start}", fontSize = 11.sp, color = SlateGray, maxLines = 1)
+                    Text("Ziel: ${destination}", fontSize = 11.sp, color = SlateGray, maxLines = 1)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Beleg: ${receipt.aussteller}", fontSize = 10.sp, color = AccentBlue)
+                        Text(
+                            decision.taxDistanceKm?.germanKm() ?: "Noch keine Strecke",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (decision.taxDistanceKm == null) SlateGray else EmeraldGreen
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { detailsExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, AccentBlue),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentBlue)
+                    ) {
+                        Text("Fahrt prüfen", fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { detailsExpanded = false },
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, BorderColor),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SlateGray)
+                ) { Text("Prüfung schließen", fontSize = 11.sp) }
             OutlinedTextField(purpose, { purpose = it }, label = { Text("Fahrtzweck") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(start, { start = it; confirmed = false }, label = { Text("Startadresse") }, modifier = Modifier.fillMaxWidth())
             Text("Zwischenstopps", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -536,6 +572,7 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
                 ) { Text("Als Standardstrecke speichern") }
             }
             message?.let { Text(it, fontSize = 10.sp, color = SlateGray) }
+            }
         }
     }
 }
