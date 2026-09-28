@@ -74,13 +74,31 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
         likelyTravel && receipt.datum.matches(Regex("""\d{4}-\d{2}-\d{2}""")) &&
             trips.none { it.sourceReceiptId == receipt.id }
     }
+    var selectedSuggestion by remember { mutableStateOf<Receipt?>(null) }
+
+    selectedSuggestion?.let { receipt ->
+        LogbookEntryScreen(
+            receipt = receipt,
+            metadata = effectiveMetadata,
+            viewModel = viewModel,
+            onBack = { selectedSuggestion = null }
+        )
+        return
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().background(SoftBackground)
             .verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Text("Fahrtenbuch", fontSize = 24.sp, fontWeight = FontWeight.Black, color = DarkNavy)
         LogbookHero(trips.size, trips.sumOf { it.taxDistanceKm })
+        Button(
+            onClick = { selectedSuggestion = suggested.firstOrNull() },
+            enabled = suggested.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+        ) { Text("+ Neue Fahrt erfassen", fontWeight = FontWeight.Bold) }
         if (trips.isNotEmpty()) {
             Ui2Section("Letzte Fahrten") {
                 trips.take(5).forEach { SavedTripCard(it) }
@@ -91,10 +109,56 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
             if (suggested.isEmpty()) {
                 Text("Keine neuen passenden Belege gefunden.", color = SlateGray, fontSize = 12.sp)
             } else {
-                suggested.forEach { LogbookSuggestionCard(it, effectiveMetadata, viewModel) }
+                suggested.forEach { LogbookSuggestionPreview(it, effectiveMetadata) { selectedSuggestion = it } }
             }
         }
         Spacer(Modifier.height(72.dp))
+    }
+}
+
+@Composable
+private fun LogbookEntryScreen(
+    receipt: Receipt,
+    metadata: PropertyMetadata,
+    viewModel: ReceiptViewModel,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(SoftBackground)
+            .verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedButton(onClick = onBack, border = BorderStroke(1.dp, BorderColor)) { Text("← Fahrtenübersicht") }
+        Text("Neue Fahrt", fontSize = 24.sp, fontWeight = FontWeight.Black, color = DarkNavy)
+        Text("Route erfassen und anschließend prüfen", fontSize = 12.sp, color = SlateGray)
+        LogbookSuggestionCard(receipt, metadata, viewModel, initiallyExpanded = true)
+        Spacer(Modifier.height(72.dp))
+    }
+}
+
+@Composable
+private fun LogbookSuggestionPreview(receipt: Receipt, metadata: PropertyMetadata, onOpen: () -> Unit) {
+    val purpose = if (receipt.beschreibung.isNotBlank()) "Material einkaufen" else "Fahrt zu ${receipt.aussteller}"
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        shape = Ui2.shape,
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, BorderColor)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(38.dp).background(AccentBlue.copy(alpha = .11f), Ui2.shape),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) { Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(19.dp)) }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(receipt.datum, fontSize = 10.sp, color = SlateGray)
+                Text("${metadata.wohnort.substringBefore(',')} → ${receipt.aussteller}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, maxLines = 1)
+                Text(purpose, fontSize = 11.sp, color = SlateGray, maxLines = 1)
+                Text("KI-Vorschlag", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = AccentBlue)
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(18.dp))
+        }
     }
 }
 
@@ -236,7 +300,12 @@ private fun EditableStandardRoute(route: StandardRoute, viewModel: ReceiptViewMo
 }
 
 @Composable
-private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, viewModel: ReceiptViewModel) {
+private fun LogbookSuggestionCard(
+    receipt: Receipt,
+    metadata: PropertyMetadata,
+    viewModel: ReceiptViewModel,
+    initiallyExpanded: Boolean = false
+) {
     val scope = rememberCoroutineScope()
     var start by remember(receipt.id) { mutableStateOf(metadata.wohnort) }
     var intermediateStops by remember(receipt.id) { mutableStateOf(listOf(receipt.aussteller)) }
@@ -259,7 +328,7 @@ private fun LogbookSuggestionCard(receipt: Receipt, metadata: PropertyMetadata, 
     var confirmed by remember(receipt.id) { mutableStateOf(false) }
     var message by remember(receipt.id) { mutableStateOf<String?>(null) }
     var busy by remember(receipt.id) { mutableStateOf(false) }
-    var detailsExpanded by remember(receipt.id) { mutableStateOf(false) }
+    var detailsExpanded by remember(receipt.id, initiallyExpanded) { mutableStateOf(initiallyExpanded) }
 
     val normalizedRoute = runCatching {
         TripRouteNormalizer.normalize(
