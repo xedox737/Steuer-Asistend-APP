@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,10 +55,50 @@ import com.example.data.TripRouteNormalizer
 import com.example.data.TripStop
 import com.example.data.TripStopJson
 import java.time.Instant
+import java.time.LocalDate
+import java.time.YearMonth
 import java.util.Locale
 import kotlinx.coroutines.launch
 
 private fun Double.germanKm(): String = String.format(Locale.GERMANY, "%.1f km", this)
+
+private fun manualTripReceipt() = Receipt(
+    aussteller = "Manuelle Fahrt", datum = LocalDate.now().toString(), uhrzeit = "",
+    bruttobetrag = 0.0, hauptkategorie = "", unterkategorie = "", kontoNr = "",
+    beschreibung = ""
+)
+
+@Composable
+private fun LogbookSavedDetail(trip: LogbookTrip, onBack: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(SoftBackground).verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable(onClick = onBack))
+            Spacer(Modifier.width(16.dp))
+            Text("Fahrt prüfen", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+        }
+        Ui2Section("Route") {
+            Text(trip.startAddress, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text("↓", color = AccentBlue)
+            trip.stops.drop(1).dropLast(1).forEach { Text(it.address, color = SlateGray) }
+            Text(trip.destinationAddress, fontWeight = FontWeight.Bold, color = DarkNavy)
+        }
+        Ui2Section("Fahrtdaten") {
+            Text("Datum: ${trip.date}", color = DarkNavy)
+            Text("Strecke: ${trip.taxDistanceKm.germanKm()}", color = DarkNavy)
+            Text("Zweck der Fahrt: ${trip.purpose}", color = DarkNavy)
+            Text("Kilometerquelle: ${trip.kilometerSource.replace('_', ' ')}", color = SlateGray)
+        }
+        Ui2Section("Steuerliche Zuordnung") {
+            Text(String.format(Locale.GERMANY, "Werbungskosten: %.2f €", trip.taxDistanceKm * 0.30), color = DarkNavy)
+            Text("Objekt: ${trip.propertyReference.ifBlank { "Allgemein" }}", color = SlateGray)
+        }
+        trip.sourceReceiptId?.let { Ui2Section("Beleg") { Text("Verknüpfter Beleg #$it", color = DarkNavy) } }
+        Text("Gespeicherte Fahrten sind hier lesbar. Eine Änderung benötigt eine nachvollziehbare Korrekturfunktion.", fontSize = 11.sp, color = SlateGray)
+    }
+}
 
 @Composable
 fun LogbookScreen(viewModel: ReceiptViewModel) {
@@ -75,13 +117,21 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
             trips.none { it.sourceReceiptId == receipt.id }
     }
     var selectedSuggestion by remember { mutableStateOf<Receipt?>(null) }
+    var selectedTrip by remember { mutableStateOf<LogbookTrip?>(null) }
+    var showAll by remember { mutableStateOf(false) }
+
+    selectedTrip?.let { trip ->
+        LogbookSavedDetail(trip, onBack = { selectedTrip = null })
+        return
+    }
 
     selectedSuggestion?.let { receipt ->
         LogbookEntryScreen(
             receipt = receipt,
             metadata = effectiveMetadata,
             viewModel = viewModel,
-            onBack = { selectedSuggestion = null }
+            onBack = { selectedSuggestion = null },
+            onSaved = { selectedSuggestion = null }
         )
         return
     }
@@ -92,17 +142,19 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Fahrtenbuch", fontSize = 24.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-        LogbookHero(trips.size, trips.sumOf { it.taxDistanceKm })
-        Button(
-            onClick = { selectedSuggestion = suggested.firstOrNull() },
-            enabled = suggested.isNotEmpty(),
+        LogbookHero(trips)
+        OutlinedButton(
+            onClick = { selectedSuggestion = manualTripReceipt() },
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
-        ) { Text("+ Neue Fahrt erfassen", fontWeight = FontWeight.Bold) }
+            border = BorderStroke(1.dp, AccentBlue),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentBlue)
+        ) { Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Neue Fahrt", fontWeight = FontWeight.Bold) }
         if (trips.isNotEmpty()) {
-            Ui2Section("Letzte Fahrten") {
-                trips.take(5).forEach { SavedTripCard(it) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(if (showAll) "Alle Fahrten" else "Letzte Fahrten", fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(if (showAll) "Weniger anzeigen" else "Alle anzeigen  ›", modifier = Modifier.clickable { showAll = !showAll }, color = AccentBlue, fontSize = 12.sp)
             }
+            (if (showAll) trips else trips.take(5)).forEach { SavedTripCard(it) { selectedTrip = it } }
         }
         if (routes.isNotEmpty()) StandardRoutesCard(routes, viewModel)
         Ui2Section("Fahrtvorschläge aus Belegen") {
@@ -121,17 +173,20 @@ private fun LogbookEntryScreen(
     receipt: Receipt,
     metadata: PropertyMetadata,
     viewModel: ReceiptViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSaved: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize().background(SoftBackground)
             .verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        OutlinedButton(onClick = onBack, border = BorderStroke(1.dp, BorderColor)) { Text("← Fahrtenübersicht") }
-        Text("Neue Fahrt", fontSize = 24.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-        Text("Route erfassen und anschließend prüfen", fontSize = 12.sp, color = SlateGray)
-        LogbookSuggestionCard(receipt, metadata, viewModel, initiallyExpanded = true)
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable(onClick = onBack))
+            Spacer(Modifier.width(16.dp))
+            Text("Neue Fahrt", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+        }
+        LogbookSuggestionCard(receipt, metadata, viewModel, onSaved = onSaved)
         Spacer(Modifier.height(72.dp))
     }
 }
@@ -163,24 +218,12 @@ private fun LogbookSuggestionPreview(receipt: Receipt, metadata: PropertyMetadat
 }
 
 @Composable
-private fun LogbookHero(tripCount: Int, totalKm: Double) {
-    Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(40.dp).background(AccentBlue.copy(alpha = .12f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.DirectionsCar, null, tint = AccentBlue, modifier = Modifier.size(21.dp)) }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("KI-Fahrtenbuch 2.0", fontWeight = FontWeight.Black, fontSize = 16.sp, color = DarkNavy)
-                    Text("Fahrten erfassen, prüfen und nachvollziehbar speichern", fontSize = 11.sp, color = SlateGray)
-                }
-                Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(18.dp))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LogbookMetric(Modifier.weight(1f), "Gespeichert", tripCount.toString(), AccentBlue)
-                LogbookMetric(Modifier.weight(1f), "Gesamtstrecke", totalKm.germanKm(), EmeraldGreen)
-            }
-            Text("Kilometerangaben der KI sind immer nur Vorschläge und werden erst nach Ihrer Prüfung steuerlich verwendet.", fontSize = 10.sp, color = SlateGray, lineHeight = 14.sp)
-        }
+private fun LogbookHero(trips: List<LogbookTrip>) {
+    val month = YearMonth.now()
+    val monthlyTrips = trips.filter { it.date.startsWith(month.toString()) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        LogbookMetric(Modifier.weight(1f), "${month.month.getDisplayName(java.time.format.TextStyle.FULL, Locale.GERMANY)} ${month.year}", "${monthlyTrips.size} Fahrten", AccentBlue)
+        LogbookMetric(Modifier.weight(1f), "Werbungskosten", String.format(Locale.GERMANY, "%.2f €", monthlyTrips.sumOf { it.taxDistanceKm } * 0.30), AccentBlue)
     }
 }
 
@@ -193,19 +236,16 @@ private fun LogbookMetric(modifier: Modifier, label: String, value: String, tint
 }
 
 @Composable
-private fun SavedTripCard(trip: LogbookTrip) {
-    Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+private fun SavedTripCard(trip: LogbookTrip, onOpen: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen), shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(38.dp).background(EmeraldGreen.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.Route, null, tint = EmeraldGreen, modifier = Modifier.size(20.dp)) }
+            Box(modifier = Modifier.size(38.dp).background(AccentBlue.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.DirectionsCar, null, tint = AccentBlue, modifier = Modifier.size(20.dp)) }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(trip.date, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = SlateGray)
-                    Text(trip.taxDistanceKm.germanKm(), fontWeight = FontWeight.Black, color = EmeraldGreen)
-                }
-                Text(trip.purpose, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, maxLines = 1)
-                Text(trip.stops.joinToString(" → ") { it.label.ifBlank { it.address } }, fontSize = 10.sp, color = SlateGray, maxLines = 1)
-                Text("${trip.kilometerSource.replace('_', ' ')} · ${trip.plausibilityStatus.replace('_', ' ')}", fontSize = 9.sp, color = AccentBlue, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(trip.date, fontSize = 10.sp, color = SlateGray)
+                Text("${trip.startAddress.substringBefore(',')} → ${trip.destinationAddress.substringBefore(',')}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, maxLines = 1)
+                Text(trip.purpose, fontSize = 11.sp, color = SlateGray, maxLines = 1)
+                Text("${trip.taxDistanceKm.germanKm()}  ·  ${trip.kilometerSource.replace('_', ' ')}", fontSize = 10.sp, color = AccentBlue, fontWeight = FontWeight.Bold)
             }
             Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(18.dp))
         }
@@ -304,14 +344,14 @@ private fun LogbookSuggestionCard(
     receipt: Receipt,
     metadata: PropertyMetadata,
     viewModel: ReceiptViewModel,
-    initiallyExpanded: Boolean = false
+    onSaved: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var start by remember(receipt.id) { mutableStateOf(metadata.wohnort) }
-    var intermediateStops by remember(receipt.id) { mutableStateOf(listOf(receipt.aussteller)) }
+    var intermediateStops by remember(receipt.id, receipt.aussteller) { mutableStateOf(if (receipt.id == 0) emptyList() else listOf(receipt.aussteller)) }
     var destination by remember(receipt.id) { mutableStateOf(metadata.adresse) }
     var purpose by remember(receipt.id) {
-        mutableStateOf(if (receipt.beschreibung.isNotBlank()) "Materialkauf / ${receipt.beschreibung}" else "Materialkauf bei ${receipt.aussteller}")
+        mutableStateOf(if (receipt.id == 0) "" else if (receipt.beschreibung.isNotBlank()) "Materialkauf / ${receipt.beschreibung}" else "Materialkauf bei ${receipt.aussteller}")
     }
     var mode by remember(receipt.id) { mutableStateOf(TripRouteMode.INDIVIDUELL) }
     var sameReturnRoute by remember(receipt.id) { mutableStateOf(false) }
@@ -328,7 +368,8 @@ private fun LogbookSuggestionCard(
     var confirmed by remember(receipt.id) { mutableStateOf(false) }
     var message by remember(receipt.id) { mutableStateOf<String?>(null) }
     var busy by remember(receipt.id) { mutableStateOf(false) }
-    var detailsExpanded by remember(receipt.id, initiallyExpanded) { mutableStateOf(initiallyExpanded) }
+    var step by remember(receipt.id, receipt.aussteller) { mutableStateOf(0) }
+    var tripDate by remember(receipt.id, receipt.aussteller) { mutableStateOf(receipt.datum) }
 
     val normalizedRoute = runCatching {
         TripRouteNormalizer.normalize(
@@ -365,7 +406,14 @@ private fun LogbookSuggestionCard(
         border = BorderStroke(1.dp, BorderColor)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                listOf("1  Route", "2  Details", "3  Prüfen").forEachIndexed { index, title ->
+                    Text(title, fontWeight = if (index == step) FontWeight.Bold else FontWeight.Normal,
+                        color = if (index == step) AccentBlue else SlateGray, fontSize = 12.sp,
+                        modifier = Modifier.clickable { if (index < step) step = index })
+                }
+            }
+            if (receipt.id > 0) Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 Box(modifier = Modifier.size(38.dp).background(AccentBlue.copy(alpha = .11f), Ui2.shape), contentAlignment = androidx.compose.ui.Alignment.Center) { Icon(Icons.Default.AutoAwesome, null, tint = AccentBlue, modifier = Modifier.size(19.dp)) }
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -378,42 +426,7 @@ private fun LogbookSuggestionCard(
                     Text("KI-Entwurf", fontSize = 9.sp, color = SlateGray)
                 }
             }
-            if (!detailsExpanded) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().background(SoftBackground, Ui2.shape).padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp)
-                ) {
-                    Text(purpose, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DarkNavy, maxLines = 2)
-                    Text("Start: ${start}", fontSize = 11.sp, color = SlateGray, maxLines = 1)
-                    Text("Ziel: ${destination}", fontSize = 11.sp, color = SlateGray, maxLines = 1)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Beleg: ${receipt.aussteller}", fontSize = 10.sp, color = AccentBlue)
-                        Text(
-                            decision.taxDistanceKm?.germanKm() ?: "Noch keine Strecke",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (decision.taxDistanceKm == null) SlateGray else EmeraldGreen
-                        )
-                    }
-                    OutlinedButton(
-                        onClick = { detailsExpanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, AccentBlue),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentBlue)
-                    ) {
-                        Text("Fahrt prüfen", fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
-                    }
-                }
-            } else {
-                OutlinedButton(
-                    onClick = { detailsExpanded = false },
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(1.dp, BorderColor),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = SlateGray)
-                ) { Text("Prüfung schließen", fontSize = 11.sp) }
-            OutlinedTextField(purpose, { purpose = it }, label = { Text("Fahrtzweck") }, modifier = Modifier.fillMaxWidth())
+            if (step == 0) {
             OutlinedTextField(start, { start = it; confirmed = false }, label = { Text("Startadresse") }, modifier = Modifier.fillMaxWidth())
             Text("Zwischenstopps", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             intermediateStops.forEachIndexed { index, value ->
@@ -447,7 +460,13 @@ private fun LogbookSuggestionCard(
             }
             OutlinedButton(onClick = { intermediateStops = intermediateStops + "" }) { Text("+ Zwischenstopp") }
             OutlinedTextField(destination, { destination = it; confirmed = false }, label = { Text("Zieladresse") }, modifier = Modifier.fillMaxWidth())
-
+            Button(onClick = { step = 1 }, enabled = start.isNotBlank() && destination.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Weiter zu Details") }
+            }
+            if (step == 1) {
+            OutlinedTextField(tripDate, { tripDate = it; confirmed = false }, label = { Text("Datum (JJJJ-MM-TT)") },
+                readOnly = receipt.id > 0, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(purpose, { purpose = it; confirmed = false }, label = { Text("Zweck der Fahrt") }, modifier = Modifier.fillMaxWidth())
             Text("Fahrtart", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TripRouteMode.entries.forEach { option ->
@@ -584,6 +603,28 @@ private fun LogbookSuggestionCard(
             )
             Text("Plausibilität: ${decision.plausibilityStatus.name.replace('_', ' ')}", fontSize = 10.sp, color = SlateGray)
             decision.warnings.forEach { Text("• $it", fontSize = 10.sp, color = CrimsonRed) }
+            Button(onClick = { step = 2 }, enabled = purpose.isNotBlank() && runCatching { LocalDate.parse(tripDate) }.isSuccess,
+                modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Fahrt prüfen") }
+            }
+            if (step == 2) {
+            Ui2Section("Route") {
+                Text(start, color = DarkNavy, fontWeight = FontWeight.Bold)
+                intermediateStops.filter(String::isNotBlank).forEach { Text("↓  $it", color = SlateGray) }
+                Text("↓  $destination", color = DarkNavy, fontWeight = FontWeight.Bold)
+            }
+            Ui2Section("Fahrtdaten") {
+                Text("Datum: $tripDate", color = DarkNavy)
+                Text("Strecke: ${decision.taxDistanceKm?.germanKm() ?: "Noch nicht bestätigt"}", color = DarkNavy)
+                Text("Zweck der Fahrt: $purpose", color = DarkNavy)
+            }
+            Ui2Section("Steuerliche Zuordnung") {
+                Text(decision.taxDistanceKm?.let { String.format(Locale.GERMANY, "Werbungskosten: %.2f €", it * 0.30) } ?: "Kilometerquelle erforderlich", color = DarkNavy)
+                Text("Quelle: ${decision.source?.name?.replace('_', ' ') ?: "Unbestätigt"}", color = SlateGray)
+            }
+            if (receipt.id > 0) Ui2Section("Beleg (optional)") { Text(receipt.aussteller, color = DarkNavy) }
+            OutlinedButton(onClick = { confirmed = false; step = 1 }, modifier = Modifier.fillMaxWidth()) {
+                Text("Angaben bearbeiten")
+            }
             Row {
                 Checkbox(checked = confirmed, onCheckedChange = { confirmed = it })
                 Text("Route, Zweck und steuerlich verwendete Kilometer geprüft", modifier = Modifier.padding(top = 12.dp), fontSize = 11.sp)
@@ -594,7 +635,7 @@ private fun LogbookSuggestionCard(
                         busy = true
                         scope.launch {
                             val result = viewModel.saveLogbookTrip(
-                                originalReceipt = receipt, purpose = purpose.trim(),
+                                originalReceipt = receipt.copy(datum = tripDate), purpose = purpose.trim(),
                                 startAddress = start.trim(), destinationAddress = destination.trim(),
                                 stops = stops, routeMode = mode, sameReturnRoute = sameReturnRoute,
                                 evidence = evidence.copy(manuallyConfirmed = true), routeResult = routeResult,
@@ -603,7 +644,7 @@ private fun LogbookSuggestionCard(
                             )
                             busy = false
                             message = result.fold(
-                                onSuccess = { "Fahrt nachvollziehbar gespeichert." },
+                                onSuccess = { onSaved(); "Fahrt nachvollziehbar gespeichert." },
                                 onFailure = { it.message ?: "Fahrt konnte nicht gespeichert werden." }
                             )
                         }
@@ -611,11 +652,12 @@ private fun LogbookSuggestionCard(
                     enabled = !busy && confirmed && decision.taxDistanceKm != null &&
                         decision.source != KilometerSource.KI_GESCHAETZT &&
                         purpose.isNotBlank() && start.isNotBlank() && destination.isNotBlank() &&
+                        runCatching { LocalDate.parse(tripDate) }.isSuccess &&
                         (!decision.correctionReasonRequired || correctionReason.isNotBlank()) &&
                         (correctionReason != "Sonstiges" || correctionNote.isNotBlank()),
                     modifier = Modifier.fillMaxWidth().testTag("book_trip_button_${receipt.id}"),
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
-                ) { Text("Fahrt einbuchen") }
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                ) { Text("Fahrt speichern") }
                 OutlinedButton(
                     onClick = {
                         val km = routeResult?.distanceKm
