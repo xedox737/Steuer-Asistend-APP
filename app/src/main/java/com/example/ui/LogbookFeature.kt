@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
@@ -188,7 +189,7 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
 }
 
 @Composable
-private fun LogbookEntryScreen(
+internal fun LogbookEntryScreen(
     receipt: Receipt,
     metadata: PropertyMetadata,
     viewModel: ReceiptViewModel,
@@ -196,13 +197,13 @@ private fun LogbookEntryScreen(
     onSaved: () -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().background(Color.White).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier.fillMaxSize().background(Color.White).padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable(onClick = onBack))
             Spacer(Modifier.width(16.dp))
-            Text("Neue Fahrt", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text("Neue Fahrt", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
         }
         LogbookSuggestionCard(receipt, metadata, viewModel, onSaved = onSaved, modifier = Modifier.weight(1f))
     }
@@ -368,8 +369,8 @@ private fun LogbookPanel(title: String, content: @Composable ColumnScope.() -> U
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
     ) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             content()
         }
     }
@@ -379,17 +380,18 @@ private fun LogbookPanel(title: String, content: @Composable ColumnScope.() -> U
 private fun LogbookValueRow(icon: ImageVector, label: String, value: String, onClick: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(vertical = 5.dp),
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = AccentBlue, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(9.dp))
+        Icon(icon, null, tint = AccentBlue, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(7.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 10.sp, color = SlateGray)
-            Text(value.ifBlank { "Antippen und eingeben" }, fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold, color = DarkNavy, maxLines = 2)
+            Text(label, fontSize = 9.sp, color = SlateGray, lineHeight = 11.sp)
+            Text(value.ifBlank { "Antippen und eingeben" }, fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold, color = DarkNavy,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
         }
-        if (onClick != null) Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(17.dp))
+        if (onClick != null) Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(15.dp))
     }
 }
 
@@ -494,22 +496,22 @@ private fun LogbookSuggestionCard(
     }
 
     Column(modifier.fillMaxSize().testTag("suggested_trip_card_${receipt.id}")) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             listOf("Route", "Details", "Prüfen").forEachIndexed { index, label ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.clickable { if (index < step) step = index }) {
-                    Box(Modifier.size(24.dp).background(if (index == step) AccentBlue else Color.White,
+                    Box(Modifier.size(20.dp).background(if (index == step) AccentBlue else Color.White,
                         RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
-                        Text("${index + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        Text("${index + 1}", fontSize = 10.sp, fontWeight = FontWeight.Bold,
                             color = if (index == step) Color.White else SlateGray)
                     }
-                    Text(label, fontSize = 10.sp, color = if (index == step) AccentBlue else SlateGray)
+                    Text(label, fontSize = 9.sp, color = if (index == step) AccentBlue else SlateGray)
                 }
             }
         }
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             when (step) {
                 0 -> {
@@ -526,7 +528,7 @@ private fun LogbookSuggestionCard(
                                 Text("×", modifier = Modifier.clickable {
                                     intermediateStops = intermediateStops.toMutableList().also { it.removeAt(index) }
                                     confirmed = false
-                                }.padding(8.dp), color = SlateGray)
+                                }.padding(5.dp), color = SlateGray)
                             }
                         }
                         HorizontalDivider(color = BorderColor)
@@ -535,11 +537,11 @@ private fun LogbookSuggestionCard(
                             val index = intermediateStops.size
                             intermediateStops = intermediateStops + ""
                             edit("stop:$index", "")
-                        }, modifier = Modifier.fillMaxWidth().height(36.dp),
+                        }, modifier = Modifier.fillMaxWidth().height(32.dp),
                             colors = ButtonDefaults.outlinedButtonColors(containerColor = AccentBlue.copy(alpha = .07f), contentColor = AccentBlue),
                             border = BorderStroke(0.dp, Color.Transparent)) {
                             Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp)); Text("Zwischenstopp", fontSize = 11.sp)
+                            Spacer(Modifier.width(4.dp)); Text("Zwischenstopp", fontSize = 10.sp)
                         }
                     }
                     LogbookPanel("Fahrtdetails") {
@@ -677,16 +679,16 @@ private fun LogbookSuggestionCard(
                         }
                         LogbookValueRow(Icons.Default.LocationOn, "Ziel", destination) { step = 0 }
                     }
-                    Card(colors = CardDefaults.cardColors(containerColor = if (decision.source == null)
+                    Card(colors = CardDefaults.cardColors(containerColor = if (decision.source == null || !confirmed)
                         Color(0xFFFFF4E5) else Color(0xFFE8F7EF)), shape = RoundedCornerShape(10.dp)) {
                         Row(Modifier.fillMaxWidth().padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, null, tint = if (decision.source == null) WarmOrange else EmeraldGreen,
+                            Icon(Icons.Default.CheckCircle, null, tint = if (decision.source == null || !confirmed) WarmOrange else EmeraldGreen,
                                 modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Column {
-                                Text(if (decision.source == null) "Strecke noch nicht bestätigt" else "Strecke bestätigt",
+                                Text(if (decision.source == null || !confirmed) "Strecke noch nicht bestätigt" else "Strecke bestätigt",
                                     fontWeight = FontWeight.Bold, fontSize = 12.sp,
-                                    color = if (decision.source == null) WarmOrange else EmeraldGreen)
+                                    color = if (decision.source == null || !confirmed) WarmOrange else EmeraldGreen)
                                 Text(if (decision.source == null) "Kilometerquelle unter Details ergänzen" else
                                     "${decision.source.name.replace('_', ' ')} · ${decision.taxDistanceKm?.germanKm()}",
                                     fontSize = 10.sp, color = SlateGray)
@@ -707,6 +709,8 @@ private fun LogbookSuggestionCard(
                         LogbookValueRow(Icons.Default.ReceiptLong, "Verknüpfter Beleg",
                             if (receipt.id > 0) receipt.aussteller else "Kein Beleg")
                     }
+                    if (decision.taxDistanceKm == null) OutlinedButton(onClick = { step = 1 },
+                        modifier = Modifier.fillMaxWidth()) { Text("Strecke bestätigen", fontSize = 11.sp) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = confirmed, onCheckedChange = { confirmed = it })
                         Text("Route, Zweck und Kilometer geprüft", fontSize = 11.sp, color = DarkNavy)
@@ -718,7 +722,7 @@ private fun LogbookSuggestionCard(
         Button(
             onClick = {
                 when (step) {
-                    0 -> step = if (decision.taxDistanceKm == null) 1 else 2
+                    0 -> step = 2
                     1 -> step = 2
                     else -> {
                         busy = true
