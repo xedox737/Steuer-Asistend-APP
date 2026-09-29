@@ -4782,7 +4782,7 @@ data class AiSearchUiState(
                 standardRouteId = standardRouteId,
                 plausibilityStatus = decision.plausibilityStatus.name,
                 manuallyConfirmed = evidence.manuallyConfirmed,
-                sourceReceiptId = originalReceipt.id,
+                sourceReceiptId = originalReceipt.id.takeIf { it > 0 },
                 expenseReceiptId = expenseId.toInt(),
                 routeProvider = routeResult?.providerId.orEmpty(),
                 routeCalculatedAt = routeResult?.calculatedAt.orEmpty(),
@@ -4795,12 +4795,14 @@ data class AiSearchUiState(
                 updatedAt = now
             )
         )
-        repository.insert(
-            originalReceipt.copy(
-                beschreibung = originalReceipt.beschreibung.replace(Regex("""\s*\[Fahrt gebucht:[^\]]*]"""), "") +
-                    " [Fahrt gebucht: ${String.format(Locale.GERMANY, "%.1f", distance)} km, ${source.name}]"
+        if (originalReceipt.id > 0) {
+            repository.insert(
+                originalReceipt.copy(
+                    beschreibung = originalReceipt.beschreibung.replace(Regex("""\s*\[Fahrt gebucht:[^\]]*]"""), "") +
+                        " [Fahrt gebucht: ${String.format(Locale.GERMANY, "%.1f", distance)} km, ${source.name}]"
+                )
             )
-        )
+        }
         tripId
     }
 
