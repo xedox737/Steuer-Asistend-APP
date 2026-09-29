@@ -6,6 +6,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -56,6 +57,7 @@ class LogbookReferenceLayoutTest {
         ui.onRoot().captureRoboImage("build/reports/logbook-reference/route.png")
         assertTrue("Gerendertes Routenbild fehlt", File("build/reports/logbook-reference/route.png").isFile)
         ui.onNodeWithText("Fahrt prüfen").performClick()
+        ui.onNodeWithText("Neue Fahrt").assertDoesNotExist()
         ui.onNodeWithText("Fahrtdaten").assertIsDisplayed()
         ui.onNodeWithText("Strecke noch nicht bestätigt").assertIsDisplayed()
         ui.onRoot().captureRoboImage("build/reports/logbook-reference/review.png")

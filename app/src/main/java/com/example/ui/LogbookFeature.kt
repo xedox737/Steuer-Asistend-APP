@@ -200,12 +200,8 @@ internal fun LogbookEntryScreen(
         modifier = Modifier.fillMaxSize().background(Color.White).padding(horizontal = 16.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable(onClick = onBack))
-            Spacer(Modifier.width(16.dp))
-            Text("Neue Fahrt", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-        }
-        LogbookSuggestionCard(receipt, metadata, viewModel, onSaved = onSaved, modifier = Modifier.weight(1f))
+        LogbookSuggestionCard(receipt, metadata, viewModel, onBack = onBack,
+            onSaved = onSaved, modifier = Modifier.weight(1f))
     }
 }
 
@@ -400,6 +396,7 @@ private fun LogbookSuggestionCard(
     receipt: Receipt,
     metadata: PropertyMetadata,
     viewModel: ReceiptViewModel,
+    onBack: () -> Unit,
     onSaved: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -496,7 +493,15 @@ private fun LogbookSuggestionCard(
     }
 
     Column(modifier.fillMaxSize().testTag("suggested_trip_card_${receipt.id}")) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable {
+                if (step == 0) onBack() else step = if (step == 2) 0 else step - 1
+            })
+            Spacer(Modifier.width(16.dp))
+            Text(if (step == 2) "Fahrt prüfen" else "Neue Fahrt", fontSize = 18.sp,
+                fontWeight = FontWeight.Bold, color = DarkNavy)
+        }
+        if (step != 2) Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
             listOf("Route", "Details", "Prüfen").forEachIndexed { index, label ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.clickable { if (index < step) step = index }) {
