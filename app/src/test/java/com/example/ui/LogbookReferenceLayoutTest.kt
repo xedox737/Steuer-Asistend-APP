@@ -14,6 +14,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import com.github.takahirom.roborazzi.captureRoboImage
+import java.io.File
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -51,5 +53,6 @@ class LogbookReferenceLayoutTest {
         ui.onNodeWithText("Fahrtdetails").assertIsDisplayed()
         ui.onNodeWithText("Fahrt prüfen").assertIsDisplayed()
         ui.onRoot().captureRoboImage("build/reports/logbook-reference/route.png")
+        assertTrue("Gerendertes Routenbild fehlt", File("build/reports/logbook-reference/route.png").isFile)
     }
 }
