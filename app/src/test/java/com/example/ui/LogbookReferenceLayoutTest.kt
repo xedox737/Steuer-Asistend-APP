@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.PropertyMetadata
@@ -54,5 +55,10 @@ class LogbookReferenceLayoutTest {
         ui.onNodeWithText("Fahrt prüfen").assertIsDisplayed()
         ui.onRoot().captureRoboImage("build/reports/logbook-reference/route.png")
         assertTrue("Gerendertes Routenbild fehlt", File("build/reports/logbook-reference/route.png").isFile)
+        ui.onNodeWithText("Fahrt prüfen").performClick()
+        ui.onNodeWithText("Fahrtdaten").assertIsDisplayed()
+        ui.onNodeWithText("Strecke noch nicht bestätigt").assertIsDisplayed()
+        ui.onRoot().captureRoboImage("build/reports/logbook-reference/review.png")
+        assertTrue("Gerendertes Prüfbild fehlt", File("build/reports/logbook-reference/review.png").isFile)
     }
 }
