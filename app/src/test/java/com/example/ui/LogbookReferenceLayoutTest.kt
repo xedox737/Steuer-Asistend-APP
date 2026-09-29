@@ -50,6 +50,6 @@ class LogbookReferenceLayoutTest {
         }
         ui.onNodeWithText("Fahrtdetails").assertIsDisplayed()
         ui.onNodeWithText("Fahrt prüfen").assertIsDisplayed()
-        ui.onRoot().captureRoboImage("app/build/reports/logbook-reference/route.png")
+        ui.onRoot().captureRoboImage("build/reports/logbook-reference/route.png")
     }
 }
