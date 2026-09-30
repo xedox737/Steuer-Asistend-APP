@@ -65,11 +65,11 @@ class SupplementalDriveBackupTest {
         database.logbookDao().deleteStandardRoute(17)
 
         SupplementalDriveBackup.restorePayload(context, database, payload)
-        val restored = database.logbookDao().getTrip(41)!!
-        assertEquals("other-property", restored.propertyId)
-        assertEquals("stable-request", restored.bookingKey)
-        assertEquals(now, restored.cancelledAt)
-        assertTrue(restored.historyJson.contains("Storno"))
+        val restoredTrip = database.logbookDao().getTrip(41)!!
+        assertEquals("other-property", restoredTrip.propertyId)
+        assertEquals("stable-request", restoredTrip.bookingKey)
+        assertEquals(now, restoredTrip.cancelledAt)
+        assertTrue(restoredTrip.historyJson.contains("Storno"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         val restored = database.logbookDao().getAllTrips()
         val restoredRoutes = database.logbookDao().getAllStandardRoutes()
