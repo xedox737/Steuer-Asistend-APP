@@ -39,6 +39,8 @@ class LogbookReferenceLayoutTest {
     @get:Rule val ui = createComposeRule()
 
     private fun capture(name: String) {
+        ui.mainClock.advanceTimeBy(300)
+        ui.waitForIdle()
         val path = "build/reports/logbook-reference/$name.png"
         ui.onRoot().captureRoboImage(path)
         assertTrue("Gerendertes Bild fehlt: $name", File(path).isFile)

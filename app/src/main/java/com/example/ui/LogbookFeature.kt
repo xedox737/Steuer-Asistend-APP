@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -115,7 +116,7 @@ private fun LogbookSavedDetail(trip: LogbookTrip, onBack: () -> Unit) {
             HorizontalDivider(color = BorderColor)
             LogbookSummaryRow(Icons.Default.Work, "Zweck der Fahrt", trip.purpose)
         }
-        LogbookTaxAssignment(trip.taxDistanceKm)
+        LogbookTaxAssignment()
         trip.sourceReceiptId?.let { LogbookPanel("Beleg") {
             LogbookValueRow(Icons.Default.ReceiptLong, "Verknüpfter Beleg", "#$it")
         } }
@@ -564,7 +565,7 @@ private fun LogbookSuggestionCard(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         LogbookMiniMetric(Modifier.weight(1f), "Entfernung",
                             decision.taxDistanceKm?.germanKm() ?: aiKm?.germanKm() ?: "–",
-                            if (decision.taxDistanceKm == null) "Nur Schätzung" else "Bestätigt", Icons.Default.Route) { step = 1 }
+                            if (decision.taxDistanceKm == null) "Nur Schätzung" else if (!confirmed) "Zur Prüfung" else "Bestätigt", Icons.Default.Route) { step = 1 }
                         LogbookMiniMetric(Modifier.weight(1f), "Werbungskosten",
                             decision.taxDistanceKm?.let { String.format(Locale.GERMANY, "%.2f €", it * 0.30) } ?: "–",
                             "0,30 € je km", Icons.Default.AccountBalanceWallet) { step = 1 }
@@ -683,7 +684,7 @@ private fun LogbookSuggestionCard(
                         HorizontalDivider(color = BorderColor)
                         LogbookSummaryRow(Icons.Default.Work, "Zweck der Fahrt", purpose) { step = 0 }
                     }
-                    LogbookTaxAssignment(decision.taxDistanceKm)
+                    LogbookTaxAssignment()
                     LogbookPanel("Beleg (optional)") {
                         LogbookValueRow(Icons.Default.ReceiptLong,
                             if (receipt.id > 0) "Verknüpfter Beleg" else "Beleg verknüpfen",
@@ -738,7 +739,7 @@ private fun LogbookSuggestionCard(
 
 @Composable
 private fun LogbookMiniMetric(modifier: Modifier, label: String, value: String, hint: String, icon: ImageVector, onClick: () -> Unit) {
-    Card(modifier = modifier.clickable(onClick = onClick), shape = RoundedCornerShape(10.dp),
+    Card(modifier = modifier.height(72.dp).clickable(onClick = onClick), shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.Top) {
             LogbookIcon(icon)
@@ -761,7 +762,7 @@ private fun LogbookIcon(icon: ImageVector, tint: Color = DarkNavy) {
 }
 
 @Composable
-private fun LogbookBadge(text: String, tint: Color = EmeraldGreen, background: Color = Color(0xFFE3F6EB)) {
+private fun LogbookBadge(text: String, tint: Color = EmeraldGreen, background: Color = Color(0xFFD3F0DD)) {
     Row(Modifier.background(background, RoundedCornerShape(50)).padding(horizontal = 5.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Default.CheckCircle, null, tint = tint, modifier = Modifier.size(10.dp))
@@ -866,7 +867,7 @@ private fun LogbookRouteStatus(source: String?, confirmed: Boolean, km: Double?)
 }
 
 @Composable
-private fun LogbookTaxAssignment(km: Double?) {
+private fun LogbookTaxAssignment() {
     LogbookPanel("Steuerliche Zuordnung") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             LogbookIcon(Icons.Default.AccountBalanceWallet)
@@ -874,11 +875,9 @@ private fun LogbookTaxAssignment(km: Double?) {
             Column(Modifier.weight(1f)) {
                 Text("Als Werbungskosten erfassen", fontSize = 11.sp, lineHeight = 14.sp, color = DarkNavy)
                 Text("Der Betrag wird automatisch Ihrer Steuerübersicht zugeordnet.", fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
-                km?.let { Text(String.format(Locale.GERMANY, "%.2f €", it * 0.30), fontSize = 11.sp, lineHeight = 14.sp,
-                    fontWeight = FontWeight.Bold, color = DarkNavy) }
             }
             // This reflects the existing fixed booking policy; it is intentionally read-only.
-            Switch(checked = true, onCheckedChange = null, modifier = Modifier.height(28.dp),
+            Switch(checked = true, onCheckedChange = null, modifier = Modifier.height(28.dp).scale(0.65f),
                 colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = LogbookBlue, checkedThumbColor = Color.White))
         }
     }
