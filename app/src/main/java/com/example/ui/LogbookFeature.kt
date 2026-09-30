@@ -508,14 +508,15 @@ private fun LogbookSuggestionCard(
     }.getOrNull()
     var distanceSignature by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("signature", "")) }
     LaunchedEffect(normalizedRoute?.signature) {
-        if (distanceSignature != normalizedRoute?.signature) {
+        val routeChanged = distanceSignature != normalizedRoute?.signature
+        if (routeChanged) {
             routeResult = null
             aiKm = null
             distanceSignature = normalizedRoute?.signature.orEmpty()
         }
         confirmed = false
         matchedStandardRoute = normalizedRoute?.let { viewModel.findStandardRoute(it.signature) }
-        useStandardRoute = matchedStandardRoute != null
+        useStandardRoute = if (!routeChanged && draft.has("useStandardRoute")) draft.optBoolean("useStandardRoute") else matchedStandardRoute != null
     }
     val evidence = DistanceEvidence(
         aiEstimatedKm = aiKm, routedKm = routeResult?.distanceKm,
@@ -533,7 +534,7 @@ private fun LogbookSuggestionCard(
         .put("mode", mode.name).put("sameReturnRoute", sameReturnRoute).put("manualKmText", manualKmText)
         .put("odometerStartText", odometerStartText).put("odometerEndText", odometerEndText)
         .put("correctionReason", correctionReason).put("correctionNote", correctionNote)
-        .put("step", step).put("history", JSONArray(stepHistory)).put("signature", normalizedRoute?.signature.orEmpty())
+        .put("step", step).put("history", JSONArray(stepHistory)).put("signature", distanceSignature).put("useStandardRoute", useStandardRoute)
         .apply { aiKm?.let { put("aiKm", it) }; routeResult?.let { put("routedKm", it.distanceKm); put("provider", it.providerId); put("calculatedAt", it.calculatedAt) } }.toString()
     SideEffect { if (!draftSaved && viewModel.logbookDrafts.value[draftKey] != draftJson) viewModel.saveLogbookDraft(draftKey, draftJson) }
     if (selectReceipt) LogbookReceiptPicker(allReceipts.filter { it.id != linkedReceiptId && it.unterkategorie != "Fahrtkosten" }, onDismiss = { selectReceipt = false }) {

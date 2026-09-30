@@ -30,6 +30,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
         if (originalReceipt.id > 0) {
             database.logbookDao().getBySourceReceiptId(originalReceipt.id)?.let {
                 require(it.cancelledAt.isBlank()) { "Die verknüpfte Fahrt wurde storniert. Bitte eine neue manuelle Fahrt anlegen." }
+                require(it.bookingKey == effectiveKey || (it.bookingKey.isBlank() && effectiveKey == "receipt:${originalReceipt.id}")) { "Für diesen Beleg ist bereits eine Fahrt gespeichert. Bitte die vorhandene Fahrt öffnen." }
                 return@withTransaction it.id
             }
             val sourceReceipt = requireNotNull(repository.getReceiptById(originalReceipt.id)) { "Der verknüpfte Beleg fehlt." }
