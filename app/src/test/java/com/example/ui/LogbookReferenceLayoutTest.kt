@@ -4,17 +4,21 @@ import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.DistanceEvidence
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import com.example.data.TripRouteMode
 import com.example.data.TripStop
+import com.example.data.TripStopJson
+import com.example.data.TripRouteNormalizer
+import com.example.data.StandardRoute
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
@@ -46,7 +50,16 @@ class LogbookReferenceLayoutTest {
         viewModel.updatePropertyMetadata(PropertyMetadata(
             wohnort = "Dornstetten", adresse = "Sulzerstraße 32, Dornstetten"
         ))
+        viewModel.insertReceiptQuietly(Receipt(id = 1001, aussteller = "Bauhaus", datum = LocalDate.now().toString(),
+            uhrzeit = "", bruttobetrag = 0.0, hauptkategorie = "Sanierung", unterkategorie = "", kontoNr = "",
+            beschreibung = "Besichtigung / Instandhaltung"))
         runBlocking {
+            val route = TripRouteNormalizer.normalize("Dornstetten", listOf(TripStop("Bauhaus", "Zwischenstopp 1", 0)),
+                "Sulzerstraße 32, Dornstetten", TripRouteMode.HIN_UND_RUECKFAHRT, true)
+            viewModel.saveStandardRoute(StandardRoute(name = "Teststrecke", startAddress = "Dornstetten",
+                destinationAddress = "Sulzerstraße 32, Dornstetten", stopsJson = TripStopJson.encode(route.stops),
+                routeMode = TripRouteMode.HIN_UND_RUECKFAHRT.name, sameReturnRoute = true, distanceKm = 28.4,
+                routeSignature = route.signature, sourceProvider = "MANUELL", createdAt = "2026-09-30", updatedAt = "2026-09-30"))
             listOf("Bauhaus Freudenstadt", "Hornbach Freudenstadt", "Sulzerstraße 32").forEachIndexed { index, destination ->
                 viewModel.saveLogbookTrip(
                     originalReceipt = Receipt(aussteller = "Manuelle Fahrt", datum = LocalDate.now().minusDays(index.toLong()).toString(),
@@ -60,15 +73,13 @@ class LogbookReferenceLayoutTest {
             }
         }
         ui.setContent { MyApplicationTheme(darkTheme = false) { ReceiptAppUi(viewModel) } }
-        ui.waitUntil(10000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" }
+        ui.waitUntil(10000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
         ui.onNodeWithTag("bottom_navigation").assertIsDisplayed()
         ui.onNodeWithText("ImmoPilot").assertIsDisplayed()
         ui.onNodeWithText("Letzte Fahrten").assertIsDisplayed()
         capture("overview")
-        ui.onNodeWithText("Neue Fahrt").performClick()
-        ui.onNodeWithText("Antippen und eingeben").performClick()
-        ui.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("Besichtigung / Instandhaltung")
-        ui.onNodeWithText("Übernehmen").performClick()
+        ui.onNodeWithTag("logbook_suggestion_1001").performScrollTo().performClick()
+        ui.waitUntil(10000) { ui.onAllNodesWithText("28,4 km").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Fahrtdetails").assertIsDisplayed()
         ui.onNodeWithText("Entfernung").assertIsDisplayed()
         ui.onNodeWithText("Fahrt prüfen").assertIsEnabled()
@@ -82,9 +93,6 @@ class LogbookReferenceLayoutTest {
         ui.onNodeWithText("Fahrt speichern").assertIsDisplayed()
         ui.onNodeWithTag("logbook_confirmation").assertIsDisplayed()
         capture("review-unconfirmed")
-        ui.onNodeWithText("Strecke bestätigen").performClick()
-        ui.onNodeWithText("Manuell bestätigte Strecke (km)").performTextInput("28,4")
-        ui.onNodeWithText("Weiter zur Prüfung").performClick()
         ui.onNodeWithTag("logbook_confirmation").performClick()
         ui.onNodeWithText("Strecke bestätigt").assertIsDisplayed()
         ui.onNodeWithText("Fahrt speichern").assertIsEnabled()

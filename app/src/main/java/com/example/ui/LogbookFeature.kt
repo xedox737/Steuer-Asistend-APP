@@ -105,7 +105,7 @@ private fun LogbookSavedDetail(trip: LogbookTrip, onBack: () -> Unit) {
         }
         LogbookPanel("") {
             LogbookRoute(trip.startAddress, trip.stops.drop(1).dropLast(1).map { it.address }, trip.destinationAddress,
-                onStart = {}, onDestination = {}, onStop = {})
+                onStart = null, onDestination = null, onStop = null)
         }
         LogbookRouteStatus(trip.kilometerSource, trip.manuallyConfirmed, trip.taxDistanceKm)
         LogbookPanel("Fahrtdaten") {
@@ -208,7 +208,7 @@ internal fun LogbookEntryScreen(
 private fun LogbookSuggestionPreview(receipt: Receipt, metadata: PropertyMetadata, onOpen: () -> Unit) {
     val purpose = if (receipt.beschreibung.isNotBlank()) "Material einkaufen" else "Fahrt zu ${receipt.aussteller}"
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        modifier = Modifier.fillMaxWidth().testTag("logbook_suggestion_${receipt.id}").clickable(onClick = onOpen),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
@@ -795,7 +795,7 @@ private fun LogbookSteps(step: Int, onStep: (Int) -> Unit) {
 
 @Composable
 private fun LogbookRoute(start: String, stops: List<String>, destination: String,
-    onStart: () -> Unit, onDestination: () -> Unit, onStop: (Int) -> Unit, onRemove: ((Int) -> Unit)? = null) {
+    onStart: (() -> Unit)?, onDestination: (() -> Unit)?, onStop: ((Int) -> Unit)?, onRemove: ((Int) -> Unit)? = null) {
     val addresses = listOf(start) + stops + destination
     addresses.forEachIndexed { index, value ->
         Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -815,8 +815,8 @@ private fun LogbookRoute(start: String, stops: List<String>, destination: String
             if (index == addresses.lastIndex) Icon(Icons.Default.LocationOn, null, tint = DarkNavy,
                 modifier = Modifier.align(Alignment.Center).size(18.dp))
             }
-            Column(Modifier.weight(1f).clickable {
-                when (index) { 0 -> onStart(); addresses.lastIndex -> onDestination(); else -> onStop(index - 1) }
+            Column(Modifier.weight(1f).clickable(enabled = onStart != null || onDestination != null || onStop != null) {
+                when (index) { 0 -> onStart?.invoke(); addresses.lastIndex -> onDestination?.invoke(); else -> onStop?.invoke(index - 1) }
             }.padding(start = 6.dp, end = 4.dp)) {
                 Text(when (index) { 0 -> "Startadresse"; addresses.lastIndex -> "Zieladresse"; else -> "Zwischenstopp $index" },
                     fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
@@ -824,8 +824,8 @@ private fun LogbookRoute(start: String, stops: List<String>, destination: String
                     fontWeight = FontWeight.SemiBold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (index < addresses.lastIndex) HorizontalDivider(Modifier.padding(top = 4.dp), color = BorderColor)
             }
-            Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(16.dp).clickable {
-                when (index) { 0 -> onStart(); addresses.lastIndex -> onDestination(); else -> onStop(index - 1) }
+            if (onStart != null || onDestination != null || onStop != null) Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(16.dp).clickable {
+                when (index) { 0 -> onStart?.invoke(); addresses.lastIndex -> onDestination?.invoke(); else -> onStop?.invoke(index - 1) }
             })
             if (index in 1 until addresses.lastIndex && onRemove != null) Text("×", color = SlateGray,
                 modifier = Modifier.clickable { onRemove(index - 1) }.padding(horizontal = 6.dp))
@@ -857,10 +857,10 @@ private fun LogbookRouteStatus(source: String?, confirmed: Boolean, km: Double?)
             Column(Modifier.weight(1f)) {
                 Text(if (verified) "Strecke bestätigt" else "Strecke noch nicht bestätigt", fontWeight = FontWeight.Bold,
                     fontSize = 11.sp, lineHeight = 14.sp, color = tint)
-                Text(if (source == null) "Kilometerquelle ergänzen und Strecke prüfen." else "${source.replace('_', ' ')} · ${km?.germanKm()}",
+                Text(if (source == null) "Kilometerquelle ergänzen und Strecke prüfen." else "${when (source) { "MANUELL" -> "Manuell bestätigt"; "ROUTE_BERECHNET" -> "Straßenroute"; "TACHO" -> "Tachostand"; "STANDARDSTRECKE" -> "Standardstrecke"; "GPS_GEMESSEN" -> "GPS-Messung"; else -> "Geprüfte Strecke" }} · ${km?.germanKm()}",
                     fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
             }
-            if (verified) LogbookBadge(if (source == "ROUTING_BERECHNET") "Route geprüft" else "Bestätigt")
+            if (verified) LogbookBadge(if (source == "ROUTE_BERECHNET") "Route geprüft" else "Bestätigt")
         }
     }
 }
