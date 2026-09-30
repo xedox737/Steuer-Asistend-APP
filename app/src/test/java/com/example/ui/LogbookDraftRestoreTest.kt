@@ -16,9 +16,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class LogbookDraftRestoreTest {
     @get:Rule val ui = createComposeRule()
     @Test fun draftSurvivesCompositionRemovalAndSavedStateRestoration() {
@@ -36,15 +38,15 @@ class LogbookDraftRestoreTest {
                     PropertyMetadata(wohnort = "Anderer Start", adresse = "Anderes Ziel"), vm, {}, {})
             }
         }
-        ui.onNodeWithText("Besichtigung").assertIsDisplayed()
-        ui.onNodeWithText("12,5 km").assertIsDisplayed()
+        ui.onNodeWithText("Besichtigung").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("12,5 km").performScrollTo().assertIsDisplayed()
         tester.emulateSavedInstanceStateRestore()
-        ui.onNodeWithText("Besichtigung").assertIsDisplayed()
-        ui.onNodeWithText("12,5 km").assertIsDisplayed()
+        ui.onNodeWithText("Besichtigung").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("12,5 km").performScrollTo().assertIsDisplayed()
         ui.runOnIdle { show.value = false }
         ui.runOnIdle { show.value = true }
-        ui.onNodeWithText("Besichtigung").assertIsDisplayed()
-        ui.onNodeWithText("12,5 km").assertIsDisplayed()
+        ui.onNodeWithText("Besichtigung").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("12,5 km").performScrollTo().assertIsDisplayed()
         val reloaded = ReceiptViewModel(application)
         assertEquals("stable-request", JSONObject(reloaded.logbookDrafts.value.getValue("0")).getString("bookingKey"))
         vm.clearLogbookDraft("0")
