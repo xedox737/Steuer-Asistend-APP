@@ -91,7 +91,11 @@ data class LogbookTrip(
     val routeSignature: String = "",
     val note: String = "",
     val createdAt: String,
-    val updatedAt: String
+    val updatedAt: String,
+    val propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID,
+    val bookingKey: String = "",
+    val cancelledAt: String = "",
+    val historyJson: String = "[]"
 ) {
     val stops: List<TripStop> get() = TripStopJson.decode(stopsJson)
     val odometerDistanceKm: Double?
@@ -137,6 +141,12 @@ interface LogbookDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertTrip(trip: LogbookTrip): Long
+
+    @Query("SELECT * FROM logbook_trips WHERE id = :id")
+    suspend fun getTrip(id: Long): LogbookTrip?
+
+    @Query("SELECT * FROM logbook_trips WHERE bookingKey = :key AND bookingKey != '' LIMIT 1")
+    suspend fun getByBookingKey(key: String): LogbookTrip?
 
     @Query("DELETE FROM logbook_trips WHERE id = :id")
     suspend fun deleteTrip(id: Long)

@@ -4711,6 +4711,8 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) { database.logbookDao().deleteStandardRoute(id) }
     }
 
+    private val logbookBookingStore by lazy { com.example.data.LogbookBookingStore(database, repository) }
+
     suspend fun saveLogbookTrip(
         originalReceipt: Receipt,
         purpose: String,
@@ -4724,86 +4726,28 @@ data class AiSearchUiState(
         standardRouteId: Long? = null,
         correctionReason: String = "",
         correctionNote: String = "",
-        note: String = ""
-    ): Result<Long> = runCatching {
-        require(evidence.manuallyConfirmed) { "Route, Fahrtzweck und Kilometer müssen vor dem Einbuchen bestätigt werden." }
-        val normalized = com.example.data.TripRouteNormalizer.normalize(
-            com.example.data.RouteDistanceRequest(stops, routeMode, sameReturnRoute)
-        )
-        val checkedEvidence = evidence.copy(correctionReason = correctionReason)
-        val decision = com.example.data.LogbookDistancePolicy.decide(checkedEvidence)
-        val distance = requireNotNull(decision.taxDistanceKm) {
-            "Die steuerliche Kilometerzahl muss durch Route, GPS, Tacho, Standardstrecke oder manuell bestätigt werden."
-        }
-        val source = requireNotNull(decision.source)
-        require(source != com.example.data.KilometerSource.KI_GESCHAETZT) {
-            "Eine reine KI-Schätzung darf nicht steuerlich eingebucht werden."
-        }
-        require(!decision.correctionReasonRequired || correctionReason.isNotBlank()) {
-            "Für die deutlich abweichende manuelle Strecke ist ein Korrekturgrund erforderlich."
-        }
-        require(correctionReason != "Sonstiges" || correctionNote.isNotBlank()) {
-            "Für den Korrekturgrund Sonstiges ist eine kurze Beschreibung erforderlich."
-        }
-        val now = java.time.Instant.now().toString()
-        val expenseId = repository.insert(
-            Receipt(
-                aussteller = "Fahrtkosten: ${originalReceipt.aussteller}",
-                datum = originalReceipt.datum,
-                uhrzeit = originalReceipt.uhrzeit,
-                bruttobetrag = distance * 0.30,
-                hauptkategorie = "Sonstige Ausgaben",
-                unterkategorie = "Fahrtkosten",
-                kontoNr = "4670",
-                beschreibung = "Fahrtenbuch: ${normalized.stops.joinToString(" -> ") { it.label.ifBlank { it.address } }} | Zweck: $purpose | ${String.format(Locale.GERMANY, "%.1f", distance)} km | Quelle: ${source.name}",
-                isEigenleistungSanierung = originalReceipt.isEigenleistungSanierung,
-                wohneinheit = originalReceipt.wohneinheit
-            )
-        )
-        val tripId = database.logbookDao().upsertTrip(
-            com.example.data.LogbookTrip(
-                date = originalReceipt.datum,
-                time = originalReceipt.uhrzeit,
-                purpose = purpose,
-                propertyReference = originalReceipt.wohneinheit,
-                startAddress = startAddress,
-                destinationAddress = destinationAddress,
-                stopsJson = com.example.data.TripStopJson.encode(normalized.stops),
-                routeMode = routeMode.name,
-                sameReturnRoute = sameReturnRoute,
-                taxDistanceKm = distance,
-                kilometerSource = source.name,
-                aiEstimatedKm = evidence.aiEstimatedKm,
-                routedKm = evidence.routedKm,
-                manualKm = evidence.manualKm,
-                gpsMeasuredKm = evidence.gpsMeasuredKm,
-                odometerStartKm = evidence.odometerStartKm,
-                odometerEndKm = evidence.odometerEndKm,
-                standardRouteId = standardRouteId,
-                plausibilityStatus = decision.plausibilityStatus.name,
-                manuallyConfirmed = evidence.manuallyConfirmed,
-                sourceReceiptId = originalReceipt.id.takeIf { it > 0 },
-                expenseReceiptId = expenseId.toInt(),
-                routeProvider = routeResult?.providerId.orEmpty(),
-                routeCalculatedAt = routeResult?.calculatedAt.orEmpty(),
-                routeDurationSeconds = routeResult?.durationSeconds,
-                correctionReason = correctionReason,
-                correctionNote = correctionNote,
-                routeSignature = normalized.signature,
-                note = note,
-                createdAt = now,
-                updatedAt = now
-            )
-        )
-        if (originalReceipt.id > 0) {
-            repository.insert(
-                originalReceipt.copy(
-                    beschreibung = originalReceipt.beschreibung.replace(Regex("""\s*\[Fahrt gebucht:[^\]]*]"""), "") +
-                        " [Fahrt gebucht: ${String.format(Locale.GERMANY, "%.1f", distance)} km, ${source.name}]"
-                )
-            )
-        }
-        tripId
+        note: String = "",
+        tripDate: String = originalReceipt.datum,
+        propertyId: String = originalReceipt.propertyId,
+        bookingKey: String = ""
+    ): Result<Long> = logbookBookingStore.saveLogbookTrip(originalReceipt, purpose, startAddress, destinationAddress,
+        stops, routeMode, sameReturnRoute, evidence, routeResult, standardRouteId, correctionReason, correctionNote,
+        note, tripDate, propertyId, bookingKey)
+
+    suspend fun correctLogbookTrip(id: Long, date: String, purpose: String, km: Double, reason: String) =
+        logbookBookingStore.correct(id, date, purpose, km, reason)
+    suspend fun cancelLogbookTrip(id: Long, reason: String) = logbookBookingStore.cancel(id, reason)
+
+    private val logbookDraftPrefs = getApplication<Application>().getSharedPreferences("logbook_drafts", Context.MODE_PRIVATE)
+    private val _logbookDrafts = MutableStateFlow(logbookDraftPrefs.all.mapNotNull { (key, value) -> (value as? String)?.let { key to it } }.toMap())
+    val logbookDrafts = _logbookDrafts.asStateFlow()
+    fun saveLogbookDraft(key: String, json: String) {
+        logbookDraftPrefs.edit().putString(key, json).apply()
+        _logbookDrafts.value = _logbookDrafts.value + (key to json)
+    }
+    fun clearLogbookDraft(key: String) {
+        logbookDraftPrefs.edit().remove(key).apply()
+        _logbookDrafts.value = _logbookDrafts.value - key
     }
 
     suspend fun estimateLogbookRouteDistance(

@@ -89,7 +89,7 @@ class BankMigration24AcceptanceTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         try {
-            assertEquals(32, database.openHelper.writableDatabase.version)
+            assertEquals(33, database.openHelper.writableDatabase.version)
         } finally {
             database.close()
         }

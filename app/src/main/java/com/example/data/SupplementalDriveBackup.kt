@@ -308,6 +308,7 @@ object SupplementalDriveBackup {
         put("routeCalculatedAt", routeCalculatedAt); putNullable("routeDurationSeconds", routeDurationSeconds)
         put("correctionReason", correctionReason); put("correctionNote", correctionNote)
         put("routeSignature", routeSignature); put("note", note); put("createdAt", createdAt); put("updatedAt", updatedAt)
+        put("propertyId", propertyId); put("bookingKey", bookingKey); put("cancelledAt", cancelledAt); put("historyJson", historyJson)
     }
 
     private fun JSONObject.toTrip() = LogbookTrip(
@@ -327,7 +328,9 @@ object SupplementalDriveBackup {
         routeProvider = optString("routeProvider", ""), routeCalculatedAt = optString("routeCalculatedAt", ""),
         routeDurationSeconds = nullableLong("routeDurationSeconds"), correctionReason = optString("correctionReason", ""),
         correctionNote = optString("correctionNote", ""), routeSignature = optString("routeSignature", ""),
-        note = optString("note", ""), createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")
+        note = optString("note", ""), createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", ""),
+        propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
+        bookingKey = optString("bookingKey", ""), cancelledAt = optString("cancelledAt", ""), historyJson = optString("historyJson", "[]")
     )
 
     private fun StandardRoute.toJson() = JSONObject().apply {
