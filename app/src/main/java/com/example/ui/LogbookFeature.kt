@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.Work
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,7 +50,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +82,21 @@ import kotlinx.coroutines.launch
 
 private val LogbookBlue = Color(0xFF0069D9)
 private val LogbookPaleBlue = Color(0xFFEAF4FF)
+private val LogbookCoins = ImageVector.Builder("LogbookCoins", 24.dp, 24.dp, 24f, 24f).apply {
+    listOf(12f to 3f, 3f to 8f).forEach { (left, top) ->
+        path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.5f) {
+            moveTo(left, top + 2f)
+            cubicTo(left, top - 0.5f, left + 9f, top - 0.5f, left + 9f, top + 2f)
+            cubicTo(left + 9f, top + 4.5f, left, top + 4.5f, left, top + 2f)
+            moveTo(left, top + 2f)
+            lineTo(left, top + 10f)
+            cubicTo(left, top + 12.5f, left + 9f, top + 12.5f, left + 9f, top + 10f)
+            lineTo(left + 9f, top + 2f)
+            moveTo(left, top + 6f)
+            cubicTo(left, top + 8.5f, left + 9f, top + 8.5f, left + 9f, top + 6f)
+        }
+    }
+}.build()
 
 private fun Double.germanKm(): String = String.format(Locale.GERMANY, "%.1f km", this)
 private val logbookDateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMANY)
@@ -244,7 +260,7 @@ private fun LogbookHero(trips: List<LogbookTrip>) {
 private fun LogbookMetric(modifier: Modifier, label: String, value: String, tint: Color) {
     Card(modifier = modifier, shape = RoundedCornerShape(10.dp), colors = CardDefaults.cardColors(containerColor = SoftBackground), border = BorderStroke(1.dp, BorderColor)) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            LogbookIcon(if (label == "Werbungskosten") Icons.Default.AccountBalanceWallet else Icons.Default.CalendarMonth, tint)
+            LogbookIcon(if (label == "Werbungskosten") LogbookCoins else Icons.Default.CalendarMonth, tint)
             Spacer(Modifier.width(7.dp))
             Column {
                 Text(label, fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray, maxLines = 1)
@@ -568,7 +584,7 @@ private fun LogbookSuggestionCard(
                             if (decision.taxDistanceKm == null) "Nur Schätzung" else if (!confirmed) "Zur Prüfung" else "Bestätigt", Icons.Default.Route) { step = 1 }
                         LogbookMiniMetric(Modifier.weight(1f), "Werbungskosten",
                             decision.taxDistanceKm?.let { String.format(Locale.GERMANY, "%.2f €", it * 0.30) } ?: "–",
-                            "0,30 € je km", Icons.Default.AccountBalanceWallet) { step = 1 }
+                            "0,30 € je km", LogbookCoins) { step = 1 }
                     }
                     if (receipt.id > 0) Text("Vorschlag aus Beleg: ${receipt.aussteller}", fontSize = 10.sp, lineHeight = 13.sp, color = SlateGray)
                 }
@@ -870,7 +886,7 @@ private fun LogbookRouteStatus(source: String?, confirmed: Boolean, km: Double?)
 private fun LogbookTaxAssignment() {
     LogbookPanel("Steuerliche Zuordnung") {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LogbookIcon(Icons.Default.AccountBalanceWallet)
+            LogbookIcon(LogbookCoins)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("Als Werbungskosten erfassen", fontSize = 11.sp, lineHeight = 14.sp, color = DarkNavy)
