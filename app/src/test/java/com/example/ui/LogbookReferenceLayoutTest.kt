@@ -122,11 +122,11 @@ class LogbookReferenceLayoutTest {
         capture("review")
 
         // An edit opened from review returns to review, including edits of the first step.
-        ui.onNodeWithText("Strecke", useUnmergedTree = true).performClick()
+        ui.onNodeWithText("Strecke").performClick()
         ui.onNodeWithText("Strecke ermitteln und bestätigen").assertIsDisplayed()
         ui.onNodeWithContentDescription("Zurück").performClick()
         ui.onNodeWithText("Fahrtdaten").assertIsDisplayed()
-        ui.onNodeWithText("Zweck der Fahrt", useUnmergedTree = true).performClick()
+        ui.onNodeWithText("Zweck der Fahrt").performClick()
         ui.onNodeWithText("Fahrtdetails").assertIsDisplayed()
         systemBack()
         ui.onNodeWithText("Fahrtdaten").assertIsDisplayed()
