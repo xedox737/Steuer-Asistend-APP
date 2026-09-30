@@ -7,9 +7,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.DistanceEvidence
 import com.example.data.PropertyMetadata
@@ -42,7 +43,7 @@ class LogbookReferenceLayoutTest {
         ui.mainClock.advanceTimeBy(300)
         ui.waitForIdle()
         val path = "build/reports/logbook-reference/$name.png"
-        ui.onRoot().captureRoboImage(path)
+        onView(isRoot()).captureRoboImage(path)
         assertTrue("Gerendertes Bild fehlt: $name", File(path).isFile)
     }
 
