@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
@@ -110,6 +111,7 @@ private fun manualTripReceipt() = Receipt(
 
 @Composable
 private fun LogbookSavedDetail(trip: LogbookTrip, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
     Column(
         Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -452,6 +454,23 @@ private fun LogbookSuggestionCard(
     var message by remember(receipt.id) { mutableStateOf<String?>(null) }
     var busy by remember(receipt.id) { mutableStateOf(false) }
     var step by remember(receipt.id, receipt.aussteller) { mutableStateOf(0) }
+    var stepHistory by remember(receipt.id, receipt.aussteller) { mutableStateOf(emptyList<Int>()) }
+    fun openStep(nextStep: Int) {
+        if (nextStep != step) {
+            stepHistory = stepHistory + step
+            step = nextStep
+        }
+    }
+    fun goBack() {
+        val previousStep = stepHistory.lastOrNull()
+        if (previousStep == null) {
+            onBack()
+        } else {
+            stepHistory = stepHistory.dropLast(1)
+            step = previousStep
+        }
+    }
+    BackHandler(onBack = ::goBack)
     var tripDate by remember(receipt.id, receipt.aussteller) { mutableStateOf(receipt.datum) }
     var editTarget by remember { mutableStateOf<String?>(null) }
     var editValue by remember { mutableStateOf("") }
@@ -520,14 +539,12 @@ private fun LogbookSuggestionCard(
 
     Column(modifier.fillMaxSize().testTag("suggested_trip_card_${receipt.id}")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable {
-                if (step == 0) onBack() else step = if (step == 2) 0 else step - 1
-            })
+            Icon(Icons.Default.ArrowBack, "Zurück", Modifier.clickable(onClick = ::goBack))
             Spacer(Modifier.width(16.dp))
             Text(if (step == 2) "Fahrt prüfen" else "Neue Fahrt", fontSize = 18.sp, lineHeight = 21.sp,
                 fontWeight = FontWeight.Bold, color = DarkNavy)
         }
-        if (step != 2) LogbookSteps(step) { index -> if (index < step) step = index }
+        if (step != 2) LogbookSteps(step) { index -> if (index < step) openStep(index) }
         Spacer(Modifier.height(8.dp))
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 4.dp),
@@ -581,10 +598,10 @@ private fun LogbookSuggestionCard(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         LogbookMiniMetric(Modifier.weight(1f), "Entfernung",
                             decision.taxDistanceKm?.germanKm() ?: aiKm?.germanKm() ?: "–",
-                            if (decision.taxDistanceKm == null) "Nur Schätzung" else if (!confirmed) "Zur Prüfung" else "Bestätigt", Icons.Default.Route) { step = 1 }
+                            if (decision.taxDistanceKm == null) "Nur Schätzung" else if (!confirmed) "Zur Prüfung" else "Bestätigt", Icons.Default.Route) { openStep(1) }
                         LogbookMiniMetric(Modifier.weight(1f), "Werbungskosten",
                             decision.taxDistanceKm?.let { String.format(Locale.GERMANY, "%.2f €", it * 0.30) } ?: "–",
-                            "0,30 € je km", LogbookCoins) { step = 1 }
+                            "0,30 € je km", LogbookCoins) { openStep(1) }
                     }
                     if (receipt.id > 0) Text("Vorschlag aus Beleg: ${receipt.aussteller}", fontSize = 10.sp, lineHeight = 13.sp, color = SlateGray)
                 }
@@ -688,17 +705,17 @@ private fun LogbookSuggestionCard(
                 else -> {
                     LogbookPanel("") {
                         LogbookRoute(start, intermediateStops.filter(String::isNotBlank), destination,
-                            onStart = { step = 0 }, onDestination = { step = 0 }, onStop = { step = 0 })
+                            onStart = { openStep(0) }, onDestination = { openStep(0) }, onStop = { openStep(0) })
                     }
                     LogbookRouteStatus(decision.source?.name, confirmed, decision.taxDistanceKm)
                     LogbookPanel("Fahrtdaten") {
-                        LogbookSummaryRow(Icons.Default.CalendarMonth, "Datum", tripDate.logbookDate()) { step = 0 }
+                        LogbookSummaryRow(Icons.Default.CalendarMonth, "Datum", tripDate.logbookDate()) { openStep(0) }
                         HorizontalDivider(color = BorderColor)
                         LogbookSummaryRow(Icons.Default.SwapHoriz, "Strecke",
                             (decision.taxDistanceKm?.germanKm() ?: "Noch nicht bestätigt") +
-                                if (mode == TripRouteMode.HIN_UND_RUECKFAHRT) " (Hin & zurück)" else "") { step = 1 }
+                                if (mode == TripRouteMode.HIN_UND_RUECKFAHRT) " (Hin & zurück)" else "") { openStep(1) }
                         HorizontalDivider(color = BorderColor)
-                        LogbookSummaryRow(Icons.Default.Work, "Zweck der Fahrt", purpose) { step = 0 }
+                        LogbookSummaryRow(Icons.Default.Work, "Zweck der Fahrt", purpose) { openStep(0) }
                     }
                     LogbookTaxAssignment()
                     LogbookPanel("Beleg (optional)") {
@@ -706,7 +723,7 @@ private fun LogbookSuggestionCard(
                             if (receipt.id > 0) "Verknüpfter Beleg" else "Beleg verknüpfen",
                             if (receipt.id > 0) receipt.aussteller else "Rechnung, Quittung oder Foto hinzufügen.")
                     }
-                    if (decision.taxDistanceKm == null) OutlinedButton(onClick = { step = 1 },
+                    if (decision.taxDistanceKm == null) OutlinedButton(onClick = { openStep(1) },
                         modifier = Modifier.fillMaxWidth().height(32.dp), shape = RoundedCornerShape(6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = LogbookBlue),
                         contentPadding = PaddingValues(0.dp)) { Text("Strecke bestätigen", fontSize = 11.sp, lineHeight = 14.sp) }
@@ -722,8 +739,8 @@ private fun LogbookSuggestionCard(
         Button(
             onClick = {
                 when (step) {
-                    0 -> step = 2
-                    1 -> step = 2
+                    0 -> openStep(2)
+                    1 -> openStep(2)
                     else -> {
                         busy = true
                         scope.launch {
