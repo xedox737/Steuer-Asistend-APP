@@ -69,7 +69,7 @@ jobs:
 
       - name: Run unit tests
         timeout-minutes: 10
-        run: gradle testDebugUnitTest --stacktrace --no-daemon
+        run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
       - name: Build debug APK
         timeout-minutes: 10
