@@ -455,7 +455,7 @@ private fun LogbookSuggestionCard(
     val linkedReceipt = allReceipts.firstOrNull { it.id == linkedReceiptId }
     var start by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("start", metadata.wohnort)) }
     var intermediateStops by rememberSaveable(receipt.id, receipt.aussteller) {
-        mutableStateOf(draft.optJSONArray("stops")?.let { array -> List(array.length()) { array.getString(it) } } ?: if (receipt.id == 0) emptyList() else listOf(receipt.aussteller))
+        mutableStateOf<List<String>>(draft.optJSONArray("stops")?.let { array -> List(array.length()) { array.getString(it) } } ?: if (receipt.id == 0) emptyList() else listOf(receipt.aussteller))
     }
     var destination by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("destination", metadata.adresse)) }
     var purpose by rememberSaveable(receipt.id) {
