@@ -86,14 +86,14 @@ private val LogbookCoins = ImageVector.Builder("LogbookCoins", 24.dp, 24.dp, 24f
     listOf(12f to 3f, 3f to 8f).forEach { (left, top) ->
         path(fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.5f) {
             moveTo(left, top + 2f)
-            cubicTo(left, top - 0.5f, left + 9f, top - 0.5f, left + 9f, top + 2f)
-            cubicTo(left + 9f, top + 4.5f, left, top + 4.5f, left, top + 2f)
+            curveTo(left, top - 0.5f, left + 9f, top - 0.5f, left + 9f, top + 2f)
+            curveTo(left + 9f, top + 4.5f, left, top + 4.5f, left, top + 2f)
             moveTo(left, top + 2f)
             lineTo(left, top + 10f)
-            cubicTo(left, top + 12.5f, left + 9f, top + 12.5f, left + 9f, top + 10f)
+            curveTo(left, top + 12.5f, left + 9f, top + 12.5f, left + 9f, top + 10f)
             lineTo(left + 9f, top + 2f)
             moveTo(left, top + 6f)
-            cubicTo(left, top + 8.5f, left + 9f, top + 8.5f, left + 9f, top + 6f)
+            curveTo(left, top + 8.5f, left + 9f, top + 8.5f, left + 9f, top + 6f)
         }
     }
 }.build()
