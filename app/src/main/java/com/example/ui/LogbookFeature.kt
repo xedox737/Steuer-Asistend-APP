@@ -38,7 +38,11 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Icon
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Composable
+import org.json.JSONObject
+import org.json.JSONArray
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -110,7 +114,7 @@ private fun manualTripReceipt() = Receipt(
 )
 
 @Composable
-private fun LogbookSavedDetail(trip: LogbookTrip, onBack: () -> Unit) {
+private fun LogbookSavedDetail(trip: LogbookTrip, viewModel: ReceiptViewModel, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     Column(
         Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState())
@@ -134,7 +138,8 @@ private fun LogbookSavedDetail(trip: LogbookTrip, onBack: () -> Unit) {
             HorizontalDivider(color = BorderColor)
             LogbookSummaryRow(Icons.Default.Work, "Zweck der Fahrt", trip.purpose)
         }
-        LogbookTaxAssignment()
+        if (trip.cancelledAt.isBlank()) LogbookTaxAssignment() else Text("Fahrt storniert", color = CrimsonRed)
+        LogbookManageActions(trip, viewModel)
         trip.sourceReceiptId?.let { LogbookPanel("Beleg") {
             LogbookValueRow(Icons.Default.ReceiptLong, "Verknüpfter Beleg", "#$it")
         } }
@@ -149,6 +154,8 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
     val effectiveMetadata = metadata ?: PropertyMetadata()
     val trips by viewModel.logbookTrips.collectAsState()
     val routes by viewModel.standardRoutes.collectAsState()
+    val drafts by viewModel.logbookDrafts.collectAsState()
+    val activeTrips = trips.filter { it.cancelledAt.isBlank() }
     val suggested = receipts.filter { receipt ->
         val vendor = receipt.aussteller.lowercase(Locale.GERMANY)
         val category = receipt.hauptkategorie.lowercase(Locale.GERMANY)
@@ -158,12 +165,15 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
         likelyTravel && receipt.datum.matches(Regex("""\d{4}-\d{2}-\d{2}""")) &&
             trips.none { it.sourceReceiptId == receipt.id }
     }
-    var selectedSuggestion by remember { mutableStateOf<Receipt?>(null) }
-    var selectedTrip by remember { mutableStateOf<LogbookTrip?>(null) }
-    var showAll by remember { mutableStateOf(false) }
+    var selectedSuggestionId by rememberSaveable { mutableStateOf(-1) }
+    var selectedTripId by rememberSaveable { mutableStateOf(-1L) }
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val selectedTrip = trips.firstOrNull { it.id == selectedTripId }
+    val selectedSuggestion = if (selectedSuggestionId == 0) manualTripReceipt() else receipts.firstOrNull { it.id == selectedSuggestionId }
+
 
     selectedTrip?.let { trip ->
-        LogbookSavedDetail(trip, onBack = { selectedTrip = null })
+        LogbookSavedDetail(trip, viewModel, onBack = { selectedTripId = -1L })
         return
     }
 
@@ -172,8 +182,8 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
             receipt = receipt,
             metadata = effectiveMetadata,
             viewModel = viewModel,
-            onBack = { selectedSuggestion = null },
-            onSaved = { selectedSuggestion = null }
+            onBack = { selectedSuggestionId = -1 },
+            onSaved = { selectedSuggestionId = -1 }
         )
         return
     }
@@ -184,9 +194,10 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text("Fahrtenbuch", fontSize = 20.sp, lineHeight = 23.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-        LogbookHero(trips)
+        LogbookHero(activeTrips)
+        LogbookDraftCards(drafts, viewModel, onResume = { selectedSuggestionId = it })
         OutlinedButton(
-            onClick = { selectedSuggestion = manualTripReceipt() },
+            onClick = { selectedSuggestionId = 0 },
             modifier = Modifier.fillMaxWidth().height(36.dp), shape = RoundedCornerShape(6.dp),
             contentPadding = PaddingValues(0.dp), border = BorderStroke(1.dp, LogbookBlue),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = LogbookBlue)
@@ -196,11 +207,12 @@ fun LogbookScreen(viewModel: ReceiptViewModel) {
                 Text(if (showAll) "Alle Fahrten" else "Letzte Fahrten", fontWeight = FontWeight.Bold, color = DarkNavy)
                 Text(if (showAll) "Weniger anzeigen" else "Alle anzeigen  ›", modifier = Modifier.clickable { showAll = !showAll }, color = LogbookBlue, fontSize = 12.sp, lineHeight = 15.sp)
             }
-            (if (showAll) trips else trips.take(5)).forEach { SavedTripCard(it) { selectedTrip = it } }
+            if (showAll) LogbookTripBrowser(trips, onOpen = { selectedTripId = it.id })
+            else activeTrips.take(5).forEach { SavedTripCard(it) { selectedTripId = it.id } }
         }
         if (suggested.isNotEmpty()) {
             Text("Fahrtvorschläge aus Belegen", fontWeight = FontWeight.Bold, fontSize = 15.sp, lineHeight = 18.sp, color = DarkNavy)
-            suggested.forEach { LogbookSuggestionPreview(it, effectiveMetadata) { selectedSuggestion = it } }
+            suggested.forEach { LogbookSuggestionPreview(it, effectiveMetadata) { selectedSuggestionId = it.id } }
         }
         if (routes.isNotEmpty()) StandardRoutesCard(routes, viewModel)
     }
@@ -429,32 +441,44 @@ private fun LogbookSuggestionCard(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    var start by remember(receipt.id) { mutableStateOf(metadata.wohnort) }
-    var intermediateStops by remember(receipt.id, receipt.aussteller) {
-        mutableStateOf(if (receipt.id == 0) emptyList() else listOf(receipt.aussteller))
+    val draftKey = receipt.id.toString()
+    val draft = remember(receipt.id) { runCatching { JSONObject(viewModel.logbookDrafts.value[draftKey].orEmpty()) }.getOrDefault(JSONObject()) }
+    var draftSaved by remember { mutableStateOf(false) }
+    val bookingKey = rememberSaveable(receipt.id) { draft.optString("bookingKey").ifBlank { java.util.UUID.randomUUID().toString() } }
+    var linkedReceiptId by rememberSaveable(receipt.id) { mutableStateOf(draft.optInt("linkedReceiptId", receipt.id)) }
+    var propertyId by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("propertyId", if (receipt.id > 0) receipt.propertyId else metadata.propertyId)) }
+    var unit by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("unit", receipt.wohneinheit)) }
+    val allReceipts by viewModel.receipts.collectAsState()
+    val allProperties by viewModel.properties.collectAsState()
+    var selectReceipt by remember { mutableStateOf(false) }
+    var selectProperty by remember { mutableStateOf(false) }
+    val linkedReceipt = allReceipts.firstOrNull { it.id == linkedReceiptId }
+    var start by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("start", metadata.wohnort)) }
+    var intermediateStops by rememberSaveable(receipt.id, receipt.aussteller) {
+        mutableStateOf<List<String>>(draft.optJSONArray("stops")?.let { array -> List(array.length()) { array.getString(it) } } ?: if (receipt.id == 0) emptyList() else listOf(receipt.aussteller))
     }
-    var destination by remember(receipt.id) { mutableStateOf(metadata.adresse) }
-    var purpose by remember(receipt.id) {
-        mutableStateOf(if (receipt.id == 0) "" else if (receipt.beschreibung.isNotBlank())
-            "Materialkauf / ${receipt.beschreibung}" else "Materialkauf bei ${receipt.aussteller}")
+    var destination by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("destination", metadata.adresse)) }
+    var purpose by rememberSaveable(receipt.id) {
+        mutableStateOf(draft.optString("purpose", if (receipt.id == 0) "" else if (receipt.beschreibung.isNotBlank())
+            "Materialkauf / ${receipt.beschreibung}" else "Materialkauf bei ${receipt.aussteller}"))
     }
-    var mode by remember(receipt.id) { mutableStateOf(TripRouteMode.HIN_UND_RUECKFAHRT) }
-    var sameReturnRoute by remember(receipt.id) { mutableStateOf(true) }
-    var aiKm by remember(receipt.id) { mutableStateOf<Double?>(null) }
-    var routeResult by remember(receipt.id) { mutableStateOf<RouteDistanceResult?>(null) }
-    var manualKmText by remember(receipt.id) { mutableStateOf("") }
-    var odometerStartText by remember(receipt.id) { mutableStateOf("") }
-    var odometerEndText by remember(receipt.id) { mutableStateOf("") }
+    var mode by rememberSaveable(receipt.id) { mutableStateOf(runCatching { TripRouteMode.valueOf(draft.optString("mode")) }.getOrDefault(TripRouteMode.HIN_UND_RUECKFAHRT)) }
+    var sameReturnRoute by rememberSaveable(receipt.id) { mutableStateOf(draft.optBoolean("sameReturnRoute", true)) }
+    var aiKm by remember(receipt.id) { mutableStateOf(if (draft.has("aiKm")) draft.getDouble("aiKm") else null) }
+    var routeResult by remember(receipt.id) { mutableStateOf(if (draft.has("routedKm")) RouteDistanceResult(draft.getDouble("routedKm"), draft.optString("provider"), draft.optString("calculatedAt")) else null) }
+    var manualKmText by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("manualKmText", "")) }
+    var odometerStartText by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("odometerStartText", "")) }
+    var odometerEndText by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("odometerEndText", "")) }
     var matchedStandardRoute by remember(receipt.id) { mutableStateOf<StandardRoute?>(null) }
     var useStandardRoute by remember(receipt.id) { mutableStateOf(false) }
-    var correctionReason by remember(receipt.id) { mutableStateOf("") }
-    var correctionNote by remember(receipt.id) { mutableStateOf("") }
+    var correctionReason by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("correctionReason", "")) }
+    var correctionNote by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("correctionNote", "")) }
     var correctionMenuExpanded by remember(receipt.id) { mutableStateOf(false) }
     var confirmed by remember(receipt.id) { mutableStateOf(false) }
     var message by remember(receipt.id) { mutableStateOf<String?>(null) }
     var busy by remember(receipt.id) { mutableStateOf(false) }
-    var step by remember(receipt.id, receipt.aussteller) { mutableStateOf(0) }
-    var stepHistory by remember(receipt.id, receipt.aussteller) { mutableStateOf(emptyList<Int>()) }
+    var step by rememberSaveable(receipt.id) { mutableStateOf(draft.optInt("step", 0)) }
+    var stepHistory by rememberSaveable(receipt.id) { mutableStateOf(draft.optJSONArray("history")?.let { a -> List(a.length()) { a.getInt(it) } } ?: emptyList<Int>()) }
     fun openStep(nextStep: Int) {
         if (nextStep != step) {
             stepHistory = stepHistory + step
@@ -471,7 +495,7 @@ private fun LogbookSuggestionCard(
         }
     }
     BackHandler(onBack = ::goBack)
-    var tripDate by remember(receipt.id, receipt.aussteller) { mutableStateOf(receipt.datum) }
+    var tripDate by rememberSaveable(receipt.id, receipt.aussteller) { mutableStateOf(draft.optString("date", receipt.datum)) }
     var editTarget by remember { mutableStateOf<String?>(null) }
     var editValue by remember { mutableStateOf("") }
 
@@ -482,11 +506,17 @@ private fun LogbookSuggestionCard(
             destination, mode, sameReturnRoute
         )
     }.getOrNull()
+    var distanceSignature by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("signature", "")) }
     LaunchedEffect(normalizedRoute?.signature) {
-        routeResult = null
+        val routeChanged = distanceSignature != normalizedRoute?.signature
+        if (routeChanged) {
+            routeResult = null
+            aiKm = null
+            distanceSignature = normalizedRoute?.signature.orEmpty()
+        }
         confirmed = false
         matchedStandardRoute = normalizedRoute?.let { viewModel.findStandardRoute(it.signature) }
-        useStandardRoute = matchedStandardRoute != null
+        useStandardRoute = if (!routeChanged && draft.has("useStandardRoute")) draft.optBoolean("useStandardRoute") else matchedStandardRoute != null
     }
     val evidence = DistanceEvidence(
         aiEstimatedKm = aiKm, routedKm = routeResult?.distanceKm,
@@ -498,8 +528,23 @@ private fun LogbookSuggestionCard(
     )
     val decision = LogbookDistancePolicy.decide(evidence)
     val stops = normalizedRoute?.stops.orEmpty()
+    val draftJson = JSONObject().put("bookingKey", bookingKey).put("linkedReceiptId", linkedReceiptId)
+        .put("propertyId", propertyId).put("unit", unit).put("start", start).put("destination", destination)
+        .put("stops", JSONArray(intermediateStops)).put("purpose", purpose).put("date", tripDate)
+        .put("mode", mode.name).put("sameReturnRoute", sameReturnRoute).put("manualKmText", manualKmText)
+        .put("odometerStartText", odometerStartText).put("odometerEndText", odometerEndText)
+        .put("correctionReason", correctionReason).put("correctionNote", correctionNote)
+        .put("step", step).put("history", JSONArray(stepHistory)).put("signature", distanceSignature).put("useStandardRoute", useStandardRoute)
+        .apply { aiKm?.let { put("aiKm", it) }; routeResult?.let { put("routedKm", it.distanceKm); put("provider", it.providerId); put("calculatedAt", it.calculatedAt) } }.toString()
+    SideEffect { if (!draftSaved && viewModel.logbookDrafts.value[draftKey] != draftJson) viewModel.saveLogbookDraft(draftKey, draftJson) }
+    if (selectReceipt) LogbookReceiptPicker(allReceipts.filter { it.id != linkedReceiptId && it.unterkategorie != "Fahrtkosten" }, onDismiss = { selectReceipt = false }) {
+        linkedReceiptId = it.id; propertyId = it.propertyId; unit = it.wohneinheit; confirmed = false; selectReceipt = false
+    }
+    if (selectProperty) LogbookPropertyPicker(allProperties, onDismiss = { selectProperty = false }) {
+        propertyId = it.propertyId; unit = ""; linkedReceiptId = 0; confirmed = false; selectProperty = false
+    }
     val validDate = runCatching { LocalDate.parse(tripDate) }.isSuccess
-    val validTrip = start.isNotBlank() && destination.isNotBlank() && purpose.isNotBlank() && validDate
+    val validTrip = start.isNotBlank() && destination.isNotBlank() && purpose.isNotBlank() && validDate && propertyId.isNotBlank()
     val canSave = validTrip && confirmed && !busy && decision.taxDistanceKm != null &&
         decision.source != KilometerSource.KI_GESCHAETZT &&
         (!decision.correctionReasonRequired || correctionReason.isNotBlank()) &&
@@ -572,8 +617,8 @@ private fun LogbookSuggestionCard(
                         }
                     }
                     LogbookPanel("Fahrtdetails") {
-                        LogbookValueRow(Icons.Default.CalendarMonth, "Datum", tripDate.logbookDate(),
-                            if (receipt.id == 0) ({ edit("date", tripDate) }) else null)
+                        LogbookValueRow(Icons.Default.CalendarMonth, "Datum", tripDate.logbookDate()) { edit("date", tripDate) }
+                        LogbookValueRow(Icons.Default.LocationOn, "Immobilie", allProperties.firstOrNull { it.propertyId == propertyId }?.adresse ?: metadata.adresse) { selectProperty = true }
                         HorizontalDivider(color = BorderColor)
                         LogbookValueRow(Icons.Default.Work, "Zweck der Fahrt", purpose) { edit("purpose", purpose) }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -720,8 +765,10 @@ private fun LogbookSuggestionCard(
                     LogbookTaxAssignment()
                     LogbookPanel("Beleg (optional)") {
                         LogbookValueRow(Icons.Default.ReceiptLong,
-                            if (receipt.id > 0) "Verknüpfter Beleg" else "Beleg verknüpfen",
-                            if (receipt.id > 0) receipt.aussteller else "Rechnung, Quittung oder Foto hinzufügen.")
+                            if (linkedReceiptId > 0) "Verknüpfter Beleg" else "Beleg verknüpfen",
+                            linkedReceipt?.aussteller ?: "Vorhandenen Beleg auswählen.") { selectReceipt = true }
+                        if (linkedReceiptId > 0) Text("Verknüpfung lösen", fontSize = 11.sp, color = LogbookBlue,
+                            modifier = Modifier.clickable { linkedReceiptId = 0; unit = ""; confirmed = false })
                     }
                     if (decision.taxDistanceKm == null) OutlinedButton(onClick = { openStep(1) },
                         modifier = Modifier.fillMaxWidth().height(32.dp), shape = RoundedCornerShape(6.dp),
@@ -745,7 +792,8 @@ private fun LogbookSuggestionCard(
                         busy = true
                         scope.launch {
                             val result = viewModel.saveLogbookTrip(
-                                originalReceipt = receipt.copy(datum = tripDate), purpose = purpose.trim(),
+                                originalReceipt = (linkedReceipt ?: manualTripReceipt()).copy(wohneinheit = unit, propertyId = propertyId),
+                                tripDate = tripDate, propertyId = propertyId, bookingKey = bookingKey, purpose = purpose.trim(),
                                 startAddress = start.trim(), destinationAddress = destination.trim(),
                                 stops = stops, routeMode = mode, sameReturnRoute = sameReturnRoute,
                                 evidence = evidence.copy(manuallyConfirmed = true), routeResult = routeResult,
@@ -753,7 +801,7 @@ private fun LogbookSuggestionCard(
                                 correctionReason = correctionReason, correctionNote = correctionNote
                             )
                             busy = false
-                            message = result.fold(onSuccess = { onSaved(); "Fahrt gespeichert." },
+                            message = result.fold(onSuccess = { draftSaved = true; viewModel.clearLogbookDraft(draftKey); onSaved(); "Fahrt gespeichert." },
                                 onFailure = { it.message ?: "Fahrt konnte nicht gespeichert werden." })
                         }
                     }

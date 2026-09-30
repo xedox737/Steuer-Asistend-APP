@@ -42,7 +42,9 @@ class SupplementalDriveBackupTest {
                 manuallyConfirmed = true, sourceReceiptId = 7, expenseReceiptId = 8,
                 routeProvider = "GOOGLE_ROUTES", routeCalculatedAt = now, routeDurationSeconds = 1800,
                 correctionReason = "Umleitung", correctionNote = "Baustelle; \"Süd\"", routeSignature = route.signature,
-                note = "Beleg vorhanden", createdAt = now, updatedAt = now
+                note = "Beleg vorhanden", createdAt = now, updatedAt = now,
+                propertyId = "other-property", bookingKey = "stable-request", cancelledAt = now,
+                historyJson = "[{\"action\":\"Storno\",\"reason\":\"Test\"}]"
             )
         )
         database.logbookDao().upsertStandardRoute(
@@ -63,6 +65,11 @@ class SupplementalDriveBackupTest {
         database.logbookDao().deleteStandardRoute(17)
 
         SupplementalDriveBackup.restorePayload(context, database, payload)
+        val restoredTrip = database.logbookDao().getTrip(41)!!
+        assertEquals("other-property", restoredTrip.propertyId)
+        assertEquals("stable-request", restoredTrip.bookingKey)
+        assertEquals(now, restoredTrip.cancelledAt)
+        assertTrue(restoredTrip.historyJson.contains("Storno"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         val restored = database.logbookDao().getAllTrips()
         val restoredRoutes = database.logbookDao().getAllStandardRoutes()

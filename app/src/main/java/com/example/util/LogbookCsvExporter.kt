@@ -16,7 +16,7 @@ object LogbookCsvExporter {
             "Kilometerquelle", "KI-Schaetzung", "Strassenroute", "GPS",
             "Tacho Start", "Tacho Ende", "Manuelle Kilometer", "Route Provider",
             "Route berechnet am", "Korrekturgrund", "Korrekturhinweis",
-            "Plausibilitaet", "Manuell bestaetigt", "Beleg-ID", "Notiz"
+            "Plausibilitaet", "Manuell bestaetigt", "Beleg-ID", "Notiz", "Immobilien-ID", "Status", "Storniert am", "Aenderungsverlauf"
         ).joinToString(";")
         return buildString {
             appendLine(header)
@@ -38,7 +38,8 @@ object LogbookCsvExporter {
                         trip.correctionReason, trip.correctionNote,
                         trip.plausibilityStatus,
                         if (trip.manuallyConfirmed) "Ja" else "Nein",
-                        trip.sourceReceiptId?.toString().orEmpty(), trip.note
+                        trip.sourceReceiptId?.toString().orEmpty(), trip.note, trip.propertyId,
+                        if (trip.cancelledAt.isBlank()) "Aktiv" else "Storniert", trip.cancelledAt, trip.historyJson
                     ).joinToString(";") { csv(it) }
                 )
             }
