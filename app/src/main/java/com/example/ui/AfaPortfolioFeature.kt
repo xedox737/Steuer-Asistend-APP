@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -40,7 +42,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,9 +68,9 @@ import java.time.LocalDate
 /** AfA navigation uses the existing property records. It never creates a second building. */
 @Composable
 internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit) {
-    val properties by viewModel.properties.collectAsState()
-    val receipts by viewModel.receipts.collectAsState()
-    val documents by viewModel.managedDocuments.collectAsState()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val documents by viewModel.managedDocuments.collectAsStateWithLifecycle()
     var propertyId by rememberSaveable { mutableStateOf<String?>(null) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf(false) }

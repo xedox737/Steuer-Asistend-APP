@@ -1,4 +1,8 @@
 package com.example.ui
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+import com.example.util.DiagnosticLog
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import android.app.Activity
@@ -149,7 +153,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.common.api.ApiException
-import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
@@ -210,7 +213,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -277,9 +279,9 @@ val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReceiptAppUi(viewModel: ReceiptViewModel) {
-    val currentScreen by viewModel.currentScreen.collectAsState()
-    val receipts by viewModel.receipts.collectAsState()
-    val selectedReceiptDetailId by viewModel.selectedReceiptDetailId.collectAsState()
+    val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val selectedReceiptDetailId by viewModel.selectedReceiptDetailId.collectAsStateWithLifecycle()
     var bankDetailsOpen by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -583,7 +585,7 @@ fun WohneinheitenStatusSection(
     viewModel: ReceiptViewModel,
     receipts: List<Receipt>
 ) {
-    val wohneinheiten by viewModel.wohneinheitenStatus.collectAsState()
+    val wohneinheiten by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     var selectedUnitForEdit by remember { mutableStateOf<WohneinheitStatus?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -888,10 +890,10 @@ fun WohneinheitenStatusSection(
 
 @Composable
 fun DashboardScreen(viewModel: ReceiptViewModel) {
-    val receipts by viewModel.receipts.collectAsState()
-    val bankTransactions by viewModel.bankTransactions.collectAsState()
-    val learnedRulesCount by viewModel.learnedRulesCount.collectAsState()
-    val bankStatementResult by viewModel.bankStatementResult.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val learnedRulesCount by viewModel.learnedRulesCount.collectAsStateWithLifecycle()
+    val bankStatementResult by viewModel.bankStatementResult.collectAsStateWithLifecycle()
     val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
     val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
@@ -1023,8 +1025,8 @@ private fun DashboardActivityRow(receipt: Receipt, onClick: () -> Unit) {
 /** The existing tax presentation moved from Start into More; the calculator is unchanged. */
 @Composable
 internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean, onBack: () -> Unit) {
-    val receipts by viewModel.receipts.collectAsState()
-    val propertyMetadataState by viewModel.propertyMetadata.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val propertyMetadataState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = propertyMetadataState ?: PropertyMetadata()
     val taxPhase1 = com.example.data.TaxPropertyCalculator.calculate(metadata, receipts)
     var showAfaDetails by remember { mutableStateOf(false) }
@@ -1406,7 +1408,7 @@ fun AiSearchCard(
     viewModel: ReceiptViewModel,
     modifier: Modifier = Modifier
 ) {
-    val aiSearchState by viewModel.aiSearchState.collectAsState()
+    val aiSearchState by viewModel.aiSearchState.collectAsStateWithLifecycle()
     var inputQuery by remember { mutableStateOf("") }
 
     Card(
@@ -1946,9 +1948,9 @@ fun ReceiptGridCard(
 
 @Composable
 fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
-    val query by viewModel.searchQuery.collectAsState()
-    val filter by viewModel.selectedCategoryFilter.collectAsState()
-    val receipts by viewModel.filteredReceipts.collectAsState()
+    val query by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val filter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
+    val receipts by viewModel.filteredReceipts.collectAsStateWithLifecycle()
     var fullScreenPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     // Toggle for View Modes: "grid", "list", "table"
@@ -1957,7 +1959,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
     var showRecycleBinFromBelege by remember { mutableStateOf(false) }
 
     // All processed receipts for overall category summaries
-    val allReceipts by viewModel.receipts.collectAsState()
+    val allReceipts by viewModel.receipts.collectAsStateWithLifecycle()
     
     // Group all processed receipts by main category and sum expenditures
     val categoriesWithSums = remember(allReceipts) {
@@ -3159,7 +3161,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var subCategoryExpanded by remember { mutableStateOf(false) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
 
-    val availableProperties by viewModel.properties.collectAsState()
+    val availableProperties by viewModel.properties.collectAsStateWithLifecycle()
     var editPropertyId by remember(receipt) { mutableStateOf(receipt.propertyId) }
     var propertyExpanded by remember { mutableStateOf(false) }
     var amountError by remember { mutableStateOf(false) }
@@ -3573,7 +3575,7 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
 
                     // 2.5 Einzelne Posten & DATEV-Exportvorschau Pipeline
                     val positionenList = receipt.getPositionenList()
-                    val activeProfileState by viewModel.activeDatevProfile.collectAsState()
+                    val activeProfileState by viewModel.activeDatevProfile.collectAsStateWithLifecycle()
                     val allocations = remember(receipt, activeProfileState) {
                         com.example.util.DatevMappingService.buildAllocationsFromReceipt(receipt, activeProfileState)
                     }
@@ -3898,7 +3900,7 @@ sealed class PreviewState {
 fun ReceiptPreviewSection(receipt: Receipt, viewModel: ReceiptViewModel) {
     var fullScreenImage by remember { mutableStateOf<Bitmap?>(null) }
     
-    val downloadStatusMap by viewModel.documentDownloadStatus.collectAsState()
+    val downloadStatusMap by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
     val status = downloadStatusMap[receipt.internalId]
     
     var pendingRepairFile by remember { mutableStateOf<File?>(null) }
@@ -4659,7 +4661,7 @@ private fun loadBitmapsFromUri(context: Context, uri: Uri): List<Bitmap> {
                 parcelFileDescriptor.close()
             }
         } catch (e: Exception) {
-            Log.e("ReceiptAppUi", "Error rendering PDF to bitmaps: ${e.localizedMessage}", e)
+            DiagnosticLog.e("ReceiptAppUi", "Error rendering PDF to bitmaps")
         }
     } else {
         // Standard image decoding
@@ -4671,7 +4673,7 @@ private fun loadBitmapsFromUri(context: Context, uri: Uri): List<Bitmap> {
                 }
             }
         } catch (e: Exception) {
-            Log.e("ReceiptAppUi", "Error decoding image bitmap: ${e.localizedMessage}", e)
+            DiagnosticLog.e("ReceiptAppUi", "Error decoding image bitmap")
         }
     }
     return bitmaps
@@ -4942,9 +4944,9 @@ fun AiAnalysisLoadingContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddReceiptScreen(viewModel: ReceiptViewModel) {
-    val scanState by viewModel.scanState.collectAsState()
-    val pendingBankTransactionId by viewModel.pendingBankTransactionId.collectAsState()
-    val aiProviderState by viewModel.aiProviderState.collectAsState()
+    val scanState by viewModel.scanState.collectAsStateWithLifecycle()
+    val pendingBankTransactionId by viewModel.pendingBankTransactionId.collectAsStateWithLifecycle()
+    val aiProviderState by viewModel.aiProviderState.collectAsStateWithLifecycle()
 
     BackHandler(enabled = !pendingBankTransactionId.isNullOrBlank()) {
         viewModel.returnFromBankReceiptCreation()
@@ -5003,7 +5005,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         null
                     }
                 } catch (e: Exception) {
-                    Log.e("AddReceiptScreen", "Error loading uri: ${uri}", e)
+                    DiagnosticLog.e("AddReceiptScreen", "Error loading uri")
                     null
                 }
             }
@@ -5031,7 +5033,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                     )
                 }
                 .addOnFailureListener { e ->
-                    Log.e("MLKitScanner", "ML Kit Scanner launch error: ${e.message}", e)
+                    DiagnosticLog.e("MLKitScanner", "ML Kit Scanner launch error")
                     filePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
                 }
         } else {
@@ -5193,7 +5195,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var wohneinheitExpanded by remember { mutableStateOf(false) }
     var localImagePaths by remember { mutableStateOf("") }
 
-    val propertyMetadataState by viewModel.propertyMetadata.collectAsState()
+    val propertyMetadataState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = propertyMetadataState ?: PropertyMetadata()
     val unitsList = remember(metadata.wohneinheiten) {
         metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
@@ -6200,13 +6202,13 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
 
 @Composable
 fun LedgerScreen(viewModel: ReceiptViewModel) {
-    val receipts by viewModel.receipts.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsState()
-    val paymentBackfillStatus by viewModel.paymentBackfillStatus.collectAsState()
-    val isDescriptionBackfillRunning by viewModel.isBackfillingDescriptions.collectAsState()
-    val descriptionBackfillStatus by viewModel.descriptionBackfillStatus.collectAsState()
-    val descriptionBackfillCandidates by viewModel.descriptionBackfillCandidates.collectAsState()
+    val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsStateWithLifecycle()
+    val paymentBackfillStatus by viewModel.paymentBackfillStatus.collectAsStateWithLifecycle()
+    val isDescriptionBackfillRunning by viewModel.isBackfillingDescriptions.collectAsStateWithLifecycle()
+    val descriptionBackfillStatus by viewModel.descriptionBackfillStatus.collectAsStateWithLifecycle()
+    val descriptionBackfillCandidates by viewModel.descriptionBackfillCandidates.collectAsStateWithLifecycle()
     var showDescriptionBackfillPreview by remember { mutableStateOf(false) }
 
     // Calculate totals per DATEV Konto
@@ -6772,28 +6774,28 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
 @Composable
 fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
-    val isConnected by viewModel.isDriveConnected.collectAsState()
-    val email by viewModel.googleAccountEmail.collectAsState()
-    val isSyncing by viewModel.isDriveSyncing.collectAsState()
-    val syncStatus by viewModel.driveSyncStatus.collectAsState()
-    val autoBackup by viewModel.autoDriveBackup.collectAsState()
-    val systemFolderStatus by viewModel.driveSystemFolderStatus.collectAsState()
-    val lastBackupTime by viewModel.lastStammdatenBackupTime.collectAsState()
-    val syncError by viewModel.driveSyncError.collectAsState()
-    val driveTestState by viewModel.driveTestState.collectAsState()
+    val isConnected by viewModel.isDriveConnected.collectAsStateWithLifecycle()
+    val email by viewModel.googleAccountEmail.collectAsStateWithLifecycle()
+    val isSyncing by viewModel.isDriveSyncing.collectAsStateWithLifecycle()
+    val syncStatus by viewModel.driveSyncStatus.collectAsStateWithLifecycle()
+    val autoBackup by viewModel.autoDriveBackup.collectAsStateWithLifecycle()
+    val systemFolderStatus by viewModel.driveSystemFolderStatus.collectAsStateWithLifecycle()
+    val lastBackupTime by viewModel.lastStammdatenBackupTime.collectAsStateWithLifecycle()
+    val syncError by viewModel.driveSyncError.collectAsStateWithLifecycle()
+    val driveTestState by viewModel.driveTestState.collectAsStateWithLifecycle()
 
-    val restorePreview by viewModel.restorePreview.collectAsState()
-    val restoreReport by viewModel.restoreReport.collectAsState()
-    val isRestoreRequired by viewModel.isRestoreRequired.collectAsState()
-    val isRestoring by viewModel.isRestoring.collectAsState()
+    val restorePreview by viewModel.restorePreview.collectAsStateWithLifecycle()
+    val restoreReport by viewModel.restoreReport.collectAsStateWithLifecycle()
+    val isRestoreRequired by viewModel.isRestoreRequired.collectAsStateWithLifecycle()
+    val isRestoring by viewModel.isRestoring.collectAsStateWithLifecycle()
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
 
-    val isCheckingDuplicates by viewModel.isCheckingMetadataDuplicates.collectAsState()
-    val duplicateReport by viewModel.metadataDuplicateReport.collectAsState()
-    val duplicateError by viewModel.metadataDuplicateError.collectAsState()
-    val metadataCleanupPreview by viewModel.metadataCleanupPreview.collectAsState()
-    val metadataCleanupResult by viewModel.metadataCleanupResult.collectAsState()
-    val isCleaningMetadataDuplicates by viewModel.isCleaningMetadataDuplicates.collectAsState()
+    val isCheckingDuplicates by viewModel.isCheckingMetadataDuplicates.collectAsStateWithLifecycle()
+    val duplicateReport by viewModel.metadataDuplicateReport.collectAsStateWithLifecycle()
+    val duplicateError by viewModel.metadataDuplicateError.collectAsStateWithLifecycle()
+    val metadataCleanupPreview by viewModel.metadataCleanupPreview.collectAsStateWithLifecycle()
+    val metadataCleanupResult by viewModel.metadataCleanupResult.collectAsStateWithLifecycle()
+    val isCleaningMetadataDuplicates by viewModel.isCleaningMetadataDuplicates.collectAsStateWithLifecycle()
 
     var showManualInput by remember { mutableStateOf(false) }
     var manualEmail by remember { mutableStateOf("sergej.alc28@gmail.com") }
@@ -6810,7 +6812,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                 viewModel.connectDrive(account.email!!)
             }
         } catch (e: Exception) {
-            Log.e("DriveAuth", "Sign in failed", e)
+            DiagnosticLog.e("DriveAuth", "Sign in failed")
             viewModel.setSyncStatus("Google Play Services Anmeldung nicht verfügbar (Account not present). Bitte nutzen Sie stattdessen den grünen Button 'Über Google-Login verbinden'!")
         }
     }
@@ -7318,7 +7320,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val isAuditing by viewModel.isAuditingOriginalReceipts.collectAsState()
+                    val isAuditing by viewModel.isAuditingOriginalReceipts.collectAsStateWithLifecycle()
 
                     OutlinedButton(
                         onClick = { viewModel.runOriginalReceiptAudit() },
@@ -7467,8 +7469,8 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                 )
             }
 
-            val auditReport by viewModel.originalReceiptAuditReport.collectAsState()
-            val auditError by viewModel.originalReceiptAuditError.collectAsState()
+            val auditReport by viewModel.originalReceiptAuditReport.collectAsStateWithLifecycle()
+            val auditError by viewModel.originalReceiptAuditError.collectAsStateWithLifecycle()
 
             auditReport?.let { report ->
                 OriginalReceiptAuditDialog(
@@ -8082,7 +8084,7 @@ fun CameraActiveView(
         try {
             ProcessCameraProvider.getInstance(context)
         } catch (e: Throwable) {
-            Log.e("CameraActiveView", "Error getting ProcessCameraProvider instance", e)
+            DiagnosticLog.e("CameraActiveView", "Error getting ProcessCameraProvider instance")
             null
         }
     }
@@ -8596,7 +8598,7 @@ fun CameraActiveView(
                                             cameraBindingFailed = true
                                         }
                                     } catch (e: Exception) {
-                                        Log.e("CameraActiveView", "Camera binding failed", e)
+                                        DiagnosticLog.e("CameraActiveView", "Camera binding failed")
                                         cameraBindingFailed = true
                                     }
                                 }, executor)
@@ -8996,7 +8998,7 @@ fun PropertyMetadataFormDialog(
     viewModel: ReceiptViewModel,
     onDismiss: () -> Unit
 ) {
-    val currentMetadata by viewModel.propertyMetadata.collectAsState()
+    val currentMetadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = currentMetadata ?: PropertyMetadata()
 
     var editName by remember(metadata) { mutableStateOf(metadata.name) }
@@ -9593,24 +9595,24 @@ fun KiPowerCenterDialog(
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Steuer, 1: Bankabgleich, 2: Nebenkosten, 3: Mietpreis, 4: Mängel, 5: Verträge
 
     // State bindings
-    val taxReport by viewModel.taxPlausibilityReport.collectAsState()
-    val isAnalyzingTax by viewModel.isAnalyzingTaxPlausibility.collectAsState()
+    val taxReport by viewModel.taxPlausibilityReport.collectAsStateWithLifecycle()
+    val isAnalyzingTax by viewModel.isAnalyzingTaxPlausibility.collectAsStateWithLifecycle()
 
-    val bankStatementResult by viewModel.bankStatementResult.collectAsState()
-    val isMatchingBankStatement by viewModel.isMatchingBankStatement.collectAsState()
-    val bankStatementResetVersion by viewModel.bankStatementResetVersion.collectAsState()
+    val bankStatementResult by viewModel.bankStatementResult.collectAsStateWithLifecycle()
+    val isMatchingBankStatement by viewModel.isMatchingBankStatement.collectAsStateWithLifecycle()
+    val bankStatementResetVersion by viewModel.bankStatementResetVersion.collectAsStateWithLifecycle()
 
-    val utilityStatement by viewModel.tenantUtilityStatement.collectAsState()
-    val isGeneratingUtility by viewModel.isGeneratingUtilityStatement.collectAsState()
+    val utilityStatement by viewModel.tenantUtilityStatement.collectAsStateWithLifecycle()
+    val isGeneratingUtility by viewModel.isGeneratingUtilityStatement.collectAsStateWithLifecycle()
 
-    val rentReport by viewModel.rentYieldReport.collectAsState()
-    val isOptimizingRent by viewModel.isOptimizingRentYield.collectAsState()
+    val rentReport by viewModel.rentYieldReport.collectAsStateWithLifecycle()
+    val isOptimizingRent by viewModel.isOptimizingRentYield.collectAsStateWithLifecycle()
 
-    val damageAssessment by viewModel.damageAssessment.collectAsState()
-    val isAssessingDamage by viewModel.isAssessingDamage.collectAsState()
+    val damageAssessment by viewModel.damageAssessment.collectAsStateWithLifecycle()
+    val isAssessingDamage by viewModel.isAssessingDamage.collectAsStateWithLifecycle()
 
-    val contractAnalysis by viewModel.contractAnalysis.collectAsState()
-    val isAnalyzingContract by viewModel.isAnalyzingContract.collectAsState()
+    val contractAnalysis by viewModel.contractAnalysis.collectAsStateWithLifecycle()
+    val isAnalyzingContract by viewModel.isAnalyzingContract.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
 
@@ -10428,7 +10430,7 @@ fun KiLearnedRulesDialog(
     viewModel: ReceiptViewModel,
     onDismiss: () -> Unit
 ) {
-    val rules by viewModel.learnedRules.collectAsState()
+    val rules by viewModel.learnedRules.collectAsStateWithLifecycle()
     var showAddRuleForm by remember { mutableStateOf(false) }
 
     var newVendor by remember { mutableStateOf("") }
@@ -10671,9 +10673,9 @@ fun AccountSettingsDialog(
     var showLocalDataResetDialog by remember { mutableStateOf(false) }
     var showDriveSettingsDialog by remember { mutableStateOf(false) }
 
-    val currentMetadata by viewModel.propertyMetadata.collectAsState()
+    val currentMetadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = currentMetadata ?: PropertyMetadata()
-    val learnedRulesCount by viewModel.learnedRulesCount.collectAsState()
+    val learnedRulesCount by viewModel.learnedRulesCount.collectAsStateWithLifecycle()
 
     var editWohnort by remember(metadata) { mutableStateOf(metadata.wohnort) }
     var editAdresse by remember(metadata) { mutableStateOf(metadata.adresse) }
@@ -10766,7 +10768,7 @@ fun AccountSettingsDialog(
 
                 Text("KI & Automatisierung", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = SlateGray)
 
-                val aiProviderState by viewModel.aiProviderState.collectAsState()
+                val aiProviderState by viewModel.aiProviderState.collectAsStateWithLifecycle()
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -11128,7 +11130,7 @@ fun AiProviderSettingsDialog(
     viewModel: ReceiptViewModel,
     onDismiss: () -> Unit
 ) {
-    val savedState by viewModel.aiProviderState.collectAsState()
+    val savedState by viewModel.aiProviderState.collectAsStateWithLifecycle()
     var selectedProvider by remember(savedState.provider) { mutableStateOf(savedState.provider) }
     var model by remember(savedState.openAiModel) { mutableStateOf(savedState.openAiModel) }
     var apiKeyInput by remember { mutableStateOf("") }
@@ -11392,7 +11394,7 @@ fun TenantManagementDialog(
     viewModel: ReceiptViewModel,
     onDismiss: () -> Unit
 ) {
-    val units by viewModel.wohneinheitenStatus.collectAsState()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -11478,19 +11480,19 @@ fun DatevExportScreen(
     val context = LocalContext.current
     val exportScope = rememberCoroutineScope()
 
-    val step by viewModel.wizardStep.collectAsState()
-    val activeProfile by viewModel.activeDatevProfile.collectAsState()
-    val mappedRecords by viewModel.wizardMappedRecords.collectAsState()
-    val excludedReceipts by viewModel.wizardExcludedReceipts.collectAsState()
-    val exclusionReasons by viewModel.wizardExclusionReasons.collectAsState()
-    val validationReport by viewModel.wizardValidationReport.collectAsState()
-    val lastResult by viewModel.lastExportResult.collectAsState()
-    val auditRuns by viewModel.allAuditRuns.collectAsState()
+    val step by viewModel.wizardStep.collectAsStateWithLifecycle()
+    val activeProfile by viewModel.activeDatevProfile.collectAsStateWithLifecycle()
+    val mappedRecords by viewModel.wizardMappedRecords.collectAsStateWithLifecycle()
+    val excludedReceipts by viewModel.wizardExcludedReceipts.collectAsStateWithLifecycle()
+    val exclusionReasons by viewModel.wizardExclusionReasons.collectAsStateWithLifecycle()
+    val validationReport by viewModel.wizardValidationReport.collectAsStateWithLifecycle()
+    val lastResult by viewModel.lastExportResult.collectAsStateWithLifecycle()
+    val auditRuns by viewModel.allAuditRuns.collectAsStateWithLifecycle()
 
-    val unitFilter by viewModel.wizardUnitFilter.collectAsState()
-    val yearFilter by viewModel.wizardYearFilter.collectAsState()
-    val typeFilter by viewModel.wizardCategoryTypeFilter.collectAsState()
-    val targetFormat by viewModel.wizardTargetFormat.collectAsState()
+    val unitFilter by viewModel.wizardUnitFilter.collectAsStateWithLifecycle()
+    val yearFilter by viewModel.wizardYearFilter.collectAsStateWithLifecycle()
+    val typeFilter by viewModel.wizardCategoryTypeFilter.collectAsStateWithLifecycle()
+    val targetFormat by viewModel.wizardTargetFormat.collectAsStateWithLifecycle()
 
     var editableBeraterNr by remember(activeProfile) { mutableStateOf(activeProfile.beraterNummer) }
     var editableMandantenNr by remember(activeProfile) { mutableStateOf(activeProfile.mandantenNummer) }
@@ -12598,7 +12600,7 @@ fun ConfirmRepairDocumentDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    val repairUiState by viewModel.repairUiState.collectAsState()
+    val repairUiState by viewModel.repairUiState.collectAsStateWithLifecycle()
 
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
@@ -12624,7 +12626,7 @@ fun ConfirmRepairDocumentDialog(
                     previewBitmap = bmp
                 }
             } catch (e: Exception) {
-                Log.e("ConfirmRepair", "Error decoding preview", e)
+                DiagnosticLog.e("ConfirmRepair", "Error decoding preview")
             }
         }
     }
@@ -12755,8 +12757,8 @@ fun DocumentStatusOverviewDialog(
     viewModel: ReceiptViewModel,
     onDismiss: () -> Unit
 ) {
-    val receipts by viewModel.receipts.collectAsState()
-    val downloadStatusMap by viewModel.documentDownloadStatus.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val downloadStatusMap by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
 
@@ -13339,8 +13341,8 @@ fun RecycleBinDialog(
     viewModel: ReceiptViewModel,
     onDismiss: () -> Unit
 ) {
-    val deletedReceipts by viewModel.deletedReceipts.collectAsState()
-    val duplicateCleanupState by viewModel.duplicateCleanupState.collectAsState()
+    val deletedReceipts by viewModel.deletedReceipts.collectAsStateWithLifecycle()
+    val duplicateCleanupState by viewModel.duplicateCleanupState.collectAsStateWithLifecycle()
     var receiptToPermanentlyDelete by remember { mutableStateOf<Receipt?>(null) }
     var permanentDeleteError by remember { mutableStateOf<String?>(null) }
     var showDeleteSuccess by remember { mutableStateOf(false) }

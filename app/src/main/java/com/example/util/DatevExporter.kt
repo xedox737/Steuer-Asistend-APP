@@ -1,9 +1,10 @@
 package com.example.util
 
+import com.example.util.DiagnosticLog
+
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
-import android.util.Log
 import com.example.data.DatevProfile
 import com.example.data.Receipt
 import java.io.File
@@ -347,7 +348,7 @@ object DatevExporter {
             document.close()
             outputStream.toByteArray()
         } catch (e: Exception) {
-            Log.e(TAG, "Error generating PDF for receipt ${receipt.id}", e)
+            DiagnosticLog.e(TAG, "Error generating PDF for receipt")
             null
         }
     }

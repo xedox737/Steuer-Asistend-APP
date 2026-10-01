@@ -1,7 +1,8 @@
 package com.example.data
 
+import com.example.util.DiagnosticLog
+
 import android.content.Context
-import android.util.Log
 import com.example.ui.WohneinheitStatus
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -24,7 +25,7 @@ object FirestoreService {
                 firestoreInstance = FirebaseFirestore.getInstance()
                 authInstance = FirebaseAuth.getInstance()
                 isInitialized = true
-                Log.i(TAG, "Firebase initialized via auto-configuration.")
+                DiagnosticLog.i(TAG, "Firebase initialized via auto-configuration.")
                 return
             }
 
@@ -39,9 +40,9 @@ object FirestoreService {
             firestoreInstance = FirebaseFirestore.getInstance()
             authInstance = FirebaseAuth.getInstance()
             isInitialized = true
-            Log.i(TAG, "Firebase initialized programmatically.")
+            DiagnosticLog.i(TAG, "Firebase initialized programmatically.")
         } catch (e: Exception) {
-            Log.e(TAG, "Firebase init error: ${e.localizedMessage}", e)
+            DiagnosticLog.e(TAG, "Firebase init error")
             isInitialized = false
             firestoreInstance = null
             authInstance = null
@@ -62,7 +63,7 @@ object FirestoreService {
             val result = auth.signInWithEmailAndPassword(email, password).await()
             result.user
         } catch (e: Exception) {
-            Log.e(TAG, "SignIn error: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "SignIn error")
             throw e
         }
     }
@@ -73,7 +74,7 @@ object FirestoreService {
             val result = auth.createUserWithEmailAndPassword(email, password).await()
             result.user
         } catch (e: Exception) {
-            Log.e(TAG, "SignUp error: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "SignUp error")
             throw e
         }
     }
@@ -103,7 +104,7 @@ object FirestoreService {
                 .await()
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving receipt to Firestore: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "Error saving receipt to Firestore")
             false
         }
     }
@@ -118,7 +119,7 @@ object FirestoreService {
                 .await()
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting receipt from Firestore: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "Error deleting receipt from Firestore")
             false
         }
     }
@@ -134,7 +135,7 @@ object FirestoreService {
                 .await()
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving wohneinheit to Firestore: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "Error saving wohneinheit to Firestore")
             false
         }
     }
@@ -150,7 +151,7 @@ object FirestoreService {
                 mapToWohneinheit(data)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching wohneinheiten: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "Error fetching wohneinheiten")
             null
         }
     }
@@ -166,7 +167,7 @@ object FirestoreService {
                 mapToReceipt(data)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching receipts: ${e.localizedMessage}")
+            DiagnosticLog.e(TAG, "Error fetching receipts")
             null
         }
     }

@@ -1,7 +1,8 @@
 package com.example.data
 
+import com.example.util.DiagnosticLog
+
 import android.content.Context
-import android.util.Log
 import androidx.room.withTransaction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -281,7 +282,7 @@ class DrivePersistenceRepository(
             put("gebaeudewert", gebaeudewert)
             put("grundUndBodenWert", grundUndBodenWert)
             put("kaufpreisAufteilungQuelle", kaufpreisAufteilungQuelle)
-            put("bildPfad", bildPfad)
+            put("bildPfad", "") // Photo bytes are carried by SupplementalDriveBackup, never device paths.
             put("objektart", objektart)
             put("status", status)
             put("notizen", notizen)
@@ -376,7 +377,7 @@ class DrivePersistenceRepository(
             val profileObj = root.optJSONObject("activeProfile") ?: return null
             return DatevProfileService.importProfileFromJson(profileObj.toString())
         } catch (e: Exception) {
-            Log.e(TAG, "Error deserializing DATEV profile", e)
+            DiagnosticLog.e(TAG, "Error deserializing DATEV profile")
             return null
         }
     }
@@ -556,7 +557,7 @@ class DrivePersistenceRepository(
 
     suspend fun initializeDriveStorage(accessToken: String): DriveInitializationResult {
         try {
-            Log.d(TAG, "Initializing Google Drive storage...")
+            DiagnosticLog.d(TAG, "Initializing Google Drive storage...")
             // 1. Search for existing main folder "Steuerassistent Belege"
             val rootFolderId = GoogleDriveClient.getOrCreateFolder(accessToken, "Steuerassistent Belege")
                 ?: return DriveInitializationResult.Failure("Hauptordner 'Steuerassistent Belege' konnte nicht gefunden oder erstellt werden.")
@@ -566,12 +567,12 @@ class DrivePersistenceRepository(
 
             if (systemFolder != null) {
                 // Existing backup setup found
-                Log.d(TAG, "Found existing app system folder: ${systemFolder.id}")
+                DiagnosticLog.d(TAG, "Found existing app system folder")
                 val appConfigFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig")
                 if (appConfigFile != null) {
                     val configJson = GoogleDriveClient.downloadJson(accessToken, appConfigFile.id)
                     val config = parseDriveAppConfig(configJson)
-                    Log.d(TAG, "Loaded existing app configuration from Drive. Schema version: ${config.schemaVersion}")
+                    DiagnosticLog.d(TAG, "Loaded existing app configuration from Drive. Schema version")
 
                     // Check schema compatibility
                     if (config.schemaVersion > 1) {
@@ -586,7 +587,7 @@ class DrivePersistenceRepository(
 
                     var restored = false
                     if (isLocalEmpty && !hasLocalMetadata) {
-                        Log.d(TAG, "Local receipts database is empty. Triggering automatic restore of Stammdaten...")
+                        DiagnosticLog.d(TAG, "Local receipts database is empty. Triggering automatic restore of Stammdaten...")
                         restoreStammdatenFromDrive(accessToken, config)
                         restored = true
                     }
@@ -596,7 +597,7 @@ class DrivePersistenceRepository(
             }
 
             // If we are here, we must do a fresh setup (first time setup)
-            Log.d(TAG, "No existing backup found. Performing first-time Drive backup initialization...")
+            DiagnosticLog.d(TAG, "No existing backup found. Performing first-time Drive backup initialization...")
             val newSystemFolder = GoogleDriveClient.createAppDataFolder(accessToken)
 
             // Create subfolders in "_BelegApp-Daten"
@@ -649,14 +650,14 @@ class DrivePersistenceRepository(
             return DriveInitializationResult.SuccessCreatedNew(newConfig)
 
         } catch (e: Exception) {
-            Log.e(TAG, "Exception during initializeDriveStorage", e)
+            DiagnosticLog.e(TAG, "Exception during initializeDriveStorage")
             return DriveInitializationResult.Failure(e.message ?: e.toString())
         }
     }
 
     suspend fun saveStammdatenToDrive(accessToken: String, config: DriveAppConfig): Boolean {
         try {
-            Log.d(TAG, "Backing up Stammdaten to Google Drive...")
+            DiagnosticLog.d(TAG, "Backing up Stammdaten to Google Drive...")
 
             // 1. PropertyMetadata
             val localMetadata = localRepository.getPropertyMetadata() ?: PropertyMetadata()
@@ -699,25 +700,32 @@ class DrivePersistenceRepository(
             }
 
             val allSuccessful = metaUpload.success && unitsUpload.success && datevUpload.success && rulesUpload.success && categoriesUpload.success
-            Log.d(TAG, "Backup of Stammdaten finished. All successful? $allSuccessful")
+            DiagnosticLog.d(TAG, "Backup of Stammdaten finished. All successful?")
             return allSuccessful
         } catch (e: Exception) {
-            Log.e(TAG, "Error backing up Stammdaten", e)
+            DiagnosticLog.e(TAG, "Error backing up Stammdaten")
             return false
         }
     }
 
+    private suspend fun restorePropertyMetadata(metadata: PropertyMetadata) {
+        val existingImage = localRepository.getPropertyByPropertyId(metadata.propertyId)?.bildPfad
+            ?.takeIf { it.isNotBlank() && File(it).isFile }
+        val legacyImage = metadata.bildPfad.takeIf { it.isNotBlank() && File(it).isFile }
+        localRepository.restorePropertyMetadata(metadata.copy(bildPfad = existingImage ?: legacyImage.orEmpty()))
+    }
+
     suspend fun restoreStammdatenFromDrive(accessToken: String, config: DriveAppConfig): Boolean {
         try {
-            Log.d(TAG, "Restoring Stammdaten from Google Drive...")
+            DiagnosticLog.d(TAG, "Restoring Stammdaten from Google Drive...")
 
             // 1. PropertyMetadata
             val metaFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "propertyMetadata")
             if (metaFile != null) {
                 val json = GoogleDriveClient.downloadJson(accessToken, metaFile.id)
                 val metadata = parsePropertyMetadata(json)
-                localRepository.updatePropertyMetadata(metadata)
-                Log.d(TAG, "Restored PropertyMetadata successfully.")
+                restorePropertyMetadata(metadata)
+                DiagnosticLog.d(TAG, "Restored PropertyMetadata successfully.")
             }
 
             // 2. Wohneinheiten
@@ -726,7 +734,7 @@ class DrivePersistenceRepository(
                 val json = GoogleDriveClient.downloadJson(accessToken, unitsFile.id)
                 val units = parseWohneinheiten(json)
                 saveWohneinheitenToPrefs(units)
-                Log.d(TAG, "Restored Wohneinheiten successfully.")
+                DiagnosticLog.d(TAG, "Restored Wohneinheiten successfully.")
             }
 
             // 3. DATEV-Profile
@@ -736,7 +744,7 @@ class DrivePersistenceRepository(
                 val profile = deserializeDatevProfile(json)
                 if (profile != null) {
                     DatevProfileService.saveActiveProfile(context, profile)
-                    Log.d(TAG, "Restored DATEV Profile successfully.")
+                    DiagnosticLog.d(TAG, "Restored DATEV Profile successfully.")
                 }
             }
 
@@ -746,12 +754,12 @@ class DrivePersistenceRepository(
                 val json = GoogleDriveClient.downloadJson(accessToken, rulesFile.id)
                 val rules = parseLearnedRules(json)
                 saveLearnedRulesToPrefs(rules)
-                Log.d(TAG, "Restored KI-Lernregeln successfully.")
+                DiagnosticLog.d(TAG, "Restored KI-Lernregeln successfully.")
             }
 
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Error restoring Stammdaten from Drive", e)
+            DiagnosticLog.e(TAG, "Error restoring Stammdaten from Drive")
             return false
         }
     }
@@ -1227,7 +1235,7 @@ class DrivePersistenceRepository(
                 ).success
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving DriveAppConfig", e)
+            DiagnosticLog.e(TAG, "Error saving DriveAppConfig")
             false
         }
     }
@@ -1260,7 +1268,7 @@ class DrivePersistenceRepository(
         accessToken: String? = null
     ): List<ReceiptIndexEntry> {
         if (!accessToken.isNullOrBlank()) {
-            Log.i(TAG, "Read-only index inspection: automatic cleanup is disabled (${entries.size} entries).")
+            DiagnosticLog.i(TAG, "Read-only index inspection: automatic cleanup is disabled (")
         }
         return entries.toList()
     }
@@ -1345,7 +1353,7 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Existing receipt index could not be read; refusing to overwrite it", e)
+                    DiagnosticLog.e(TAG, "Existing receipt index could not be read; refusing to overwrite it")
                     return@withLock false
                 }
             }
@@ -1356,7 +1364,7 @@ class DrivePersistenceRepository(
             // 2. Validate index before upsert
             val preValidation = validateIndex(indexEntries)
             if (!preValidation.isValid) {
-                Log.e(TAG, "Index validation failed before upsert: ${preValidation.errorMessage}")
+                DiagnosticLog.e(TAG, "Index validation failed before upsert")
                 return@withLock false
             }
 
@@ -1366,7 +1374,7 @@ class DrivePersistenceRepository(
             // 4. Validate index after upsert
             val postValidation = validateIndex(indexEntries)
             if (!postValidation.isValid) {
-                Log.e(TAG, "Index validation failed after upsert: ${postValidation.errorMessage}")
+                DiagnosticLog.e(TAG, "Index validation failed after upsert")
                 return@withLock false
             }
 
@@ -1402,7 +1410,7 @@ class DrivePersistenceRepository(
             )
             uploadRes.success
         } catch (e: Exception) {
-            Log.e(TAG, "Exception during index update", e)
+            DiagnosticLog.e(TAG, "Exception during index update")
             false
         }
     }
@@ -1428,7 +1436,7 @@ class DrivePersistenceRepository(
         receipt: Receipt
     ): Boolean = receiptSyncGate.run {
         try {
-            Log.d(TAG, "Syncing receipt to Drive. ID: ${receipt.id}")
+            DiagnosticLog.d(TAG, "Syncing receipt to Drive. ID")
             
             var currentReceipt = receipt
             if (currentReceipt.internalId.isBlank()) {
@@ -1445,7 +1453,7 @@ class DrivePersistenceRepository(
                             matchedDisplayId = parsed.displayId
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Could not fetch metadata for identification", e)
+                        DiagnosticLog.w(TAG, "Could not fetch metadata for identification")
                     }
                 }
 
@@ -1466,7 +1474,7 @@ class DrivePersistenceRepository(
                                 }
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Error checking index for mainDriveFileId", e)
+                            DiagnosticLog.w(TAG, "Error checking index for mainDriveFileId")
                         }
                     }
                 }
@@ -1483,7 +1491,7 @@ class DrivePersistenceRepository(
                                 matchedDisplayId = parsed.displayId
                             }
                         } catch (e: Exception) {
-                            Log.w(TAG, "Error searching appProperties for internalId", e)
+                            DiagnosticLog.w(TAG, "Error searching appProperties for internalId")
                         }
                     }
                 }
@@ -1531,13 +1539,13 @@ class DrivePersistenceRepository(
                                 val matchedId = obj.optString("mainDriveFileId")
                                 if (!matchedId.isNullOrBlank()) {
                                     driveFileId = matchedId
-                                    Log.d(TAG, "Idempotency check: Found driveFileId from receipt-index: $driveFileId")
+                                    DiagnosticLog.d(TAG, "Idempotency check: Found driveFileId from receipt-index")
                                     break
                                 }
                             }
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error checking index for internalId", e)
+                        DiagnosticLog.w(TAG, "Error checking index for internalId")
                     }
                 }
             }
@@ -1554,7 +1562,7 @@ class DrivePersistenceRepository(
                 if (legacyFile != null) {
                     driveFileId = legacyFile.id
                     filename = legacyFile.name
-                    Log.d(TAG, "Legacy compatibility: resolved receipt original globally by stable receipt ID.")
+                    DiagnosticLog.d(TAG, "Legacy compatibility: resolved receipt original globally by stable receipt ID.")
                 }
             }
 
@@ -1562,7 +1570,7 @@ class DrivePersistenceRepository(
                 val foundFile = GoogleDriveClient.findFileByReceiptProperties(accessToken, targetFolderId, currentReceipt.internalId, "ORIGINAL")
                 if (foundFile != null) {
                     driveFileId = foundFile.id
-                    Log.d(TAG, "Idempotency check: Found driveFileId by appProperties: $driveFileId")
+                    DiagnosticLog.d(TAG, "Idempotency check: Found driveFileId by appProperties")
                 }
             }
 
@@ -1591,7 +1599,7 @@ class DrivePersistenceRepository(
                 
                 if (foundId != null) {
                     driveFileId = foundId
-                    Log.d(TAG, "Bestandsmigration: found existing Drive file ID $foundId for filename $filename")
+                    DiagnosticLog.d(TAG, "Bestandsmigration: found existing Drive file ID")
                 }
             }
 
@@ -1628,7 +1636,7 @@ class DrivePersistenceRepository(
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error reading file bytes from $firstPath", e)
+                    DiagnosticLog.w(TAG, "Error reading file bytes from")
                 }
             }
 
@@ -1670,9 +1678,9 @@ class DrivePersistenceRepository(
                             if (driveSha256 == localSha256 && isMagicValid) {
                                 needsCreate = false
                                 filename = actualDriveFilename ?: filename
-                                Log.d(TAG, "Idempotency check: File on Drive is fully identical. Reusing ID: $driveFileId")
+                                DiagnosticLog.d(TAG, "Idempotency check: File on Drive is fully identical. Reusing ID")
                             } else {
-                                Log.d(TAG, "Idempotency check: File on Drive differs. Updating existing file.")
+                                DiagnosticLog.d(TAG, "Idempotency check: File on Drive differs. Updating existing file.")
                                 val appProperties = mapOf(
                                     "appName" to "ImmobilienBelegApp",
                                     "receiptInternalId" to currentReceipt.internalId,
@@ -1698,7 +1706,7 @@ class DrivePersistenceRepository(
                             }
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error downloading/verifying file $driveFileId, will treat as missing", e)
+                        DiagnosticLog.w(TAG, "Error downloading/verifying file")
                         driveFileId = null
                     }
                 }
@@ -1711,7 +1719,7 @@ class DrivePersistenceRepository(
                     if (doubleCheckFile != null) {
                         driveFileId = doubleCheckFile.id
                         needsCreate = false
-                        Log.d(TAG, "Idempotency double-check: Found file right before CREATE: $driveFileId")
+                        DiagnosticLog.d(TAG, "Idempotency double-check: Found file right before CREATE")
                     }
                 }
 
@@ -1735,7 +1743,7 @@ class DrivePersistenceRepository(
                     if (uploadedId != null) {
                         val checkBytes = GoogleDriveClient.downloadFileBytes(accessToken, uploadedId)
                         if (checkBytes == null || checkBytes.isEmpty() || checkBytes.take(4) != fileBytes.take(4)) {
-                            Log.e(TAG, "Uploaded file check failed!")
+                            DiagnosticLog.e(TAG, "Uploaded file check failed!")
                             val updatedReceipt = currentReceipt.copy(
                                 syncStatus = "ERROR",
                                 syncError = "Die hochgeladene Datei ist fehlerhaft oder leer."
@@ -1910,7 +1918,7 @@ class DrivePersistenceRepository(
                     isArchivedToDrive = true
                 )
                 localRepository.insert(finalReceipt)
-                Log.d(TAG, "Receipt fully synced and saved locally. ID: ${finalReceipt.id}")
+                DiagnosticLog.d(TAG, "Receipt fully synced and saved locally. ID")
                 return@run true
             } else {
                 val updatedReceipt = currentReceipt.copy(
@@ -1922,7 +1930,7 @@ class DrivePersistenceRepository(
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Sync failed with exception", e)
+            DiagnosticLog.e(TAG, "Sync failed with exception")
             val updatedReceipt = receipt.copy(
                 syncStatus = "ERROR",
                 syncError = e.message ?: e.toString()
@@ -2227,7 +2235,7 @@ class DrivePersistenceRepository(
 
             return DriveFileResult(true, uploadedFileId, null)
         } catch (e: Exception) {
-            Log.e(TAG, "Error uploading tombstone for ${tombstone.internalId}", e)
+            DiagnosticLog.e(TAG, "Error uploading tombstone for")
             return DriveFileResult(false, null, e.message ?: e.toString())
         }
     }
@@ -2275,13 +2283,13 @@ class DrivePersistenceRepository(
                             )
                             tombstones[tombstone.internalId] = tombstone
                         } catch (e: Exception) {
-                            Log.w(TAG, "Error downloading/parsing tombstone file $fileId", e)
+                            DiagnosticLog.w(TAG, "Error downloading/parsing tombstone file")
                         }
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching tombstones from Drive", e)
+            DiagnosticLog.e(TAG, "Error fetching tombstones from Drive")
         }
         return tombstones
     }
@@ -2324,7 +2332,7 @@ class DrivePersistenceRepository(
             // Step 2.2 & 2.3: Upload and verify tombstone
             val uploadRes = uploadTombstone(accessToken, config, tombstone)
             if (!uploadRes.success) {
-                Log.e(TAG, "Tombstone upload failed: ${uploadRes.errorMessage}")
+                DiagnosticLog.e(TAG, "Tombstone upload failed")
                 localRepository.softDelete(
                     id = receipt.id,
                     status = "DELETE_PENDING",
@@ -2376,7 +2384,7 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error updating metadata JSON on Drive for deletion", e)
+                    DiagnosticLog.w(TAG, "Error updating metadata JSON on Drive for deletion")
                 }
             }
 
@@ -2392,7 +2400,7 @@ class DrivePersistenceRepository(
 
             return DeletionResult.Success(tombstone)
         } catch (e: Exception) {
-            Log.e(TAG, "Error during deleteReceiptWithSync", e)
+            DiagnosticLog.e(TAG, "Error during deleteReceiptWithSync")
             localRepository.softDelete(
                 id = receipt.id,
                 status = "DELETE_PENDING",
@@ -2477,7 +2485,7 @@ class DrivePersistenceRepository(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error restoring receipt on Drive", e)
+                DiagnosticLog.e(TAG, "Error restoring receipt on Drive")
             }
         }
 
@@ -2545,7 +2553,7 @@ class DrivePersistenceRepository(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error deleting Drive files during permanent deletion", e)
+                DiagnosticLog.e(TAG, "Error deleting Drive files during permanent deletion")
             }
         }
 
@@ -2648,7 +2656,7 @@ class DrivePersistenceRepository(
                 for (entry in indexEntries) {
                     val tombstone = tombstones[entry.internalId]
                     if (!RestoreEligibilityPolicy.shouldRestore(entry.syncStatus, tombstone?.status)) {
-                        Log.i(TAG, "Beleg ${entry.internalId} (${entry.displayId}) ist gelöscht (Tombstone) und wird bei der Wiederherstellung übersprungen.")
+                        DiagnosticLog.i(TAG, "Beleg")
                         continue
                     }
 
@@ -2783,7 +2791,7 @@ class DrivePersistenceRepository(
                 }
 
                 snapshot.propertyMetadata?.let {
-                    localRepository.updatePropertyMetadata(it)
+                    restorePropertyMetadata(it)
                 }
 
                 for (persisted in snapshot.receipts) {
@@ -2820,7 +2828,7 @@ class DrivePersistenceRepository(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Room Transaction error during restore", e)
+            DiagnosticLog.e(TAG, "Room Transaction error during restore")
             journal = journal.copy(phase = "FAILED", error = "Room Transaktion fehlgeschlagen: ${e.message}")
             saveRestoreJournal(journal)
             return DriveRestoreReport(
@@ -2845,7 +2853,7 @@ class DrivePersistenceRepository(
                 saveLearnedRulesToPrefs(snapshot.aiLearnedRules)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Warnung beim Schreiben der SharedPreferences nach Restore: ${e.message}")
+            DiagnosticLog.w(TAG, "Warnung beim Schreiben der SharedPreferences nach Restore")
         }
 
         journal = journal.copy(phase = FullRestorePhase.COMPLETE.name, completedAt = nowStr)
@@ -2876,7 +2884,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig
     ): OriginalReceiptAuditReport {
         val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-        Log.i(TAG, "Starting read-only Originalbelege Magic-Bytes Audit...")
+        DiagnosticLog.i(TAG, "Starting read-only Originalbelege Magic-Bytes Audit...")
 
         val auditItems = mutableListOf<OriginalReceiptAuditItem>()
 
@@ -2912,7 +2920,7 @@ class DrivePersistenceRepository(
                     )
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error downloading index file for audit", e)
+                DiagnosticLog.e(TAG, "Error downloading index file for audit")
             }
         }
 
@@ -3191,13 +3199,13 @@ class DrivePersistenceRepository(
             localRepository.insert(updatedReceipt)
             return targetFile.absolutePath
         } catch (e: Exception) {
-            Log.e(TAG, "Error downloading document on demand for fileId $fileId", e)
+            DiagnosticLog.e(TAG, "Error downloading document on demand for fileId")
             throw e
         }
     }
 
     suspend fun runFullRestoreEndToEndTest(accessToken: String, config: DriveAppConfig): DriveRestoreReport {
-        Log.d(TAG, "Starting E2E Non-Destructive Restore Test...")
+        DiagnosticLog.d(TAG, "Starting E2E Non-Destructive Restore Test...")
         val snapshot = buildRestoreSnapshot(accessToken, config)
         val blockingErrors = snapshot.errors.filter { it.isBlocking }
         if (blockingErrors.isNotEmpty()) {
@@ -3210,7 +3218,7 @@ class DrivePersistenceRepository(
         }
 
         val localCountBefore = localRepository.getAllReceiptsList().size
-        Log.d(TAG, "Non-destructive dry-run snapshot test succeeded. Local count: $localCountBefore, Snapshot receipts: ${snapshot.receipts.size}")
+        DiagnosticLog.d(TAG, "Non-destructive dry-run snapshot test succeeded. Local count")
 
         // A dry run must never import, replace, or otherwise mutate local data.
         // Report the validated snapshot contents without invoking executeFullDriveRestore.
@@ -3272,7 +3280,7 @@ class DrivePersistenceRepository(
                             }
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error checking index for existing test receipt", e)
+                        DiagnosticLog.w(TAG, "Error checking index for existing test receipt")
                     }
                 }
             }
@@ -3360,7 +3368,7 @@ class DrivePersistenceRepository(
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error in testDriveReceiptStorage", e)
+            DiagnosticLog.e(TAG, "Error in testDriveReceiptStorage")
             DriveReceiptTestResult(success = false, errorMessage = "Fehler beim E2E-Testbeleg-Test: ${e.message}")
         }
     }
@@ -3380,7 +3388,7 @@ class DrivePersistenceRepository(
         return try {
             parseDriveAppConfig(GoogleDriveClient.downloadJson(accessToken, configFile.id))
         } catch (e: Exception) {
-            Log.e(TAG, "Bestehende Drive-Konfiguration konnte nicht gelesen werden", e)
+            DiagnosticLog.e(TAG, "Bestehende Drive-Konfiguration konnte nicht gelesen werden")
             null
         }
     }
@@ -3453,7 +3461,7 @@ class DrivePersistenceRepository(
                     )
                     if (foundFileByProps != null) {
                         driveMetadataFileId = foundFileByProps.id
-                        Log.d(TAG, "Metadata found on Drive via properties query: $driveMetadataFileId")
+                        DiagnosticLog.d(TAG, "Metadata found on Drive via properties query")
                     } else {
                         // b) Fallback: search by exact filename: {internalId}.json
                         val foundFileIdByName = GoogleDriveClient.findFileByName(
@@ -3461,7 +3469,7 @@ class DrivePersistenceRepository(
                         )
                         if (foundFileIdByName != null) {
                             driveMetadataFileId = foundFileIdByName
-                            Log.d(TAG, "Metadata found on Drive via filename fallback: $driveMetadataFileId")
+                            DiagnosticLog.d(TAG, "Metadata found on Drive via filename fallback")
                         }
                     }
                 }
@@ -3493,15 +3501,15 @@ class DrivePersistenceRepository(
                         val dbReceipt2 = localRepository.getReceiptById(currentReceipt.id) ?: currentReceipt
                         val updatedReceipt = dbReceipt2.copy(driveMetadataFileId = driveMetadataFileId)
                         localRepository.insert(updatedReceipt)
-                        Log.d(TAG, "Metadata successfully saved to local database: $driveMetadataFileId")
+                        DiagnosticLog.d(TAG, "Metadata successfully saved to local database")
                     }
                     driveMetadataFileId
                 } else {
-                    Log.e(TAG, "Failed to upload or update metadata on Drive: ${uploadRes.errorMessage}")
+                    DiagnosticLog.e(TAG, "Failed to upload or update metadata on Drive")
                     null
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Exception in upsertReceiptMetadata", e)
+                DiagnosticLog.e(TAG, "Exception in upsertReceiptMetadata")
                 null
             }
         }
@@ -3524,7 +3532,7 @@ class DrivePersistenceRepository(
         validationResult: com.example.ui.FileValidationResult
     ): RepairResult {
         try {
-            Log.d(TAG, "Starting repair and upload for receipt internalId: ${receipt.internalId}")
+            DiagnosticLog.d(TAG, "Starting repair and upload for receipt internalId")
 
             // 1. Resolve Drive target folder
             val targetFolderId = getReceiptTargetFolderId(
@@ -3563,7 +3571,7 @@ class DrivePersistenceRepository(
             }
 
             // 5. Post-Upload Verification
-            Log.d(TAG, "Performing post-upload verification for fileId: $uploadedFileId")
+            DiagnosticLog.d(TAG, "Performing post-upload verification for fileId")
             val checkBytes = GoogleDriveClient.downloadFileBytes(accessToken, uploadedFileId)
             if (checkBytes == null || checkBytes.isEmpty()) {
                 return RepairResult(false, errorMessage = "Verifikation fehlgeschlagen: Hochgeladene Datei konnte nicht zurückgeladen werden.")
@@ -3657,16 +3665,16 @@ class DrivePersistenceRepository(
             )
             val indexUpdateOk = updateReceiptIndexInDrive(accessToken, config, indexEntry)
             if (!indexUpdateOk) {
-                Log.w(TAG, "Index update warning during repair: Index file could not be updated in Drive.")
+                DiagnosticLog.w(TAG, "Index update warning during repair: Index file could not be updated in Drive.")
             }
 
             // Update metadata.json in Drive
             val metaUpdateOk = uploadReceiptMetadata(accessToken, config, updatedReceipt)
             if (!metaUpdateOk) {
-                Log.w(TAG, "Metadata update warning during repair: Metadata file could not be updated in Drive.")
+                DiagnosticLog.w(TAG, "Metadata update warning during repair: Metadata file could not be updated in Drive.")
             }
 
-            Log.i(TAG, "Repair and upload completed successfully for ${receipt.internalId}. New DriveFileId: $uploadedFileId")
+            DiagnosticLog.i(TAG, "Repair and upload completed successfully for")
             return RepairResult(
                 success = true,
                 updatedReceipt = updatedReceipt,
@@ -3674,7 +3682,7 @@ class DrivePersistenceRepository(
                 legacyInvalidFileId = legacyFileId
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error in repairAndUploadOriginalDocument", e)
+            DiagnosticLog.e(TAG, "Error in repairAndUploadOriginalDocument")
             return RepairResult(false, errorMessage = "Exception während Reparatur: ${e.message}")
         }
     }
@@ -3764,7 +3772,7 @@ class DrivePersistenceRepository(
             }
             entries
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting index from Drive", e)
+            DiagnosticLog.e(TAG, "Error getting index from Drive")
             emptyList()
         }
     }
@@ -3793,7 +3801,7 @@ class DrivePersistenceRepository(
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "document-index.json konnte für die Inventur nicht gelesen werden", e)
+            DiagnosticLog.e(TAG, "document-index.json konnte für die Inventur nicht gelesen werden")
             emptyList()
         }
     }

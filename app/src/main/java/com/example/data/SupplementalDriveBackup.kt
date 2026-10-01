@@ -1,15 +1,20 @@
 package com.example.data
 
 import android.content.Context
+import android.util.Base64
+import java.io.File
+import java.security.MessageDigest
+import java.util.UUID
 import androidx.room.withTransaction
 import com.example.api.GoogleDriveClient
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.flow.first
 
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 13
+    internal const val SCHEMA_VERSION = 14
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
@@ -47,6 +52,7 @@ object SupplementalDriveBackup {
         put("loans", JSONArray().apply { database.loanDao().getAllLoans().forEach { put(it.toJson()) } })
         put("properties", JSONArray().apply { database.propertyDao().getAllProperties().forEach { put(it.toBackupJson()) } })
         put("logbookTrips", JSONArray().apply { database.logbookDao().getAllTrips().forEach { put(it.toJson()) } })
+        put("exportAuditRuns", JSONArray().apply { database.exportAuditDao().getAllRunsFlow().first().forEach { put(it.toBackupJson()) } })
         put("standardRoutes", JSONArray().apply { database.logbookDao().getAllStandardRoutes().forEach { put(it.toJson()) } })
         put("managedDocuments", JSONArray().apply { database.managedDocumentDao().getAll().forEach { put(it.toBackupJson()) } })
         put("bankAccounts", JSONArray().apply { database.bankDao().getAllAccounts().forEach { put(it.toBackupJson()) } })
@@ -57,12 +63,7 @@ object SupplementalDriveBackup {
         put("bankRentAssignments", JSONArray().apply { database.bankRentAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })
         put("bankLoanAssignments", JSONArray().apply { database.bankLoanAssignmentDao().getAll().forEach { put(it.toBackupJson()) } })
         put("bankRecurringPatterns", JSONArray().apply { database.bankRecurringPatternDao().getAll().forEach { put(it.toBackupJson()) } })
-        put("rentPlanPrefs", prefsToJson(context, "rent_plan_prefs"))
-        put("tenantHistoryPrefs", prefsToJson(context, "tenant_history_prefs"))
-        put("loanInterestAssignments", prefsToJson(context, "loan_interest_assignments"))
-        put("annualTaxApprovalPrefs", prefsToJson(context, "annual_tax_approval_prefs"))
-        put("propertyUnitPrefs", prefsToJson(context, "wohneinheiten_prefs"))
-        // ai_provider_settings is deliberately excluded: no API key may enter Drive backup.
+        PersistentPreferenceInventory.writePayload(context, this)
     }
 
     internal suspend fun restorePayload(
@@ -71,13 +72,51 @@ object SupplementalDriveBackup {
         root: JSONObject,
         replaceManagedDocuments: Boolean = false
     ) {
+        require(root.optInt("schemaVersion", 1) <= SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
+        PersistentPreferenceInventory.validatePayload(root)
+        // A malformed/null array is not an intentional empty snapshot, especially for replace.
+        listOf("loans", "properties", "logbookTrips", "standardRoutes", "exportAuditRuns", "managedDocuments",
+            "bankAccounts", "bankTransactions", "bankReceiptLinks", "bankLearningRules", "bankRuleEvidence",
+            "bankRentAssignments", "bankLoanAssignments", "bankRecurringPatterns").forEach { key ->
+            if (root.has(key)) root.getJSONArray(key)
+        }
+        // Validate/decode photos before touching Room; filenames depend on content, never a supplied path.
+        val propertyArray = root.optJSONArray("properties") ?: JSONArray()
+        val restoredProperties = (0 until propertyArray.length()).map { index ->
+            val json = propertyArray.getJSONObject(index)
+            val property = json.toPropertyMetadata()
+            val encoded = json.optString("imageBase64", "")
+            val current = database.propertyDao().getPropertyByPropertyId(property.propertyId)
+            val localImage = if (encoded.isNotBlank()) {
+                val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+                require(bytes.isNotEmpty()) { "Leeres Objektbild in der Sicherung." }
+                val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+                    .joinToString("") { "%02x".format(it) }
+                val folder = File(context.filesDir, "property-images").apply { mkdirs() }
+                val owner = UUID.nameUUIDFromBytes(property.propertyId.toByteArray(Charsets.UTF_8))
+                val file = File(folder, "$owner-$digest.jpg")
+                if (!file.isFile || !file.readBytes().contentEquals(bytes)) {
+                    val staging = File.createTempFile("restore-", ".tmp", folder)
+                    try {
+                        staging.writeBytes(bytes)
+                        check(staging.renameTo(file)) { "Objektbild konnte nicht wiederhergestellt werden." }
+                    } finally { staging.delete() }
+                }
+                file.absolutePath
+            } else {
+                current?.bildPfad?.takeIf { File(it).isFile }
+                    ?: property.bildPfad.takeIf { it.isNotBlank() && File(it).isFile }.orEmpty()
+            }
+            property.copy(bildPfad = localImage)
+        }
         database.withTransaction {
             val loans = root.optJSONArray("loans") ?: JSONArray()
             for (index in 0 until loans.length()) database.loanDao().upsertLoan(loans.getJSONObject(index).toLoan())
-            val properties = root.optJSONArray("properties") ?: JSONArray()
-            for (index in 0 until properties.length()) database.propertyDao().insertPropertyMetadata(properties.getJSONObject(index).toPropertyMetadata())
+            restoredProperties.forEach { database.propertyDao().upsertRestoredPropertyMetadata(it) }
             val trips = root.optJSONArray("logbookTrips") ?: JSONArray()
             for (index in 0 until trips.length()) database.logbookDao().upsertTrip(trips.getJSONObject(index).toTrip())
+            val auditRuns = root.optJSONArray("exportAuditRuns") ?: JSONArray()
+            for (index in 0 until auditRuns.length()) database.exportAuditDao().insertRun(auditRuns.getJSONObject(index).toExportAuditRun())
             val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
             for (index in 0 until routes.length()) database.logbookDao().upsertStandardRoute(routes.getJSONObject(index).toStandardRoute())
             if (replaceManagedDocuments && root.has("managedDocuments")) {
@@ -117,12 +156,31 @@ object SupplementalDriveBackup {
             }
         }
         // Preferences are intentionally written only after the Room transaction committed.
-        jsonToPrefs(context, "rent_plan_prefs", root.optJSONObject("rentPlanPrefs"))
-        jsonToPrefs(context, "tenant_history_prefs", root.optJSONObject("tenantHistoryPrefs"))
-        jsonToPrefs(context, "loan_interest_assignments", root.optJSONObject("loanInterestAssignments"))
-        jsonToPrefs(context, "annual_tax_approval_prefs", root.optJSONObject("annualTaxApprovalPrefs"))
-        jsonToPrefs(context, "wohneinheiten_prefs", root.optJSONObject("propertyUnitPrefs"))
+        PersistentPreferenceInventory.restorePayload(context, root)
     }
+
+    private fun ExportAuditRun.toBackupJson() = JSONObject().apply {
+        put("exportlaufId", exportlaufId); put("timestamp", timestamp); put("user", user)
+        put("propertyName", propertyName); put("periodStart", periodStart); put("periodEnd", periodEnd)
+        put("filterSummary", filterSummary); put("exportierteReceiptIdsJson", exportierteReceiptIdsJson)
+        put("ausgeschlosseneReceiptIdsJson", ausgeschlosseneReceiptIdsJson)
+        put("kanzleiprofilNameVersion", kanzleiprofilNameVersion); put("zipFileName", zipFileName)
+        put("zipFileSizeBytes", zipFileSizeBytes); put("zipSha256", zipSha256); put("status", status)
+        put("totalAmount", totalAmount); put("bookingCount", bookingCount); put("warningsCount", warningsCount)
+        put("logMessage", logMessage)
+    }
+
+    private fun JSONObject.toExportAuditRun() = ExportAuditRun(
+        exportlaufId = getString("exportlaufId"), timestamp = getLong("timestamp"), user = optString("user", ""),
+        propertyName = optString("propertyName", ""), periodStart = optString("periodStart", ""),
+        periodEnd = optString("periodEnd", ""), filterSummary = optString("filterSummary", ""),
+        exportierteReceiptIdsJson = optString("exportierteReceiptIdsJson", "[]"),
+        ausgeschlosseneReceiptIdsJson = optString("ausgeschlosseneReceiptIdsJson", "[]"),
+        kanzleiprofilNameVersion = optString("kanzleiprofilNameVersion", ""), zipFileName = optString("zipFileName", ""),
+        zipFileSizeBytes = optLong("zipFileSizeBytes", 0L), zipSha256 = optString("zipSha256", ""),
+        status = optString("status", "SUCCESS"), totalAmount = optDouble("totalAmount", 0.0),
+        bookingCount = optInt("bookingCount", 0), warningsCount = optInt("warningsCount", 0), logMessage = optString("logMessage", "")
+    )
 
     private fun BankAccount.toBackupJson() = JSONObject().apply {
         put("accountId", accountId); put("displayName", displayName); put("bankName", bankName)
@@ -268,7 +326,12 @@ object SupplementalDriveBackup {
         put("uebergangNutzenLasten", uebergangNutzenLasten); put("wohneinheiten", wohneinheiten)
         put("gesamtKaufpreis", gesamtKaufpreis); put("gebaeudewert", gebaeudewert)
         put("grundUndBodenWert", grundUndBodenWert); put("kaufpreisAufteilungQuelle", kaufpreisAufteilungQuelle)
-        put("bildPfad", bildPfad); put("objektart", objektart); put("status", status); put("notizen", notizen)
+        if (bildPfad.isNotBlank()) {
+            val image = File(bildPfad)
+            check(image.isFile && image.length() > 0) { "Objektbild fehlt lokal. Sicherung ist unvollständig." }
+            put("imageBase64", Base64.encodeToString(image.readBytes(), Base64.NO_WRAP))
+        }
+        put("objektart", objektart); put("status", status); put("notizen", notizen)
         put("afaShorterYears", afaShorterYears); put("afaShorterStartDate", afaShorterStartDate)
         put("afaShorterReason", afaShorterReason); put("afaShorterDocumentId", afaShorterDocumentId)
         put("afaShorterConfirmed", afaShorterConfirmed)
@@ -391,34 +454,4 @@ object SupplementalDriveBackup {
     private fun JSONObject.nullableInt(name: String): Int? = if (!has(name) || isNull(name)) null else optInt(name)
     private fun JSONObject.nullableString(name: String): String? = if (!has(name) || isNull(name)) null else optString(name).takeIf(String::isNotBlank)
 
-    private fun prefsToJson(context: Context, name: String): JSONObject = JSONObject().apply {
-        context.getSharedPreferences(name, Context.MODE_PRIVATE).all.forEach { (key, value) ->
-            when (value) {
-                is String -> put(key, typed("string", value))
-                is Int -> put(key, typed("int", value))
-                is Long -> put(key, typed("long", value))
-                is Float -> put(key, typed("float", value.toDouble()))
-                is Boolean -> put(key, typed("boolean", value))
-            }
-        }
-    }
-
-    private fun typed(type: String, value: Any) = JSONObject().put("type", type).put("value", value)
-
-    private fun jsonToPrefs(context: Context, name: String, json: JSONObject?) {
-        if (json == null) return
-        val editor = context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear()
-        val keys = json.keys()
-        while (keys.hasNext()) {
-            val key = keys.next(); val entry = json.optJSONObject(key) ?: continue
-            when (entry.optString("type")) {
-                "string" -> editor.putString(key, entry.optString("value", ""))
-                "int" -> editor.putInt(key, entry.optInt("value", 0))
-                "long" -> editor.putLong(key, entry.optLong("value", 0L))
-                "float" -> editor.putFloat(key, entry.optDouble("value", 0.0).toFloat())
-                "boolean" -> editor.putBoolean(key, entry.optBoolean("value", false))
-            }
-        }
-        editor.apply()
-    }
 }

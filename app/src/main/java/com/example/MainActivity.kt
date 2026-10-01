@@ -6,7 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
     setContent {
       MyApplicationTheme {
         val viewModel: ReceiptViewModel = viewModel()
-        val currentScreen by viewModel.currentScreen.collectAsState()
+        val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
         val backStack = remember { mutableStateListOf<AppScreen>() }
         var lastObservedScreen by remember { mutableStateOf(currentScreen) }
         var handlingBackNavigation by remember { mutableStateOf(false) }
@@ -35,11 +35,18 @@ class MainActivity : ComponentActivity() {
             if (handlingBackNavigation) {
               handlingBackNavigation = false
             } else {
-              if (backStack.lastOrNull() != lastObservedScreen) {
-                backStack.add(lastObservedScreen)
-              }
-              if (backStack.size > 20) {
-                backStack.removeAt(0)
+              val returnIndex = backStack.indexOfLast { it == currentScreen }
+              if (returnIndex >= 0) {
+                // Local back arrows/handlers already returned to an earlier destination.
+                // Remove that destination and its closed children instead of recording them again.
+                while (backStack.size > returnIndex) backStack.removeAt(backStack.lastIndex)
+              } else {
+                if (backStack.lastOrNull() != lastObservedScreen) {
+                  backStack.add(lastObservedScreen)
+                }
+                if (backStack.size > 20) {
+                  backStack.removeAt(0)
+                }
               }
             }
             lastObservedScreen = currentScreen

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -21,7 +23,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -847,10 +848,10 @@ internal fun buildAdvisorAnnualSummary(
 @Composable
 fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
-    val receipts by viewModel.propertyReceipts.collectAsState()
-    val propertyState by viewModel.propertyMetadata.collectAsState()
-    val units by viewModel.wohneinheitenStatus.collectAsState()
-    val loans by viewModel.loans.collectAsState()
+    val receipts by viewModel.propertyReceipts.collectAsStateWithLifecycle()
+    val propertyState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val loans by viewModel.loans.collectAsStateWithLifecycle()
     val metadata = propertyState ?: PropertyMetadata()
     val availableYears = remember(receipts) {
         receipts.mapNotNull { it.yearOrNull() }.distinct().sortedDescending()
