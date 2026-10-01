@@ -66,7 +66,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Snackbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -102,18 +102,18 @@ private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COM
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean) -> Unit = {}) {
-    val transactions by viewModel.bankTransactions.collectAsState()
-    val accounts by viewModel.bankAccounts.collectAsState()
-    val links by viewModel.bankReceiptLinks.collectAsState()
-    val receipts by viewModel.receipts.collectAsState()
-    val suggestions by viewModel.bankMatchSuggestions.collectAsState()
-    val assignments by viewModel.bankRentAssignments.collectAsState()
-    val units by viewModel.wohneinheitenStatus.collectAsState()
-    val rentSuggestions by viewModel.bankRentSuggestions.collectAsState()
-    val importStatus by viewModel.bankImportStatus.collectAsState()
-    val learningRules by viewModel.bankLearningRules.collectAsState()
-    val undoNotice by viewModel.bankUndoNotice.collectAsState()
-    val returnToTransactionId by viewModel.bankTransactionDetailsReturnId.collectAsState()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val accounts by viewModel.bankAccounts.collectAsStateWithLifecycle()
+    val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val suggestions by viewModel.bankMatchSuggestions.collectAsStateWithLifecycle()
+    val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val rentSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
+    val importStatus by viewModel.bankImportStatus.collectAsStateWithLifecycle()
+    val learningRules by viewModel.bankLearningRules.collectAsStateWithLifecycle()
+    val undoNotice by viewModel.bankUndoNotice.collectAsStateWithLifecycle()
+    val returnToTransactionId by viewModel.bankTransactionDetailsReturnId.collectAsStateWithLifecycle()
 
     var searchText by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(BankCompactFilter.ALL) }

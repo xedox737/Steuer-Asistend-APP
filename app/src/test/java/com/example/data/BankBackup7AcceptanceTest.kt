@@ -32,7 +32,7 @@ class BankBackup7AcceptanceTest {
             importedAt = "import", updatedAt = "status-change"
         ))
         val payload = SupplementalDriveBackup.createPayload(context, database)
-        assertEquals(13, payload.getInt("schemaVersion"))
+        assertEquals(14, payload.getInt("schemaVersion"))
         database.bankDao().upsertTransaction(database.bankDao().getTransaction("t")!!.copy(reconciliationStatus = BankReconciliationStatus.OPEN, noReceiptReason = "", updatedAt = "other"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)

@@ -1,10 +1,11 @@
 package com.example.api
 
+import com.example.util.DiagnosticLog
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
-import android.util.Log
 import com.example.data.Receipt
 import com.example.ui.WohneinheitStatus
 import okhttp3.MediaType.Companion.toMediaType
@@ -115,7 +116,7 @@ object GoogleDriveClient {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving category mapping", e)
+            DiagnosticLog.e(TAG, "Error saving category mapping")
         }
     }
 
@@ -145,7 +146,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding file by receipt properties: $receiptInternalId", e)
+            DiagnosticLog.e(TAG, "Error finding file by receipt properties")
         }
         return null
     }
@@ -179,7 +180,7 @@ object GoogleDriveClient {
         }
 
         folderCache[cacheKey]?.let { cachedId ->
-            Log.d(TAG, "Using cached folder ID for '$cacheKey': $cachedId")
+            DiagnosticLog.d(TAG, "Using cached folder ID for '")
             return cachedId
         }
 
@@ -188,7 +189,7 @@ object GoogleDriveClient {
             val prefs = context.getSharedPreferences("category_folder_mappings_prefs", Context.MODE_PRIVATE)
             val mappedId = prefs.getString(canonicalPathKey, null)
             if (!mappedId.isNullOrBlank()) {
-                Log.d(TAG, "Using SharedPreferences mapped folder ID for path '$canonicalPathKey': $mappedId")
+                DiagnosticLog.d(TAG, "Using SharedPreferences mapped folder ID for path '")
                 folderCache[cacheKey] = mappedId
                 return mappedId
             }
@@ -228,12 +229,12 @@ object GoogleDriveClient {
                             if (files != null && files.length() > 0) {
                                 // "bei einem eindeutigen Treffer dessen ID verwenden"
                                 folderId = files.getJSONObject(0).getString("id")
-                                Log.d(TAG, "Found existing category folder by appProperties: $folderId for path '$canonicalPathKey'")
+                                DiagnosticLog.d(TAG, "Found existing category folder by appProperties")
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error searching category folder by properties", e)
+                    DiagnosticLog.e(TAG, "Error searching category folder by properties")
                 }
             }
 
@@ -259,12 +260,12 @@ object GoogleDriveClient {
                             val files = json.optJSONArray("files")
                             if (files != null && files.length() > 0) {
                                 folderId = files.getJSONObject(0).getString("id")
-                                Log.d(TAG, "Found existing folder by name: $folderId for '$trimmedName'")
+                                DiagnosticLog.d(TAG, "Found existing folder by name")
                             }
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error searching folder by name", e)
+                    DiagnosticLog.e(TAG, "Error searching folder by name")
                 }
             }
 
@@ -306,7 +307,7 @@ object GoogleDriveClient {
                     response.close()
                     val json = JSONObject(responseBody)
                     val createdId = json.getString("id")
-                    Log.d(TAG, "Created new folder: $createdId for '$trimmedName'")
+                    DiagnosticLog.d(TAG, "Created new folder")
                     
                     folderId = createdId
                     folderCache[cacheKey] = createdId
@@ -334,7 +335,7 @@ object GoogleDriveClient {
                             if (checkFiles != null && checkFiles.length() > 1) {
                                 // A parallel duplicate was created! Use the oldest one.
                                 val oldestId = checkFiles.getJSONObject(0).getString("id")
-                                Log.w(TAG, "Parallel duplicate detected for '$canonicalPathKey'. Overriding with oldest folder ID: $oldestId")
+                                DiagnosticLog.w(TAG, "Parallel duplicate detected for '")
                                 folderId = oldestId
                                 folderCache[cacheKey] = oldestId
                                 if (systemFolderId != null && context != null) {
@@ -349,10 +350,10 @@ object GoogleDriveClient {
                     return@withLock folderId
                 } else {
                     response.close()
-                    Log.e(TAG, "Create folder failed: ${response.code} ${response.message}")
+                    DiagnosticLog.e(TAG, "Create folder failed")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error creating folder", e)
+                DiagnosticLog.e(TAG, "Error creating folder")
             }
             
             return@withLock null
@@ -484,15 +485,15 @@ object GoogleDriveClient {
 
                 if (result.size <= maxFileSizeBytes || attempt == 4) {
                     pdfBytes = result
-                    Log.d(TAG, "PDF generated successfully. Attempt: $attempt, Size: ${result.size / 1024} KB")
+                    DiagnosticLog.d(TAG, "PDF generated successfully. Attempt")
                     break
                 } else {
-                    Log.d(TAG, "PDF size (${result.size / 1024} KB) exceeds 500KB limit. Retrying with higher compression...")
+                    DiagnosticLog.d(TAG, "PDF size (")
                     maxDimension = (maxDimension * 0.7).toInt().coerceAtLeast(350)
                     jpegQuality = (jpegQuality * 0.65).toInt().coerceAtLeast(25)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error generating PDF", e)
+                DiagnosticLog.e(TAG, "Error generating PDF")
                 try { document.close() } catch (_: Exception) {}
                 break
             }
@@ -592,12 +593,12 @@ object GoogleDriveClient {
                     val files = json.optJSONArray("files")
                     if (files != null && files.length() > 0) {
                         existingFileId = files.getJSONObject(0).getString("id")
-                        Log.d(TAG, "Found existing file: $existingFileId")
+                        DiagnosticLog.d(TAG, "Found existing file")
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error searching file", e)
+            DiagnosticLog.e(TAG, "Error searching file")
         }
 
         // 2. Upload or Update
@@ -654,15 +655,15 @@ object GoogleDriveClient {
         return try {
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
-                    Log.d(TAG, "File ${if (existingFileId != null) "updated" else "uploaded"} successfully: $filename")
+                    DiagnosticLog.d(TAG, "File")
                     true
                 } else {
-                    Log.e(TAG, "Upload failed: ${response.code} ${response.message} ${response.body?.string()}")
+                    DiagnosticLog.e(TAG, "Upload failed")
                     false
                 }
             }
         } catch (e: IOException) {
-            Log.e(TAG, "Error uploading file", e)
+            DiagnosticLog.e(TAG, "Error uploading file")
             false
         }
     }
@@ -689,7 +690,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding AppData folder", e)
+            DiagnosticLog.e(TAG, "Error finding AppData folder")
         }
         return null
     }
@@ -810,7 +811,7 @@ object GoogleDriveClient {
                 response.isSuccessful || response.code == 404
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error deleting file $fileId", e)
+            DiagnosticLog.e(TAG, "Error deleting file")
             false
         }
     }
@@ -860,7 +861,7 @@ object GoogleDriveClient {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error in searchFiles", e)
+                DiagnosticLog.e(TAG, "Error in searchFiles")
             }
             list
         }
@@ -881,12 +882,12 @@ object GoogleDriveClient {
                 if (response.isSuccessful) {
                     return response.body?.bytes()
                 } else {
-                    Log.e(TAG, "Download file bytes failed: ${response.code} ${response.message}")
+                    DiagnosticLog.e(TAG, "Download file bytes failed")
                     return null
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error downloading file bytes for fileId $fileId", e)
+            DiagnosticLog.e(TAG, "Error downloading file bytes for fileId")
             return null
         }
     }
@@ -915,7 +916,7 @@ object GoogleDriveClient {
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Could not read Drive metadata for document migration", e)
+            DiagnosticLog.e(TAG, "Could not read Drive metadata for document migration")
             null
         }
     }
@@ -1005,7 +1006,7 @@ object GoogleDriveClient {
         return try {
             client.newCall(request).execute().use { it.isSuccessful }
         } catch (e: Exception) {
-            Log.e(TAG, "Could not move Drive file during document migration", e)
+            DiagnosticLog.e(TAG, "Could not move Drive file during document migration")
             false
         }
     }
@@ -1042,7 +1043,7 @@ object GoogleDriveClient {
                         reachable = true
                     }
                 } else {
-                    Log.w(TAG, "File metadata fetch failed for $fileId: ${response.code}")
+                    DiagnosticLog.w(TAG, "File metadata fetch failed for")
                     return DriveFileInfoAndHeader(
                         fileId = fileId,
                         isReachable = false,
@@ -1051,7 +1052,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Exception getting file metadata for $fileId", e)
+            DiagnosticLog.e(TAG, "Exception getting file metadata for")
             return DriveFileInfoAndHeader(
                 fileId = fileId,
                 isReachable = false,
@@ -1088,7 +1089,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Error fetching partial header bytes for $fileId", e)
+            DiagnosticLog.w(TAG, "Error fetching partial header bytes for")
         }
 
         return DriveFileInfoAndHeader(
@@ -1126,7 +1127,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding file by app property: $entityType", e)
+            DiagnosticLog.e(TAG, "Error finding file by app property")
         }
 
         // Fallback search by name if not found or if query failed
@@ -1151,7 +1152,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error finding file by name fallback: $filename", e)
+            DiagnosticLog.e(TAG, "Error finding file by name fallback")
         }
 
         return null
@@ -1178,7 +1179,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e("GoogleDriveClient", "Error finding file by name", e)
+            DiagnosticLog.e("GoogleDriveClient", "Error finding file by name")
         }
         return null
     }
@@ -1203,7 +1204,7 @@ object GoogleDriveClient {
             try {
                 client.newCall(mediaRequest).execute().use { response ->
                     if (!response.isSuccessful) {
-                        Log.e(TAG, "Update file media content failed: ${response.code} ${response.message}")
+                        DiagnosticLog.e(TAG, "Update file media content failed")
                         return null
                     }
                 }
@@ -1232,12 +1233,12 @@ object GoogleDriveClient {
                         val json = JSONObject(body)
                         return json.getString("id")
                     } else {
-                        Log.e(TAG, "Update file metadata failed: ${response.code} ${response.message}")
+                        DiagnosticLog.e(TAG, "Update file metadata failed")
                         return existingFileId
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error updating file", e)
+                DiagnosticLog.e(TAG, "Error updating file")
                 return null
             }
         }
@@ -1291,7 +1292,7 @@ object GoogleDriveClient {
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
-                    Log.d(TAG, "File uploaded successfully: $filename")
+                    DiagnosticLog.d(TAG, "File uploaded successfully")
                     if (!existingFileId.isNullOrEmpty()) {
                         existingFileId
                     } else {
@@ -1299,12 +1300,12 @@ object GoogleDriveClient {
                         resJson.getString("id")
                     }
                 } else {
-                    Log.e(TAG, "Upload failed: ${response.code} ${response.message}")
+                    DiagnosticLog.e(TAG, "Upload failed")
                     null
                 }
             }
         } catch (e: IOException) {
-            Log.e(TAG, "Error uploading file", e)
+            DiagnosticLog.e(TAG, "Error uploading file")
             null
         }
     }
@@ -1743,7 +1744,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e("GoogleDriveClient", "Error finding metadata file by properties: $receiptInternalId", e)
+            DiagnosticLog.e("GoogleDriveClient", "Error finding metadata file by properties")
         }
         return null
     }
@@ -1799,7 +1800,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
-            Log.e("GoogleDriveClient", "Error listing all metadata files", e)
+            DiagnosticLog.e("GoogleDriveClient", "Error listing all metadata files")
         }
         return list
     }

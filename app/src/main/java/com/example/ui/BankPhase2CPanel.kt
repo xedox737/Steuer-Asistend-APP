@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,7 +17,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,12 +37,12 @@ import com.example.data.RecurringPaymentPattern
 
 @Composable
 fun BankPhase2CPanel(viewModel: ReceiptViewModel) {
-    val transactions by viewModel.bankTransactions.collectAsState()
-    val loans by viewModel.loans.collectAsState()
-    val suggestions by viewModel.bankLoanSuggestions.collectAsState()
-    val assignments by viewModel.bankLoanAssignments.collectAsState()
-    val recurring by viewModel.bankRecurringAnalysis.collectAsState()
-    val storedPatterns by viewModel.bankRecurringPatterns.collectAsState()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val loans by viewModel.loans.collectAsStateWithLifecycle()
+    val suggestions by viewModel.bankLoanSuggestions.collectAsStateWithLifecycle()
+    val assignments by viewModel.bankLoanAssignments.collectAsStateWithLifecycle()
+    val recurring by viewModel.bankRecurringAnalysis.collectAsStateWithLifecycle()
+    val storedPatterns by viewModel.bankRecurringPatterns.collectAsStateWithLifecycle()
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Card(

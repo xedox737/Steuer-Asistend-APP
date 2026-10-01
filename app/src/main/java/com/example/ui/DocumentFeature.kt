@@ -1,8 +1,11 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
+import com.example.util.DiagnosticLog
+
 import android.app.Activity
 import android.content.Intent
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -45,7 +48,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,13 +77,13 @@ fun DocumentManagementScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    val documents by viewModel.managedDocuments.collectAsState()
-    val operationStatus by viewModel.documentOperationStatus.collectAsState()
-    val duplicate by viewModel.pendingDocumentDuplicate.collectAsState()
-    val aiReview by viewModel.documentAiReview.collectAsState()
-    val migrationPreview by viewModel.documentMigrationPreview.collectAsState()
-    val units by viewModel.wohneinheitenStatus.collectAsState()
-    val property by viewModel.propertyMetadata.collectAsState()
+    val documents by viewModel.managedDocuments.collectAsStateWithLifecycle()
+    val operationStatus by viewModel.documentOperationStatus.collectAsStateWithLifecycle()
+    val duplicate by viewModel.pendingDocumentDuplicate.collectAsStateWithLifecycle()
+    val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
+    val migrationPreview by viewModel.documentMigrationPreview.collectAsStateWithLifecycle()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val property by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf("Alle") }
     var importUnitId by remember { mutableStateOf("") }
@@ -119,7 +121,7 @@ fun DocumentManagementScreen(
             GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
                 .addOnSuccessListener { intentSender -> mlKitScannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build()) }
                 .addOnFailureListener { error ->
-                    Log.e("DocumentScanner", "ML Kit scanner could not start", error)
+                    DiagnosticLog.e("DocumentScanner", "ML Kit scanner could not start")
                     viewModel.setDocumentOperationStatus("Scanner konnte nicht gestartet werden. Bitte Datei importieren.")
                 }
         } else {

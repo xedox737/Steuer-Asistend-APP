@@ -60,7 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -144,9 +144,9 @@ private enum class UnitDetailSection { OVERVIEW, TENANT, RENT, DOCUMENTS, COSTS 
 
 @Composable
 fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
-    val properties by viewModel.properties.collectAsState()
-    val allReceipts by viewModel.receipts.collectAsState()
-    val selected by viewModel.propertyMetadata.collectAsState()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val allReceipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val selected by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     var openedPropertyId by remember { mutableStateOf<String?>(null) }
     var section by remember { mutableStateOf(PropertySection.DASHBOARD) }
     var showWizard by remember { mutableStateOf(false) }
@@ -253,10 +253,10 @@ private fun PropertyDetailHost(
     onSection: (PropertySection) -> Unit,
     onBack: () -> Unit
 ) {
-    val receipts by viewModel.receipts.collectAsState()
-    val documents by viewModel.managedDocuments.collectAsState()
-    val loans by viewModel.loans.collectAsState()
-    val units by viewModel.wohneinheitenStatus.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val documents by viewModel.managedDocuments.collectAsStateWithLifecycle()
+    val loans by viewModel.loans.collectAsStateWithLifecycle()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val propertyReceipts = ImmobilienManagerProjection.receipts(property, units, receipts)
     val propertyDocuments = ImmobilienManagerProjection.documents(property, documents)
     val propertyLoans = ImmobilienManagerProjection.loans(property, loans)
@@ -858,8 +858,8 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
     var showSettings by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
     var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
-    val receipts by viewModel.receipts.collectAsState()
-    val rules by viewModel.bankLearningRules.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val rules by viewModel.bankLearningRules.collectAsStateWithLifecycle()
     if (showSettings) AccountSettingsDialog(viewModel = viewModel, onDismiss = { showSettings = false })
     if (showLearnedRules) KiLearnedRulesDialog(viewModel) { showLearnedRules = false }
     if (page == "afa" || page == "monitor") {

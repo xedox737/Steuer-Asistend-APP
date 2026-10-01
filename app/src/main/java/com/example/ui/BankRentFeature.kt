@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,7 +23,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,9 +41,9 @@ private enum class RentUiFilter { OFFEN, BESTAETIGT, TEILZAHLUNG, KONFLIKT, UEBE
 
 @Composable
 internal fun BankRentPanel(viewModel: ReceiptViewModel) {
-    val suggestions by viewModel.bankRentSuggestions.collectAsState()
-    val assignments by viewModel.bankRentAssignments.collectAsState()
-    val transactions by viewModel.bankTransactions.collectAsState()
+    val suggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
+    val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     var filter by remember { mutableStateOf(RentUiFilter.OFFEN) }
     var propertyFilter by remember { mutableStateOf("") }
     var unitFilter by remember { mutableStateOf("") }

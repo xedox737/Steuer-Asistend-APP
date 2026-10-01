@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +34,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,9 +79,9 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val database = remember(context) { AppDatabase.getDatabase(context.applicationContext, scope) }
-    val allLoans by database.loanDao().getAllLoansFlow().collectAsState(initial = emptyList())
-    val allReceipts by database.receiptDao().getAllReceipts().collectAsState(initial = emptyList())
-    val selectedProperty by viewModel.propertyMetadata.collectAsState()
+    val allLoans by database.loanDao().getAllLoansFlow().collectAsStateWithLifecycle(initialValue = emptyList())
+    val allReceipts by database.receiptDao().getAllReceipts().collectAsStateWithLifecycle(initialValue = emptyList())
+    val selectedProperty by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val selectedPropertyId = selectedProperty?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
     val loans = if (propertyScoped && selectedProperty != null) ImmobilienManagerProjection.loans(selectedProperty!!, allLoans) else allLoans
     val receipts = if (propertyScoped) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts

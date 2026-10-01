@@ -1,8 +1,9 @@
 package com.example.api
 
+import com.example.util.DiagnosticLog
+
 import android.graphics.Bitmap
 import android.util.Base64
-import android.util.Log
 import com.example.BuildConfig
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
@@ -416,15 +417,15 @@ object GeminiClient {
             .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val duration = System.currentTimeMillis() - startTime
-            Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
-            Log.e(TAG, "Model: ${modelName}")
-            Log.e(TAG, "File Type: $mimeType")
-            Log.e(TAG, "File Size: $dataSize")
-            Log.e(TAG, "Duration: ${duration}ms")
-            Log.e(TAG, "Error Category: CONFIG")
-            Log.e(TAG, "Error Code: KEY_MISSING")
-            Log.e(TAG, "Cleaned Error Message: Key is empty or placeholder")
+            DiagnosticLog.e(TAG, "--- GEMINI API CALL DIAGNOSTICS")
+            DiagnosticLog.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/")
+            DiagnosticLog.e(TAG, "Model")
+            DiagnosticLog.e(TAG, "File Type")
+            DiagnosticLog.e(TAG, "File Size")
+            DiagnosticLog.e(TAG, "Duration")
+            DiagnosticLog.e(TAG, "Error Category: CONFIG")
+            DiagnosticLog.e(TAG, "Error Code: KEY_MISSING")
+            DiagnosticLog.e(TAG, "Cleaned Error Message: Key is empty or placeholder")
             throw GeminiAnalysisException.KeyMissing()
         }
 
@@ -568,14 +569,14 @@ object GeminiClient {
             val jsonText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             val duration = System.currentTimeMillis() - startTime
             if (jsonText != null) {
-                Log.d(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-                Log.d(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
-                Log.d(TAG, "Model: ${modelName}")
-                Log.d(TAG, "File Type: $mimeType")
-                Log.d(TAG, "File Size: $dataSize")
-                Log.d(TAG, "Duration: ${duration}ms")
-                Log.d(TAG, "HTTP Status: 200")
-                Log.d(TAG, "Status: SUCCESS")
+                DiagnosticLog.d(TAG, "--- GEMINI API CALL DIAGNOSTICS")
+                DiagnosticLog.d(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/")
+                DiagnosticLog.d(TAG, "Model")
+                DiagnosticLog.d(TAG, "File Type")
+                DiagnosticLog.d(TAG, "File Size")
+                DiagnosticLog.d(TAG, "Duration")
+                DiagnosticLog.d(TAG, "HTTP Status: 200")
+                DiagnosticLog.d(TAG, "Status: SUCCESS")
 
                 // Sanitize potential markdown wrap
                 val cleanedJson = jsonText.trim()
@@ -591,26 +592,26 @@ object GeminiClient {
                     throw GeminiAnalysisException.InvalidResponse(pe.localizedMessage ?: "Moshi deserialization failed")
                 }
             } else {
-                Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-                Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
-                Log.e(TAG, "Model: ${modelName}")
-                Log.e(TAG, "File Type: $mimeType")
-                Log.e(TAG, "File Size: $dataSize")
-                Log.e(TAG, "Duration: ${duration}ms")
-                Log.e(TAG, "HTTP Status: 200")
-                Log.e(TAG, "Error Category: PARSING")
-                Log.e(TAG, "Error Code: EMPTY_RESPONSE")
-                Log.e(TAG, "Cleaned Error Message: No text in candidate response (maybe blocked by safety filters)")
+                DiagnosticLog.e(TAG, "--- GEMINI API CALL DIAGNOSTICS")
+                DiagnosticLog.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/")
+                DiagnosticLog.e(TAG, "Model")
+                DiagnosticLog.e(TAG, "File Type")
+                DiagnosticLog.e(TAG, "File Size")
+                DiagnosticLog.e(TAG, "Duration")
+                DiagnosticLog.e(TAG, "HTTP Status: 200")
+                DiagnosticLog.e(TAG, "Error Category: PARSING")
+                DiagnosticLog.e(TAG, "Error Code: EMPTY_RESPONSE")
+                DiagnosticLog.e(TAG, "Cleaned Error Message: No text in candidate response (maybe blocked by safety filters)")
                 throw GeminiAnalysisException.InvalidResponse("Keine Antwort vom Modell erhalten (Sicherheitsfilter oder Blockierung).")
             }
         } catch (e: Exception) {
             val duration = System.currentTimeMillis() - startTime
-            Log.e(TAG, "--- GEMINI API CALL DIAGNOSTICS ---")
-            Log.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent")
-            Log.e(TAG, "Model: ${modelName}")
-            Log.e(TAG, "File Type: $mimeType")
-            Log.e(TAG, "File Size: $dataSize")
-            Log.e(TAG, "Duration: ${duration}ms")
+            DiagnosticLog.e(TAG, "--- GEMINI API CALL DIAGNOSTICS")
+            DiagnosticLog.e(TAG, "Endpoint: POST https://generativelanguage.googleapis.com/v1beta/models/")
+            DiagnosticLog.e(TAG, "Model")
+            DiagnosticLog.e(TAG, "File Type")
+            DiagnosticLog.e(TAG, "File Size")
+            DiagnosticLog.e(TAG, "Duration")
 
             when (e) {
                 is GeminiAnalysisException -> throw e
@@ -622,30 +623,30 @@ object GeminiClient {
                     val errorBody = e.response()?.errorBody()?.string() ?: ""
                     val cleanedError = sanitizeErrorBody(errorBody)
 
-                    Log.e(TAG, "HTTP Status: $httpStatus")
-                    Log.e(TAG, "Request ID: $requestId")
-                    Log.e(TAG, "Error Code: HTTP_$httpStatus")
-                    Log.e(TAG, "Cleaned Error Message: $cleanedError")
+                    DiagnosticLog.e(TAG, "HTTP Status")
+                    DiagnosticLog.e(TAG, "Request ID")
+                    DiagnosticLog.e(TAG, "Error Code: HTTP_")
+                    DiagnosticLog.e(TAG, "Cleaned Error Message")
 
                     when (httpStatus) {
                         401 -> {
-                            Log.e(TAG, "Error Category: AUTH")
+                            DiagnosticLog.e(TAG, "Error Category: AUTH")
                             throw GeminiAnalysisException.KeyInvalid(cleanedError)
                         }
                         403 -> {
-                            Log.e(TAG, "Error Category: AUTH")
+                            DiagnosticLog.e(TAG, "Error Category: AUTH")
                             throw GeminiAnalysisException.PermissionDenied(cleanedError)
                         }
                         429 -> {
-                            Log.e(TAG, "Error Category: QUOTA")
+                            DiagnosticLog.e(TAG, "Error Category: QUOTA")
                             throw GeminiAnalysisException.QuotaExceeded(cleanedError)
                         }
                         400 -> {
-                            Log.e(TAG, "Error Category: LIMIT")
+                            DiagnosticLog.e(TAG, "Error Category: LIMIT")
                             throw GeminiAnalysisException.RequestTooLarge(cleanedError)
                         }
                         else -> {
-                            Log.e(TAG, "Error Category: SERVER")
+                            DiagnosticLog.e(TAG, "Error Category: SERVER")
                             throw GeminiAnalysisException.GenericError(
                                 errorCode = "HTTP_$httpStatus",
                                 userMessage = "Ein unerwarteter Serverfehler ist aufgetreten (HTTP $httpStatus).",
@@ -656,21 +657,21 @@ object GeminiClient {
                     }
                 }
                 is java.net.SocketTimeoutException -> {
-                    Log.e(TAG, "Error Category: TIMEOUT")
-                    Log.e(TAG, "Error Code: TIMEOUT")
-                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    DiagnosticLog.e(TAG, "Error Category: TIMEOUT")
+                    DiagnosticLog.e(TAG, "Error Code: TIMEOUT")
+                    DiagnosticLog.e(TAG, "Cleaned Error Message")
                     throw GeminiAnalysisException.TimeoutError(e)
                 }
                 is java.io.IOException -> {
-                    Log.e(TAG, "Error Category: NETWORK")
-                    Log.e(TAG, "Error Code: NETWORK_ERROR")
-                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    DiagnosticLog.e(TAG, "Error Category: NETWORK")
+                    DiagnosticLog.e(TAG, "Error Code: NETWORK_ERROR")
+                    DiagnosticLog.e(TAG, "Cleaned Error Message")
                     throw GeminiAnalysisException.NetworkError(e)
                 }
                 else -> {
-                    Log.e(TAG, "Error Category: GENERIC")
-                    Log.e(TAG, "Error Code: UNKNOWN")
-                    Log.e(TAG, "Cleaned Error Message: ${e.localizedMessage}")
+                    DiagnosticLog.e(TAG, "Error Category: GENERIC")
+                    DiagnosticLog.e(TAG, "Error Code: UNKNOWN")
+                    DiagnosticLog.e(TAG, "Cleaned Error Message")
                     throw GeminiAnalysisException.GenericError(
                         errorCode = "UNKNOWN",
                         userMessage = "Unerwarteter Fehler: ${e.localizedMessage}",
@@ -695,7 +696,7 @@ object GeminiClient {
         val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
             .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            DiagnosticLog.e(TAG, "Gemini API Key is not set or is placeholder!")
             apiKeyOverride?.fill('\u0000')
             return null
         }
@@ -747,7 +748,7 @@ object GeminiClient {
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error calculating route distance with Gemini: ", e)
+            DiagnosticLog.e(TAG, "Error calculating route distance with Gemini")
             null
         } finally {
             apiKeyOverride?.fill('\u0000')
@@ -763,7 +764,7 @@ object GeminiClient {
     ): AiSearchResult? {
         val apiKey = BuildConfig.GEMINI_API_KEY
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
-            Log.e(TAG, "Gemini API Key is not set or is placeholder!")
+            DiagnosticLog.e(TAG, "Gemini API Key is not set or is placeholder!")
             return null
         }
 
@@ -821,7 +822,7 @@ object GeminiClient {
                 null
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error processing natural language query with Gemini: ", e)
+            DiagnosticLog.e(TAG, "Error processing natural language query with Gemini")
             null
         }
     }
@@ -883,7 +884,7 @@ object GeminiClient {
                 moshi.adapter(TaxPlausibilityReport::class.java).fromJson(cleaned)
             } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Tax plausibility check failed", e)
+            DiagnosticLog.e(TAG, "Tax plausibility check failed")
             null
         }
     }
@@ -951,7 +952,7 @@ object GeminiClient {
                 moshi.adapter(TenantUtilityStatement::class.java).fromJson(cleaned)
             } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Utility statement generation failed", e)
+            DiagnosticLog.e(TAG, "Utility statement generation failed")
             null
         }
     }
@@ -1009,7 +1010,7 @@ object GeminiClient {
                 moshi.adapter(RentYieldOptimizationReport::class.java).fromJson(cleaned)
             } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Rent optimization failed", e)
+            DiagnosticLog.e(TAG, "Rent optimization failed")
             null
         }
     }
@@ -1063,7 +1064,7 @@ object GeminiClient {
                 moshi.adapter(DamageAssessmentResult::class.java).fromJson(cleaned)
             } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Damage photo assessment failed", e)
+            DiagnosticLog.e(TAG, "Damage photo assessment failed")
             null
         }
     }
@@ -1121,7 +1122,7 @@ object GeminiClient {
                 moshi.adapter(ContractAnalysisResult::class.java).fromJson(cleaned)
             } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Contract analysis failed", e)
+            DiagnosticLog.e(TAG, "Contract analysis failed")
             null
         }
     }
@@ -1206,7 +1207,7 @@ object GeminiClient {
                 moshi.adapter(BankStatementReconciliationResult::class.java).fromJson(cleaned)
             } else null
         } catch (e: Exception) {
-            Log.e(TAG, "Bank statement matching failed", e)
+            DiagnosticLog.e(TAG, "Bank statement matching failed")
             null
         }
     }

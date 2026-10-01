@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -44,7 +46,6 @@ import androidx.compose.runtime.Composable
 import org.json.JSONObject
 import org.json.JSONArray
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,12 +150,12 @@ private fun LogbookSavedDetail(trip: LogbookTrip, viewModel: ReceiptViewModel, o
 
 @Composable
 fun LogbookScreen(viewModel: ReceiptViewModel) {
-    val receipts by viewModel.receipts.collectAsState()
-    val metadata by viewModel.propertyMetadata.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val effectiveMetadata = metadata ?: PropertyMetadata()
-    val trips by viewModel.logbookTrips.collectAsState()
-    val routes by viewModel.standardRoutes.collectAsState()
-    val drafts by viewModel.logbookDrafts.collectAsState()
+    val trips by viewModel.logbookTrips.collectAsStateWithLifecycle()
+    val routes by viewModel.standardRoutes.collectAsStateWithLifecycle()
+    val drafts by viewModel.logbookDrafts.collectAsStateWithLifecycle()
     val activeTrips = trips.filter { it.cancelledAt.isBlank() }
     val suggested = receipts.filter { receipt ->
         val vendor = receipt.aussteller.lowercase(Locale.GERMANY)
@@ -448,8 +449,8 @@ private fun LogbookSuggestionCard(
     var linkedReceiptId by rememberSaveable(receipt.id) { mutableStateOf(draft.optInt("linkedReceiptId", receipt.id)) }
     var propertyId by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("propertyId", if (receipt.id > 0) receipt.propertyId else metadata.propertyId)) }
     var unit by rememberSaveable(receipt.id) { mutableStateOf(draft.optString("unit", receipt.wohneinheit)) }
-    val allReceipts by viewModel.receipts.collectAsState()
-    val allProperties by viewModel.properties.collectAsState()
+    val allReceipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val allProperties by viewModel.properties.collectAsStateWithLifecycle()
     var selectReceipt by remember { mutableStateOf(false) }
     var selectProperty by remember { mutableStateOf(false) }
     val linkedReceipt = allReceipts.firstOrNull { it.id == linkedReceiptId }

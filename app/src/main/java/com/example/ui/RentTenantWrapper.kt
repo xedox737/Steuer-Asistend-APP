@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,11 +46,11 @@ private fun receiptMonth(receipt: Receipt): YearMonth? =
 @Composable
 fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
-    val units by viewModel.wohneinheitenStatus.collectAsState()
-    val metadata by viewModel.propertyMetadata.collectAsState()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
     val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
-    val receipts by receiptFlow.collectAsState()
+    val receipts by receiptFlow.collectAsStateWithLifecycle()
     var showUnitPicker by remember { mutableStateOf(false) }
     var showMonthlyCheck by remember { mutableStateOf(false) }
     var selectedUnit by remember { mutableStateOf<WohneinheitStatus?>(null) }

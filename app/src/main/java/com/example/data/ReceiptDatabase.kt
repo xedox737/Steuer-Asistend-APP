@@ -1,5 +1,7 @@
 package com.example.data
 
+import com.example.util.DiagnosticLog
+
 import android.content.Context
 import androidx.room.Dao
 import androidx.room.Database
@@ -9,6 +11,7 @@ import androidx.room.Index
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -264,6 +267,15 @@ interface PropertyDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPropertyMetadata(metadata: PropertyMetadata)
+
+    @Transaction
+    suspend fun upsertRestoredPropertyMetadata(metadata: PropertyMetadata) {
+        val existing = getPropertyByPropertyId(metadata.propertyId)
+        val restoredId = existing?.id ?: if (getAllProperties().any { it.id == metadata.id }) {
+            nextPropertyId()
+        } else metadata.id
+        insertPropertyMetadata(metadata.copy(id = restoredId))
+    }
 }
 
 @Dao
@@ -984,7 +996,7 @@ abstract class AppDatabase : RoomDatabase() {
                                 }
                             }
                         } catch (e: Exception) {
-                            android.util.Log.e("AppDatabase", "Error migrating internalIds on open", e)
+                            DiagnosticLog.e("AppDatabase", "Error migrating internalIds on open")
                         }
                     }
                 }
@@ -1262,6 +1274,10 @@ class ReceiptRepository(
         propertyDao.getPropertyByPropertyId(propertyId)
 
     suspend fun nextPropertyId(): Int = propertyDao.nextPropertyId()
+
+    suspend fun restorePropertyMetadata(metadata: PropertyMetadata) {
+        propertyDao.upsertRestoredPropertyMetadata(metadata)
+    }
 
     suspend fun updatePropertyMetadata(metadata: PropertyMetadata) {
         propertyDao.insertPropertyMetadata(metadata)

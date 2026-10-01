@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,15 +45,15 @@ enum class Phase2DReviewSort(val label: String) { PRIORITY("Priorität"), DATE("
 
 @Composable
 fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
-    val queue by viewModel.bankPhase2DReviewQueue.collectAsState()
-    val combinations by viewModel.bankPhase2DCombinations.collectAsState()
-    val transactions by viewModel.bankTransactions.collectAsState()
-    val receipts by viewModel.receipts.collectAsState()
-    val links by viewModel.bankReceiptLinks.collectAsState()
-    val rentAssignments by viewModel.bankRentAssignments.collectAsState()
-    val loanAssignments by viewModel.bankLoanAssignments.collectAsState()
-    val loans by viewModel.loans.collectAsState()
-    val recurringPatterns by viewModel.bankRecurringPatterns.collectAsState()
+    val queue by viewModel.bankPhase2DReviewQueue.collectAsStateWithLifecycle()
+    val combinations by viewModel.bankPhase2DCombinations.collectAsStateWithLifecycle()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val rentAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val loanAssignments by viewModel.bankLoanAssignments.collectAsStateWithLifecycle()
+    val loans by viewModel.loans.collectAsStateWithLifecycle()
+    val recurringPatterns by viewModel.bankRecurringPatterns.collectAsStateWithLifecycle()
     var filter by remember { mutableStateOf(Phase2DReviewFilter.ALL) }
     var sort by remember { mutableStateOf(Phase2DReviewSort.PRIORITY) }
     var expandedKey by remember { mutableStateOf<String?>(null) }

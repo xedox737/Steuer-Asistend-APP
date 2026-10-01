@@ -1,5 +1,7 @@
 package com.example.util
 
+import com.example.util.DiagnosticLog
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Canvas
@@ -8,7 +10,6 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
-import android.util.Log
 import androidx.core.content.FileProvider
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
@@ -354,10 +355,10 @@ object PdfExporter {
             FileOutputStream(pdfFile).use { document.writeTo(it) }
             document.close()
             val fileSizeKb = pdfFile.length() / 1024
-            Log.d(TAG, "PDF successfully generated at: ${pdfFile.absolutePath} (Size: ${fileSizeKb} KB)")
+            DiagnosticLog.d(TAG, "PDF successfully generated at")
             pdfFile
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to generate PDF", e)
+            DiagnosticLog.e(TAG, "Failed to generate PDF")
             try {
                 currentPage?.let { document.finishPage(it) }
             } catch (_: Exception) {
@@ -382,7 +383,7 @@ object PdfExporter {
             }
             context.startActivity(Intent.createChooser(intent, "Steuerbericht exportieren"))
         } catch (e: Exception) {
-            Log.e(TAG, "Error sharing PDF: ${e.localizedMessage}", e)
+            DiagnosticLog.e(TAG, "Error sharing PDF")
         }
     }
 

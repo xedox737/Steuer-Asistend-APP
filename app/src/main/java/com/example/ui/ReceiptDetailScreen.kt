@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -51,12 +53,12 @@ import java.time.format.DateTimeFormatter
 /** The only receipt detail entry point. Editor and additional data live on this page. */
 @Composable
 fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
-    val receipts by viewModel.receipts.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val current = receipts.firstOrNull { it.id == receipt.id } ?: receipt
-    val links by viewModel.bankReceiptLinks.collectAsState()
-    val transactions by viewModel.bankTransactions.collectAsState()
-    val properties by viewModel.properties.collectAsState()
-    val downloads by viewModel.documentDownloadStatus.collectAsState()
+    val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val downloads by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
     val entries = links.filter {
         it.receiptId == current.id || (current.internalId.isNotBlank() && it.receiptInternalId == current.internalId)
     }.mapNotNull { link -> transactions.firstOrNull { it.transactionId == link.transactionId }?.let { link to it } }
@@ -175,17 +177,17 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
 /** Receipt details rendered as a normal app screen inside the main app Scaffold. */
 @Composable
 fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () -> Unit) {
-    val receipts by viewModel.receipts.collectAsState()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val current = receipts.firstOrNull { it.id == receiptId }
     if (current == null) {
         LaunchedEffect(receiptId) { onBack() }
         return
     }
 
-    val links by viewModel.bankReceiptLinks.collectAsState()
-    val transactions by viewModel.bankTransactions.collectAsState()
-    val properties by viewModel.properties.collectAsState()
-    val downloads by viewModel.documentDownloadStatus.collectAsState()
+    val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val downloads by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
     val entries = links.filter {
         it.receiptId == current.id || (current.internalId.isNotBlank() && it.receiptInternalId == current.internalId)
     }.mapNotNull { link ->

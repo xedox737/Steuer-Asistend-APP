@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,7 +30,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,11 +72,11 @@ fun BankTransactionSplitActions(
     showTrigger: Boolean = true,
     showAssignments: Boolean = true
 ) {
-    val links by viewModel.bankReceiptLinks.collectAsState()
-    val assignments by viewModel.bankRentAssignments.collectAsState()
-    val receipts by viewModel.receipts.collectAsState()
-    val units by viewModel.wohneinheitenStatus.collectAsState()
-    val property by viewModel.propertyMetadata.collectAsState()
+    val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val property by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val transactionAssignments = assignments.filter { it.transactionId == transaction.transactionId }
     var showDialog by remember(transaction.transactionId) { mutableStateOf(false) }
     var editing by remember { mutableStateOf<BankRentAssignment?>(null) }

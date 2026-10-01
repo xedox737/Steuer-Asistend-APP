@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -435,6 +436,7 @@ private fun UnifiedUnitDetailScreen(
     documents: List<ManagedDocument>,
     onBack: () -> Unit
 ) {
+    BackHandler(onBack = onBack)
     val context = LocalContext.current
     var showHistory by remember { mutableStateOf(false) }
     var showMonthCheck by remember { mutableStateOf(false) }

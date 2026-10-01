@@ -1,5 +1,6 @@
 package com.example.ui
 
+import androidx.activity.compose.BackHandler
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -172,6 +173,7 @@ internal fun ManagedDocumentDetailScreen(
     onSync: () -> Unit,
     onUpdatePresentation: (String, String) -> Unit
 ) {
+    BackHandler(onBack = onBack)
     val context = LocalContext.current
     val assignment = documentAssignmentLabel(document, property, units)
     val title = documentDisplayTitle(document, property)

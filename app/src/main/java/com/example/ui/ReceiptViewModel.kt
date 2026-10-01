@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DiagnosticLog
+
 import com.example.data.parseCamtV8
 import android.app.Application
 import android.content.Context
@@ -7,7 +9,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
-import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.ExtractedReceipt
@@ -845,7 +846,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         val folderId = GoogleDriveClient.getOrCreateFolder(token) ?: return@launch
                         GoogleDriveClient.uploadWohneinheitenCsv(token, folderId, _wohneinheitenStatus.value)
                     } catch (e: Exception) {
-                        Log.w("ReceiptViewModel", "Drive sync postponed for units: ${e.message}")
+                        DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed for units")
                     }
                 }
             }
@@ -1026,7 +1027,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             } catch (e: Exception) {
-                Log.w("ReceiptViewModel", "Drive initialization postponed: ${e.message}")
+                DiagnosticLog.w("ReceiptViewModel", "Drive initialization postponed")
                 _isDriveConnected.value = false
                 _driveSystemFolderStatus.value = "Nicht eingerichtet"
                 _driveSyncStatus.value = "Google-Anmeldung erforderlich (Web-Login)"
@@ -1054,13 +1055,29 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error checking Drive inventory for restore", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error checking Drive inventory for restore")
                 _driveSyncStatus.value = "Fehler bei der Drive-Bestandsprüfung: ${e.message}"
             }
         }
     }
 
-    fun performFullRestoreConfirmation(mode: com.example.data.RestoreMode = com.example.data.RestoreMode.REPLACE_FULL) {
+    internal suspend fun refreshPreferencesAfterRestore() {
+        val application = getApplication<Application>()
+        _selectedPropertyId.value = sharedPrefs.getString("selected_property_id", "").orEmpty()
+        val restoredProperties = database.propertyDao().getAllProperties()
+        val selected = restoredProperties.firstOrNull { it.propertyId == _selectedPropertyId.value }
+            ?: restoredProperties.firstOrNull()
+        _wohneinheitenStatus.value = if (selected != null) getWohneinheitenForProperty(selected) else getWohneinheitenFromPrefs()
+        _learnedRules.value = drivePersistenceRepository.getLearnedRulesFromPrefs().sortedByDescending { it.count }
+        _activeDatevProfile.value = com.example.util.DatevProfileService.getActiveProfile(application)
+        _aiProviderState.value = AiProviderSettings.loadState(application)
+        _autoDriveBackup.value = sharedPrefs.getBoolean("auto_backup", true)
+        _logbookDrafts.value = logbookDraftPrefs.all.mapNotNull { (key, value) ->
+            (value as? String)?.let { key to it }
+        }.toMap()
+    }
+
+    fun performFullRestoreConfirmation(mode: com.example.data.RestoreMode = com.example.data.RestoreMode.MERGE) {
         val email = _googleAccountEmail.value ?: return
         _isRestoring.value = true
         _driveSyncStatus.value = "Wiederherstellung aus Google Drive läuft..."
@@ -1091,8 +1108,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     _isRestoring.value = false
                     _isRestoreRequired.value = !outcome.isSuccess
                     if (report.isSuccess) {
-                        _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
-                        loadLearnedRules()
+                        refreshPreferencesAfterRestore()
                     }
                     _driveSyncStatus.value = if (outcome.isSuccess) {
                         "Wiederherstellung erfolgreich! ${report.receiptsRestored} Belege sowie Miet- und Darlehensdaten geladen."
@@ -1105,7 +1121,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (e: Exception) {
                 _isRestoring.value = false
-                Log.e("ReceiptViewModel", "Error during full restore confirmation", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error during full restore confirmation")
                 _driveSyncStatus.value = "Fehler bei Wiederherstellung: ${e.message}"
             }
         }
@@ -1130,7 +1146,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (e: Exception) {
                 _isRestoring.value = false
-                Log.e("ReceiptViewModel", "Error during restore dry run", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error during restore dry run")
                 _driveSyncStatus.value = "Fehler bei Restore-Test: ${e.message}"
             }
         }
@@ -1162,18 +1178,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val exists = f.exists()
                 val canRead = f.canRead()
                 val length = f.length()
-                Log.d("ReceiptViewModel", "File check - path: $path, exists: $exists, canRead: $canRead, length: $length")
+                DiagnosticLog.d("ReceiptViewModel", "File check - path")
                 exists && length > 0 
             }
 
-            Log.d("ReceiptViewModel", """
-                --- Beleg Prüfprotokoll ---
-                internalId: ${receipt.internalId}
-                mainDriveFileId vorhanden: ${!receipt.driveFileId.isNullOrEmpty()} (${receipt.driveFileId})
-                gespeicherter alter imageUrl: ${receipt.imageUrl}
-                existiert die lokale Datei tatsächlich?: $filesExist
-                gespeicherter MIME-Typ: ${receipt.originalMimeType}
-            """.trimIndent())
+            DiagnosticLog.d("ReceiptViewModel", "--- Beleg Prüfprotokoll")
 
             if (filesExist) {
                 val mime = receipt.originalMimeType ?: ""
@@ -1201,7 +1210,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         val file = java.io.File(path)
                         if (file.exists()) {
                             file.delete()
-                            Log.d("ReceiptViewModel", "Deleted corrupted or empty local file at $path before forcing redownload.")
+                            DiagnosticLog.d("ReceiptViewModel", "Deleted corrupted or empty local file at")
                         }
                     }
                 }
@@ -1210,7 +1219,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 _documentDownloadStatus.value = _documentDownloadStatus.value.toMutableMap().apply { remove(receipt.internalId) }
                 downloadReceiptDocument(receipt)
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error in forceDocumentDownload", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error in forceDocumentDownload")
             }
         }
     }
@@ -1218,7 +1227,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun diagnoseAndFixAllReceipts() {
         val email = _googleAccountEmail.value
         if (email.isNullOrEmpty()) {
-            Log.e("ReceiptViewModel", "Diagnose failed: No account email")
+            DiagnosticLog.e("ReceiptViewModel", "Diagnose failed: No account email")
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -1228,8 +1237,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 var validCount = 0
                 var invalidCount = 0
                 for (receipt in receipts) {
-                    Log.d("ReceiptViewModel", "=== DIAGNOSE START: ${receipt.aussteller} (${receipt.datum}) ===")
-                    Log.d("ReceiptViewModel", "internalId: ${receipt.internalId}, mainDriveFileId: ${receipt.driveFileId}, metadataFileId: ${receipt.driveMetadataFileId}")
+                    DiagnosticLog.d("ReceiptViewModel", "=== DIAGNOSE START")
+                    DiagnosticLog.d("ReceiptViewModel", "internalId")
                     
                     var mainFileJsonInfo: String? = null
                     if (!receipt.driveFileId.isNullOrEmpty()) {
@@ -1237,8 +1246,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         if (driveFileBytes != null) {
                             val header = driveFileBytes.take(16).toByteArray()
                             val hex = header.joinToString(" ") { b -> "%02X".format(b) }
-                            Log.d("ReceiptViewModel", "MainDriveFile Header (16 bytes): $hex")
-                            Log.d("ReceiptViewModel", "MainDriveFile Size: ${driveFileBytes.size} bytes")
+                            DiagnosticLog.d("ReceiptViewModel", "MainDriveFile Header (16 bytes)")
+                            DiagnosticLog.d("ReceiptViewModel", "MainDriveFile Size")
                             
                             var detectedFormat = "Unknown"
                             if (header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x25, 0x50, 0x44, 0x46))) {
@@ -1253,16 +1262,16 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                                 detectedFormat = "JSON"
                                 mainFileJsonInfo = String(driveFileBytes.take(200).toByteArray())
                             }
-                            Log.d("ReceiptViewModel", "MainDriveFile Detected Format: $detectedFormat")
+                            DiagnosticLog.d("ReceiptViewModel", "MainDriveFile Detected Format")
                             
                             if (detectedFormat == "JSON") {
-                                Log.d("ReceiptViewModel", "Content snippet: $mainFileJsonInfo")
+                                DiagnosticLog.d("ReceiptViewModel", "Content snippet")
                                 invalidCount++
                                 
                                 // Fix it! Search for the real original file.
                                 val query = "'${receipt.driveFolderId}' in parents and trashed = false"
                                 val files = com.example.api.GoogleDriveClient.searchFiles(token, query)
-                                Log.d("ReceiptViewModel", "Found ${files.size} files in folder ${receipt.driveFolderId}")
+                                DiagnosticLog.d("ReceiptViewModel", "Found")
                                 
                                 var realOriginalFileId: String? = null
                                 var realOriginalSize: Long = 0
@@ -1290,7 +1299,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                                 }
                                 
                                 if (realOriginalFileId != null) {
-                                    Log.d("ReceiptViewModel", "FOUND REAL ORIGINAL! ID: $realOriginalFileId, Format: $realFormat, Size: $realOriginalSize")
+                                    DiagnosticLog.d("ReceiptViewModel", "FOUND REAL ORIGINAL! ID")
                                     val newMime = if (realFormat == "PDF") "application/pdf" else "image/jpeg"
                                     
                                     /* 
@@ -1305,22 +1314,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                                     
                                     // Also update index in drive if needed (skipping for now to avoid side effects, but should ideally update index)
                                     
-                                    Log.d("ReceiptViewModel", "Re-triggering download with new ID.")
+                                    DiagnosticLog.d("ReceiptViewModel", "Re-triggering download with new ID.")
                                     forceDocumentDownload(updated)
                                     */
                                 } else {
-                                    Log.d("ReceiptViewModel", "NO REAL ORIGINAL FOUND IN FOLDER.")
+                                    DiagnosticLog.d("ReceiptViewModel", "NO REAL ORIGINAL FOUND IN FOLDER.")
                                 }
                             } else {
                                 validCount++
                             }
                         }
                     }
-                    Log.d("ReceiptViewModel", "=== DIAGNOSE END ===")
+                    DiagnosticLog.d("ReceiptViewModel", "=== DIAGNOSE END ===")
                 }
-                Log.d("ReceiptViewModel", "TOTAL DIAGNOSE RESULTS: $validCount valid, $invalidCount invalid originals.")
+                DiagnosticLog.d("ReceiptViewModel", "TOTAL DIAGNOSE RESULTS")
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Diagnose error", e)
+                DiagnosticLog.e("ReceiptViewModel", "Diagnose error")
             }
         }
     }
@@ -1336,7 +1345,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         
         viewModelScope.launch(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
-            Log.d("ReceiptViewModel", "Start Drive-Download für Beleg: ${receipt.internalId} um $startTime")
+            DiagnosticLog.d("ReceiptViewModel", "Start Drive-Download für Beleg")
             try {
                 kotlinx.coroutines.withTimeout(30000L) {
                     val token = getValidToken(email)
@@ -1346,14 +1355,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     
                     val endTime = System.currentTimeMillis()
                     val targetFile = java.io.File(localPath)
-                    Log.d("ReceiptViewModel", """
-                        --- Beleg Downloadprotokoll ---
-                        internalId: ${receipt.internalId}
-                        Start und Ende des Drive-Downloads: $startTime bis $endTime (${endTime - startTime} ms)
-                        erzeugter lokaler Zielpfad: $localPath
-                        Ergebnis von File.exists(): ${targetFile.exists()}, File.canRead(): ${targetFile.canRead()}, File.length(): ${targetFile.length()} Bytes
-                        endgültiger UI-Status: AVAILABLE
-                    """.trimIndent())
+                    DiagnosticLog.d("ReceiptViewModel", "--- Beleg Downloadprotokoll")
 
                     val mime = receipt.originalMimeType ?: ""
                     if (mime.contains("text/plain", ignoreCase = true)) {
@@ -1364,11 +1366,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     _driveSyncStatus.value = "Dokument geladen."
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-                Log.e("ReceiptViewModel", "Timeout downloading document", e)
+                DiagnosticLog.e("ReceiptViewModel", "Timeout downloading document")
                 _driveSyncStatus.value = "Zeitüberschreitung beim Laden."
                 _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Zeitüberschreitung (30s) beim Download."))
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error downloading document", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error downloading document")
                 _driveSyncStatus.value = "Fehler beim Laden: ${e.message}"
                 _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Download fehlgeschlagen: ${e.message}"))
             }
@@ -1476,7 +1478,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     if (success) successCount++
                 }
                 var documentSuccessCount = 0
-                for (document in repository.getAllManagedDocuments().filter { it.receiptInternalId.isNullOrBlank() }) {
+                val standaloneDocuments = repository.getAllManagedDocuments().filter { it.receiptInternalId.isNullOrBlank() }
+                for (document in standaloneDocuments) {
                     if (drivePersistenceRepository.syncManagedDocumentToDrive(token, config, document.documentId)) documentSuccessCount++
                 }
                 val documentIndexSuccess = drivePersistenceRepository.updateManagedDocumentIndex(token, config)
@@ -1485,13 +1488,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 )
 
                 _isDriveSyncing.value = false
-                if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess) {
+                if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess &&
+                    successCount == list.size && documentSuccessCount == standaloneDocuments.size) {
                     _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten, $successCount Belege und $documentSuccessCount Dokumente synchronisiert."
                     _driveSyncError.value = null
                     sharedPrefs.edit().remove("drive_sync_error").apply()
                 } else if (csvSuccess) {
-                    _driveSyncStatus.value = "Teilweise erfolgreich: Hauptbuch & $successCount Belege synchronisiert. Stammdaten nicht."
-                    _driveSyncError.value = "Stammdaten-Backup fehlgeschlagen."
+                    _driveSyncStatus.value = "Teilweise erfolgreich: $successCount/${list.size} Belege und $documentSuccessCount/${standaloneDocuments.size} Dokumente synchronisiert."
+                    _driveSyncError.value = "Sicherung unvollständig. Nicht alle Daten oder Dateien wurden gesichert."
                     sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
                 } else {
                     _driveSyncStatus.value = "Teilweise erfolgreich: $successCount Belege hochgeladen."
@@ -1500,7 +1504,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
 
             } catch (e: Exception) {
-                Log.w("ReceiptViewModel", "Drive sync postponed: ${e.message}")
+                DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed")
                 _isDriveConnected.value = false
                 _driveSyncStatus.value = "Google-Anmeldung erforderlich (Web-Login)"
                 _driveSyncError.value = e.message ?: e.toString()
@@ -1527,7 +1531,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
                 drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
             } catch (e: Exception) {
-                Log.w("ReceiptViewModel", "Auto backup postponed for receipt ${receipt.id}: ${e.message}")
+                DiagnosticLog.w("ReceiptViewModel", "Auto backup postponed for receipt")
                 repository.insert(receipt.copy(syncStatus = "ERROR", syncError = e.message ?: e.toString()))
             }
         }
@@ -1553,10 +1557,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 
                 val success = drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
                 if (!success) {
-                    Log.w("ReceiptViewModel", "Manual sync failed for receipt: ${receipt.id}")
+                    DiagnosticLog.w("ReceiptViewModel", "Manual sync failed for receipt")
                 }
             } catch (e: Exception) {
-                Log.w("ReceiptViewModel", "Manual sync failed for receipt ${receipt.id}: ${e.message}")
+                DiagnosticLog.w("ReceiptViewModel", "Manual sync failed for receipt")
                 repository.insert(receipt.copy(syncStatus = "ERROR", syncError = e.message ?: e.toString()))
             }
         }
@@ -1667,7 +1671,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Bank import failed: ${e.javaClass.simpleName}")
+                DiagnosticLog.e("ReceiptViewModel", "Bank import failed")
                 _bankImportStatus.value = "Import fehlgeschlagen: ${e.message ?: "unbekannter Fehler"}"
             }
         }
@@ -2816,15 +2820,12 @@ data class AiSearchUiState(
         val profile = _activeDatevProfile.value
         val report = _wizardValidationReport.value ?: return null
         if (!report.isValidForExport || records.isEmpty()) {
-            Log.w("ReceiptViewModel", "DATEV export blocked by validation policy")
+            DiagnosticLog.w("ReceiptViewModel", "DATEV export blocked by validation policy")
             return null
         }
         val selectedYear = _wizardYearFilter.value.toIntOrNull()
         if (_wizardTargetFormat.value == "FULL_ZIP" && selectedYear == null) {
-            Log.w(
-                "ReceiptViewModel",
-                "Steuerberaterpaket benötigt ein eindeutig ausgewähltes Steuerjahr"
-            )
+            DiagnosticLog.w("ReceiptViewModel", "Steuerberaterpaket benötigt ein eindeutig ausgewähltes Steuerjahr")
             return null
         }
 
@@ -2936,7 +2937,7 @@ data class AiSearchUiState(
             ).map { exclusion -> "${exclusion.code}: ${exclusion.message}" }
         }
         if (bankDatevExclusions.isNotEmpty()) {
-            Log.w("ReceiptViewModel", "DATEV export blocked by bank classification: ${bankDatevExclusions.joinToString(" | ")}")
+            DiagnosticLog.w("ReceiptViewModel", "DATEV export blocked by bank classification")
             return null
         }
 
@@ -3014,7 +3015,7 @@ data class AiSearchUiState(
                 }
             }
         } catch (e: Exception) {
-            Log.e("ReceiptViewModel", "Error exporting to DATEV", e)
+            DiagnosticLog.e("ReceiptViewModel", "Error exporting to DATEV")
             null
         }
     }
@@ -3421,7 +3422,7 @@ data class AiSearchUiState(
             }
             synced
         } catch (e: Exception) {
-            Log.w("ReceiptViewModel", "Managed document Drive sync deferred", e)
+            DiagnosticLog.w("ReceiptViewModel", "Managed document Drive sync deferred")
             false
         }
     }
@@ -3525,7 +3526,7 @@ data class AiSearchUiState(
                     val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
                     config != null && drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
                 } catch (e: Exception) {
-                    Log.w("ReceiptViewModel", "Confirmed document remains pending for Drive sync", e)
+                    DiagnosticLog.w("ReceiptViewModel", "Confirmed document remains pending for Drive sync")
                     false
                 }
                 _documentOperationStatus.value = if (synced) {
@@ -3629,7 +3630,7 @@ data class AiSearchUiState(
                             }
                             paths.add(file.absolutePath)
                         } catch (e: Exception) {
-                            Log.e("ReceiptViewModel", "Error saving bitmap", e)
+                            DiagnosticLog.e("ReceiptViewModel", "Error saving bitmap")
                         }
                     }
                     paths.joinToString(",")
@@ -3680,13 +3681,13 @@ data class AiSearchUiState(
                     _scanState.value = ScanUiState.Error("Fehler bei der Belegs-Extraktion. Bitte versuche es erneut.")
                 }
             } catch (e: com.example.api.GeminiAnalysisException) {
-                Log.e("ReceiptViewModel", "Gemini analysis custom exception caught: category=${e.category}, code=${e.errorCode}", e)
+                DiagnosticLog.e("ReceiptViewModel", "Gemini analysis custom exception caught: category=")
                 _scanState.value = ScanUiState.Error(e.userMessage)
             } catch (e: OpenAiAnalysisException) {
-                Log.e("ReceiptViewModel", "OpenAI receipt analysis failed: code=${e.errorCode}")
+                DiagnosticLog.e("ReceiptViewModel", "OpenAI receipt analysis failed: code=")
                 _scanState.value = ScanUiState.Error(e.userMessage)
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Unexpected exception during Gemini analysis", e)
+                DiagnosticLog.e("ReceiptViewModel", "Unexpected exception during Gemini analysis")
                 _scanState.value = ScanUiState.Error("Netzwerkfehler oder unerwartetes Problem: ${e.localizedMessage}")
             }
         }
@@ -3747,7 +3748,7 @@ data class AiSearchUiState(
                     val downloadedPath = drivePersistenceRepository.downloadDocumentOnDemand(token, receipt)
                     paths = listOf(downloadedPath)
                 }.onFailure {
-                    Log.w("ReceiptViewModel", "Original für Beschreibungs-Nacherkennung konnte nicht aus Drive geladen werden", it)
+                    DiagnosticLog.w("ReceiptViewModel", "Original für Beschreibungs-Nacherkennung konnte nicht aus Drive geladen werden")
                 }
             }
         }
@@ -3779,7 +3780,7 @@ data class AiSearchUiState(
                         listOfNotNull(BitmapFactory.decodeFile(file.absolutePath))
                     }
                 }.getOrElse {
-                    Log.w("ReceiptViewModel", "Original für Beschreibungs-Nacherkennung konnte nicht gerendert werden: $path", it)
+                    DiagnosticLog.w("ReceiptViewModel", "Original für Beschreibungs-Nacherkennung konnte nicht gerendert werden")
                     emptyList()
                 }
             }
@@ -3887,7 +3888,7 @@ data class AiSearchUiState(
                 }
                 if (_isDriveConnected.value && _autoDriveBackup.value) {
                     runCatching { uploadReceiptToDriveInternal(receiptToSave) }
-                        .onFailure { Log.w("ReceiptViewModel", "Korrigierte Beschreibung konnte nicht sofort nach Drive synchronisiert werden", it) }
+                        .onFailure { DiagnosticLog.w("ReceiptViewModel", "Korrigierte Beschreibung konnte nicht sofort nach Drive synchronisiert werden") }
                 }
                 updatedCount++
             }
@@ -3952,7 +3953,7 @@ data class AiSearchUiState(
                         listOfNotNull(BitmapFactory.decodeFile(file.absolutePath))
                     }
                 }.getOrElse {
-                    Log.w("ReceiptViewModel", "Original für Zahlungsart konnte nicht gerendert werden: $path", it)
+                    DiagnosticLog.w("ReceiptViewModel", "Original für Zahlungsart konnte nicht gerendert werden")
                     emptyList()
                 }
             }
@@ -4153,7 +4154,7 @@ data class AiSearchUiState(
                 links = bankReceiptLinks.value
             )
             if (!deleteDecision.allowed) {
-                Log.w("ReceiptViewModel", deleteDecision.reason ?: "Beleg ist noch mit Bankbuchungen verknüpft.")
+                DiagnosticLog.w("ReceiptViewModel", "ReceiptViewModel operation")
                 return@launch
             }
             val email = _googleAccountEmail.value
@@ -4194,7 +4195,7 @@ data class AiSearchUiState(
                         FirestoreService.deleteReceipt(id)
                     }
                 } catch (e: Exception) {
-                    Log.e("ReceiptViewModel", "Error deleting receipt with sync, fallback to offline pending", e)
+                    DiagnosticLog.e("ReceiptViewModel", "Error deleting receipt with sync, fallback to offline pending")
                     val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                     val deletionUuid = java.util.UUID.randomUUID().toString()
                     repository.softDelete(
@@ -4235,7 +4236,7 @@ data class AiSearchUiState(
                     }
                     drivePersistenceRepository.restoreDeletedReceipt(token, config, receipt)
                 } catch (e: Exception) {
-                    Log.e("ReceiptViewModel", "Error restoring receipt with sync", e)
+                    DiagnosticLog.e("ReceiptViewModel", "Error restoring receipt with sync")
                     repository.softDelete(
                         id = receipt.id,
                         status = "ACTIVE",
@@ -4279,7 +4280,7 @@ data class AiSearchUiState(
                     }
                     drivePersistenceRepository.permanentlyDeleteReceipt(token, config, receipt)
                 } catch (e: Exception) {
-                    Log.e("ReceiptViewModel", "Error permanently deleting receipt with sync", e)
+                    DiagnosticLog.e("ReceiptViewModel", "Error permanently deleting receipt with sync")
                     com.example.data.PermanentDeleteResult.Error("Permanentes Löschen fehlgeschlagen: ${e.message}")
                 }
             }
@@ -4482,7 +4483,7 @@ data class AiSearchUiState(
                     }
                     editor.apply()
                     _wohneinheitenStatus.value = remoteUnits
-                    Log.i("ReceiptViewModel", "Wohneinheiten aus Firestore geladen.")
+                    DiagnosticLog.i("ReceiptViewModel", "Wohneinheiten aus Firestore geladen.")
                 } else {
                     // Upload current local units to Firestore if remote is empty
                     val localUnits = _wohneinheitenStatus.value
@@ -4498,7 +4499,7 @@ data class AiSearchUiState(
                     // Insert remote receipts into local DB
                     if (remoteReceipts.isNotEmpty()) {
                         repository.insertAll(remoteReceipts)
-                        Log.i("ReceiptViewModel", "Belege aus Firestore geladen.")
+                        DiagnosticLog.i("ReceiptViewModel", "Belege aus Firestore geladen.")
                     }
                     
                     // Upload local receipts to Firestore if they don't exist in remote
@@ -4511,7 +4512,7 @@ data class AiSearchUiState(
                 }
                 _driveSyncStatus.value = "Firestore-Synchronisierung erfolgreich!"
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Firestore sync error", e)
+                DiagnosticLog.e("ReceiptViewModel", "Firestore sync error")
                 _driveSyncStatus.value = "Fehler bei Firestore-Synchronisierung."
             }
         }
@@ -4805,7 +4806,7 @@ data class AiSearchUiState(
                 val report = drivePersistenceRepository.auditOriginalReceipts(token, config)
                 _originalReceiptAuditReport.value = report
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error in runOriginalReceiptAudit", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error in runOriginalReceiptAudit")
                 _originalReceiptAuditError.value = "Fehler bei der Bestandsprüfung: ${e.message}"
             } finally {
                 _isAuditingOriginalReceipts.value = false
@@ -4849,7 +4850,7 @@ data class AiSearchUiState(
                 val report = drivePersistenceRepository.generateMetadataDuplicateReport(token, config)
                 _metadataDuplicateReport.value = report
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error in runMetadataDuplicateReport", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error in runMetadataDuplicateReport")
                 _metadataDuplicateError.value = "Fehler bei der Dublettenprüfung: ${e.message}"
             } finally {
                 _isCheckingMetadataDuplicates.value = false
@@ -4916,7 +4917,7 @@ data class AiSearchUiState(
                     }
                 }
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Metadata duplicate cleanup failed", e)
+                DiagnosticLog.e("ReceiptViewModel", "Metadata duplicate cleanup failed")
                 _metadataDuplicateError.value =
                     "Metadaten-Dubletten konnten nicht sicher bereinigt werden: ${e.message}"
             } finally {
@@ -4976,7 +4977,7 @@ data class AiSearchUiState(
                     _originalReceiptAuditReport.value = updatedReport
                 }
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error correcting receipt metadata", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error correcting receipt metadata")
             }
         }
     }
@@ -5099,7 +5100,7 @@ data class AiSearchUiState(
                     _repairUiState.value = RepairUiState.Error(res.errorMessage ?: "Fehler bei der Dokumentenreparatur.")
                 }
             } catch (e: Exception) {
-                Log.e("ReceiptViewModel", "Error in repairReceiptDocument", e)
+                DiagnosticLog.e("ReceiptViewModel", "Error in repairReceiptDocument")
                 _repairUiState.value = RepairUiState.Error("Fehler: ${e.message}")
             }
         }

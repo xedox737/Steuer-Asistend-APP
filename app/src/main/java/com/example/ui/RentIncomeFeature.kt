@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -74,9 +76,9 @@ internal fun isRentalIncomeReceipt(receipt: Receipt): Boolean {
 fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
     val context = LocalContext.current
     val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
-    val receipts by receiptFlow.collectAsState()
-    val units by viewModel.wohneinheitenStatus.collectAsState()
-    val metadata by viewModel.propertyMetadata.collectAsState()
+    val receipts by receiptFlow.collectAsStateWithLifecycle()
+    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
     var prefsVersion by remember { mutableIntStateOf(0) }
     val availableYears = remember(receipts) {
