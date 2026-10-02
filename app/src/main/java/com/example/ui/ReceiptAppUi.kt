@@ -6215,7 +6215,7 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
     val kontoMap = receipts.groupBy { it.kontoNr }
     val sortedKonten = listOf("0050", "2110", "2120", "4830", "4670", "4970")
 
-    val scrollState = rememberScrollState()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
 
     var showTaxYearDialog by remember { mutableStateOf(false) }
 
@@ -6421,15 +6421,15 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    LedgerOverview(
+        receipts = receipts,
+        properties = properties,
+        onReceipt = { viewModel.openReceiptDetail(it.id, AppScreen.LEDGER) },
+        onDatev = viewModel::openDatevExport,
+        onPdf = { showTaxYearDialog = true }
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = BorderStroke(1.dp, BorderColor)
         ) {
@@ -6520,7 +6520,7 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
         }
 
         Card(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
             border = BorderStroke(1.dp, BorderColor)
         ) {
@@ -6537,133 +6537,9 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
             }
         }
 
-        // DATEV Export Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = null,
-                        tint = EmeraldGreen,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "DATEV Export",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkNavy
-                    )
-                    Text(
-                        text = "Exportiere Belege als DATEV-kompatible CSV oder PDF.",
-                        fontSize = 11.sp,
-                        color = Color.Gray,
-                        lineHeight = 15.sp
-                    )
-                }
-
-                Button(
-                    onClick = viewModel::openDatevExport,
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // Professional PDF Export Banner
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = BorderStroke(1.dp, BorderColor)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(EmeraldGreen.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Description,
-                        contentDescription = null,
-                        tint = EmeraldGreen,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Finanzamt PDF-Export",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = DarkNavy
-                    )
-                    Text(
-                        text = "Generiere einen strukturierten Steuerbericht mit Werbungskosten-Auswertung & Buchungsjournal.",
-                        fontSize = 11.sp,
-                        color = Color.Gray,
-                        lineHeight = 15.sp
-                    )
-                }
-
-                Button(
-                    onClick = { showTaxYearDialog = true },
-                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
         Text(
             "DATEV-Kontenrahmen SKR 03",
-            fontSize = 20.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.Black,
             color = DarkNavy
         )
@@ -6717,57 +6593,6 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
             }
         }
 
-        // Professional Journal / Buchungsjournal
-        Text("Buchungsjournal (Soll & Haben)", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 16.sp)
-
-        if (receipts.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Keine Buchungssätze vorhanden. Erfasse Belege im Archiv.", color = Color.Gray, fontSize = 12.sp)
-            }
-        } else {
-            receipts.forEach { receipt ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, BorderColor)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(receipt.datum, fontSize = 11.sp, color = Color.Gray)
-                            Text("Beleg-ID: #${receipt.id}", fontSize = 11.sp, color = Color.Gray)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(receipt.aussteller, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
-                            Text(NumberFormatter.format(receipt.bruttobetrag), fontWeight = FontWeight.Black, color = DarkNavy, fontSize = 13.sp)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(SoftBackground)
-                                .padding(6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Soll: Konto ${receipt.kontoNr}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGray)
-                            Text("Haben: Konto 1200 (Bank)", fontSize = 11.sp, color = Color.Gray)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

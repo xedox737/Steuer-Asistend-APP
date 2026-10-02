@@ -1,0 +1,186 @@
+package com.example.ui
+
+import android.app.Application
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
+import com.example.MainActivity
+import com.example.data.*
+import com.github.takahirom.roborazzi.captureRoboImage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
+class LedgerComposeTest {
+    @get:Rule val ui = createAndroidComposeRule<MainActivity>()
+    private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
+    private fun seed(openLedger: Boolean = true) {
+        val database = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        runBlocking {
+            // Deliberately identical display names ensure filtering really uses stable IDs.
+            database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 81, propertyId = "ledger-a", name = "Testhaus"))
+            database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 82, propertyId = "ledger-b", name = "Testhaus"))
+            listOf(
+                Receipt(id = 901, aussteller = "Mieter Müller", datum = "2026-05-03", uhrzeit = "", bruttobetrag = 1200.0,
+                    hauptkategorie = "Miete, Nebenkosten & Kaution", unterkategorie = "Mieteinnahmen", kontoNr = "8100",
+                    beschreibung = "Mai-Miete", propertyId = "ledger-a", displayId = "R-901"),
+                Receipt(id = 902, aussteller = "Hornbach", datum = "2026-04-28", uhrzeit = "", bruttobetrag = 256.4,
+                    hauptkategorie = "Sanierung", unterkategorie = "Instandhaltung", kontoNr = "4830",
+                    beschreibung = "Fenster reparieren", propertyId = "ledger-b", displayId = "R-902"),
+                Receipt(id = 903, aussteller = "Stadtwerke", datum = "2026-04-20", uhrzeit = "", bruttobetrag = 412.0,
+                    hauptkategorie = "Betriebskosten", unterkategorie = "Betriebskosten", kontoNr = "4670",
+                    beschreibung = "Wasser", propertyId = "ledger-a"),
+                Receipt(id = 904, aussteller = "Vorjahr", datum = "2025-12-31", uhrzeit = "", bruttobetrag = 1000.0,
+                    hauptkategorie = "Miete, Nebenkosten & Kaution", unterkategorie = "Mieteinnahmen", kontoNr = "8100",
+                    beschreibung = "Dezember", propertyId = "ledger-a")
+            ).forEach { database.receiptDao().insertReceipt(it) }
+        }
+        ui.waitUntil(10000) { vm.receipts.value.count { it.id in 901..904 } == 4 && vm.properties.value.size >= 2 }
+        if (openLedger) ui.runOnIdle { vm.setScreen(AppScreen.LEDGER) }
+        ui.waitForIdle()
+    }
+    private fun shell() {
+        ui.onNodeWithText("ImmoPilot").assertIsDisplayed()
+        ui.onNodeWithTag("bottom_navigation").assertIsDisplayed()
+    }
+    private fun scroll(tag: String) = ui.onNodeWithTag("ledger_overview").performScrollToNode(hasTestTag(tag))
+    private fun capture(name: String) {
+        ui.runOnIdle { ui.activity.window.decorView.invalidate() }
+        ui.mainClock.advanceTimeBy(300)
+        ui.waitForIdle()
+        onView(isRoot()).captureRoboImage("build/reports/ledger-reference/$name.png")
+    }
+    private fun systemBack() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
+
+    @Test @Config(shadows = [LedgerPdfDocumentShadow::class])
+    fun referenceScreensKeepTheActualShellAndAllActions() {
+        seed()
+        ui.onNode(hasText(LedgerPresentation.money(1200.0)) and hasAnyAncestor(hasTestTag("ledger_metric_Einnahmen"))).assertExists()
+        ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
+        ui.onNode(hasText(LedgerPresentation.money(531.6)) and hasAnyAncestor(hasTestTag("ledger_metric_Ergebnis"))).assertExists()
+        ui.onNode(hasText("3") and hasAnyAncestor(hasTestTag("ledger_metric_Belege"))).assertExists()
+        shell(); capture("393-overview")
+        scroll("ledger_receipt_901")
+        ui.onNodeWithText(LedgerPresentation.signedMoney(vm.receipts.value.first { it.id == 901 })).assertExists()
+        ui.onNodeWithText(LedgerPresentation.signedMoney(vm.receipts.value.first { it.id == 902 })).assertExists()
+        shell(); capture("393-bookings")
+        scroll("ledger_exports")
+        shell(); capture("393-exports-tools")
+        ui.onNodeWithTag("ledger_tools").performClick()
+        scroll("legacy_description_backfill_button")
+        ui.onNodeWithTag("legacy_description_backfill_button").assertIsDisplayed()
+        scroll("existing_payment_backfill_button")
+        ui.onNodeWithTag("existing_payment_backfill_button").assertIsDisplayed()
+        ui.onNodeWithTag("ledger_overview").performScrollToNode(hasText("Saldenaufstellung"))
+        ui.onNodeWithText("DATEV-Kontenrahmen SKR 03").assertExists()
+        shell(); capture("393-tools-expanded")
+        scroll("ledger_pdf"); ui.onNodeWithTag("ledger_pdf").performClick()
+        ui.onNodeWithText("Finanzamt PDF Export").assertIsDisplayed()
+        ui.onNodeWithText("Exportieren & Teilen").assertIsEnabled()
+        ui.onNodeWithText("Exportieren & Teilen").performClick()
+        assertTrue(java.io.File(ui.activity.cacheDir, "Steuerbericht_Finanzamt_2026.pdf").isFile)
+        assertTrue(LedgerPdfDocumentShadow.startedPages > 0)
+        assertEquals(LedgerPdfDocumentShadow.startedPages, LedgerPdfDocumentShadow.finishedPages)
+        assertEquals(1, LedgerPdfDocumentShadow.writes)
+        val chooser = org.robolectric.Shadows.shadowOf(ui.activity).nextStartedActivity
+        assertEquals(android.content.Intent.ACTION_CHOOSER, chooser.action)
+        val send = chooser.getParcelableExtra(android.content.Intent.EXTRA_INTENT, android.content.Intent::class.java)!!
+        assertEquals(android.content.Intent.ACTION_SEND, send.action)
+        assertEquals("application/pdf", send.type)
+        scroll("ledger_datev"); ui.onNodeWithTag("ledger_datev").performClick()
+        assertEquals(AppScreen.DATEV_EXPORT, vm.currentScreen.value)
+        systemBack(); assertEquals(AppScreen.LEDGER, vm.currentScreen.value); shell()
+    }
+
+    @Test fun filtersSearchAndReceiptDetailsWorkWithDuplicatePropertyNames() {
+        seed()
+        scroll("ledger_kind_INCOME"); ui.onNodeWithTag("ledger_kind_INCOME").performClick()
+        scroll("ledger_receipt_901"); ui.onNodeWithTag("ledger_receipt_902").assertDoesNotExist()
+        scroll("ledger_kind_EXPENSE"); ui.onNodeWithTag("ledger_kind_EXPENSE").performClick()
+        scroll("ledger_receipt_902"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
+        scroll("ledger_kind_ALL"); ui.onNodeWithTag("ledger_kind_ALL").performClick()
+        scroll("ledger_property"); ui.onNodeWithTag("ledger_property").performClick()
+        ui.onAllNodesWithText("Testhaus").onLast().performClick()
+        scroll("ledger_receipt_902"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
+        scroll("ledger_property"); ui.onNodeWithTag("ledger_property").performClick()
+        ui.onNodeWithText("Alle Immobilien").performClick()
+        scroll("ledger_search"); ui.onNodeWithTag("ledger_search").performTextInput("R-902")
+        scroll("ledger_receipt_902"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
+        ui.onNodeWithTag("ledger_receipt_902").performClick()
+        assertEquals(AppScreen.RECEIPT_DETAIL, vm.currentScreen.value)
+        systemBack(); assertEquals(AppScreen.LEDGER, vm.currentScreen.value); shell()
+        scroll("ledger_year"); ui.onNodeWithTag("ledger_year").performClick()
+        ui.onNodeWithText("2025").performClick()
+        // Search resets only on explicit user action; clear it to see the previous year.
+        scroll("ledger_search"); ui.onNodeWithTag("ledger_search").performTextClearance()
+        scroll("ledger_receipt_904"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
+    }
+
+    @Test fun systemBackReturnsToMoreAndTheGlobalNavigationRemainsVisible() {
+        seed(openLedger = false)
+        ui.onNodeWithTag("nav_item_more").performClick()
+        ui.onNodeWithText("Einnahmen / Ausgaben").performScrollTo().performClick()
+        assertEquals(AppScreen.LEDGER, vm.currentScreen.value)
+        systemBack(); assertEquals(AppScreen.MORE, vm.currentScreen.value); shell()
+    }
+
+    private fun responsive(name: String) {
+        seed(); shell(); capture("$name-overview")
+        scroll("ledger_receipt_901"); shell(); capture("$name-bookings")
+        scroll("ledger_exports"); shell(); capture("$name-exports")
+        val frame = ui.onNodeWithTag("ledger_overview").fetchSemanticsNode().boundsInRoot
+        listOf("ledger_exports", "ledger_tools").forEach { tag ->
+            scroll(tag)
+            val bounds = ui.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+            assertTrue("$tag exceeds content width", bounds.left >= frame.left && bounds.right <= frame.right)
+        }
+    }
+    @Test @Config(qualifiers = "w360dp-h800dp-420dpi") fun compactPhone() = responsive("360")
+    @Test @Config(qualifiers = "w480dp-h960dp-420dpi") fun largePhone() = responsive("480")
+
+    @Test fun emptyStateAndLargeAmountsStayReadableOnCompactPhones() {
+        ui.runOnIdle { vm.setScreen(AppScreen.LEDGER) }
+        ui.onNodeWithTag("ledger_overview").performScrollToNode(hasText("Noch keine Einnahmen oder Ausgaben vorhanden"))
+        ui.onNodeWithText("Noch keine Einnahmen oder Ausgaben vorhanden").assertIsDisplayed()
+        shell()
+        seed()
+        val database = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        runBlocking {
+            val original = vm.receipts.value.first { it.id == 901 }
+            database.receiptDao().insertReceipt(original.copy(id = 901,
+                aussteller = "Sehr langer Ausstellername für die Prüfung der Buchungskarten auf kleinen Geräten",
+                bruttobetrag = 9999999.99))
+        }
+        ui.waitUntil(10000) { vm.receipts.value.any { it.id == 901 && it.bruttobetrag == 9999999.99 } }
+        scroll("ledger_metric_Einnahmen")
+        ui.onNodeWithText(LedgerPresentation.money(9999999.99)).assertExists()
+        capture("393-large-amount-metrics")
+        scroll("ledger_receipt_901"); shell(); capture("393-large-amount-booking")
+        runBlocking {
+            val rows = vm.receipts.value
+            database.receiptDao().insertReceipt(rows.first { it.id == 901 }.copy(bruttobetrag = 1200.0))
+            database.receiptDao().insertReceipt(rows.first { it.id == 902 }.copy(bruttobetrag = -256.4))
+            database.receiptDao().insertReceipt(rows.first { it.id == 903 }.copy(datum = "2026-03-20"))
+        }
+        ui.waitUntil(10000) { vm.receipts.value.any { it.id == 902 && it.bruttobetrag < 0 } &&
+            vm.receipts.value.any { it.id == 901 && it.bruttobetrag == 1200.0 } &&
+            vm.receipts.value.any { it.id == 903 && it.datum == "2026-03-20" } }
+        scroll("ledger_chart")
+        val refund = ui.onNodeWithTag("ledger_bar_EXPENSE_4").fetchSemanticsNode().boundsInRoot
+        val zero = ui.onNodeWithTag("ledger_chart_zero").fetchSemanticsNode().boundsInRoot
+        assertTrue("A refund must be drawn below zero", refund.top >= zero.top - 1 && refund.bottom > zero.bottom)
+        shell(); capture("393-refund-chart")
+    }
+}
