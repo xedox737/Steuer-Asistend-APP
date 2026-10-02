@@ -86,6 +86,8 @@ class ConfirmedAuditRegressionTest {
         ).forEach { productionSource ->
             assertFalse(productionSource.contains("Gerweck"))
             assertFalse(productionSource.contains("Sulzerstraße"))
+            assertFalse(productionSource.contains("MockReceiptTemplate"))
+            assertFalse(productionSource.contains("mockTemplates"))
         }
     }
 
