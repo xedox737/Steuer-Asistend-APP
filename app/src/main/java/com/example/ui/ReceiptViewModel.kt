@@ -206,6 +206,15 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private suspend fun <T> withGeminiKey(block: suspend (CharArray) -> T): T? {
+        val key = AiProviderSettings.getGeminiKey(getApplication()) ?: return null
+        return try {
+            block(key)
+        } finally {
+            key.fill('\u0000')
+        }
+    }
+
     fun deleteOpenAiKey() {
         _aiProviderState.value = AiProviderSettings.clearOpenAiKey(getApplication())
     }
@@ -2540,7 +2549,9 @@ data class AiSearchUiState(
         viewModelScope.launch {
             _aiSearchState.value = AiSearchUiState(isLoading = true, query = trimmed)
             val currentList = receipts.value
-            var result = com.example.api.GeminiClient.answerNaturalLanguageQuery(trimmed, currentList)
+            var result = withGeminiKey { key ->
+                com.example.api.GeminiClient.answerNaturalLanguageQuery(trimmed, currentList, apiKeyOverride = key)
+            }
 
             // Local fallback calculation if Gemini API returns null or key is missing
             if (result == null && currentList.isNotEmpty()) {
@@ -4515,15 +4526,18 @@ data class AiSearchUiState(
 
     // --- 5 AI FEATURE EXECUTION METHODS ---
 
-    fun runTaxPlausibilityCheck(buildingPurchaseValue: Double = 600000.0) {
+    fun runTaxPlausibilityCheck(buildingPurchaseValue: Double? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _isAnalyzingTaxPlausibility.value = true
             val currentList = receipts.value
-            val result = com.example.api.GeminiClient.analyzeTaxPlausibility(
+            val metadata = propertyMetadata.value
+            val effectiveBuildingValue = buildingPurchaseValue ?: metadata?.gebaeudewert ?: 0.0
+            val result = withGeminiKey { key -> com.example.api.GeminiClient.analyzeTaxPlausibility(
                 receipts = currentList,
-                buildingPurchaseValue = buildingPurchaseValue,
-                purchaseDate = propertyMetadata.value?.notariellesKaufdatum.orEmpty()
-            )
+                buildingPurchaseValue = effectiveBuildingValue,
+                purchaseDate = metadata?.notariellesKaufdatum.orEmpty(),
+                apiKeyOverride = key
+            ) }
             _taxPlausibilityReport.value = result
             _isAnalyzingTaxPlausibility.value = false
         }
@@ -4533,27 +4547,29 @@ data class AiSearchUiState(
         tenantName: String,
         unitName: String,
         sqm: Double,
-        totalBuildingSqm: Double = 520.0,
-        year: Int = 2025
+        totalBuildingSqm: Double? = null,
+        year: Int = java.time.LocalDate.now().year
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             _isGeneratingUtilityStatement.value = true
             val currentList = receipts.value
-            val result = com.example.api.GeminiClient.generateTenantUtilityStatement(
+            val effectiveBuildingSqm = totalBuildingSqm ?: propertyMetadata.value?.wohnflaeche ?: 0.0
+            val result = withGeminiKey { key -> com.example.api.GeminiClient.generateTenantUtilityStatement(
                 tenantName = tenantName,
                 unitName = unitName,
                 sqm = sqm,
-                totalBuildingSqm = totalBuildingSqm,
+                totalBuildingSqm = effectiveBuildingSqm,
                 year = year,
-                receipts = currentList
-            )
+                receipts = currentList,
+                apiKeyOverride = key
+            ) }
             _tenantUtilityStatement.value = result
             _isGeneratingUtilityStatement.value = false
         }
     }
 
     fun runRentYieldOptimization(
-        propertyLocation: String = "München / Deutschland",
+        propertyLocation: String = "",
         currentUnitsInfo: String = ""
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -4564,11 +4580,15 @@ data class AiSearchUiState(
                     "- ${u.name}: ${u.mieter}, Kaltmiete: ${u.kaltmiete}€, Fläche: ${u.wohnflaeche}m², Status: ${u.status}"
                 }
             }
-            val result = com.example.api.GeminiClient.optimizeRentAndYield(
-                propertyLocation = propertyLocation,
+            val effectiveLocation = propertyLocation.ifBlank {
+                propertyMetadata.value?.adresse?.ifBlank { propertyMetadata.value?.wohnort.orEmpty() }.orEmpty()
+            }
+            val result = withGeminiKey { key -> com.example.api.GeminiClient.optimizeRentAndYield(
+                propertyLocation = effectiveLocation,
                 currentUnitsInfo = unitsText,
-                receipts = currentList
-            )
+                receipts = currentList,
+                apiKeyOverride = key
+            ) }
             _rentYieldReport.value = result
             _isOptimizingRentYield.value = false
         }
@@ -4577,10 +4597,11 @@ data class AiSearchUiState(
     fun analyzeDamagePhoto(bitmap: android.graphics.Bitmap, userDescription: String = "") {
         viewModelScope.launch(Dispatchers.IO) {
             _isAssessingDamage.value = true
-            val result = com.example.api.GeminiClient.assessDamagePhoto(
+            val result = withGeminiKey { key -> com.example.api.GeminiClient.assessDamagePhoto(
                 bitmap = bitmap,
-                userDescription = userDescription
-            )
+                userDescription = userDescription,
+                apiKeyOverride = key
+            ) }
             _damageAssessment.value = result
             _isAssessingDamage.value = false
         }
@@ -4589,10 +4610,11 @@ data class AiSearchUiState(
     fun analyzeContractDocument(bitmap: android.graphics.Bitmap? = null, textContent: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _isAnalyzingContract.value = true
-            val result = com.example.api.GeminiClient.analyzeContractDocument(
+            val result = withGeminiKey { key -> com.example.api.GeminiClient.analyzeContractDocument(
                 bitmap = bitmap,
-                textContent = textContent
-            )
+                textContent = textContent,
+                apiKeyOverride = key
+            ) }
             _contractAnalysis.value = result
             _isAnalyzingContract.value = false
         }
@@ -4605,11 +4627,12 @@ data class AiSearchUiState(
             val tenantsText = _wohneinheitenStatus.value.joinToString("\n") { u ->
                 "- ${u.name}: ${u.mieter}, Kaltmiete: ${u.kaltmiete}€, Status: ${u.status}"
             }
-            val result = com.example.api.GeminiClient.matchBankStatement(
+            val result = withGeminiKey { key -> com.example.api.GeminiClient.matchBankStatement(
                 rawStatementText = rawStatementText,
                 receipts = currentList,
-                tenantsInfo = tenantsText
-            )
+                tenantsInfo = tenantsText,
+                apiKeyOverride = key
+            ) }
             _bankStatementResult.value = result
             _isMatchingBankStatement.value = false
         }
