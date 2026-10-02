@@ -202,8 +202,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val state = AiProviderSettings.loadState(getApplication())
         return when (provider) {
             ReceiptAnalysisProvider.OPENAI -> !state.hasOpenAiKey
-            ReceiptAnalysisProvider.GEMINI -> !state.hasGeminiKey &&
-                (com.example.BuildConfig.GEMINI_API_KEY.isBlank() || com.example.BuildConfig.GEMINI_API_KEY == "MY_GEMINI_API_KEY")
+            ReceiptAnalysisProvider.GEMINI -> !state.hasGeminiKey
         }
     }
 
@@ -551,9 +550,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
         // Automatically connect to Google Drive on app launch
         val isExplicitlyDisconnected = sharedPrefs.getBoolean("user_disconnected", false)
-        val savedEmail = sharedPrefs.getString("connected_email", null) ?: "sergej.alc28@gmail.com"
-        
-        if (!isExplicitlyDisconnected) {
+        val savedEmail = sharedPrefs.getString("connected_email", null)?.takeIf { it.isNotBlank() }
+
+        if (!isExplicitlyDisconnected && savedEmail != null) {
             connectDrive(savedEmail)
         } else {
             _googleAccountEmail.value = savedEmail
@@ -694,82 +693,47 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun getWohneinheitenFromPrefs(metaUnitsStr: String? = null): List<WohneinheitStatus> {
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val rawUnitsStr = metaUnitsStr
-            ?: propertyMetadata.value?.wohneinheiten
-            ?: "WE 1, WE 2, WE 3, WE 4, WE 5, WE 6, WE 7"
-
-        val parsedUnitNames = rawUnitsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        val unitNames = if (parsedUnitNames.isNotEmpty()) parsedUnitNames else listOf("WE 1", "WE 2", "WE 3", "WE 4", "WE 5", "WE 6", "WE 7")
-
-        val defaultPresetMap = mapOf(
-            "WE 1" to WohneinheitStatus("WE 1", "WE 1 (EG links)", "Vermietet", "Hans Peter", 480.0, 60.0),
-            "WE 2" to WohneinheitStatus("WE 2", "WE 2 (EG rechts)", "Vermietet", "Erika Mustermann", 440.0, 55.0),
-            "WE 3" to WohneinheitStatus("WE 3", "WE 3 (1. OG links)", "Vermietet", "Familie Schmidt", 520.0, 65.0),
-            "WE 4" to WohneinheitStatus("WE 4", "WE 4 (1. OG rechts)", "Sanierung", "Unbewohnt (Eigenleistung)", 440.0, 55.0),
-            "WE 5" to WohneinheitStatus("WE 5", "WE 5 (2. OG links)", "Vermietet", "Klaus & Sabine", 520.0, 65.0),
-            "WE 6" to WohneinheitStatus("WE 6", "WE 6 (2. OG rechts)", "Leerstand", "Keiner", 440.0, 55.0),
-            "WE 7" to WohneinheitStatus("WE 7", "WE 7 (DG Studio)", "Vermietet", "Dr. Julia Wagner", 580.0, 65.0)
-        )
+        val rawUnitsStr = metaUnitsStr ?: propertyMetadata.value?.wohneinheiten.orEmpty()
+        val unitNames = rawUnitsStr.split(",").map(String::trim).filter(String::isNotBlank)
+        if (unitNames.isEmpty()) return emptyList()
 
         val propertyId = propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
         return unitNames.mapIndexed { index, name ->
-            val preset = defaultPresetMap[name]
-            val exists = unitPrefs.contains("unit_status_$name")
             val stableUnitId = unitPrefs.getString("unit_id_$name", null)
                 ?: unitPrefs.getString("unit_id_index_$index", null)
                 ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name).also {
                     unitPrefs.edit().putString("unit_id_$name", it).putString("unit_id_index_$index", it).apply()
                 }
 
+            val exists = unitPrefs.contains("unit_status_$name") ||
+                unitPrefs.contains("unit_label_$name") ||
+                unitPrefs.contains("unit_mieter_$name") ||
+                unitPrefs.contains("unit_rent_$name") ||
+                unitPrefs.contains("unit_area_$name") ||
+                unitPrefs.contains("unit_start_$name")
+
             if (exists) {
                 WohneinheitStatus(
                     name = name,
                     label = unitPrefs.getString("unit_label_$name", name) ?: name,
-                    status = unitPrefs.getString("unit_status_$name", "Vermietet") ?: "Vermietet",
+                    status = unitPrefs.getString("unit_status_$name", "Leerstand") ?: "Leerstand",
                     mieter = unitPrefs.getString("unit_mieter_$name", "") ?: "",
                     kaltmiete = unitPrefs.getFloat("unit_rent_$name", 0f).toDouble(),
                     wohnflaeche = unitPrefs.getFloat("unit_area_$name", 0f).toDouble(),
                     mietvertragsstart = unitPrefs.getString("unit_start_$name", "") ?: "",
                     unitId = stableUnitId
                 )
-            } else if (preset != null) {
-                val editor = unitPrefs.edit()
-                editor.putString("unit_status_${preset.name}", preset.status)
-                editor.putString("unit_label_${preset.name}", preset.label)
-                editor.putString("unit_mieter_${preset.name}", preset.mieter)
-                editor.putFloat("unit_rent_${preset.name}", preset.kaltmiete.toFloat())
-                editor.putFloat("unit_area_${preset.name}", preset.wohnflaeche.toFloat())
-                editor.putString("unit_start_${preset.name}", preset.mietvertragsstart)
-                editor.apply()
-                preset.copy(unitId = stableUnitId)
             } else {
-                val floor = when (index % 4) {
-                    0 -> "EG"
-                    1 -> "1. OG"
-                    2 -> "2. OG"
-                    else -> "DG"
-                }
-                val newLabel = "$name ($floor)"
-                val newStatus = "Vermietet"
-                val newUnit = WohneinheitStatus(
+                WohneinheitStatus(
                     name = name,
-                    label = newLabel,
-                    status = newStatus,
+                    label = name,
+                    status = "Leerstand",
                     mieter = "",
-                    kaltmiete = 500.0,
-                    wohnflaeche = 60.0,
+                    kaltmiete = 0.0,
+                    wohnflaeche = 0.0,
                     mietvertragsstart = "",
                     unitId = stableUnitId
                 )
-                val editor = unitPrefs.edit()
-                editor.putString("unit_status_$name", newUnit.status)
-                editor.putString("unit_label_$name", newUnit.label)
-                editor.putString("unit_mieter_$name", newUnit.mieter)
-                editor.putFloat("unit_rent_$name", newUnit.kaltmiete.toFloat())
-                editor.putFloat("unit_area_$name", newUnit.wohnflaeche.toFloat())
-                editor.putString("unit_start_$name", newUnit.mietvertragsstart)
-                editor.apply()
-                newUnit
             }
         }
     }
@@ -4131,16 +4095,13 @@ data class AiSearchUiState(
         }
     }
 
-    /** Removes only the object record. Receipts and documents remain untouched for safety. */
+    /** Keeps the stable object identity and all historical references by archiving the property. */
     fun deleteProperty(property: PropertyMetadata) {
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deletePropertyByPropertyId(property.propertyId)
+            repository.updatePropertyMetadata(property.copy(status = "Archiviert"))
             if (_selectedPropertyId.value == property.propertyId) {
                 _selectedPropertyId.value = ""
                 sharedPrefs.edit().remove("selected_property_id").apply()
-            }
-            property.bildPfad.takeIf { it.isNotBlank() }?.let { path ->
-                runCatching { java.io.File(path).delete() }
             }
             if (_isDriveConnected.value && _autoDriveBackup.value) syncAllToDrive()
         }
@@ -4424,12 +4385,6 @@ data class AiSearchUiState(
     fun dismissDuplicateCleanupState() {
         duplicateCleanupController?.cancel()
         _duplicateCleanupState.value = DuplicateCleanupUiState.Idle
-    }
-
-    fun resetToDefaults() {
-        viewModelScope.launch {
-            repository.resetDefaults()
-        }
     }
 
     fun clearAll() {
