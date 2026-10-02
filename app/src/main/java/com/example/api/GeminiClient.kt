@@ -414,7 +414,6 @@ object GeminiClient {
         }
 
         val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
-            .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val duration = System.currentTimeMillis() - startTime
             DiagnosticLog.e(TAG, "--- GEMINI API CALL DIAGNOSTICS")
@@ -690,7 +689,6 @@ object GeminiClient {
         apiKeyOverride: CharArray? = null
     ): Double? {
         val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
-            .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             DiagnosticLog.e(TAG, "Gemini API Key is not set or is placeholder!")
             apiKeyOverride?.fill('\u0000')
@@ -756,9 +754,10 @@ object GeminiClient {
      */
     suspend fun answerNaturalLanguageQuery(
         userQuery: String,
-        receipts: List<com.example.data.Receipt>
+        receipts: List<com.example.data.Receipt>,
+        apiKeyOverride: CharArray? = null
     ): AiSearchResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             DiagnosticLog.e(TAG, "Gemini API Key is not set or is placeholder!")
             return null
@@ -827,9 +826,10 @@ object GeminiClient {
     suspend fun analyzeTaxPlausibility(
         receipts: List<com.example.data.Receipt>,
         buildingPurchaseValue: Double = 0.0,
-        purchaseDate: String = ""
+        purchaseDate: String = "",
+        apiKeyOverride: CharArray? = null
     ): TaxPlausibilityReport? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val receiptSummary = receipts.joinToString("\n") { r ->
@@ -893,9 +893,10 @@ object GeminiClient {
         sqm: Double,
         totalBuildingSqm: Double = 520.0,
         year: Int = 2025,
-        receipts: List<com.example.data.Receipt>
+        receipts: List<com.example.data.Receipt>,
+        apiKeyOverride: CharArray? = null
     ): TenantUtilityStatement? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val operatingReceipts = receipts.filter { 
@@ -958,9 +959,10 @@ object GeminiClient {
     suspend fun optimizeRentAndYield(
         propertyLocation: String,
         currentUnitsInfo: String,
-        receipts: List<com.example.data.Receipt>
+        receipts: List<com.example.data.Receipt>,
+        apiKeyOverride: CharArray? = null
     ): RentYieldOptimizationReport? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val prompt = """
@@ -1015,9 +1017,10 @@ object GeminiClient {
     // --- 4. KI-MÄNGEL- & SCHADENS-ASSISTENT MIT FOTO-ANALYSE ---
     suspend fun assessDamagePhoto(
         bitmap: Bitmap,
-        userDescription: String = ""
+        userDescription: String = "",
+        apiKeyOverride: CharArray? = null
     ): DamageAssessmentResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val parts = mutableListOf<Part>()
@@ -1069,9 +1072,10 @@ object GeminiClient {
     // --- 5. KI-VERTRAGS- & FRISTEN-ANALYSATOR ---
     suspend fun analyzeContractDocument(
         bitmap: Bitmap? = null,
-        textContent: String? = null
+        textContent: String? = null,
+        apiKeyOverride: CharArray? = null
     ): ContractAnalysisResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val parts = mutableListOf<Part>()
@@ -1128,9 +1132,10 @@ object GeminiClient {
     suspend fun matchBankStatement(
         rawStatementText: String,
         receipts: List<com.example.data.Receipt>,
-        tenantsInfo: String = ""
+        tenantsInfo: String = "",
+        apiKeyOverride: CharArray? = null
     ): BankStatementReconciliationResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val receiptsSummary = receipts.joinToString("\n") { r ->
@@ -1216,7 +1221,7 @@ object GeminiClient {
         propertyContext: String,
         apiKeyOverride: CharArray? = null
     ): ManagedDocumentAiResult? {
-        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty().ifBlank { BuildConfig.GEMINI_API_KEY }
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") throw GeminiAnalysisException.KeyMissing()
         val parts = mutableListOf<Part>()
         bitmap?.let { parts += Part(inlineData = InlineData("image/jpeg", it.toBase64())) }
