@@ -74,6 +74,9 @@ tasks.withType<Test>().configureEach {
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
+  // API credentials are entered by the user and stored via Android Keystore.
+  // Never generate a BuildConfig constant even if a developer has this key in .env.
+  ignoreList.add("GEMINI_API_KEY")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }

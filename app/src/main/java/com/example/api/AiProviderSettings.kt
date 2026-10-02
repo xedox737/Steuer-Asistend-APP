@@ -5,7 +5,6 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import com.example.BuildConfig
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -78,7 +77,7 @@ object AiProviderSettings {
     ): AiProviderState {
         require(
             (provider != ReceiptAnalysisProvider.OPENAI || hasStoredOpenAiKey(context)) &&
-                (provider != ReceiptAnalysisProvider.GEMINI || hasStoredGeminiKey(context) || hasBuildConfigGeminiKey())
+                (provider != ReceiptAnalysisProvider.GEMINI || hasStoredGeminiKey(context))
         ) {
             "Für OpenAI muss zuerst ein API-Schlüssel gespeichert werden."
         }
@@ -255,9 +254,6 @@ object AiProviderSettings {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.contains(KEY_GOOGLE_ROUTES_CIPHERTEXT) && prefs.contains(KEY_GOOGLE_ROUTES_IV)
     }
-
-    private fun hasBuildConfigGeminiKey(): Boolean =
-        BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY"
 
     private fun getOrCreateSecretKey(): SecretKey =
         getSecretKey() ?: KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)

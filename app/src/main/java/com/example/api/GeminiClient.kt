@@ -414,7 +414,6 @@ object GeminiClient {
         }
 
         val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
-            .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             val duration = System.currentTimeMillis() - startTime
             DiagnosticLog.e(TAG, "--- GEMINI API CALL DIAGNOSTICS")
@@ -449,13 +448,9 @@ object GeminiClient {
         } else ""
 
         val systemInstruction = """
-            Du bist ein hochpräziser digitaler Steuer- und Buchhaltungsassistent für die Verwaltung eines deutschen 7-Familienhauses (Anlage V).
+            Du bist ein hochpräziser digitaler Steuer- und Buchhaltungsassistent für die Verwaltung vermieteter Immobilien in Deutschland (Anlage V).
             Analysiere den Beleg, die Rechnung oder Quittung und extrahiere die Kerndaten fehlerfrei. Ordne die Ausgaben exakt in die vorgegebene Taxonomie ein.
-
-            KONTEXT ZUM OBJEKT:
-            - Notarieller Kaufvertrag: 01.10.2025.
-            - Übergang von Nutzen und Lasten: 01.01.2026.
-            - Sanierung: Eine Wohnung wurde ab 01.10.2025 bis 31.01.2026 in reiner Eigenleistung (nur Material, keine Handwerker) saniert.
+            Verwende ausschließlich Informationen aus dem aktuellen Beleg und ausdrücklich übergebenem Benutzerwissen. Erfinde keine objektspezifischen Kauf-, Sanierungs- oder Mietdaten.
             $learnedRulesSection
 
             STRIKTE REGELN FÜR DIE KATEGORISIERUNG:
@@ -513,16 +508,16 @@ object GeminiClient {
             - Andere Nebenkosten oder Gebühren -> "4970" (oder passend).
 
             EXTRAKTIONS-VORGABEN:
-            - datum: Leistungs- oder Rechnungsdatum strikt im Format YYYY-MM-DD. Falls kein Datum erkennbar, nutze das heutige Datum (2026-07-14).
+            - datum: Leistungs- oder Rechnungsdatum strikt im Format YYYY-MM-DD. Falls kein Datum erkennbar ist, setze einen leeren String und erfinde kein Datum.
             - aussteller: Firmenname und Markt-Standort/Adresse falls auf Beleg vorhanden (z. B. "OBI Baumarkt, Industriestr. 12, 12345 Musterstadt" oder "Hornbach").
             - bruttobetrag: Finaler Zahlbetrag inklusive Mehrwertsteuer als reine positive Zahl (z. B. 145.50).
             - uhrzeit: Lies die Uhrzeit (HH:MM) vom Beleg ab. WICHTIG für Baumarktquittungen! Falls keine Uhrzeit gefunden wird, setze einen leeren String "" ein.
             - kontoNr: Die zugewiesene Konto-Nummer ("0050", "2110", "2120", "4970", "4830", "4670" oder passend).
             - beschreibung: Kurze Zusammenfassung auf Deutsch, was gekauft wurde oder worum es geht (z. B. "Kauf von Wandfarbe und Malerzubehör").
-            - wohneinheit: Zugeordnete Wohneinheit (z. B. "WE 1", "WE 2" ... "WE 7"), falls auf dem Beleg genannt, sonst "Gesamtobjekt / Allgemein".
-            - mieter: Name des Mieters/Zahlers, falls auf dem Beleg oder der Überweisung genannt (z. B. "Erika Mustermann", "Hans Peter"), sonst leeres String "".
+            - wohneinheit: Zugeordnete Wohneinheit nur übernehmen, wenn sie auf dem Beleg oder in ausdrücklich übergebenem Benutzerwissen eindeutig genannt ist; sonst leerer String "".
+            - mieter: Name des Mieters/Zahlers nur übernehmen, wenn er eindeutig im Beleg oder im ausdrücklich übergebenen Benutzerwissen vorkommt; sonst leerer String "".
             - zahlungsart: Nur eindeutig erkennbare Zahlungsangaben verwenden. Erlaubt sind exakt "Bar", "Girocard/EC", "Kreditkarte", "Überweisung", "Lastschrift", "PayPal" oder "Unbekannt". Bei Unsicherheit immer "Unbekannt".
-            - isEigenleistungSanierung: true, falls es sich um einen Baumarkt-Materialbeleg handelt UND das Belegdatum zwischen 2025-10-01 and 2026-01-31 liegt. Sonst false.
+            - isEigenleistungSanierung: Nur true setzen, wenn der Beleg oder ausdrücklich übergebenes Benutzerwissen die Eigenleistung/Sanierung eindeutig belegt. Niemals aus Händlername oder Datum allein ableiten.
             - positionen: Extrahiere ALLE einzelnen Posten, Artikel oder Gebühren vom Beleg als Liste. Jede Position hat:
               * bezeichnung: Name oder Artikelbeschreibung
               * menge: Anzahl / Menge als Zahl (z. B. 1.0)
@@ -540,8 +535,8 @@ object GeminiClient {
               "unterkategorie": "Ausgewählte Unterkategorie",
               "kontoNr": "Konto-Nr",
               "beschreibung": "Kurzbeschreibung",
-              "wohneinheit": "WE 1",
-              "mieter": "Erika Mustermann",
+              "wohneinheit": "",
+              "mieter": "",
               "zahlungsart": "Girocard/EC",
               "isEigenleistungSanierung": true/false,
               "positionen": [
@@ -694,7 +689,6 @@ object GeminiClient {
         apiKeyOverride: CharArray? = null
     ): Double? {
         val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
-            .ifBlank { BuildConfig.GEMINI_API_KEY }
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             DiagnosticLog.e(TAG, "Gemini API Key is not set or is placeholder!")
             apiKeyOverride?.fill('\u0000')
@@ -760,9 +754,10 @@ object GeminiClient {
      */
     suspend fun answerNaturalLanguageQuery(
         userQuery: String,
-        receipts: List<com.example.data.Receipt>
+        receipts: List<com.example.data.Receipt>,
+        apiKeyOverride: CharArray? = null
     ): AiSearchResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
             DiagnosticLog.e(TAG, "Gemini API Key is not set or is placeholder!")
             return null
@@ -830,9 +825,11 @@ object GeminiClient {
     // --- 1. KI STEUER- & PLAUSIBILITÄTSPRÜFER ---
     suspend fun analyzeTaxPlausibility(
         receipts: List<com.example.data.Receipt>,
-        buildingPurchaseValue: Double = 600000.0
+        buildingPurchaseValue: Double = 0.0,
+        purchaseDate: String = "",
+        apiKeyOverride: CharArray? = null
     ): TaxPlausibilityReport? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val receiptSummary = receipts.joinToString("\n") { r ->
@@ -844,7 +841,7 @@ object GeminiClient {
             Gebäudeanschaffungswert (ohne Grund): $buildingPurchaseValue EUR. 15%-Grenze = ${buildingPurchaseValue * 0.15} EUR netto.
             
             Prüfe die folgenden Belege auf:
-            1. 15%-Grenze für anschaffungsnahe Herstellungskosten (3 Jahre ab Kauf 01.10.2025). Berechne die bisherige Gesamtsumme der Instandsetzungs-/Sanierungskosten.
+            1. Prüfe die 15%-Grenze für anschaffungsnahe Herstellungskosten nur soweit die übergebenen Daten dies zulassen. ${if (purchaseDate.isBlank()) "Ein Kaufdatum wurde nicht übergeben; behaupte daher keine konkrete 3-Jahresfrist." else "Kaufdatum der aktuell ausgewählten Immobilie: $purchaseDate. Prüfe die 3-Jahresfrist ab diesem Datum."} Berechne die bisherige Gesamtsumme der Instandsetzungs-/Sanierungskosten.
             2. Plausibilität & Risiken (z.B. falsche Zuordnung von Material vs. Handwerkerleistungen, fehlende Rechnungsmerkmale, außergewöhnliche Beträge).
             3. Handlungsempfehlungen zur Optimierung der Steuererklärung.
 
@@ -896,9 +893,10 @@ object GeminiClient {
         sqm: Double,
         totalBuildingSqm: Double = 520.0,
         year: Int = 2025,
-        receipts: List<com.example.data.Receipt>
+        receipts: List<com.example.data.Receipt>,
+        apiKeyOverride: CharArray? = null
     ): TenantUtilityStatement? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val operatingReceipts = receipts.filter { 
@@ -961,14 +959,15 @@ object GeminiClient {
     suspend fun optimizeRentAndYield(
         propertyLocation: String,
         currentUnitsInfo: String,
-        receipts: List<com.example.data.Receipt>
+        receipts: List<com.example.data.Receipt>,
+        apiKeyOverride: CharArray? = null
     ): RentYieldOptimizationReport? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val prompt = """
             Du bist ein Experte für deutsches Mietrecht (BGB § 558, § 559 Modernisierungsumlage, Indexmiete) und Immobilien-Renditeoptimierung.
-            Standort des 7-Familienhauses: $propertyLocation.
+            Standort der aktuell ausgewählten Immobilie: $propertyLocation.
             
             Aktuelle Mieteinheiten-Übersicht:
             $currentUnitsInfo
@@ -1018,9 +1017,10 @@ object GeminiClient {
     // --- 4. KI-MÄNGEL- & SCHADENS-ASSISTENT MIT FOTO-ANALYSE ---
     suspend fun assessDamagePhoto(
         bitmap: Bitmap,
-        userDescription: String = ""
+        userDescription: String = "",
+        apiKeyOverride: CharArray? = null
     ): DamageAssessmentResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val parts = mutableListOf<Part>()
@@ -1072,9 +1072,10 @@ object GeminiClient {
     // --- 5. KI-VERTRAGS- & FRISTEN-ANALYSATOR ---
     suspend fun analyzeContractDocument(
         bitmap: Bitmap? = null,
-        textContent: String? = null
+        textContent: String? = null,
+        apiKeyOverride: CharArray? = null
     ): ContractAnalysisResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val parts = mutableListOf<Part>()
@@ -1131,9 +1132,10 @@ object GeminiClient {
     suspend fun matchBankStatement(
         rawStatementText: String,
         receipts: List<com.example.data.Receipt>,
-        tenantsInfo: String = ""
+        tenantsInfo: String = "",
+        apiKeyOverride: CharArray? = null
     ): BankStatementReconciliationResult? {
-        val apiKey = BuildConfig.GEMINI_API_KEY
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") return null
 
         val receiptsSummary = receipts.joinToString("\n") { r ->
@@ -1219,7 +1221,7 @@ object GeminiClient {
         propertyContext: String,
         apiKeyOverride: CharArray? = null
     ): ManagedDocumentAiResult? {
-        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty().ifBlank { BuildConfig.GEMINI_API_KEY }
+        val apiKey = apiKeyOverride?.concatToString()?.trim().orEmpty()
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") throw GeminiAnalysisException.KeyMissing()
         val parts = mutableListOf<Part>()
         bitmap?.let { parts += Part(inlineData = InlineData("image/jpeg", it.toBase64())) }

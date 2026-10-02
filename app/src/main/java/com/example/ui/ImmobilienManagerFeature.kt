@@ -147,6 +147,7 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val allReceipts by viewModel.receipts.collectAsStateWithLifecycle()
     val selected by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val visibleProperties = remember(properties) { properties.filterNot { it.status == "Archiviert" } }
     var openedPropertyId by remember { mutableStateOf<String?>(null) }
     var section by remember { mutableStateOf(PropertySection.DASHBOARD) }
     var showWizard by remember { mutableStateOf(false) }
@@ -293,9 +294,9 @@ private fun PropertyDetailHost(
     }
     if (deleteRequested) AlertDialog(
         onDismissRequest = { deleteRequested = false },
-        title = { Text("Immobilie löschen?", fontWeight = FontWeight.Bold) },
-        text = { Text("Das Objekt wird aus der Übersicht entfernt. Belege, Unterlagen und Buchungen bleiben zur Sicherheit erhalten.") },
-        confirmButton = { Button(onClick = { viewModel.deleteProperty(property); deleteRequested = false; onBack() }, colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)) { Text("Löschen") } },
+        title = { Text("Immobilie archivieren?", fontWeight = FontWeight.Bold) },
+        text = { Text("Das Objekt wird aus der aktiven Übersicht entfernt. Belege, Unterlagen, Buchungen und die stabile Objekt-ID bleiben vollständig erhalten.") },
+        confirmButton = { Button(onClick = { viewModel.deleteProperty(property); deleteRequested = false; onBack() }, colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)) { Text("Archivieren") } },
         dismissButton = { TextButton(onClick = { deleteRequested = false }) { Text("Abbrechen") } }
     )
 }

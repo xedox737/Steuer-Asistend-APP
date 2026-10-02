@@ -443,15 +443,18 @@ class DrivePersistenceRepository(
 
     fun getWohneinheitenFromPrefs(metadata: PropertyMetadata?): List<WohneinheitStatus> {
         val unitPrefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val rawUnitsStr = metadata?.wohneinheiten ?: "WE 1, WE 2, WE 3, WE 4, WE 5, WE 6, WE 7"
-        val parsedUnitNames = rawUnitsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        val unitNames = if (parsedUnitNames.isNotEmpty()) parsedUnitNames else listOf("WE 1", "WE 2", "WE 3", "WE 4", "WE 5", "WE 6", "WE 7")
+        val unitNames = metadata?.wohneinheiten.orEmpty()
+            .split(",")
+            .map(String::trim)
+            .filter(String::isNotBlank)
+        if (unitNames.isEmpty()) return emptyList()
+
         val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
         return unitNames.mapIndexed { index, name ->
             WohneinheitStatus(
                 name = name,
                 label = unitPrefs.getString("unit_label_$name", name) ?: name,
-                status = unitPrefs.getString("unit_status_$name", "Vermietet") ?: "Vermietet",
+                status = unitPrefs.getString("unit_status_$name", "Leerstand") ?: "Leerstand",
                 mieter = unitPrefs.getString("unit_mieter_$name", "") ?: "",
                 kaltmiete = unitPrefs.getFloat("unit_rent_$name", 0f).toDouble(),
                 wohnflaeche = unitPrefs.getFloat("unit_area_$name", 0f).toDouble(),
