@@ -64,6 +64,31 @@ class ConfirmedAuditRegressionTest {
             deleteFunction.contains("status = \"Archiviert\""))
     }
 
+    @Test fun datevAndAuditDefaultsContainNoPersonalOrPropertyData() {
+        val profile = com.example.data.DatevProfile()
+        val audit = com.example.data.ExportAuditRun("test")
+        val config = com.example.util.DatevConfig()
+        assertEquals("", profile.beraterNummer)
+        assertEquals("", profile.mandantenNummer)
+        assertEquals("", profile.mandantenName)
+        assertEquals("", audit.user)
+        assertEquals("", config.beraterNummer)
+        assertEquals("", config.mandantenNummer)
+        assertEquals("", config.mandantenName)
+        assertEquals("", config.propertyName)
+        assertEquals("", config.propertyShort)
+
+        listOf(
+            source("src/main/java/com/example/data/ExportAuditRun.kt"),
+            source("src/main/java/com/example/data/DatevProfile.kt"),
+            source("src/main/java/com/example/util/DatevExporter.kt"),
+            source("src/main/java/com/example/ui/ReceiptViewModel.kt")
+        ).forEach { productionSource ->
+            assertFalse(productionSource.contains("Gerweck"))
+            assertFalse(productionSource.contains("Sulzerstraße"))
+        }
+    }
+
     @Test fun geminiSecretsCannotEnterBuildConfig() {
         val gemini = source("src/main/java/com/example/api/GeminiClient.kt")
         val settings = source("src/main/java/com/example/api/AiProviderSettings.kt")
