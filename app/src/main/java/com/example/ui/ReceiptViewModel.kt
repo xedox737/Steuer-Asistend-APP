@@ -435,7 +435,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val selectedPropertyId: StateFlow<String> = _selectedPropertyId.asStateFlow()
 
     val propertyMetadata: StateFlow<PropertyMetadata?> = combine(properties, _selectedPropertyId) { all, selectedId ->
-        all.firstOrNull { it.propertyId == selectedId } ?: all.firstOrNull()
+        all.firstOrNull { it.propertyId == selectedId && it.status != "Archiviert" }
+            ?: all.firstOrNull { it.status != "Archiviert" }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val bankRentSuggestions: StateFlow<Map<String, List<BankRentSuggestion>>> =
@@ -4520,7 +4521,8 @@ data class AiSearchUiState(
             val currentList = receipts.value
             val result = com.example.api.GeminiClient.analyzeTaxPlausibility(
                 receipts = currentList,
-                buildingPurchaseValue = buildingPurchaseValue
+                buildingPurchaseValue = buildingPurchaseValue,
+                purchaseDate = propertyMetadata.value?.notariellesKaufdatum.orEmpty()
             )
             _taxPlausibilityReport.value = result
             _isAnalyzingTaxPlausibility.value = false
