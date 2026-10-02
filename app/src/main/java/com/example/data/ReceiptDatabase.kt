@@ -218,18 +218,18 @@ interface LoanDao {
 data class PropertyMetadata(
     @PrimaryKey val id: Int = 1,
     val propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID,
-    val name: String = "7-Familienhaus (Anlage V)",
-    val adresse: String = "Musterstraße 42, 12345 Musterstadt",
-    val wohnort: String = "Hauptstraße 1, 12345 Wohnstadt",
-    val baujahr: Int = 1985,
-    val wohnflaeche: Double = 420.0,
-    val grundstuecksgroesse: Double = 650.0,
-    val notariellesKaufdatum: String = "2025-10-01",
-    val uebergangNutzenLasten: String = "2026-01-01",
-    val wohneinheiten: String = "WE 1, WE 2, WE 3, WE 4, WE 5, WE 6, WE 7",
-    val gesamtKaufpreis: Double = 250000.0,
-    val gebaeudewert: Double = 200000.0,
-    val grundUndBodenWert: Double = 50000.0,
+    val name: String = "",
+    val adresse: String = "",
+    val wohnort: String = "",
+    val baujahr: Int = 0,
+    val wohnflaeche: Double = 0.0,
+    val grundstuecksgroesse: Double = 0.0,
+    val notariellesKaufdatum: String = "",
+    val uebergangNutzenLasten: String = "",
+    val wohneinheiten: String = "",
+    val gesamtKaufpreis: Double = 0.0,
+    val gebaeudewert: Double = 0.0,
+    val grundUndBodenWert: Double = 0.0,
     val kaufpreisAufteilungQuelle: String = "MANUELL",
     val bildPfad: String = "",
     val objektart: String = "Mehrfamilienhaus",
@@ -751,229 +751,6 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        suspend fun populateDatabase(
-            receiptDao: ReceiptDao,
-            propertyDao: PropertyDao,
-            receiptEntityDao: ReceiptEntityDao? = null,
-            belegDao: BelegDao? = null
-        ) {
-            receiptDao.deleteAll()
-            receiptEntityDao?.deleteAll()
-            belegDao?.deleteAllBelege()
-
-            val initialReceipts = listOf(
-                    Receipt(
-                        aussteller = "Notar Dr. Joachim Müller",
-                        datum = "2025-10-05",
-                        uhrzeit = "11:30",
-                        bruttobetrag = 3450.00,
-                        hauptkategorie = "Anschaffungskosten",
-                        unterkategorie = "Notarkosten",
-                        kontoNr = "0050",
-                        beschreibung = "Notargebühren für Kaufvertrag (Kaufpreis 250.000 €)",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "Finanzamt Musterstadt",
-                        datum = "2025-11-15",
-                        uhrzeit = "",
-                        bruttobetrag = 12500.00,
-                        hauptkategorie = "Anschaffungskosten",
-                        unterkategorie = "Grunderwerbsteuer",
-                        kontoNr = "0050",
-                        beschreibung = "Grunderwerbsteuerbescheid (5% von 250.000 €)",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "Amtsgericht Musterstadt",
-                        datum = "2025-12-10",
-                        uhrzeit = "",
-                        bruttobetrag = 1120.00,
-                        hauptkategorie = "Anschaffungskosten",
-                        unterkategorie = "Grundbuchgebühren",
-                        kontoNr = "0050",
-                        beschreibung = "Eintragungsgebühr Eigentümerwechsel Kaufvertrag",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "Notar Dr. Joachim Müller",
-                        datum = "2025-10-12",
-                        uhrzeit = "14:15",
-                        bruttobetrag = 850.00,
-                        hauptkategorie = "Finanzierung, Kredite & Versicherungen",
-                        unterkategorie = "Geldbeschaffungskosten",
-                        kontoNr = "2120",
-                        beschreibung = "Notargebühren für Grundschuldbestellung über 200.000 €",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "Sparkasse Musterstadt",
-                        datum = "2025-12-30",
-                        uhrzeit = "09:00",
-                        bruttobetrag = 450.00,
-                        hauptkategorie = "Finanzierung, Kredite & Versicherungen",
-                        unterkategorie = "Geldbeschaffungskosten",
-                        kontoNr = "2120",
-                        beschreibung = "Bearbeitungsentgelt Darlehensvertrag",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "Sparkasse Musterstadt",
-                        datum = "2026-01-30",
-                        uhrzeit = "08:30",
-                        bruttobetrag = 580.00,
-                        hauptkategorie = "Finanzierung, Kredite & Versicherungen",
-                        unterkategorie = "Kreditzinsen",
-                        kontoNr = "2110",
-                        beschreibung = "Sollzinsen für Immobilienkredit Jan 2026",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "OBI Baumarkt",
-                        datum = "2025-10-15",
-                        uhrzeit = "14:22",
-                        bruttobetrag = 384.50,
-                        hauptkategorie = "Renovierungs- / Reparaturkosten & Investitionen",
-                        unterkategorie = "Streichen, Tapezieren",
-                        kontoNr = "4830",
-                        beschreibung = "Wandfarbe Alpina, Pinsel, Abdeckfolie, Farbwalzen",
-                        isEigenleistungSanierung = true,
-                        positionenJson = """[{"bezeichnung":"Alpina Wandfarbe 10L","menge":2.0,"einzelpreis":49.99,"gesamtpreis":99.98},{"bezeichnung":"Malertape Set","menge":5.0,"einzelpreis":4.50,"gesamtpreis":22.50},{"bezeichnung":"Profi Farbroller Set","menge":2.0,"einzelpreis":18.90,"gesamtpreis":37.80},{"bezeichnung":"Abdeckfolie 50qm","menge":4.0,"einzelpreis":6.05,"gesamtpreis":24.20}]"""
-                    ),
-                    Receipt(
-                        aussteller = "Hornbach",
-                        datum = "2025-11-08",
-                        uhrzeit = "10:15",
-                        bruttobetrag = 1145.20,
-                        hauptkategorie = "Renovierungs- / Reparaturkosten & Investitionen",
-                        unterkategorie = "Fenster, Tür & Boden",
-                        kontoNr = "4830",
-                        beschreibung = "Laminatboden Eiche, Trittschalldämmung, Übergangsleisten",
-                        isEigenleistungSanierung = true,
-                        positionenJson = """[{"bezeichnung":"Laminat Eiche Natur 2.5qm/Pck","menge":20.0,"einzelpreis":45.00,"gesamtpreis":900.00},{"bezeichnung":"Trittschalldämmung 10qm","menge":5.0,"einzelpreis":29.90,"gesamtpreis":149.50},{"bezeichnung":"Sockelleiste Eiche 2.4m","menge":12.0,"einzelpreis":7.97,"gesamtpreis":95.70}]"""
-                    ),
-                    Receipt(
-                        aussteller = "Bauhaus",
-                        datum = "2025-12-05",
-                        uhrzeit = "16:45",
-                        bruttobetrag = 890.00,
-                        hauptkategorie = "Renovierungs- / Reparaturkosten & Investitionen",
-                        unterkategorie = "Sanitär",
-                        kontoNr = "4830",
-                        beschreibung = "Duschkabine, Thermostatbatterie, Silikon, Fliesenkleber",
-                        isEigenleistungSanierung = true,
-                        positionenJson = """[{"bezeichnung":"Duschkabine Glas 90x90","menge":1.0,"einzelpreis":649.00,"gesamtpreis":649.00},{"bezeichnung":"Thermostatbatterie Dusche","menge":1.0,"einzelpreis":189.00,"gesamtpreis":189.00},{"bezeichnung":"Sanitär-Silikon 310ml","menge":2.0,"einzelpreis":13.00,"gesamtpreis":26.00},{"bezeichnung":"Fliesenkleber 25kg","menge":2.0,"einzelpreis":13.00,"gesamtpreis":26.00}]"""
-                    ),
-                    Receipt(
-                        aussteller = "Aral Tankstelle",
-                        datum = "2025-10-15",
-                        uhrzeit = "13:50",
-                        bruttobetrag = 65.00,
-                        hauptkategorie = "Sonstige Ausgaben",
-                        unterkategorie = "Fahrtkosten",
-                        kontoNr = "4670",
-                        beschreibung = "Kraftstoff Super E10 (Fahrt OBI & Objekt)",
-                        isEigenleistungSanierung = false
-                    ),
-                    Receipt(
-                        aussteller = "Aral Tankstelle",
-                        datum = "2025-11-08",
-                        uhrzeit = "09:30",
-                        bruttobetrag = 70.00,
-                        hauptkategorie = "Sonstige Ausgaben",
-                        unterkategorie = "Fahrtkosten",
-                        kontoNr = "4670",
-                        beschreibung = "Kraftstoff Super E10 (Fahrt Hornbach & Objekt)",
-                        isEigenleistungSanierung = false
-                    ),
-                    // Mietzahlungen Jan 2026
-                    Receipt(
-                        aussteller = "Mieter Hans Peter",
-                        datum = "2026-01-02",
-                        uhrzeit = "10:00",
-                        bruttobetrag = 600.00,
-                        hauptkategorie = "Miete, Nebenkosten & Kaution",
-                        unterkategorie = "Warmmiete",
-                        kontoNr = "4970",
-                        beschreibung = "Miete WE 1 (Januar 2026)",
-                        isEigenleistungSanierung = false,
-                        wohneinheit = "WE 1"
-                    ),
-                    Receipt(
-                        aussteller = "Mieterin Erika Mustermann",
-                        datum = "2026-01-03",
-                        uhrzeit = "11:15",
-                        bruttobetrag = 550.00,
-                        hauptkategorie = "Miete, Nebenkosten & Kaution",
-                        unterkategorie = "Warmmiete",
-                        kontoNr = "4970",
-                        beschreibung = "Miete WE 2 (Januar 2026)",
-                        isEigenleistungSanierung = false,
-                        wohneinheit = "WE 2"
-                    ),
-                    Receipt(
-                        aussteller = "Familie Schmidt",
-                        datum = "2026-01-02",
-                        uhrzeit = "09:45",
-                        bruttobetrag = 650.00,
-                        hauptkategorie = "Miete, Nebenkosten & Kaution",
-                        unterkategorie = "Warmmiete",
-                        kontoNr = "4970",
-                        beschreibung = "Miete WE 3 (Januar 2026)",
-                        isEigenleistungSanierung = false,
-                        wohneinheit = "WE 3"
-                    ),
-                    Receipt(
-                        aussteller = "Mieter Klaus & Sabine",
-                        datum = "2026-01-04",
-                        uhrzeit = "14:20",
-                        bruttobetrag = 650.00,
-                        hauptkategorie = "Miete, Nebenkosten & Kaution",
-                        unterkategorie = "Warmmiete",
-                        kontoNr = "4970",
-                        beschreibung = "Miete WE 5 (Januar 2026)",
-                        isEigenleistungSanierung = false,
-                        wohneinheit = "WE 5"
-                    ),
-                    Receipt(
-                        aussteller = "Dr. Julia Wagner",
-                        datum = "2026-01-02",
-                        uhrzeit = "08:10",
-                        bruttobetrag = 720.00,
-                        hauptkategorie = "Miete, Nebenkosten & Kaution",
-                        unterkategorie = "Warmmiete",
-                        kontoNr = "4970",
-                        beschreibung = "Miete WE 7 (Januar 2026)",
-                        isEigenleistungSanierung = false,
-                        wohneinheit = "WE 7"
-                    )
-                )
-            receiptDao.insertAll(initialReceipts)
-            propertyDao.insertPropertyMetadata(PropertyMetadata())
-            initialReceipts.forEachIndexed { index, receipt ->
-                receiptEntityDao?.insert(
-                    ReceiptEntity(
-                        id = index + 1,
-                        datum = receipt.datum,
-                        kreditor = receipt.aussteller,
-                        betrag = receipt.bruttobetrag,
-                        pdfPath = receipt.imageUrl,
-                        positionenJson = receipt.positionenJson
-                    )
-                )
-                belegDao?.insertBeleg(
-                    Beleg(
-                        id = (index + 1).toLong(),
-                        betrag = receipt.bruttobetrag,
-                        datum = receipt.datum,
-                        kategorie = receipt.hauptkategorie,
-                        anbieter = receipt.aussteller,
-                        bildPfad = receipt.imageUrl
-                    )
-                )
-            }
-        }
-
             private class AppDatabaseCallback(
                 private val scope: CoroutineScope
             ) : RoomDatabase.Callback() {
@@ -1001,19 +778,7 @@ abstract class AppDatabase : RoomDatabase() {
                     }
                 }
 
-                override fun onCreate(db: SupportSQLiteDatabase) {
-                    super.onCreate(db)
-                    INSTANCE?.let { database ->
-                        scope.launch(Dispatchers.IO) {
-                            populateDatabase(
-                                database.receiptDao(),
-                                database.propertyDao(),
-                                database.receiptEntityDao(),
-                                database.belegDao()
-                            )
-                        }
-                    }
-                }
+
             }
         }
     }
@@ -1283,7 +1048,4 @@ class ReceiptRepository(
         propertyDao.insertPropertyMetadata(metadata)
     }
 
-    suspend fun resetDefaults() {
-        AppDatabase.populateDatabase(receiptDao, propertyDao, receiptEntityDao)
-    }
 }
