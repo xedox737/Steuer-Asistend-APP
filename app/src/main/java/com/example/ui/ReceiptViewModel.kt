@@ -2638,7 +2638,7 @@ data class AiSearchUiState(
     private val _wizardUnitFilter = MutableStateFlow("ALLE")
     val wizardUnitFilter: StateFlow<String> = _wizardUnitFilter.asStateFlow()
 
-    private val _wizardYearFilter = MutableStateFlow("2026")
+    private val _wizardYearFilter = MutableStateFlow(java.time.LocalDate.now().year.toString())
     val wizardYearFilter: StateFlow<String> = _wizardYearFilter.asStateFlow()
 
     private val _wizardCategoryTypeFilter = MutableStateFlow("ALLE")
@@ -2835,7 +2835,8 @@ data class AiSearchUiState(
             val auditRun = com.example.data.ExportAuditRun(
                 exportlaufId = packageResult.exportId,
                 timestamp = System.currentTimeMillis(),
-                propertyName = profile.profileName,
+                user = profile.mandantenName,
+                propertyName = propertyMetadata.value?.name.orEmpty(),
                 periodStart = "${_wizardYearFilter.value}-01-01",
                 periodEnd = "${_wizardYearFilter.value}-12-31",
                 filterSummary = "Objekt: ${profile.profileName}, Wohneinheit: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
@@ -2895,15 +2896,15 @@ data class AiSearchUiState(
         withAttachments: Boolean, 
         chartType: String = "SKR03",
         format: String = "ZIP", // "ZIP", "CSV", "XML", or "PDF"
-        beraterNummer: String = "1111111",
-        mandantenNummer: String = "11111",
-        mandantenName: String = "Sergej Gerweck",
-        wirtschaftsjahr: Int = 2025
+        beraterNummer: String = "",
+        mandantenNummer: String = "",
+        mandantenName: String = "",
+        wirtschaftsjahr: Int = java.time.LocalDate.now().year
     ): File? {
-        val meta = propertyMetadata.value
-        val metaName = meta?.name ?: ""
-        val propName = if (metaName.isNotEmpty()) metaName else "MFH Sulzerstraße"
-        val propShort = if (metaName.isNotEmpty()) metaName.take(15) else "MFH Sulz"
+        val metaName = propertyMetadata.value?.name.orEmpty()
+        val propName = metaName
+        val propShort = metaName.take(15)
+        val activeProfile = activeDatevProfile.value
 
         val bankDatevExclusions = receipts.flatMap { receipt ->
             com.example.data.BankLinkedReceiptDatevPolicy.exclusions(
@@ -2918,9 +2919,9 @@ data class AiSearchUiState(
         }
 
         val config = com.example.util.DatevConfig(
-            beraterNummer = beraterNummer.ifEmpty { "1111111" },
-            mandantenNummer = mandantenNummer.ifEmpty { "11111" },
-            mandantenName = mandantenName.ifEmpty { "Sergej Gerweck" },
+            beraterNummer = beraterNummer.ifBlank { activeProfile.beraterNummer },
+            mandantenNummer = mandantenNummer.ifBlank { activeProfile.mandantenNummer },
+            mandantenName = mandantenName.ifBlank { activeProfile.mandantenName },
             wirtschaftsjahr = wirtschaftsjahr,
             chartType = chartType,
             propertyName = propName,
