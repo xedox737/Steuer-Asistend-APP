@@ -55,10 +55,21 @@ class ConfirmedAuditRegressionTest {
     @Test fun productionViewModelContainsNoPersonalDriveFallbackAndPropertyDeletionKeepsIdentity() {
         val viewModel = source("src/main/java/com/example/ui/ReceiptViewModel.kt")
         assertFalse("Keine personenbezogene Default-Mailadresse im Produktivcode", viewModel.contains("@gmail.com"))
+        assertFalse("Keine Demo-Mieter in produktiven Unit-Defaults", viewModel.contains("Hans Peter") || viewModel.contains("Erika Mustermann"))
+        assertFalse("Keine erfundene Default-Lage für KI-Funktionen", viewModel.contains("München / Deutschland"))
         val deleteFunction = viewModel.substringAfter("fun deleteProperty(").substringBefore("\n    }")
         assertFalse("Immobilien dürfen nicht physisch aus der Identitätstabelle gelöscht werden",
             deleteFunction.contains("deletePropertyByPropertyId"))
         assertTrue("Löschen muss als Archivierung umgesetzt sein",
             deleteFunction.contains("status = \"Archiviert\""))
+    }
+
+    @Test fun geminiSecretsCannotEnterBuildConfig() {
+        val gemini = source("src/main/java/com/example/api/GeminiClient.kt")
+        val settings = source("src/main/java/com/example/api/AiProviderSettings.kt")
+        val build = source("build.gradle.kts")
+        assertFalse(gemini.contains("BuildConfig.GEMINI_API_KEY"))
+        assertFalse(settings.contains("BuildConfig.GEMINI_API_KEY"))
+        assertTrue(build.contains("ignoreList.add(\"GEMINI_API_KEY\")"))
     }
 }
