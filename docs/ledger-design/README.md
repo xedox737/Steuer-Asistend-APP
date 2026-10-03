@@ -47,7 +47,7 @@ Die Darstellung folgt dem Referenzbild mit kompakter Titel-/Jahreszeile, Kategor
 - `git diff --check`: bestanden.
 - `:app:testDebugUnitTest -Proborazzi.test.record=true`: 584 Tests, 0 Fehler, 0 übersprungen. Darunter 10 neue Unit- und 6 neue Compose-Tests für Ledger.
 - `:app:assembleDebug`: bestanden.
-- `:app:lintDebug`: bestanden, 0 Fehler / 102 Warnungen. Keine Lint-Meldungen in den neuen Ledger-Dateien.
+- `:app:lintDebug`: bestanden, 0 Fehler / 105 Warnungen. Keine Lint-Meldungen in den neuen Ledger-Dateien.
 
 Ausgeführter gemeinsamer Prüflauf: `gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -Proborazzi.test.record=true --max-workers=2` (Gradle 9.3.1, JDK 17, Android 36.1). Keine Tests oder Prüfungen deaktiviert.
 
