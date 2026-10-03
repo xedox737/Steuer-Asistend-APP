@@ -59,6 +59,12 @@ class LedgerComposeTest {
     private fun capture(name: String) {
         ui.runOnIdle {
             fun redraw(view: android.view.View) {
+                // Compose render layers are not Android child Views. Invalidate them as well
+                // so native Robolectric captures retain correct text positions after lazy scrolling.
+                if (view.javaClass.name == "androidx.compose.ui.platform.AndroidComposeView") {
+                    view.javaClass.getMethod("invalidateDescendants").invoke(view)
+                }
+                view.requestLayout()
                 view.invalidate()
                 if (view is android.view.ViewGroup) {
                     for (index in 0 until view.childCount) redraw(view.getChildAt(index))
@@ -68,7 +74,7 @@ class LedgerComposeTest {
         }
         ui.mainClock.advanceTimeBy(300)
         ui.waitForIdle()
-        val path = "build/reports/ledger-reference/$name.png"
+        val path = "build/reports/ledger-financial-overview/$name.png"
         onView(isRoot()).captureRoboImage(path)
         // Verify the recorded pixels too: semantics alone cannot catch incomplete native redraws.
         val bitmap = android.graphics.BitmapFactory.decodeFile(path)
@@ -90,23 +96,34 @@ class LedgerComposeTest {
     }
     private fun systemBack() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
 
-    @Test @Config(shadows = [LedgerPdfDocumentShadow::class])
-    fun referenceScreensKeepTheActualShellAndAllActions() {
+    @Test
+    fun financialOverviewEndsAfterBookingsAndKeepsTheShell() {
         seed()
         ui.onNode(hasText(LedgerPresentation.money(1200.0)) and hasAnyAncestor(hasTestTag("ledger_metric_Einnahmen"))).assertExists()
         ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
         ui.onNode(hasText(LedgerPresentation.money(531.6)) and hasAnyAncestor(hasTestTag("ledger_metric_Ergebnis"))).assertExists()
-        ui.onNode(hasText("3") and hasAnyAncestor(hasTestTag("ledger_metric_Belege"))).assertExists()
+        ui.onNode(hasText("3") and hasAnyAncestor(hasTestTag("ledger_metric_Buchungen"))).assertExists()
         ui.onNodeWithText("Ausgaben nach Kategorie").assertExists()
         ui.onNodeWithTag("ledger_categories").assertExists()
         ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
         ui.onNode(hasText(LedgerPresentation.money(256.4)) and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
+        ui.onNode(hasText("38 %") and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
+        val incomeBar = ui.onNodeWithTag("ledger_bar_INCOME_5").fetchSemanticsNode().boundsInRoot
+        val expenseBar = ui.onNodeWithTag("ledger_bar_EXPENSE_4").fetchSemanticsNode().boundsInRoot
+        assertTrue(incomeBar.height > expenseBar.height && expenseBar.height > 0)
+        assertEquals("Monthly bars must represent actual April expenses and May income",
+            (668.4 / 1200.0).toFloat(), expenseBar.height / incomeBar.height, .01f)
+        assertEquals(0f, ui.onNodeWithTag("ledger_bar_INCOME_1").fetchSemanticsNode().boundsInRoot.height, 0.01f)
+        val chartOrder = ui.onNodeWithTag("ledger_chart").fetchSemanticsNode().boundsInRoot
+        val categoriesOrder = ui.onNodeWithTag("ledger_categories").fetchSemanticsNode().boundsInRoot
+        assertTrue("Year chart must precede categories", chartOrder.bottom <= categoriesOrder.top)
         // Density regression: metrics stay under 104 dp, chart under 120 dp and bookings under 80 dp.
         val density = ui.activity.resources.displayMetrics.density
         val metric = ui.onNodeWithTag("ledger_metric_Einnahmen").fetchSemanticsNode().boundsInRoot
         assertTrue("Metrics must remain compact", metric.height / density <= 104f)
         val chart = ui.onNodeWithTag("ledger_chart").fetchSemanticsNode().boundsInRoot
         assertTrue("Chart must remain compact", chart.height / density <= 120f)
+        assertNoAccountingActions()
         shell(); capture("393-overview")
         scroll("ledger_receipt_901")
         ui.onNodeWithText(LedgerPresentation.signedMoney(vm.receipts.value.first { it.id == 901 })).assertExists()
@@ -118,17 +135,35 @@ class LedgerComposeTest {
         val booking = ui.onNodeWithTag("ledger_receipt_901").fetchSemanticsNode().boundsInRoot
         assertTrue("Booking rows must remain compact", booking.height / density <= 80f)
         shell(); capture("393-bookings")
-        scroll("ledger_exports")
-        shell(); capture("393-exports-tools")
-        ui.onNodeWithTag("ledger_tools").performClick()
-        scroll("legacy_description_backfill_button")
-        ui.onNodeWithTag("legacy_description_backfill_button").assertIsDisplayed()
-        scroll("existing_payment_backfill_button")
-        ui.onNodeWithTag("existing_payment_backfill_button").assertIsDisplayed()
-        ui.onNodeWithTag("ledger_overview").performScrollToNode(hasText("Saldenaufstellung"))
-        ui.onNodeWithText("DATEV-Kontenrahmen SKR 03").assertExists()
-        shell(); capture("393-tools-expanded")
-        scroll("ledger_pdf"); ui.onNodeWithTag("ledger_pdf").performClick()
+        scroll("ledger_end")
+        shell(); capture("393-end")
+        assertNoAccountingActions()
+
+    }
+
+
+    private fun assertNoAccountingActions() {
+        listOf("ledger_exports", "ledger_tools", "accounting_pdf", "accounting_tools",
+            "legacy_description_backfill_button", "existing_payment_backfill_button").forEach {
+            ui.onNodeWithTag(it).assertDoesNotExist()
+        }
+        listOf("DATEV", "PDF-Bericht", "SKR03", "Saldenaufstellung", "Datenpflege", "Weitere Werkzeuge", "Export & Auswertung").forEach {
+            ui.onAllNodes(hasText(it, substring = true)).assertCountEquals(0)
+        }
+    }
+
+    @Test @Config(shadows = [LedgerPdfDocumentShadow::class])
+    fun accountingActionsRemainReachableFromExistingDatevEntryInMore() {
+        seed(openLedger = false)
+        ui.onNodeWithTag("nav_item_more").performClick()
+        ui.onNodeWithText("DATEV Export").performScrollTo().performClick()
+        assertEquals(AppScreen.DATEV_EXPORT, vm.currentScreen.value)
+        ui.onNodeWithTag("accounting_tools").performScrollTo().performClick()
+        ui.onNodeWithTag("legacy_description_backfill_button").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("existing_payment_backfill_button").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("Saldenaufstellung").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithText("DATEV-Kontenrahmen SKR 03").performScrollTo().assertIsDisplayed()
+        ui.onNodeWithTag("accounting_pdf").performScrollTo().performClick()
         ui.onNodeWithText("Finanzamt PDF Export").assertIsDisplayed()
         ui.onNodeWithText("Exportieren & Teilen").assertIsEnabled()
         ui.onNodeWithText("Exportieren & Teilen").performClick()
@@ -141,9 +176,7 @@ class LedgerComposeTest {
         val send = chooser.getParcelableExtra(android.content.Intent.EXTRA_INTENT, android.content.Intent::class.java)!!
         assertEquals(android.content.Intent.ACTION_SEND, send.action)
         assertEquals("application/pdf", send.type)
-        scroll("ledger_datev"); ui.onNodeWithTag("ledger_datev").performClick()
-        assertEquals(AppScreen.DATEV_EXPORT, vm.currentScreen.value)
-        systemBack(); assertEquals(AppScreen.LEDGER, vm.currentScreen.value); shell()
+        systemBack(); assertEquals(AppScreen.MORE, vm.currentScreen.value); shell()
     }
 
     @Test fun filtersSearchAndReceiptDetailsWorkWithDuplicatePropertyNames() {
@@ -158,6 +191,11 @@ class LedgerComposeTest {
         scroll("ledger_receipt_902"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
         scroll("ledger_property"); ui.onNodeWithTag("ledger_property").performClick()
         ui.onNodeWithText("Alle Immobilien").performClick()
+        scroll("ledger_category"); ui.onNodeWithTag("ledger_category").performClick()
+        ui.onAllNodesWithText("Instandhaltung").onLast().performClick()
+        scroll("ledger_receipt_902"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
+        scroll("ledger_category"); ui.onNodeWithTag("ledger_category").performClick()
+        ui.onNodeWithText("Alle Kategorien").performClick()
         scroll("ledger_search"); ui.onNodeWithTag("ledger_search").performTextInput("R-902")
         scroll("ledger_receipt_902"); ui.onNodeWithTag("ledger_receipt_901").assertDoesNotExist()
         ui.onNodeWithTag("ledger_receipt_902").performClick()
@@ -184,9 +222,16 @@ class LedgerComposeTest {
         assertTrue("Title and year must share a compact row", title.height / ui.activity.resources.displayMetrics.density <= 30f)
         capture("$name-overview")
         scroll("ledger_receipt_901"); shell(); capture("$name-bookings")
-        scroll("ledger_exports"); shell(); capture("$name-exports")
+        scroll("ledger_end"); shell()
+        val incomeLabel = ui.onNode(hasText("Einnahmen") and hasAnyAncestor(hasTestTag("ledger_kind_INCOME")),
+            useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val expenseLabel = ui.onNode(hasText("Ausgaben") and hasAnyAncestor(hasTestTag("ledger_kind_EXPENSE")),
+            useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertTrue("Inactive filter labels must stay separate after scrolling", incomeLabel.right < expenseLabel.left)
+        capture("$name-end")
+        assertNoAccountingActions()
         val frame = ui.onNodeWithTag("ledger_overview").fetchSemanticsNode().boundsInRoot
-        listOf("ledger_exports", "ledger_tools").forEach { tag ->
+        listOf("ledger_chart", "ledger_categories", "ledger_bookings").forEach { tag ->
             scroll(tag)
             val bounds = ui.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
             assertTrue("$tag exceeds content width", bounds.left >= frame.left && bounds.right <= frame.right)

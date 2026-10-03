@@ -14,17 +14,14 @@ import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.SouthEast
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Apartment
-import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.*
@@ -50,8 +47,7 @@ import kotlin.math.abs
 @Composable
 internal fun LedgerOverview(
     receipts: List<Receipt>, properties: List<PropertyMetadata>,
-    onReceipt: (Receipt) -> Unit, onDatev: () -> Unit, onPdf: () -> Unit,
-    tools: @Composable ColumnScope.() -> Unit
+    onReceipt: (Receipt) -> Unit
 ) {
     val years = remember(receipts) { LedgerPresentation.years(receipts) }
     var selectedYear by rememberSaveable { mutableIntStateOf(years.first()) }
@@ -63,7 +59,6 @@ internal fun LedgerOverview(
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var period by rememberSaveable { mutableStateOf(LedgerPeriod.YEAR) }
     var query by rememberSaveable { mutableStateOf("") }
-    var toolsExpanded by rememberSaveable { mutableStateOf(false) }
     val yearReceipts = remember(receipts, selectedYear) { LedgerPresentation.forYear(receipts, selectedYear) }
     val totals = remember(yearReceipts) { LedgerPresentation.totals(yearReceipts) }
     val previous = remember(receipts, selectedYear) {
@@ -104,13 +99,13 @@ internal fun LedgerOverview(
                 Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     LedgerMetric("Ergebnis", LedgerPresentation.money(totals.result), Icons.Default.BarChart,
                         if (totals.result >= 0) EmeraldGreen else CrimsonRed, "Einnahmen − Ausgaben", Modifier.weight(1f), AccentBlue)
-                    LedgerMetric("Belege", totals.count.toString(), Icons.AutoMirrored.Filled.ReceiptLong,
+                    LedgerMetric("Buchungen", totals.count.toString(), Icons.AutoMirrored.Filled.ReceiptLong,
                         DarkNavy, "Im ausgewählten Jahr", Modifier.weight(1f), AccentBlue)
                 }
             }
         }
-        ledgerSection { LedgerCategorySummary(yearReceipts) }
         ledgerSection { LedgerYearChart(yearReceipts, selectedYear) }
+        ledgerSection { LedgerCategorySummary(yearReceipts) }
         ledgerSection {
             Surface(Modifier.fillMaxWidth(), shape = Ui2.shape, color = Color.White, border = BorderStroke(0.5.dp, BorderColor)) {
                 Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -182,38 +177,11 @@ internal fun LedgerOverview(
             }
         }
         item {
-            Box(Modifier.fillMaxWidth().height(8.dp).background(Color.White,
+            Box(Modifier.testTag("ledger_end").fillMaxWidth().height(8.dp).background(Color.White,
                 RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)))
             Spacer(Modifier.height(10.dp))
         }
-        ledgerSection {
-            LedgerCard(Modifier.testTag("ledger_exports")) {
-                Text("Export & Auswertung", fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text("Daten exportieren und Auswertungen erstellen", fontSize = 12.sp, lineHeight = 16.sp, color = SlateGray)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LedgerExportAction("DATEV", "Export für Steuerberater", Icons.Default.FileDownload,
-                        Modifier.weight(1f).testTag("ledger_datev"), true, onDatev)
-                    LedgerExportAction("PDF-Bericht", "Übersicht als PDF erstellen", Icons.Outlined.Description,
-                        Modifier.weight(1f).testTag("ledger_pdf"), false, onPdf)
-                }
-            }
-        }
-        ledgerSection {
-            LedgerCard {
-                Surface(onClick = { toolsExpanded = !toolsExpanded }, modifier = Modifier.fillMaxWidth().testTag("ledger_tools"), color = Color.White) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        LedgerIcon(Icons.Outlined.Settings, SlateGray)
-                        Column(Modifier.weight(1f)) {
-                            Text("Weitere Werkzeuge", fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                            Text("Zusätzliche Funktionen für deine Buchhaltung", fontSize = 11.sp, lineHeight = 14.sp, color = SlateGray)
-                        }
-                        Icon(if (toolsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            if (toolsExpanded) "Werkzeuge einklappen" else "Werkzeuge ausklappen", tint = SlateGray)
-                    }
-                }
-                if (toolsExpanded) tools()
-            }
-        }
+
     }
 }
 
@@ -307,21 +275,6 @@ private fun LedgerBooking(receipt: Receipt, property: String, onClick: () -> Uni
             }
         }
         Icon(Icons.Default.ChevronRight, null, tint = SlateGray, modifier = Modifier.size(14.dp))
-    }
-}
-
-@Composable
-private fun LedgerExportAction(title: String, subtitle: String, icon: ImageVector, modifier: Modifier,
-    primary: Boolean, onClick: () -> Unit) {
-    Surface(onClick, modifier, shape = Ui2.iconShape, color = if (primary) AccentBlue else Color.White,
-        border = BorderStroke(1.dp, AccentBlue)) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Icon(icon, null, modifier = Modifier.size(18.dp), tint = if (primary) Color.White else AccentBlue)
-                Text(title, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.Bold, color = if (primary) Color.White else AccentBlue)
-            }
-            Text(subtitle, fontSize = 10.sp, lineHeight = 13.sp, color = if (primary) Color.White else SlateGray)
-        }
     }
 }
 

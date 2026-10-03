@@ -28,6 +28,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.UploadFile
 
 import android.graphics.Bitmap
@@ -6198,10 +6200,18 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
 
 // --- SCREEN 4: KI-FAHRTENBUCH 2.0 (siehe LogbookFeature.kt) ---
 
-// --- SCREEN 5: LEDGER & ACCOUNT BALANCES ---
+// --- SCREEN 5: FINANCIAL OVERVIEW ---
 
 @Composable
 fun LedgerScreen(viewModel: ReceiptViewModel) {
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    LedgerOverview(receipts, properties) { viewModel.openReceiptDetail(it.id, AppScreen.LEDGER) }
+}
+
+/** Existing accounting actions live in the DATEV landing area, outside the financial overview. */
+@Composable
+private fun AccountingSupportPanel(viewModel: ReceiptViewModel) {
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val isPaymentBackfillRunning by viewModel.isBackfillingPaymentMethods.collectAsStateWithLifecycle()
@@ -6214,8 +6224,6 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
     // Calculate totals per DATEV Konto
     val kontoMap = receipts.groupBy { it.kontoNr }
     val sortedKonten = listOf("0050", "2110", "2120", "4830", "4670", "4970")
-
-    val properties by viewModel.properties.collectAsStateWithLifecycle()
 
     var showTaxYearDialog by remember { mutableStateOf(false) }
 
@@ -6421,13 +6429,24 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
         )
     }
 
-    LedgerOverview(
-        receipts = receipts,
-        properties = properties,
-        onReceipt = { viewModel.openReceiptDetail(it.id, AppScreen.LEDGER) },
-        onDatev = viewModel::openDatevExport,
-        onPdf = { showTaxYearDialog = true }
-    ) {
+    var toolsExpanded by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+        OutlinedButton(
+            onClick = { showTaxYearDialog = true },
+            modifier = Modifier.fillMaxWidth().testTag("accounting_pdf")
+        ) {
+            Icon(Icons.Default.Description, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("PDF-Bericht · Finanzamt")
+        }
+        OutlinedButton(
+            onClick = { toolsExpanded = !toolsExpanded },
+            modifier = Modifier.fillMaxWidth().testTag("accounting_tools")
+        ) {
+            Text("Datenpflege & SKR03", modifier = Modifier.weight(1f))
+            Icon(if (toolsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null)
+        }
+        if (toolsExpanded) Column(verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -6593,6 +6612,7 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
             }
         }
 
+        }
     }
 }
 
@@ -11527,6 +11547,8 @@ fun DatevExportScreen(
                                         }
                                     }
                                 }
+
+                                AccountingSupportPanel(viewModel)
 
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
