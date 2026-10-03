@@ -57,10 +57,36 @@ class LedgerComposeTest {
     }
     private fun scroll(tag: String) = ui.onNodeWithTag("ledger_overview").performScrollToNode(hasTestTag(tag))
     private fun capture(name: String) {
-        ui.runOnIdle { ui.activity.window.decorView.invalidate() }
+        ui.runOnIdle {
+            fun redraw(view: android.view.View) {
+                view.invalidate()
+                if (view is android.view.ViewGroup) {
+                    for (index in 0 until view.childCount) redraw(view.getChildAt(index))
+                }
+            }
+            redraw(ui.activity.window.decorView)
+        }
         ui.mainClock.advanceTimeBy(300)
         ui.waitForIdle()
-        onView(isRoot()).captureRoboImage("build/reports/ledger-reference/$name.png")
+        val path = "build/reports/ledger-reference/$name.png"
+        onView(isRoot()).captureRoboImage(path)
+        // Verify the recorded pixels too: semantics alone cannot catch incomplete native redraws.
+        val bitmap = android.graphics.BitmapFactory.decodeFile(path)
+        val density = ui.activity.resources.displayMetrics.density
+        fun hasBlue(top: Int, bottom: Int): Boolean {
+            var count = 0
+            for (y in top.coerceAtLeast(0) until bottom.coerceAtMost(bitmap.height)) {
+                for (x in 0 until bitmap.width) {
+                    val pixel = bitmap.getPixel(x, y)
+                    if (android.graphics.Color.blue(pixel) > 150 && android.graphics.Color.red(pixel) < 100 &&
+                        android.graphics.Color.green(pixel) < 160) count++
+                }
+            }
+            return count > 100
+        }
+        assertTrue("Screenshot must show the ImmoPilot header", hasBlue(0, (56 * density).toInt()))
+        assertTrue("Screenshot must show the bottom navigation", hasBlue(bitmap.height - (88 * density).toInt(), bitmap.height))
+        bitmap.recycle()
     }
     private fun systemBack() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
 
@@ -71,10 +97,26 @@ class LedgerComposeTest {
         ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
         ui.onNode(hasText(LedgerPresentation.money(531.6)) and hasAnyAncestor(hasTestTag("ledger_metric_Ergebnis"))).assertExists()
         ui.onNode(hasText("3") and hasAnyAncestor(hasTestTag("ledger_metric_Belege"))).assertExists()
+        ui.onNodeWithText("Ausgaben nach Kategorie").assertExists()
+        ui.onNodeWithTag("ledger_categories").assertExists()
+        ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
+        ui.onNode(hasText(LedgerPresentation.money(256.4)) and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
+        // Density regression: metrics stay under 104 dp, chart under 120 dp and bookings under 80 dp.
+        val density = ui.activity.resources.displayMetrics.density
+        val metric = ui.onNodeWithTag("ledger_metric_Einnahmen").fetchSemanticsNode().boundsInRoot
+        assertTrue("Metrics must remain compact", metric.height / density <= 104f)
+        val chart = ui.onNodeWithTag("ledger_chart").fetchSemanticsNode().boundsInRoot
+        assertTrue("Chart must remain compact", chart.height / density <= 120f)
         shell(); capture("393-overview")
         scroll("ledger_receipt_901")
         ui.onNodeWithText(LedgerPresentation.signedMoney(vm.receipts.value.first { it.id == 901 })).assertExists()
         ui.onNodeWithText(LedgerPresentation.signedMoney(vm.receipts.value.first { it.id == 902 })).assertExists()
+        scroll("ledger_kind_ALL")
+        val segment = ui.onNodeWithTag("ledger_kind_ALL").fetchSemanticsNode().boundsInRoot
+        assertTrue("Filter segments must remain compact", segment.height / density <= 40f)
+        scroll("ledger_receipt_901")
+        val booking = ui.onNodeWithTag("ledger_receipt_901").fetchSemanticsNode().boundsInRoot
+        assertTrue("Booking rows must remain compact", booking.height / density <= 80f)
         shell(); capture("393-bookings")
         scroll("ledger_exports")
         shell(); capture("393-exports-tools")
@@ -137,7 +179,10 @@ class LedgerComposeTest {
     }
 
     private fun responsive(name: String) {
-        seed(); shell(); capture("$name-overview")
+        seed(); shell()
+        val title = ui.onNodeWithTag("ledger_title").fetchSemanticsNode().boundsInRoot
+        assertTrue("Title and year must share a compact row", title.height / ui.activity.resources.displayMetrics.density <= 30f)
+        capture("$name-overview")
         scroll("ledger_receipt_901"); shell(); capture("$name-bookings")
         scroll("ledger_exports"); shell(); capture("$name-exports")
         val frame = ui.onNodeWithTag("ledger_overview").fetchSemanticsNode().boundsInRoot
@@ -166,6 +211,9 @@ class LedgerComposeTest {
         ui.waitUntil(10000) { vm.receipts.value.any { it.id == 901 && it.bruttobetrag == 9999999.99 } }
         scroll("ledger_metric_Einnahmen")
         ui.onNodeWithText(LedgerPresentation.money(9999999.99)).assertExists()
+        scroll("ledger_chart")
+        ui.onNodeWithText("10 Mio. €").assertExists()
+        scroll("ledger_metric_Einnahmen")
         capture("393-large-amount-metrics")
         scroll("ledger_receipt_901"); shell(); capture("393-large-amount-booking")
         runBlocking {

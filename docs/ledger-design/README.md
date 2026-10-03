@@ -7,16 +7,17 @@ Branch: `ui/ledger-immopilot`. Kein Merge.
 
 Geändert wird ausschließlich der Inhalt von `AppScreen.LEDGER`. Die vorhandene globale Top App Bar und Bottom Navigation bleiben unverändert. In `ReceiptAppUi.kt` ist der Code außerhalb von `LedgerScreen` byte-identisch zur Basis.
 
-Die schriftlichen Detailvorgaben präzisieren das Bild: vier Kennzahlen in einem 2×2-Grid, zusätzliche Immobilien-/Kategorie-/Zeitraumfilter, Suche unter diesen Filtern und standardmäßig eingeklappte Werkzeuge. Die im Bild zusätzlich gezeigte Kategorieauswertung wird nicht ergänzt, da die ausdrücklich vorgegebene Reihenfolge direkt von Kennzahlen zu Jahresverlauf führt.
+Die Darstellung folgt dem Referenzbild mit kompakter Titel-/Jahreszeile, Kategorieauswertung, verdichtetem Jahresverlauf und Buchungen in einer gemeinsamen weißen Listenkarte. Die ausdrücklich verlangten vier Kennzahlen im 2×2-Grid, Immobilien-/Kategorie-/Zeitraumfilter, Suche darunter und standardmäßig eingeklappten Werkzeuge bleiben erhalten. Deshalb ist die Ansicht keine pixelidentische Kopie der Dreier-Kennzahlenkarte im Bild.
 
 | Bereich | Umsetzung |
 | --- | --- |
 | Titel | 24 sp, graue Unterzeile, weißer dynamischer Jahres-Dropdown |
-| Kennzahlen | Weiße Karten, 16 dp Radius, 40 dp Iconflächen, reale Jahreswerte und belegbarer Vorjahresvergleich |
+| Kennzahlen | Weiße kompakte Karten, 16 dp Radius, 32 dp Iconflächen, reale Jahreswerte und belegbarer Vorjahresvergleich |
+| Kategorien | Vorhandene Ausgabenkategorien, echte Jahressummen und Anteile; keine neue fachliche Klassifikation |
 | Verlauf | Zwölf deutsche Monatslabels, Einnahmen/Ausgaben aus denselben Belegen, echte Nullmonate ohne künstliche Balken |
 | Filter | Alle/Einnahmen/Ausgaben, stabile propertyId, tatsächliche Kategorien, Jahr/aktueller Monat/letzter Monat |
 | Suche | Lokal nach Aussteller, Beschreibung, Kategorie und effektiver Belegnummer |
-| Buchungen | Kompakte weiße Karten, Datum, Kategorie, Immobilie, signierter Betrag, vorhandene Belegdetails |
+| Buchungen | Gemeinsame weiße Listenkarte mit kompakten, weiterhin lazy gerenderten Zeilen; Datum, Kategorie, Immobilie, signierter Betrag und vorhandene Belegdetails |
 | Export | Gemeinsame Karte, vorhandene DATEV-Navigation und unveränderter PDF-Jahresdialog |
 | Werkzeuge | Eingeklappt; Beschreibung prüfen, sichere Auswahl/Vorschau/Übernahme, Zahlungsarten, SKR03 und Salden bleiben erhalten |
 | Abstände | Hauptkarten auf derselben 16-dp-Außenkante; kein doppeltes horizontales Screen-Padding |
@@ -27,7 +28,7 @@ Die schriftlichen Detailvorgaben präzisieren das Bild: vier Kennzahlen in einem
 - `app/src/main/java/com/example/ui/LedgerOverview.kt` – Ledger-Inhalt und vorhandene Design-Tokens.
 - `app/src/main/java/com/example/ui/LedgerPresentation.kt` – lesende Jahres-/Filter-/Darstellungsprojektion.
 - `app/src/test/java/com/example/ui/LedgerPresentationTest.kt` – zehn Unit-Regressionen.
-- `app/src/test/java/com/example/ui/LedgerComposeTest.kt` – sechs Compose-/Screenshot-/Navigationstests.
+- `app/src/test/java/com/example/ui/LedgerComposeTest.kt` – sechs Compose-/Screenshot-/Navigationstests einschließlich Größenregressionen und echter Kategorieauswertung.
 - `app/src/test/java/com/example/ui/LedgerPdfDocumentShadow.kt` – ausschließlich testseitiger PDF-Plattformadapter.
 - `docs/ledger-design/README.md`, unverändertes Referenzbild und 13 gerenderte Vergleichsbilder.
 
@@ -46,7 +47,7 @@ Die schriftlichen Detailvorgaben präzisieren das Bild: vier Kennzahlen in einem
 - `git diff --check`: bestanden.
 - `:app:testDebugUnitTest -Proborazzi.test.record=true`: 584 Tests, 0 Fehler, 0 übersprungen. Darunter 10 neue Unit- und 6 neue Compose-Tests für Ledger.
 - `:app:assembleDebug`: bestanden.
-- `:app:lintDebug`: bestanden, 0 Fehler / 98 Warnungen. Keine Lint-Meldungen in den neuen Ledger-Dateien.
+- `:app:lintDebug`: bestanden, 0 Fehler / 102 Warnungen. Keine Lint-Meldungen in den neuen Ledger-Dateien.
 
 Ausgeführter gemeinsamer Prüflauf: `gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug -Proborazzi.test.record=true --max-workers=2` (Gradle 9.3.1, JDK 17, Android 36.1). Keine Tests oder Prüfungen deaktiviert.
 
@@ -72,9 +73,11 @@ Die Referenz zeigt eine stark verdichtete, lange Gesamtansicht. Die ausdrücklic
 
 Zusätzlich geprüft: [ausgeklappte Werkzeuge](393-tools-expanded.png), [Millionenbeträge in Kennzahlen](393-large-amount-metrics.png), [lange Namen und große Buchungsbeträge](393-large-amount-booking.png), [negative Monatswerte/Gutschriften](393-refund-chart.png).
 
-Sichtprüfung: Hauptkarten haben dieselbe linke/rechte Außenkante; weiße Karten, dezente Grenzen, 16-dp-Radius und helle 40-dp-Iconflächen passen zum bestehenden Design. Der Monatsverlauf zeigt alle zwölf Monate. Beträge bleiben vollständig lesbar, lange Ausstellernamen werden ellipsisiert. Drei echte Testbuchungen, Export und eingeklappte Werkzeuge sind in den Scroll-Aufnahmen gemeinsam sichtbar; Kopfbereich und Bottom Navigation werden vom unveränderten App-Scaffold gerendert. Alle Aufnahmen wurden mit nativer Grafik nach vollständiger Neuzeichnung erstellt.
+Sichtprüfung: Hauptkarten haben dieselbe linke/rechte Außenkante; weiße Karten, dezente Grenzen, 16-dp-Radius und helle 32-dp-Iconflächen passen zum bestehenden Design. Der Monatsverlauf zeigt alle zwölf Monate; Millionenwerte werden an der Achse lesbar als „Mio. €“ formatiert; Titel und Legende stehen in derselben Zeile. Die Kategorieauswertung verwendet ausschließlich bestehende Ausgabebelege des ausgewählten Jahres. Größenregressionen begrenzen normale Kennzahlen auf 104 dp, den Verlauf auf 120 dp Buchungszeilen auf 80 dp und Filtersegmente auf 40 dp; große Werte dürfen weiter umbrechen. Beträge bleiben vollständig lesbar, lange Ausstellernamen werden ellipsisiert. Drei echte Testbuchungen, Export und eingeklappte Werkzeuge sind in den Scroll-Aufnahmen gemeinsam sichtbar; Kopfbereich und Bottom Navigation werden vom unveränderten App-Scaffold gerendert. Alle Aufnahmen wurden mit nativer Grafik nach vollständiger Neuzeichnung des View-Baums erstellt. Die Tests prüfen zusätzlich die Bildpixel des bestehenden Kopfbereichs und der Bottom Navigation, damit unvollständige native Neuzeichnungen nicht unbemerkt bleiben.
 
 ## Grenzen
+
+- Ein lokaler Prüflauf meldete eine NPE in einem KSP/IntelliJ-Hintergrundthread. Die angeforderten Gradle-Tasks und Ledger-Tests wurden dennoch erfolgreich abgeschlossen; die Meldung betrifft das Buildwerkzeug, nicht eine ausgeführte App-Funktion.
 
 - Robolectric mit nativer Grafik statt Hardware-/Emulator-Instrumentierung.
 - Kein echter Versand an DATEV/Steuerberater. Robolectric implementiert den nativen `PdfDocument`-Writer nicht (Handle 0, „document is closed!“). Nur die PDF-Plattform wird in diesem UI-Test durch `LedgerPdfDocumentShadow` ersetzt; App-Exporter, Zeichenaufrufe, Dateiname, Dateiablage und Teilen-Intent bleiben echte Aufrufe. Eine reale PDF-Byte-/Geräteprüfung ist damit nicht abgedeckt.
