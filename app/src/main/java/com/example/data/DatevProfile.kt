@@ -10,9 +10,9 @@ data class DatevProfile(
     val profileId: String = "DEFAULT_SKR03",
     val profileName: String = "Standard SKR03 (Anlage V Vermietung)",
     val version: Int = 1,
-    val beraterNummer: String = "1111111",
-    val mandantenNummer: String = "11111",
-    val mandantenName: String = "Sergej Gerweck",
+    val beraterNummer: String = "",
+    val mandantenNummer: String = "",
+    val mandantenName: String = "",
     val wirtschaftsjahrBeginn: String = "2026-01-01",
     val sachkontenLaenge: Int = 4, // 4 bis 8
     val kontenrahmen: String = "SKR03", // "SKR03", "SKR04", "INDIVIDUELL"

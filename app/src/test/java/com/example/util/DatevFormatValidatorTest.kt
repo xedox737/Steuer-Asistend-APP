@@ -31,7 +31,11 @@ class DatevFormatValidatorTest {
     fun generatedFormatVersion13PassesStrictValidation() {
         val csv = DatevCsvSerializer.serializeToCsvString(
             listOf(record),
-            DatevProfile.createDefaultSkr03(),
+            DatevProfile.createDefaultSkr03().copy(
+                beraterNummer = "1111111",
+                mandantenNummer = "11111",
+                mandantenName = "Testmandant"
+            ),
             "2026"
         )
 
