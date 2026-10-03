@@ -211,7 +211,7 @@ class LedgerComposeTest {
     @Test fun systemBackReturnsToMoreAndTheGlobalNavigationRemainsVisible() {
         seed(openLedger = false)
         ui.onNodeWithTag("nav_item_more").performClick()
-        ui.onNodeWithText("Einnahmen / Ausgaben").performScrollTo().performClick()
+        ui.onNodeWithText("Einnahmen & Ausgaben").performScrollTo().performClick()
         assertEquals(AppScreen.LEDGER, vm.currentScreen.value)
         systemBack(); assertEquals(AppScreen.MORE, vm.currentScreen.value); shell()
     }
