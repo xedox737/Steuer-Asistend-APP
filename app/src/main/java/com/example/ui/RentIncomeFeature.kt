@@ -1,67 +1,39 @@
 package com.example.ui
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Receipt
-import com.example.data.StableDocumentIdentity
-import kotlin.math.max
-
-private data class RentPlan(
-    val unit: WohneinheitStatus,
-    val nebenkosten: Double,
-    val sonstige: Double
-) {
-    val monatSoll: Double get() = unit.kaltmiete + nebenkosten + sonstige
-}
-
-private data class UnitRentYear(
-    val plan: RentPlan,
-    val ist: Double,
-    val soll: Double,
-    val kaltIst: Double,
-    val warmPauschalIst: Double,
-    val sonstigeIst: Double,
-    val betriebskostenNachzahlung: Double
-) {
-    val differenz: Double get() = ist - soll
-    val rueckstand: Double get() = max(0.0, soll - ist)
-}
-
-private fun parseRentNumber(value: String): Double? =
-    value.trim().replace(".", "").replace(',', '.').toDoubleOrNull()
-
-private fun receiptYear(receipt: Receipt): Int? = receipt.datum.take(4).toIntOrNull()
-
-private fun monthsExpected(unit: WohneinheitStatus, year: Int): Int {
-    if (unit.status != "Vermietet") return 0
-    val parts = unit.mietvertragsstart.split('-')
-    val startYear = parts.getOrNull(0)?.toIntOrNull()
-    val startMonth = parts.getOrNull(1)?.toIntOrNull()?.coerceIn(1, 12)
-    return when {
-        startYear == null || startMonth == null -> 12
-        startYear < year -> 12
-        startYear > year -> 0
-        else -> 13 - startMonth
-    }
-}
+import java.time.LocalDate
+import java.text.NumberFormat
+import java.util.Locale
+import kotlin.math.abs
 
 internal fun isRentalIncomeReceipt(receipt: Receipt): Boolean {
     val sub = receipt.unterkategorie.trim()
@@ -73,206 +45,325 @@ internal fun isRentalIncomeReceipt(receipt: Receipt): Boolean {
 }
 
 @Composable
-fun RentIncomeOverviewScreen(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
+fun RentIncomeOverviewScreen(
+    viewModel: ReceiptViewModel,
+    propertyScoped: Boolean = false,
+    historyVersion: Int = 0,
+    onMonthlyCheck: () -> Unit = {},
+    onTenantHistory: (String, WohneinheitStatus) -> Unit = { _, _ -> }
+) {
     val context = LocalContext.current
-    val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
-    val receipts by receiptFlow.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
-    val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
     var prefsVersion by remember { mutableIntStateOf(0) }
-    val availableYears = remember(receipts) {
-        receipts.mapNotNull(::receiptYear).distinct().sortedDescending().ifEmpty { listOf(2026) }
+    val groups = remember(properties, units, metadata, propertyScoped, historyVersion, prefsVersion) {
+        val visible = if (propertyScoped) listOfNotNull(metadata) else properties
+        visible.map { property -> RentPropertyUnits(property,
+            if (property.propertyId == metadata?.propertyId) units else viewModel.getWohneinheitenForProperty(property)) }
     }
-    var selectedYear by remember(availableYears) { mutableIntStateOf(availableYears.first()) }
-    var editingUnit by remember { mutableStateOf<WohneinheitStatus?>(null) }
-
-    val plans = remember(units, propertyId, prefsVersion) {
-        units.map { unit ->
-            RentPlan(
-                unit = unit,
-                nebenkosten = PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk"),
-                sonstige = PropertyUnitScopedData.rentValue(context, propertyId, unit, "other")
-            )
+    val scopedReceipts = remember(receipts, groups, propertyScoped) {
+        RentOverviewPresentation.scopedReceipts(groups, receipts, propertyScoped)
+    }
+    val years = remember(groups, scopedReceipts, historyVersion, prefsVersion) {
+        RentOverviewPresentation.years(context, groups, scopedReceipts)
+    }
+    var selectedYear by rememberSaveable(if (propertyScoped) metadata?.propertyId else "all") { mutableIntStateOf(LocalDate.now().year) }
+    var yearsOpen by remember { mutableStateOf(false) }
+    val overview = remember(groups, scopedReceipts, selectedYear, prefsVersion, historyVersion) {
+        RentOverviewPresentation.year(context, groups, scopedReceipts, selectedYear)
+    }
+    var editing by remember { mutableStateOf<RentOverviewUnit?>(null) }
+    var originalProperty by remember { mutableStateOf<String?>(null) }
+    var pendingPlan by remember { mutableStateOf<ValidRentPlan?>(null) }
+    fun dismissEditor() {
+        editing = null
+        pendingPlan = null
+        originalProperty?.let(viewModel::selectProperty)
+        originalProperty = null
+    }
+    // Existing updateWohneinheit writes the selected property. Wait for that existing
+    // selection to become active before saving, then restore the global overview context.
+    LaunchedEffect(pendingPlan, metadata?.propertyId) {
+        val row = editing
+        val plan = pendingPlan
+        if (row != null && plan != null && metadata?.propertyId == row.property.propertyId) {
+            val id = row.property.propertyId
+            PropertyUnitScopedData.setRentValues(context, id, row.unit, plan.nk, plan.other)
+            val stored = TenantHistoryStore.load(context, id, PropertyUnitScopedData.stableUnitId(id, row.unit), row.unit.name)
+            val active = stored.lastOrNull { it.active && it.tenantName == row.unit.mieter }
+            if (active != null) TenantHistoryStore.save(context, id, PropertyUnitScopedData.stableUnitId(id, row.unit), row.unit.name,
+                stored.map { if (it.id == active.id) it.copy(kaltmiete = plan.kalt, nebenkosten = plan.nk, sonstige = plan.other, startDate = plan.start) else it })
+            viewModel.updateWohneinheit(row.unit.copy(kaltmiete = plan.kalt, mietvertragsstart = plan.start))
+            prefsVersion++
+            dismissEditor()
         }
     }
 
-    val yearRows = remember(receipts, plans, selectedYear) {
-        plans.map { plan ->
-            val unitReceipts = receipts.filter {
-                it.wohneinheit == plan.unit.name && receiptYear(it) == selectedYear && isRentalIncomeReceipt(it)
-            }
-            val ist = unitReceipts.sumOf { it.bruttobetrag }
-            val kalt = unitReceipts.filter { it.unterkategorie == "Kaltmiete" }.sumOf { it.bruttobetrag }
-            val warm = unitReceipts.filter { it.unterkategorie in setOf("Warmmiete", "Pauschalmiete") }.sumOf { it.bruttobetrag }
-            val bk = unitReceipts.filter { it.unterkategorie.contains("Betriebskosten", true) }.sumOf { it.bruttobetrag }
-            val sonstige = ist - kalt - warm - bk
-            val soll = plan.monatSoll * monthsExpected(plan.unit, selectedYear)
-            UnitRentYear(plan, ist, soll, kalt, warm, sonstige, bk)
-        }
-    }
-
-    val totalIst = yearRows.sumOf { it.ist }
-    val totalSoll = yearRows.sumOf { it.soll }
-    val totalRueckstand = yearRows.sumOf { it.rueckstand }
-    val unattributed = receipts.filter {
-        receiptYear(it) == selectedYear && isRentalIncomeReceipt(it) &&
-            (it.wohneinheit.isBlank() || units.none { unit -> unit.name == it.wohneinheit })
-    }.sumOf { it.bruttobetrag }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    LazyColumn(Modifier.fillMaxSize().testTag("rent_overview"), contentPadding = PaddingValues(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Mieteinnahmen & Nebenkosten", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy)
-                Text("Ist-Einnahmen aus Belegen · Sollwerte aus den Mietdaten", fontSize = 11.sp, color = SlateGray)
+                Text("Mieteingänge", fontSize = 23.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("Mieten, Nebenkostenvorauszahlungen und offene Beträge", fontSize = 11.sp, lineHeight = 15.sp, color = SlateGray)
             }
         }
-
         item {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { selectedYear -= 1 }) { Text("‹") }
-                Text("Steuerjahr $selectedYear", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                OutlinedButton(onClick = { selectedYear += 1 }) { Text("›") }
-            }
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
-                border = BorderStroke(1.dp, BorderColor),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Jahresübersicht", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                    SummaryRow("Ist-Einnahmen laut Belegen", totalIst, EmeraldGreen)
-                    SummaryRow("Soll-Hochrechnung aktueller Verträge", totalSoll, DarkNavy)
-                    SummaryRow("Offene Differenz / Rückstand", totalRueckstand, if (totalRueckstand > 0.0) CrimsonRed else EmeraldGreen)
-                    if (unattributed > 0.0) {
-                        HorizontalDivider(color = BorderColor)
-                        Text("⚠ ${NumberFormatter.format(unattributed)} Miet-/BK-Einnahmen sind keiner Wohneinheit zugeordnet.", fontSize = 10.sp, color = WarmOrange)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { selectedYear-- }, modifier = Modifier.testTag("rent_year_previous")) {
+                    Icon(Icons.Default.ChevronLeft, "Vorheriges Mietjahr", tint = AccentBlue)
+                }
+                Box {
+                    OutlinedButton(onClick = { yearsOpen = true }, shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, BorderColor), colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White),
+                        modifier = Modifier.testTag("rent_year"), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+                        Text(selectedYear.toString(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                        Icon(Icons.Default.ExpandMore, null, Modifier.size(18.dp), tint = SlateGray)
                     }
-                    Text("Steuerlich maßgeblich sind die tatsächlich zugeflossenen Einnahmen. Der Sollwert dient nur der Mietkontrolle.", fontSize = 9.sp, color = SlateGray, lineHeight = 12.sp)
+                    DropdownMenu(yearsOpen, { yearsOpen = false }) {
+                        years.forEach { year -> DropdownMenuItem(text = { Text(year.toString()) },
+                            onClick = { selectedYear = year; yearsOpen = false }) }
+                    }
+                }
+                IconButton(onClick = { selectedYear++ }, modifier = Modifier.testTag("rent_year_next")) {
+                    Icon(Icons.Default.ChevronRight, "Nächstes Mietjahr", tint = AccentBlue)
                 }
             }
         }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.testTag("rent_metrics")) {
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RentMetric("Ist-Einnahmen", overview.actual, Icons.AutoMirrored.Filled.TrendingUp, EmeraldGreen, "Zugeordnet · $selectedYear", Modifier.weight(1f), "actual")
+                    RentMetric("Soll-Miete", overview.expected, Icons.Default.CalendarMonth, AccentBlue, "Jahres-Soll · $selectedYear", Modifier.weight(1f), "expected")
+                }
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RentMetric("Nebenkosten", overview.utilities, Icons.Default.Payments, WarmOrange, "Eindeutige Einnahmen", Modifier.weight(1f), "utilities")
+                    RentMetric("Offen", overview.missing, Icons.Default.Warning,
+                        if (overview.missing > .01) CrimsonRed else EmeraldGreen, "Zum Jahres-Soll", Modifier.weight(1f), "missing")
+                }
+            }
+        }
+        item { RentYearChart(overview, onMonthlyCheck) }
+        if (overview.unassigned.isNotEmpty()) item {
+            RentCard(Modifier.testTag("rent_unassigned")) {
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = WarmOrange, modifier = Modifier.size(24.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        val count = overview.unassigned.size
+                        Text("$count Mietzahlung${if (count == 1) "" else "en"} nicht zugeordnet", fontSize = 13.sp, lineHeight = 17.sp,
+                            fontWeight = FontWeight.Bold, color = DarkNavy)
+                        Text("${NumberFormatter.format(overview.unassigned.sumOf { it.bruttobetrag })} müssen geprüft werden",
+                            fontSize = 11.sp, lineHeight = 15.sp, color = SlateGray)
+                    }
+                }
+                TextButton(onClick = {
+                    viewModel.setCategoryFilter(null)
+                    viewModel.setSearchQuery("")
+                    viewModel.setDateRangeFilter("$selectedYear-01-01", "$selectedYear-12-31")
+                    viewModel.setScreen(AppScreen.RECEIPTS_LIST)
+                }, modifier = Modifier.testTag("rent_review_payments"), contentPadding = PaddingValues(0.dp)) {
+                    Text("Zahlungen prüfen", color = AccentBlue, fontSize = 12.sp)
+                    Icon(Icons.Default.ChevronRight, null, Modifier.size(16.dp))
+                }
+            }
+        }
+        item { Text("Wohneinheiten", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+        if (overview.rows.isEmpty() || (overview.actual == 0.0 && overview.expected == 0.0 && overview.unassigned.isEmpty())) item {
+            RentCard(Modifier.testTag("rent_empty")) {
+                Icon(Icons.Default.HomeWork, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
+                Text("Noch keine Mieteingänge vorhanden", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("Hinterlege Mietdaten bei deinen Wohneinheiten und ordne eingehende Zahlungen zu.", fontSize = 11.sp, lineHeight = 15.sp, color = SlateGray)
+            }
+        }
+        items(overview.rows, key = { it.key }) { row ->
+            RentUnitCard(row, selectedYear, !propertyScoped, onEdit = {
+                originalProperty = viewModel.selectedPropertyId.value
+                editing = row
+                viewModel.selectProperty(row.property.propertyId)
+            }, onHistory = { onTenantHistory(row.property.propertyId, row.unit) })
+        }
+    }
+    editing?.let { row ->
+        RentPlanEditDialog(row.unit, row.nebenkosten, row.sonstige, onDismiss = { dismissEditor() },
+            onSave = { cold, nk, other, start -> pendingPlan = ValidRentPlan(cold, nk, other, start) },
+            previousTenancyEnd = TenantHistoryStore.load(context, row.property.propertyId,
+                PropertyUnitScopedData.stableUnitId(row.property.propertyId, row.unit), row.unit.name)
+                .filterNot { it.active }.mapNotNull { RentOverviewPresentation.date(it.endDate) }.maxOrNull(),
+            incomeBreakdown = scopedReceipts.filter { it.propertyId == row.property.propertyId && it.wohneinheit == row.unit.name &&
+                RentOverviewPresentation.date(it.datum)?.year == selectedYear && isRentalIncomeReceipt(it) }
+                .groupBy { it.unterkategorie.ifBlank { "Sonstige Mieteinnahmen" } }.mapValues { (_, values) -> values.sumOf { it.bruttobetrag } })
+    }
+}
 
-        item { Text("Wohneinheiten", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
+@Composable
+private fun RentCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, BorderColor), shape = RoundedCornerShape(14.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp), content = content)
+    }
+}
 
-        items(yearRows, key = { PropertyUnitScopedData.stableUnitId(propertyId, it.plan.unit) }) { row ->
-            val unit = row.plan.unit
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable { editingUnit = unit },
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
-                border = BorderStroke(1.dp, BorderColor),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(unit.label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                            Text(if (unit.status == "Vermietet") unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else unit.status, fontSize = 10.sp, color = SlateGray)
+@Composable
+private fun RentMetric(title: String, value: Double, icon: ImageVector, color: Color, subtitle: String, modifier: Modifier, tag: String) {
+    Card(modifier.fillMaxHeight().heightIn(min = 100.dp).testTag("rent_metric_$tag"), shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Box(Modifier.size(28.dp).background(color.copy(alpha = .1f), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+                }
+                Text(title, fontSize = 12.sp, color = DarkNavy, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(NumberFormatter.format(value), fontSize = if (NumberFormatter.format(value).length > 14) 17.sp else 20.sp, lineHeight = 23.sp, fontWeight = FontWeight.Bold, color = color)
+            Text(subtitle, fontSize = 10.sp, lineHeight = 13.sp, color = SlateGray)
+        }
+    }
+}
+
+@Composable
+private fun RentYearChart(year: RentOverviewYear, onMonthlyCheck: () -> Unit) {
+    val months = year.months
+    val upper = months.maxOf { maxOf(it.first, it.second, 0.0) }.coerceAtLeast(1.0)
+    val lower = months.minOf { minOf(it.first, it.second, 0.0) }
+    val range = upper - lower
+    RentCard(Modifier.testTag("rent_chart")) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Mietverlauf ${year.year}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy, modifier = Modifier.weight(1f))
+            listOf("Soll" to AccentBlue, "Ist" to EmeraldGreen).forEach { (label, color) ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Box(Modifier.size(5.dp).background(color, CircleShape))
+                    Text(label, fontSize = 10.sp, color = SlateGray)
+                    Spacer(Modifier.width(7.dp))
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(84.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.width(47.dp).height(66.dp), verticalArrangement = Arrangement.SpaceBetween, horizontalAlignment = Alignment.End) {
+                listOf(upper, (upper + lower) / 2, lower).forEach { value ->
+                    Text(if (abs(value) >= 1_000_000) NumberFormat.getNumberInstance(Locale.GERMANY).apply { maximumFractionDigits = 1 }.format(value / 1_000_000) + " Mio. €"
+                        else NumberFormat.getIntegerInstance(Locale.GERMANY).format(value) + " €", fontSize = 8.sp, lineHeight = 11.sp,
+                        color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+            Box(Modifier.weight(1f)) {
+                Column(Modifier.fillMaxWidth().height(66.dp), verticalArrangement = Arrangement.SpaceBetween) {
+                    repeat(3) { HorizontalDivider(color = BorderColor.copy(alpha = .5f)) }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    months.forEachIndexed { index, (expected, actual) ->
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(Modifier.height(66.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                listOf(Triple(expected, AccentBlue, "expected"), Triple(actual, EmeraldGreen, "actual")).forEach { (value, color, kind) ->
+                                    Box(Modifier.weight(1f).height(66.dp)) {
+                                        Box(Modifier.fillMaxWidth().offset(y = ((upper - maxOf(value, 0.0)) / range * 66).toFloat().dp)
+                                            .height((abs(value) / range * 66).toFloat().dp).background(color, RoundedCornerShape(2.dp))
+                                            .testTag("rent_bar_${kind}_${index + 1}"))
+                                    }
+                                }
+                            }
+                            Text(listOf("Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez")[index],
+                                fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray, maxLines = 1)
                         }
-                        Icon(Icons.Default.Edit, contentDescription = "Mietplan bearbeiten", tint = AccentBlue, modifier = Modifier.size(18.dp))
-                    }
-                    HorizontalDivider(color = BorderColor.copy(alpha = 0.7f))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Monatliches Soll", fontSize = 10.sp, color = SlateGray)
-                        Text(NumberFormatter.format(row.plan.monatSoll), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                    }
-                    Text("Kalt ${NumberFormatter.format(unit.kaltmiete)} · NK ${NumberFormatter.format(row.plan.nebenkosten)} · Sonstiges ${NumberFormatter.format(row.plan.sonstige)}", fontSize = 9.sp, color = SlateGray)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Ist $selectedYear", fontSize = 10.sp, color = SlateGray)
-                        Text(NumberFormatter.format(row.ist), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Soll-Hochrechnung", fontSize = 10.sp, color = SlateGray)
-                        Text(NumberFormatter.format(row.soll), fontSize = 11.sp, color = DarkNavy)
-                    }
-                    if (row.rueckstand > 0.01) {
-                        Text("Offene Differenz: ${NumberFormatter.format(row.rueckstand)}", fontSize = 10.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
-                    } else if (row.soll > 0.0) {
-                        Text("Soll erreicht", fontSize = 10.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
-                    }
-                    if (row.ist > 0.0) {
-                        Text("Ist-Aufteilung: Kalt ${NumberFormatter.format(row.kaltIst)} · Warm/Pauschal ${NumberFormatter.format(row.warmPauschalIst)} · BK-Nachzahlung ${NumberFormatter.format(row.betriebskostenNachzahlung)} · Sonstiges ${NumberFormatter.format(row.sonstigeIst)}", fontSize = 9.sp, color = SlateGray, lineHeight = 12.sp)
                     }
                 }
             }
         }
-    }
-
-    editingUnit?.let { unit ->
-        val currentPlan = plans.firstOrNull { PropertyUnitScopedData.stableUnitId(propertyId, it.unit) == PropertyUnitScopedData.stableUnitId(propertyId, unit) }
-            ?: RentPlan(unit, 0.0, 0.0)
-        RentPlanEditDialog(
-            unit = unit,
-            nebenkostenInitial = currentPlan.nebenkosten,
-            sonstigeInitial = currentPlan.sonstige,
-            onDismiss = { editingUnit = null },
-            onSave = { kalt, nk, other, start ->
-                PropertyUnitScopedData.setRentValues(context, propertyId, unit, nk, other)
-                viewModel.updateWohneinheit(unit.copy(kaltmiete = kalt, mietvertragsstart = start))
-                prefsVersion++
-                editingUnit = null
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Jahres-Soll inkl. künftiger Monate", fontSize = 9.sp, color = SlateGray, modifier = Modifier.weight(1f))
+            TextButton(onClick = onMonthlyCheck, modifier = Modifier.testTag("rent_monthly_check"), contentPadding = PaddingValues(0.dp)) {
+                Text("Monatscheck", fontSize = 11.sp, color = AccentBlue)
             }
-        )
+        }
     }
 }
 
 @Composable
-private fun SummaryRow(label: String, amount: Double, color: androidx.compose.ui.graphics.Color) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = 11.sp, color = SlateGray)
-        Text(NumberFormatter.format(amount), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = color)
+private fun RentUnitCard(row: RentOverviewUnit, year: Int, showProperty: Boolean, onEdit: () -> Unit, onHistory: () -> Unit) {
+    val status = when { row.expected <= .01 -> "Kein Soll"; row.missing > .01 -> "${NumberFormatter.format(row.missing)} offen"; else -> "Bezahlt" }
+    val statusColor = when { row.expected <= .01 -> SlateGray; row.missing > .01 -> CrimsonRed; else -> EmeraldGreen }
+    RentCard(Modifier.clickable(onClick = onEdit).testTag("rent_unit_${row.key}")) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.size(32.dp).background(AccentBlue.copy(alpha = .1f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.HomeWork, null, tint = AccentBlue, modifier = Modifier.size(19.dp))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(row.unit.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(row.tenants, fontSize = 10.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Surface(color = if (row.unit.status == "Vermietet") EmeraldGreen.copy(alpha = .1f) else SoftBackground, shape = RoundedCornerShape(8.dp)) {
+                Text(row.unit.status, fontSize = 9.sp, color = if (row.unit.status == "Vermietet") EmeraldGreen else SlateGray, modifier = Modifier.padding(5.dp))
+            }
+            IconButton(onClick = onEdit, modifier = Modifier.size(32.dp).testTag("rent_edit_${row.key}")) {
+                Icon(Icons.Default.Edit, "Mietplan bearbeiten", tint = AccentBlue, modifier = Modifier.size(18.dp))
+            }
+        }
+        if (showProperty) Text(row.property.name.ifBlank { row.property.adresse.ifBlank { "Immobilie" } }, fontSize = 9.sp,
+            color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Soll $year", fontSize = 10.sp, color = SlateGray)
+                Text(NumberFormatter.format(row.expected), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                Text("Ist $year", fontSize = 10.sp, color = SlateGray)
+                Text(NumberFormatter.format(row.actual), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
+            }
+        }
+        Text("Monatlich ${NumberFormatter.format(row.monthly)} · Kalt ${NumberFormatter.format(row.unit.kaltmiete)} · NK ${NumberFormatter.format(row.nebenkosten)}",
+            fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(if (row.expected <= .01) Icons.Default.Remove else if (row.missing > .01) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    null, tint = statusColor, modifier = Modifier.size(15.dp))
+                Text(status, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor, modifier = Modifier.testTag("rent_status_${row.key}"))
+            }
+            TextButton(onClick = onHistory, modifier = Modifier.testTag("rent_history_${row.key}"), contentPadding = PaddingValues(0.dp)) {
+                Icon(Icons.Default.SwapHoriz, null, tint = AccentBlue, modifier = Modifier.size(15.dp))
+                Text("Mieterwechsel", fontSize = 10.sp, color = AccentBlue)
+            }
+        }
     }
 }
 
 @Composable
-private fun RentPlanEditDialog(
-    unit: WohneinheitStatus,
-    nebenkostenInitial: Double,
-    sonstigeInitial: Double,
-    onDismiss: () -> Unit,
-    onSave: (Double, Double, Double, String) -> Unit
-) {
-    var kalt by remember(unit.name) { mutableStateOf(unit.kaltmiete.toString()) }
-    var nk by remember(unit.name) { mutableStateOf(nebenkostenInitial.toString()) }
-    var other by remember(unit.name) { mutableStateOf(sonstigeInitial.toString()) }
-    var start by remember(unit.name) { mutableStateOf(unit.mietvertragsstart) }
-    var error by remember(unit.name) { mutableStateOf<String?>(null) }
+internal fun RentPlanEditDialog(unit: WohneinheitStatus, nebenkostenInitial: Double, sonstigeInitial: Double,
+    onDismiss: () -> Unit, onSave: (Double, Double, Double, String) -> Unit, incomeBreakdown: Map<String, Double> = emptyMap(), previousTenancyEnd: LocalDate? = null) {
+    var kalt by remember(unit.unitId, unit.name) { mutableStateOf(unit.kaltmiete.toString()) }
+    var nk by remember(unit.unitId, unit.name) { mutableStateOf(nebenkostenInitial.toString()) }
+    var other by remember(unit.unitId, unit.name) { mutableStateOf(sonstigeInitial.toString()) }
+    var start by remember(unit.unitId, unit.name) { mutableStateOf(unit.mietvertragsstart) }
+    var error by remember { mutableStateOf<String?>(null) }
     val keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Mietplan: ${unit.name}", fontWeight = FontWeight.Bold) },
+    AlertDialog(onDismissRequest = onDismiss, containerColor = Color.White, shape = RoundedCornerShape(16.dp),
+        title = { Text("Mietplan: ${unit.label}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = DarkNavy) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Text("Die Sollwerte dienen der Mietkontrolle und verändern keine vorhandenen Belege.", fontSize = 10.sp, color = SlateGray)
-                OutlinedTextField(kalt, { kalt = it }, label = { Text("Kaltmiete / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(nk, { nk = it }, label = { Text("Nebenkostenvorauszahlung / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(other, { other = it }, label = { Text("Sonstige Mietbestandteile / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(start, { start = it }, label = { Text("Mietvertragsstart YYYY-MM-DD") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Monatliches Soll: ${NumberFormatter.format((parseRentNumber(kalt) ?: 0.0) + (parseRentNumber(nk) ?: 0.0) + (parseRentNumber(other) ?: 0.0))}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                error?.let { Text(it, fontSize = 10.sp, color = CrimsonRed, fontWeight = FontWeight.Bold) }
+            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Text("Sollwerte für die Mietkontrolle. Vorhandene Belege bleiben unverändert.", fontSize = 10.sp, color = SlateGray)
+                OutlinedTextField(kalt, { kalt = it; error = null }, label = { Text("Kaltmiete / Monat €") }, keyboardOptions = keyboard,
+                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("rent_plan_cold"))
+                OutlinedTextField(nk, { nk = it; error = null }, label = { Text("Nebenkostenvorauszahlung / Monat €") }, keyboardOptions = keyboard,
+                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("rent_plan_utilities"))
+                OutlinedTextField(other, { other = it; error = null }, label = { Text("Sonstige Mietbestandteile / Monat €") }, keyboardOptions = keyboard,
+                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("rent_plan_other"))
+                OutlinedTextField(start, { start = it; error = null }, label = { Text("Mietbeginn JJJJ-MM-TT") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_start"))
+                Text("Monatliches Soll: ${NumberFormatter.format((RentPlanInput.amount(kalt) ?: 0.0) + (RentPlanInput.amount(nk) ?: 0.0) + (RentPlanInput.amount(other) ?: 0.0))}",
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text("Ohne Mietbeginn gilt der vorhandene Jahres-Sollansatz.", fontSize = 9.sp, color = SlateGray)
+                error?.let { Text(it, fontSize = 11.sp, color = CrimsonRed) }
+                if (incomeBreakdown.isNotEmpty()) {
+                    HorizontalDivider(color = BorderColor)
+                    Text("Ist-Aufteilung im ausgewählten Jahr", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    incomeBreakdown.forEach { (category, amount) ->
+                        Text("$category: ${NumberFormatter.format(amount)}", fontSize = 10.sp, color = SlateGray)
+                    }
+                }
             }
         },
-        confirmButton = {
-            Button(onClick = {
-                val cold = parseRentNumber(kalt)
-                val utilities = parseRentNumber(nk)
-                val extras = parseRentNumber(other)
-                if (cold == null || cold < 0 || utilities == null || utilities < 0 || extras == null || extras < 0) {
-                    error = "Bitte gültige positive Beträge eingeben."
-                } else {
-                    onSave(cold, utilities, extras, start.trim())
-                }
-            }, colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)) { Text("Speichern") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
-    )
+        confirmButton = { Button(onClick = {
+            error = RentPlanInput.error(kalt, nk, other, start, previousTenancyEnd)
+            if (error == null) onSave(RentPlanInput.amount(kalt)!!, RentPlanInput.amount(nk)!!, RentPlanInput.amount(other)!!, start.trim())
+        }, modifier = Modifier.testTag("rent_plan_save"), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Speichern") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } })
 }
