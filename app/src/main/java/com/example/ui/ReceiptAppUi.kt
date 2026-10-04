@@ -263,14 +263,6 @@ val CrimsonRed = Color(0xFFDC2626)
 val SoftBackground = Color(0xFFF8FAFC)
 val BorderColor = Color(0xFFE2E8F0)
 
-internal val PRIMARY_NAVIGATION_SCREENS = listOf(
-    AppScreen.DASHBOARD,
-    AppScreen.RECEIPTS_LIST,
-    AppScreen.ADD_RECEIPT,
-    AppScreen.PROPERTIES,
-    AppScreen.MORE
-)
-
 val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
     decimalFormatSymbols = decimalFormatSymbols.apply {
         groupingSeparator = '.'
@@ -282,6 +274,7 @@ val NumberFormatter = DecimalFormat("#,##0.00 €").apply {
 @Composable
 fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+    val primaryNavigationReset by viewModel.primaryNavigationReset.collectAsStateWithLifecycle()
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val selectedReceiptDetailId by viewModel.selectedReceiptDetailId.collectAsStateWithLifecycle()
     var bankDetailsOpen by remember { mutableStateOf(false) }
@@ -336,16 +329,10 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
 
                     items.forEach { (screen, icon, label) ->
                         val isPrimaryAction = screen == AppScreen.ADD_RECEIPT
-                        val isSelected = currentScreen == screen ||
-                            (screen == AppScreen.DASHBOARD && currentScreen in setOf(
-                                AppScreen.RENT_OVERVIEW,
-                                AppScreen.TAX_CALCULATOR
-                            )) ||
-                            (screen == AppScreen.RECEIPTS_LIST && currentScreen == AppScreen.RECEIPT_DETAIL) ||
-                            (screen == AppScreen.MORE && currentScreen in setOf(AppScreen.BANK, AppScreen.DATEV_EXPORT))
+                        val isSelected = primaryNavigationDestination(currentScreen) == screen
                         NavigationBarItem(
                             selected = isSelected,
-                            onClick = { viewModel.setScreen(screen) },
+                            onClick = { viewModel.navigateToPrimaryDestination(screen) },
                             icon = {
                                 if (isPrimaryAction) {
                                     Surface(
@@ -396,6 +383,9 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                     .widthIn(max = 900.dp)
                     .fillMaxSize()
             ) {
+            // Recreate only screen-local navigation/dialog state on a primary click.
+            // Ordinary local navigation and ViewModel-owned saves keep their lifecycle.
+            androidx.compose.runtime.key(primaryNavigationReset.generation) {
             when (currentScreen) {
                 AppScreen.DASHBOARD -> DashboardScreen(viewModel)
                 AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)
@@ -417,6 +407,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                     }
                 }
                 AppScreen.MORE -> MoreScreen(viewModel)
+            }
             }
             }
         }

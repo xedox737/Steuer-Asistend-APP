@@ -2413,6 +2413,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _currentScreen = MutableStateFlow(AppScreen.DASHBOARD)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
 
+    // Unlike currentScreen, this changes on every explicit primary-navigation click,
+    // including reselecting the active tab. Only the UI subtree observes this reset.
+    private val _primaryNavigationReset = MutableStateFlow(PrimaryNavigationReset())
+    val primaryNavigationReset: StateFlow<PrimaryNavigationReset> = _primaryNavigationReset.asStateFlow()
+
     private val _selectedReceiptDetailId = MutableStateFlow<Int?>(null)
     val selectedReceiptDetailId: StateFlow<Int?> = _selectedReceiptDetailId.asStateFlow()
     private var receiptDetailReturnScreen: AppScreen = AppScreen.RECEIPTS_LIST
@@ -3152,6 +3157,21 @@ data class AiSearchUiState(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyMap()
     )
+
+    fun navigateToPrimaryDestination(destination: AppScreen) {
+        require(destination in PRIMARY_NAVIGATION_SCREENS) { "Kein Hauptziel: $destination" }
+        // Clear navigation context, never persisted data or the selected property.
+        _pendingBankTransactionId.value = null
+        _bankTransactionDetailsReturnId.value = null
+        _selectedReceiptDetailId.value = null
+        receiptDetailReturnScreen = AppScreen.RECEIPTS_LIST
+        datevReturnScreen = AppScreen.MORE
+        setScreen(destination)
+        _primaryNavigationReset.value = PrimaryNavigationReset(
+            generation = _primaryNavigationReset.value.generation + 1,
+            destination = destination
+        )
+    }
 
     fun setScreen(screen: AppScreen) {
         if (screen != AppScreen.ADD_RECEIPT) {
@@ -3998,6 +4018,10 @@ data class AiSearchUiState(
         zahlungsart: String = "Unbekannt",
         positionenJson: String = ""
     ) {
+        val navigationGeneration = _primaryNavigationReset.value.generation
+        // A primary click may close the editor while its committed save finishes.
+        // Keep that save's origin; only its eventual UI navigation becomes stale.
+        val originatingBankTransactionId = _pendingBankTransactionId.value
         viewModelScope.launch {
             // Learn rule automatically for KI adaptive memory
             learnVendorRule(aussteller, hauptkategorie, unterkategorie, kontoNr, wohneinheit)
@@ -4025,12 +4049,13 @@ data class AiSearchUiState(
             val newId = repository.insert(newReceipt)
             val savedReceipt = newReceipt.copy(id = newId.toInt())
 
-            val originatingBankTransactionId = _pendingBankTransactionId.value
             originatingBankTransactionId?.let { pendingTransactionId ->
                 database.bankDao().getTransaction(pendingTransactionId)?.let { transaction ->
                     _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, savedReceipt)
                 }
-                _pendingBankTransactionId.value = null
+                if (_primaryNavigationReset.value.generation == navigationGeneration) {
+                    _pendingBankTransactionId.value = null
+                }
             }
 
             if (FirestoreService.isCloudActive()) {
@@ -4042,6 +4067,7 @@ data class AiSearchUiState(
                 uploadReceiptToDriveInternal(savedReceipt)
             }
 
+            if (_primaryNavigationReset.value.generation != navigationGeneration) return@launch
             _scanState.value = ScanUiState.Idle
             if (!originatingBankTransactionId.isNullOrBlank()) {
                 _bankTransactionDetailsReturnId.value = originatingBankTransactionId

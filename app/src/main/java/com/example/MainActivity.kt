@@ -26,11 +26,23 @@ class MainActivity : ComponentActivity() {
       MyApplicationTheme {
         val viewModel: ReceiptViewModel = viewModel()
         val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
+        val primaryNavigationReset by viewModel.primaryNavigationReset.collectAsStateWithLifecycle()
+        var lastPrimaryGeneration by remember { mutableStateOf(primaryNavigationReset.generation) }
         val backStack = remember { mutableStateListOf<AppScreen>() }
         var lastObservedScreen by remember { mutableStateOf(currentScreen) }
         var handlingBackNavigation by remember { mutableStateOf(false) }
 
-        LaunchedEffect(currentScreen) {
+        LaunchedEffect(currentScreen, primaryNavigationReset) {
+          if (primaryNavigationReset.generation != lastPrimaryGeneration) {
+            // The two flows may be observed in either order. Wait for the requested
+            // root before accepting the reset; never record its departed child.
+            if (currentScreen != primaryNavigationReset.destination) return@LaunchedEffect
+            backStack.clear()
+            handlingBackNavigation = false
+            lastObservedScreen = currentScreen
+            lastPrimaryGeneration = primaryNavigationReset.generation
+            return@LaunchedEffect
+          }
           if (currentScreen != lastObservedScreen) {
             if (handlingBackNavigation) {
               handlingBackNavigation = false
