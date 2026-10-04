@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
@@ -870,7 +871,7 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
     }
     androidx.activity.compose.BackHandler(enabled = page != null) { page = null }
     LazyColumn(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().testTag("more_menu"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
@@ -890,25 +891,28 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
             // The More screen deliberately uses compact destination rows.  It mirrors the
             // reference navigation pattern while keeping every existing destination intact.
             item { MoreMenuGroup("Finanzen") {
-                MoreMenuItem("Bank / Kontoauszüge", Icons.Default.AccountBalance, AccentBlue) { viewModel.setScreen(AppScreen.BANK) }
-                MoreMenuItem("Einnahmen / Ausgaben", Icons.Default.Payments, CrimsonRed) { viewModel.setScreen(AppScreen.LEDGER) }
-                MoreMenuItem("DATEV Export", Icons.Default.Description, EmeraldGreen) { viewModel.openDatevExport() }
-                MoreMenuItem("Steuerliche Übersicht", Icons.Default.Assessment, WarmOrange) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+                MoreMenuItem("Bank & Kontoauszüge", Icons.Default.AccountBalance, AccentBlue) { viewModel.setScreen(AppScreen.BANK) }
+                MoreMenuItem("Einnahmen & Ausgaben", Icons.Default.Payments, CrimsonRed) { viewModel.setScreen(AppScreen.LEDGER) }
                 MoreMenuItem("Mieteingänge", Icons.Default.HomeWork, AccentBlue) { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }
+            } }
+            item { MoreMenuGroup("Steuern & Auswertung") {
+                MoreMenuItem("Steuerliche Übersicht", Icons.Default.Assessment, WarmOrange) { viewModel.setScreen(AppScreen.TAX_CALCULATOR) }
+                MoreMenuItem("AfA Gebäude", Icons.Default.Assessment, AccentBlue) { page = "afa" }
+                MoreMenuItem("Sanierungs-Monitor", Icons.Default.Build, EmeraldGreen) { page = "monitor" }
+                MoreMenuItem("DATEV Export", Icons.Default.Description, EmeraldGreen) { viewModel.openDatevExport() }
             } }
             item { MoreMenuGroup("Verwaltung") {
                 MoreMenuItem("Dokumentenakte", Icons.Default.Description, AccentBlue) { viewModel.setScreen(AppScreen.DOCUMENTS) }
-                MoreMenuItem("Regeln", Icons.Default.Settings, Color(0xFF7C3AED)) { page = "rules" }
-                MoreMenuItem("Backup & Cloud", Icons.Default.Description, EmeraldGreen) { page = "backup" }
-            } }
-            item { MoreMenuGroup("Objekte & Steuern") {
-                MoreMenuItem("Immobilien verwalten", Icons.Default.Apartment, AccentBlue) { viewModel.setScreen(AppScreen.PROPERTIES) }
-                MoreMenuItem("AfA Gebäude", Icons.Default.Assessment, AccentBlue) { page = "afa" }
-                MoreMenuItem("Sanierungs-Monitor", Icons.Default.Build, EmeraldGreen) { page = "monitor" }
                 MoreMenuItem("Fahrtenbuch", Icons.Default.DirectionsCar, AccentBlue) { viewModel.setScreen(AppScreen.LOGBOOK) }
             } }
+            item { MoreMenuGroup("KI & Automatisierung") {
+                MoreMenuItem("Gelernte Regeln", Icons.Default.Settings, Color(0xFF7C3AED)) { page = "rules" }
+            } }
+            item { MoreMenuGroup("Daten & Sicherung") {
+                MoreMenuItem("Backup & Cloud", Icons.Default.Cloud, EmeraldGreen) { page = "backup" }
+            } }
             item { MoreMenuGroup("Einstellungen") {
-                MoreMenuItem("App Einstellungen", Icons.Default.Settings, SlateGray) { showSettings = true }
+                MoreMenuItem("App-Einstellungen", Icons.Default.Settings, SlateGray) { showSettings = true }
             } }
         }
     }
@@ -921,7 +925,7 @@ private fun MoreMenuGroup(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("more_group_$title"),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
@@ -948,7 +952,7 @@ private fun MoreMenuItem(
 ) {
     androidx.compose.material3.Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp).testTag("more_item_$title"),
         shape = Ui2.controlShape,
         color = Color(0xFFF7F9FC)
     ) {
@@ -957,7 +961,7 @@ private fun MoreMenuItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp).testTag("more_icon_$title"))
             Text(title, modifier = Modifier.weight(1f), fontSize = 13.sp, color = DarkNavy)
             Icon(
                 Icons.AutoMirrored.Filled.ArrowForward,
