@@ -701,13 +701,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         return sb.toString().trim()
     }
 
-    fun getWohneinheitenFromPrefs(metaUnitsStr: String? = null): List<WohneinheitStatus> {
+    fun getWohneinheitenFromPrefs(metaUnitsStr: String? = null, propertyId: String = propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID): List<WohneinheitStatus> {
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val rawUnitsStr = metaUnitsStr ?: propertyMetadata.value?.wohneinheiten.orEmpty()
         val unitNames = rawUnitsStr.split(",").map(String::trim).filter(String::isNotBlank)
         if (unitNames.isEmpty()) return emptyList()
 
-        val propertyId = propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
         return unitNames.mapIndexed { index, name ->
             val stableUnitId = unitPrefs.getString("unit_id_$name", null)
                 ?: unitPrefs.getString("unit_id_index_$index", null)
@@ -749,7 +748,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun getWohneinheitenForProperty(metadata: PropertyMetadata): List<WohneinheitStatus> {
-        if (metadata.id == 1) return getWohneinheitenFromPrefs(metadata.wohneinheiten)
+        if (metadata.id == 1) return getWohneinheitenFromPrefs(metadata.wohneinheiten, metadata.propertyId)
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         return metadata.wohneinheiten.split(',').map(String::trim).filter(String::isNotBlank).mapIndexed { index, name ->
             val prefix = "property_${metadata.propertyId}_unit_${name}_"

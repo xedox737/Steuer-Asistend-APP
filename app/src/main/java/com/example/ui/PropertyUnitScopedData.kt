@@ -145,7 +145,7 @@ internal object RentTrackingLogic {
         val relevant = periods.filter { expectedInMonth(it, month) > 0.0 }
         val expected = relevant.sumOf { expectedInMonth(it, month) }
         val actual = receipts.filter {
-            it.wohneinheit == unit.name && receiptMonth(it) == month && isRentalIncomeReceipt(it)
+            it.propertyId == propertyId && it.wohneinheit == unit.name && receiptMonth(it) == month && isRentalIncomeReceipt(it)
         }.sumOf { it.bruttobetrag }
         val tenants = relevant.map { it.tenantName.ifBlank { "Mieter nicht hinterlegt" } }
             .distinct().joinToString(" → ").ifBlank {

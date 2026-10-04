@@ -307,6 +307,7 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
     val entries = listOf(
         PropertySection.DATA to ("Stammdaten" to Icons.Default.HomeWork),
         PropertySection.UNITS to ("Einheiten" to Icons.Default.Apartment),
+        PropertySection.RENT to ("Mieteingänge" to Icons.Default.Payments),
         PropertySection.RECEIPTS to ("Einnahmen / Ausgaben" to Icons.Default.Receipt),
         PropertySection.DOCUMENTS to ("Objektunterlagen" to Icons.Default.Description),
         PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment)

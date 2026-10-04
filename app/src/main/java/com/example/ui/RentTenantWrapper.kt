@@ -4,7 +4,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,16 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.Receipt
-import com.example.data.StableDocumentIdentity
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -48,113 +44,57 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
     val context = LocalContext.current
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
-    val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
-    val receiptFlow = if (propertyScoped) viewModel.propertyReceipts else viewModel.receipts
-    val receipts by receiptFlow.collectAsStateWithLifecycle()
-    var showUnitPicker by remember { mutableStateOf(false) }
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     var showMonthlyCheck by remember { mutableStateOf(false) }
-    var selectedUnit by remember { mutableStateOf<WohneinheitStatus?>(null) }
+    var selectedUnit by remember { mutableStateOf<Pair<String, WohneinheitStatus>?>(null) }
+    var originalProperty by remember { mutableStateOf<String?>(null) }
     var historyVersion by remember { mutableIntStateOf(0) }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        RentIncomeOverviewScreen(viewModel, propertyScoped)
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(18.dp),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ExtendedFloatingActionButton(
-                onClick = { showMonthlyCheck = true },
-                icon = { Icon(Icons.Default.CalendarMonth, contentDescription = null) },
-                text = { Text("Monatscheck") },
-                containerColor = EmeraldGreen,
-                contentColor = androidx.compose.ui.graphics.Color.White
-            )
-            ExtendedFloatingActionButton(
-                onClick = { showUnitPicker = true },
-                icon = { Icon(Icons.Default.SwapHoriz, contentDescription = null) },
-                text = { Text("Mieterwechsel") },
-                containerColor = AccentBlue,
-                contentColor = androidx.compose.ui.graphics.Color.White
-            )
+    var pendingTenant by remember { mutableStateOf<TenantPeriod?>(null) }
+    val groups = remember(properties, metadata, units, propertyScoped, historyVersion) {
+        (if (propertyScoped) listOfNotNull(metadata) else properties).map { property ->
+            RentPropertyUnits(property, if (property.propertyId == metadata?.propertyId) units else viewModel.getWohneinheitenForProperty(property))
         }
     }
-
-    if (showMonthlyCheck) {
-        MonthlyRentCheckDialog(
-            propertyId = propertyId,
-            units = units,
-            receipts = receipts,
-            historyVersion = historyVersion,
-            onDismiss = { showMonthlyCheck = false }
-        )
+    val scopedReceipts = remember(groups, receipts, propertyScoped) {
+        RentOverviewPresentation.scopedReceipts(groups, receipts, propertyScoped)
     }
-
-    if (showUnitPicker) {
-        AlertDialog(
-            onDismissRequest = { showUnitPicker = false },
-            title = { Text("Wohneinheit auswählen", fontWeight = FontWeight.Bold) },
-            text = {
-                LazyColumn {
-                    items(units, key = { PropertyUnitScopedData.stableUnitId(propertyId, it) }) { unit ->
-                        Card(
-                            onClick = {
-                                selectedUnit = unit
-                                showUnitPicker = false
-                            },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = SoftBackground),
-                            border = BorderStroke(1.dp, BorderColor)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(unit.label, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
-                                Text(
-                                    if (unit.status == "Vermietet") unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else unit.status,
-                                    color = SlateGray,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { showUnitPicker = false }) { Text("Abbrechen") } }
-        )
+    LaunchedEffect(pendingTenant, metadata?.propertyId) {
+        val selected = selectedUnit
+        val period = pendingTenant
+        if (selected != null && period != null && metadata?.propertyId == selected.first) {
+            PropertyUnitScopedData.setRentValues(context, selected.first, selected.second, period.nebenkosten, period.sonstige)
+            viewModel.updateWohneinheit(selected.second.copy(status = "Vermietet", mieter = period.tenantName,
+                kaltmiete = period.kaltmiete, mietvertragsstart = period.startDate))
+            pendingTenant = null
+            historyVersion++
+        }
     }
-
-    selectedUnit?.let { unit ->
-        val nk = PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk")
-        val other = PropertyUnitScopedData.rentValue(context, propertyId, unit, "other")
-        TenantHistoryDialog(
-            unit = unit,
-            nebenkostenCurrent = nk,
-            sonstigeCurrent = other,
-            onDismiss = { selectedUnit = null },
-            onCurrentTenantChanged = { newPeriod ->
-                PropertyUnitScopedData.setRentValues(context, propertyId, unit, newPeriod.nebenkosten, newPeriod.sonstige)
-                viewModel.updateWohneinheit(
-                    unit.copy(
-                        status = "Vermietet",
-                        mieter = newPeriod.tenantName,
-                        kaltmiete = newPeriod.kaltmiete,
-                        mietvertragsstart = newPeriod.startDate
-                    )
-                )
+    RentIncomeOverviewScreen(viewModel, propertyScoped, historyVersion,
+        onMonthlyCheck = { showMonthlyCheck = true },
+        onTenantHistory = { propertyId, unit ->
+            originalProperty = viewModel.selectedPropertyId.value
+            selectedUnit = propertyId to unit
+            viewModel.selectProperty(propertyId)
+        })
+    if (showMonthlyCheck) MonthlyRentCheckDialog(groups, scopedReceipts, historyVersion, onDismiss = { showMonthlyCheck = false })
+    selectedUnit?.let { (propertyId, unit) ->
+        TenantHistoryDialog(unit, PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk"),
+            PropertyUnitScopedData.rentValue(context, propertyId, unit, "other"),
+            onDismiss = {
+                selectedUnit = null
+                pendingTenant = null
+                originalProperty?.let(viewModel::selectProperty)
+                originalProperty = null
             },
-            onHistoryChanged = { historyVersion++ },
-            propertyId = propertyId
-        )
+            onCurrentTenantChanged = { pendingTenant = it },
+            onHistoryChanged = { historyVersion++ }, propertyId = propertyId)
     }
 }
 
 @Composable
 private fun MonthlyRentCheckDialog(
-    propertyId: String,
-    units: List<WohneinheitStatus>,
+    groups: List<RentPropertyUnits>,
     receipts: List<Receipt>,
     historyVersion: Int,
     onDismiss: () -> Unit
@@ -162,17 +102,19 @@ private fun MonthlyRentCheckDialog(
     val context = LocalContext.current
     var month by remember { mutableStateOf(YearMonth.now()) }
 
-    val rows = remember(propertyId, units, receipts, month, historyVersion) {
-        units.map { unit -> RentTrackingLogic.month(context, propertyId, unit, receipts, month) }
+    val rows = remember(groups, receipts, month, historyVersion) {
+        groups.flatMap { group -> group.units.map { unit ->
+            group.property to RentTrackingLogic.month(context, group.property.propertyId, unit, receipts, month)
+        } }
     }
 
-    val totalExpected = rows.sumOf { it.expected }
-    val totalActual = rows.sumOf { it.actual }
-    val totalMissing = rows.sumOf { it.missing }
-    val missingCount = rows.count { it.expected > 0.01 && it.missing > 0.01 }
+    val totalExpected = rows.sumOf { it.second.expected }
+    val totalActual = rows.sumOf { it.second.actual }
+    val totalMissing = rows.sumOf { it.second.missing }
+    val missingCount = rows.count { it.second.expected > 0.01 && it.second.missing > 0.01 }
     val unassigned = receipts.filter {
         receiptMonth(it) == month && isRentalIncomeReceipt(it) &&
-            (it.wohneinheit.isBlank() || units.none { unit -> unit.name == it.wohneinheit })
+            (it.wohneinheit.isBlank() || groups.none { group -> group.property.propertyId == it.propertyId && group.units.any { unit -> unit.name == it.wohneinheit } })
     }.sumOf { it.bruttobetrag }
 
     AlertDialog(
@@ -213,7 +155,7 @@ private fun MonthlyRentCheckDialog(
                         }
                     }
                 }
-                items(rows, key = { PropertyUnitScopedData.stableUnitId(propertyId, it.unit) }) { row ->
+                items(rows, key = { it.first.propertyId + ":" + PropertyUnitScopedData.stableUnitId(it.first.propertyId, it.second.unit) }) { (property, row) ->
                     val statusLabel = when (row.status) {
                         RentPaymentStatus.PAID -> "BEZAHLT"
                         RentPaymentStatus.MISSING -> "FEHLT"
@@ -235,6 +177,7 @@ private fun MonthlyRentCheckDialog(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(row.unit.label, fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 12.sp)
                                     Text(row.tenantNames, color = SlateGray, fontSize = 9.sp)
+                                    if (groups.size > 1) Text(property.name.ifBlank { property.adresse }, color = SlateGray, fontSize = 9.sp)
                                 }
                                 Text(statusLabel, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = statusColor)
                             }
