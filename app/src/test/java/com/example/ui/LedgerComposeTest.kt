@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +27,15 @@ import org.robolectric.annotation.GraphicsMode
 class LedgerComposeTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
+    @Before fun clearFixtureData() {
+        // These assertions require an empty database (or exactly the rows seeded
+        // below), independently of other Compose test classes using the same DB.
+        val database = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        runBlocking(Dispatchers.IO) { database.clearAllTables() }
+        ui.waitUntil(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
+        ui.waitForIdle()
+    }
+
     private fun seed(openLedger: Boolean = true) {
         val database = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
         runBlocking {
