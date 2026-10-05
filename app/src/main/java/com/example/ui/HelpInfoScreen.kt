@@ -139,7 +139,7 @@ internal fun AboutImmoPilotScreen(onBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         HelpIcon(Icons.Default.Home, AccentBlue)
                         Column {
-                            Text("ImmoPilot", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                            Text("ImmoPilot App", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                             Text("Immobilien. Finanzen. Steuern.", fontSize = 11.sp, color = SlateGray)
                         }
                     }
