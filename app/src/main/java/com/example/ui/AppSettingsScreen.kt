@@ -24,7 +24,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.BuildConfig
 import com.example.api.AiProviderState
 import com.example.api.ReceiptAnalysisProvider
 import com.example.data.PropertyMetadata
@@ -100,10 +99,6 @@ internal fun AppSettingsScreen(viewModel: ReceiptViewModel, onBack: () -> Unit) 
                 item { SettingsInfo("KI und Routen", "Wenn du KI-Analyse oder Routenberechnung nutzt, werden die dafür benötigten Inhalte an den jeweiligen Anbieter übertragen. Prüfe vor der Nutzung, welche Daten du übermitteln möchtest.") }
                 item { SettingsInfo("Sicherung", "Google Drive ist eine optionale Sicherung. API-Schlüssel werden nicht in die App-Sicherung oder Exporte aufgenommen. Die Android-System-Sicherung ist für diese App deaktiviert.") }
             }
-            "info" -> SettingsPage("Info", "Über ImmoPilot", back, "info") {
-                item { SettingsInfo("ImmoPilot", "Immobilien. Finanzen. Steuern.\nVersion ${BuildConfig.VERSION_NAME}") }
-                item { SettingsInfo("KI-Ergebnisse prüfen", "KI-Vorschläge können Fehler enthalten und müssen geprüft werden. DATEV-Freigaben bleiben manuell.") }
-            }
         }
     }
 }
@@ -125,9 +120,6 @@ private fun SettingsOverview(state: AiProviderState, onBack: () -> Unit, onProvi
             SettingsRow("Fahrtenbuch-Adressen", "Startadresse und Adresse des aktuellen Objekts", Icons.Default.DirectionsCar, AccentBlue, "addresses") { onPage("addresses") }
             SettingsDivider()
             SettingsRow("Verwaltung & Belege", "Objekt, Mieter, Dokumentenstatus und Papierkorb", Icons.Default.Folder, WarmOrange, "management") { onPage("management") }
-        } }
-        item { SettingsCard("Info") {
-            SettingsRow("Über ImmoPilot", "Version ${BuildConfig.VERSION_NAME} · Hinweise zur Nutzung", Icons.Default.Info, SlateGray, "info") { onPage("info") }
         } }
     }
 }
