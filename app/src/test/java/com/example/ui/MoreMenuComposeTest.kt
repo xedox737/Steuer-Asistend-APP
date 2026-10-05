@@ -147,19 +147,10 @@ class MoreMenuComposeTest {
     @Test fun internalPagesReturnToMoreByAndroidBack() = internalPages(true)
     @Test fun internalPagesReturnToMoreByTheirVisibleBackAction() = internalPages(false)
 
-    @Test fun existingSettingsDialogAndDirectPropertiesBottomNavigationRemainReachable() {
+    @Test fun settingsPageAndDirectPropertiesBottomNavigationRemainReachable() {
         openMore(); click("App-Einstellungen")
-        ui.mainClock.advanceTimeByFrame()
-        // Inspect the real Android window without forcing native Robolectric's
-        // Material-dialog measurement loop. Exercise its actual Back dispatcher.
-        ui.runOnUiThread {
-            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-            assertNotNull("The existing settings dialog must open", dialog)
-            assertTrue(dialog.isShowing)
-            @Suppress("DEPRECATION")
-            dialog.onBackPressed()
-        }
-        assertMenu()
+        ui.onNodeWithTag("settings_overview").assertIsDisplayed(); shell()
+        systemBack(); assertMenu()
         ui.onNodeWithTag("nav_item_properties").performClick()
         assertEquals(AppScreen.PROPERTIES, vm.currentScreen.value)
         ui.onNodeWithTag("properties_overview").assertIsDisplayed(); shell()
