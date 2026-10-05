@@ -29,6 +29,7 @@ class MoreMenuComposeTest {
         "Verwaltung" to listOf("Dokumentenakte", "Fahrtenbuch"),
         "KI & Automatisierung" to listOf("Gelernte Regeln"),
         "Daten & Sicherung" to listOf("Backup & Cloud"),
+        "Hilfe & Info" to listOf("Hilfe & FAQ", "Über ImmoPilot"),
         "Einstellungen" to listOf("App-Einstellungen")
     )
     private val iconColors = mapOf(
@@ -36,7 +37,8 @@ class MoreMenuComposeTest {
         "Mieteingänge" to AccentBlue, "Steuerliche Übersicht" to WarmOrange, "AfA Gebäude" to AccentBlue,
         "Sanierungs-Monitor" to EmeraldGreen, "DATEV Export" to EmeraldGreen,
         "Dokumentenakte" to AccentBlue, "Fahrtenbuch" to AccentBlue,
-        "Gelernte Regeln" to Color(0xFF7C3AED), "Backup & Cloud" to EmeraldGreen, "App-Einstellungen" to SlateGray
+        "Gelernte Regeln" to Color(0xFF7C3AED), "Backup & Cloud" to EmeraldGreen,
+        "Hilfe & FAQ" to AccentBlue, "Über ImmoPilot" to SlateGray, "App-Einstellungen" to SlateGray
     )
     private fun openMore() { ui.onNodeWithTag("nav_item_more").performClick(); ui.waitForIdle() }
     private fun menu() = ui.onNodeWithTag("more_menu")
@@ -115,7 +117,7 @@ class MoreMenuComposeTest {
         val colored = capture("393-overview").toMutableSet()
         menu().performScrollToNode(hasTestTag("more_group_Einstellungen")); shell()
         colored += capture("393-end")
-        assertEquals("Both scroll screenshots must cover all twelve colored icons", iconColors.keys, colored)
+        assertEquals("Scroll screenshots must cover all colored icons", iconColors.keys, colored)
     }
 
     @Test fun existingExternalDestinationsAndDatevEntryRemainUnchanged() {
@@ -146,6 +148,24 @@ class MoreMenuComposeTest {
     }
     @Test fun internalPagesReturnToMoreByAndroidBack() = internalPages(true)
     @Test fun internalPagesReturnToMoreByTheirVisibleBackAction() = internalPages(false)
+
+
+    @Test fun helpAndAboutAreReachableFromMoreAndReturnCleanly() {
+        openMore(); click("Hilfe & FAQ")
+        ui.onNodeWithTag("help_faq").assertIsDisplayed()
+        ui.onNodeWithText("Antworten auf häufige Fragen zu ImmoPilot").assertIsDisplayed()
+        ui.onNodeWithText("Erste Schritte").assertExists()
+        shell()
+        systemBack(); assertMenu()
+
+        click("Über ImmoPilot")
+        ui.onNodeWithTag("about").assertIsDisplayed()
+        ui.onNodeWithText("App-Informationen und wichtige Hinweise").assertIsDisplayed()
+        ui.onNodeWithText("Datenhaltung").assertExists()
+        shell()
+        ui.onNodeWithTag("about_back").performClick()
+        assertMenu()
+    }
 
     @Test fun settingsPageAndDirectPropertiesBottomNavigationRemainReachable() {
         openMore(); click("App-Einstellungen")
