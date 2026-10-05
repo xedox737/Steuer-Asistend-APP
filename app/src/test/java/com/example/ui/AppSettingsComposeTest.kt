@@ -209,7 +209,7 @@ class AppSettingsComposeTest {
     }
     @Test fun generalInformationAndSecurityPagesReturnToSettingsByBothBackActions() {
         open()
-        listOf("keys", "privacy", "addresses", "management", "selection", "info").forEach { destination ->
+        listOf("keys", "privacy", "addresses", "management", "selection").forEach { destination ->
             row(destination); back(); ui.onNodeWithTag("settings_overview").assertIsDisplayed()
             row(destination); ui.onNodeWithContentDescription("Zurück").performClick()
             ui.onNodeWithTag("settings_overview").assertIsDisplayed()
@@ -217,7 +217,7 @@ class AppSettingsComposeTest {
         back(); ui.onNodeWithTag("more_menu").assertIsDisplayed()
     }
     @Test fun everySettingsPageAllowsAllFiveRealBottomNavigationClicksWithoutReturningToOldPage() {
-        val sources = listOf("overview", "OPENAI", "GEMINI", "ROUTES", "keys", "privacy", "addresses", "management", "selection", "info", "key", "model")
+        val sources = listOf("overview", "OPENAI", "GEMINI", "ROUTES", "keys", "privacy", "addresses", "management", "selection", "key", "model")
         val targets = listOf(AppScreen.DASHBOARD, AppScreen.RECEIPTS_LIST, AppScreen.ADD_RECEIPT, AppScreen.PROPERTIES, AppScreen.MORE)
         configured()
         sources.forEach { source -> targets.forEach { target ->
