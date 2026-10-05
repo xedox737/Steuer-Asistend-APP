@@ -858,12 +858,14 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 
 @Composable
 fun MoreScreen(viewModel: ReceiptViewModel) {
-    var showSettings by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
     var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val rules by viewModel.bankLearningRules.collectAsStateWithLifecycle()
-    if (showSettings) AccountSettingsDialog(viewModel = viewModel, onDismiss = { showSettings = false })
+    if (page == "settings") {
+        AppSettingsScreen(viewModel) { page = null }
+        return
+    }
     if (showLearnedRules) KiLearnedRulesDialog(viewModel) { showLearnedRules = false }
     if (page == "afa" || page == "monitor") {
         if (page == "afa") AfaPortfolioScreen(viewModel) { page = null }
@@ -913,7 +915,7 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
                 MoreMenuItem("Backup & Cloud", Icons.Default.Cloud, EmeraldGreen) { page = "backup" }
             } }
             item { MoreMenuGroup("Einstellungen") {
-                MoreMenuItem("App-Einstellungen", Icons.Default.Settings, SlateGray) { showSettings = true }
+                MoreMenuItem("App-Einstellungen", Icons.Default.Settings, SlateGray) { page = "settings" }
             } }
         }
     }

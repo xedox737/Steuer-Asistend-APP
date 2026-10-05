@@ -24,8 +24,10 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class PrimaryNavigationComposeTest {
-    @get:Rule val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
+    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
+    private val fixtureContext get() = vm.getApplication<Application>()
     private lateinit var db: AppDatabase
     private val propertyId = "primary-property"
     private lateinit var storedUnits: List<WohneinheitStatus>
@@ -36,15 +38,16 @@ class PrimaryNavigationComposeTest {
     private val prefs = listOf("wohneinheiten_prefs", "rent_plan_prefs", "tenant_history_prefs", "google_drive_prefs")
 
     private fun clearFixture() {
+        ui.runOnIdle { vm.navigateToPrimaryDestination(AppScreen.DASHBOARD) }
         runBlocking(Dispatchers.IO) { db.clearAllTables() }
         ui.waitUntil(10000) { vm.properties.value.isEmpty() && vm.receipts.value.isEmpty() }
         ui.waitForIdle()
-        prefs.forEach { ui.activity.getSharedPreferences(it, 0).edit().clear().commit() }
+        prefs.forEach { fixtureContext.getSharedPreferences(it, 0).edit().clear().commit() }
     }
     @After fun cleanUpFixture() = clearFixture()
 
     @Before fun seed() {
-        val application = ui.activity.application as Application
+        val application = fixtureContext
         db = AppDatabase.getDatabase(application, CoroutineScope(Dispatchers.IO))
         clearFixture()
         runBlocking(Dispatchers.IO) {
@@ -71,12 +74,12 @@ class PrimaryNavigationComposeTest {
             val unit = vm.wohneinheitenStatus.value.single().copy(status = "Vermietet", mieter = "Primär-Mieter",
                 kaltmiete = 600.0, mietvertragsstart = "2026-01-01")
             vm.updateWohneinheit(unit)
-            PropertyUnitScopedData.setRentValues(ui.activity, propertyId, unit, 150.0, 0.0)
-            TenantHistoryStore.ensureCurrentPeriod(ui.activity, unit, 150.0, 0.0, propertyId)
+            PropertyUnitScopedData.setRentValues(fixtureContext, propertyId, unit, 150.0, 0.0)
+            TenantHistoryStore.ensureCurrentPeriod(fixtureContext, unit, 150.0, 0.0, propertyId)
         }
         ui.waitForIdle()
         storedUnits = vm.wohneinheitenStatus.value.toList()
-        preferenceSnapshot = prefs.associateWith { ui.activity.getSharedPreferences(it, 0).all.toMap() }
+        preferenceSnapshot = prefs.associateWith { fixtureContext.getSharedPreferences(it, 0).all.toMap() }
     }
 
     private fun clickTab(destination: AppScreen) {
@@ -113,7 +116,7 @@ class PrimaryNavigationComposeTest {
         assertEquals(storedReceipt, vm.receipts.value.single { it.id == storedReceipt.id })
         assertEquals(storedTransaction, vm.bankTransactions.value.single { it.transactionId == storedTransaction.transactionId })
         runBlocking { assertEquals(storedDocument, db.managedDocumentDao().getById(storedDocument.documentId)) }
-        prefs.forEach { assertEquals(it, preferenceSnapshot[it], ui.activity.getSharedPreferences(it, 0).all) }
+        prefs.forEach { assertEquals(it, preferenceSnapshot[it], fixtureContext.getSharedPreferences(it, 0).all) }
     }
     private fun matrix(openSource: () -> Unit) {
         PRIMARY_NAVIGATION_SCREENS.forEach { destination ->
@@ -212,20 +215,12 @@ class PrimaryNavigationComposeTest {
         back(); assertRoot(AppScreen.DASHBOARD)
         assertDataPreserved()
     }
-    @Test fun primaryResetClosesSettingsWindowAndDoesNotReopenIt() {
+    @Test fun primaryResetLeavesSettingsPageAndDoesNotReopenIt() {
         clickTab(AppScreen.MORE)
         clickMore("App-Einstellungen")
-        ui.mainClock.advanceTimeByFrame()
-        // Android dialogs are modal: test the same central intent without trying
-        // to send a physical tap through their separate window.
-        ui.runOnUiThread {
-            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
-            assertTrue(dialog.isShowing)
-            vm.navigateToPrimaryDestination(AppScreen.MORE)
-        }
-        ui.waitForIdle()
-        assertRoot(AppScreen.MORE)
-        assertFalse(org.robolectric.shadows.ShadowDialog.getLatestDialog().isShowing)
+        ui.onNodeWithTag("settings_overview").assertIsDisplayed()
+        clickTab(AppScreen.MORE); assertRoot(AppScreen.MORE)
+        ui.onNodeWithTag("settings_overview").assertDoesNotExist()
         clickTab(AppScreen.PROPERTIES); clickTab(AppScreen.MORE); assertRoot(AppScreen.MORE)
         assertDataPreserved()
     }

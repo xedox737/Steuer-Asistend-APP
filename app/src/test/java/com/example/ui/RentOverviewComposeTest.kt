@@ -25,8 +25,10 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class RentOverviewComposeTest {
-    @get:Rule val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
+    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
+    private val fixtureContext get() = vm.getApplication<Application>()
     private val propertyId = "rent-a"
     private fun key(name: String) = "$propertyId:u-$name"
     private fun overview() = ui.onNodeWithTag("rent_overview")
@@ -34,10 +36,10 @@ class RentOverviewComposeTest {
     private fun shell() { ui.onNodeWithText("ImmoPilot").assertIsDisplayed(); ui.onNodeWithTag("bottom_navigation").assertIsDisplayed() }
     private fun back() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
     @Before fun clearFixtureData() {
-        val database = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        val database = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         runBlocking(Dispatchers.IO) { database.clearAllTables() }
         listOf("rent_plan_prefs", "tenant_history_prefs", "wohneinheiten_prefs", "google_drive_prefs").forEach {
-            ui.activity.getSharedPreferences(it, 0).edit().clear().commit()
+            fixtureContext.getSharedPreferences(it, 0).edit().clear().commit()
         }
         ui.waitUntil(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
     }
@@ -54,7 +56,7 @@ class RentOverviewComposeTest {
         ui.waitForIdle()
     }
     private fun seed(open: Boolean = true, extraProperty: Boolean = false) {
-        val db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        val db = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         runBlocking {
             db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 81, propertyId = propertyId, name = "Sulzerstraße 32", wohneinheiten = "OG links,OG rechts,DG rechts"))
             if (extraProperty) db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 82, propertyId = "rent-b", name = "Zweites Haus", wohneinheiten = "OG links"))
@@ -67,8 +69,8 @@ class RentOverviewComposeTest {
                 val updated = unit.copy(status = "Vermietet", mieter = listOf("Max Mustermann", "Anna Beispiel", "Mieter mit einem sehr langen Namen")[i],
                     kaltmiete = 600.0, mietvertragsstart = "2026-01-01", unitId = "u-${unit.name}")
                 vm.updateWohneinheit(updated)
-                PropertyUnitScopedData.setRentValues(ui.activity, propertyId, updated, 150.0, 0.0)
-                TenantHistoryStore.ensureCurrentPeriod(ui.activity, updated, 150.0, 0.0, propertyId)
+                PropertyUnitScopedData.setRentValues(fixtureContext, propertyId, updated, 150.0, 0.0)
+                TenantHistoryStore.ensureCurrentPeriod(fixtureContext, updated, 150.0, 0.0, propertyId)
             }
         }
         runBlocking {
@@ -175,7 +177,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithTag("rent_plan_save").performClick()
         ui.waitUntil(10000) { vm.wohneinheitenStatus.value.first { it.name == "OG links" }.kaltmiete == 650.5 }
         val unit = vm.wohneinheitenStatus.value.first { it.name == "OG links" }
-        assertEquals(175.25, PropertyUnitScopedData.rentValue(ui.activity, propertyId, unit, "nk"), .001)
+        assertEquals(175.25, PropertyUnitScopedData.rentValue(fixtureContext, propertyId, unit, "nk"), .001)
         val history = TenantHistoryStore.load(ui.activity, propertyId, unit.unitId, unit.name)
         assertEquals(650.5, history.single().kaltmiete, .001)
         assertEquals(175.25, history.single().nebenkosten, .001)
@@ -192,13 +194,13 @@ class RentOverviewComposeTest {
         ui.waitUntil(10000) { vm.selectedPropertyId.value == propertyId &&
             vm.getWohneinheitenForProperty(vm.properties.value.first { it.propertyId == "rent-b" }).single().kaltmiete == 620.5 }
         val b = vm.getWohneinheitenForProperty(vm.properties.value.first { it.propertyId == "rent-b" }).single()
-        assertEquals(99.25, PropertyUnitScopedData.rentValue(ui.activity, "rent-b", b, "nk"), .001)
+        assertEquals(99.25, PropertyUnitScopedData.rentValue(fixtureContext, "rent-b", b, "nk"), .001)
         assertEquals(600.0, vm.wohneinheitenStatus.value.first { it.name == "OG links" }.kaltmiete, .001)
-        assertEquals(150.0, PropertyUnitScopedData.rentValue(ui.activity, propertyId, vm.wohneinheitenStatus.value.first { it.name == "OG links" }, "nk"), .001)
+        assertEquals(150.0, PropertyUnitScopedData.rentValue(fixtureContext, propertyId, vm.wohneinheitenStatus.value.first { it.name == "OG links" }, "nk"), .001)
     }
     @Test fun legacyUnitIdentityDoesNotUseAnotherSelectedPropertysNamespace() {
         seed(open = false)
-        val db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        val db = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         val legacy = PropertyMetadata(id = 1, propertyId = StableDocumentIdentity.LEGACY_PROPERTY_ID, name = "Altbestand", wohneinheiten = "WE Alt")
         runBlocking { db.propertyDao().insertPropertyMetadata(legacy) }
         ui.waitUntil(10000) { vm.properties.value.any { it.id == 1 && it.wohneinheiten == "WE Alt" } }
@@ -225,7 +227,7 @@ class RentOverviewComposeTest {
     @Config(sdk = [35], qualifiers = "w360dp-h800dp-420dpi")
     fun compactScreenKeepsLargeAmountsInsideEquallySizedMetricCards() {
         seed()
-        val db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+        val db = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         runBlocking { db.receiptDao().insertReceipt(Receipt(id = 1110, aussteller = "Großer Betrag", datum = "2026-01-01", uhrzeit = "", bruttobetrag = 12345678.90,
             hauptkategorie = "Miete, Nebenkosten & Kaution", unterkategorie = "Kaltmiete", kontoNr = "8100", beschreibung = "Layouttest", wohneinheit = "OG links", propertyId = propertyId)) }
         ui.waitUntil(10000) { vm.receipts.value.any { it.id == 1110 } }
