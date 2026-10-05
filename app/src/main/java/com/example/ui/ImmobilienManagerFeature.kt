@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.HomeWork
+import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
@@ -862,9 +864,19 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
     var page by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val rules by viewModel.bankLearningRules.collectAsStateWithLifecycle()
-    if (page == "settings") {
-        AppSettingsScreen(viewModel) { page = null }
-        return
+    when (page) {
+        "settings" -> {
+            AppSettingsScreen(viewModel) { page = null }
+            return
+        }
+        "help" -> {
+            HelpFaqScreen { page = null }
+            return
+        }
+        "about" -> {
+            AboutImmoPilotScreen { page = null }
+            return
+        }
     }
     if (showLearnedRules) KiLearnedRulesDialog(viewModel) { showLearnedRules = false }
     if (page == "afa" || page == "monitor") {
@@ -913,6 +925,10 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
             } }
             item { MoreMenuGroup("Daten & Sicherung") {
                 MoreMenuItem("Backup & Cloud", Icons.Default.Cloud, EmeraldGreen) { page = "backup" }
+            } }
+            item { MoreMenuGroup("Hilfe & Info") {
+                MoreMenuItem("Hilfe & FAQ", Icons.Default.HelpOutline, AccentBlue) { page = "help" }
+                MoreMenuItem("Über ImmoPilot", Icons.Default.Info, SlateGray) { page = "about" }
             } }
             item { MoreMenuGroup("Einstellungen") {
                 MoreMenuItem("App-Einstellungen", Icons.Default.Settings, SlateGray) { page = "settings" }
