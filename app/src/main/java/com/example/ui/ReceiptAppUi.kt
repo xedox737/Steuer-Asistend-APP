@@ -8854,14 +8854,15 @@ fun PropertyMetadataFormDialog(
     var editAdresse by remember(metadata) { mutableStateOf(metadata.adresse) }
     var editWohnort by remember(metadata) { mutableStateOf(metadata.wohnort) }
     var editBaujahr by remember(metadata) { mutableStateOf(metadata.baujahr.toString()) }
-    var editWohnflaeche by remember(metadata) { mutableStateOf(metadata.wohnflaeche.toString()) }
-    var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(metadata.grundstuecksgroesse.toString()) }
+    var editWohnflaeche by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.wohnflaeche)) }
+    var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundstuecksgroesse)) }
     var editNotariellesKaufdatum by remember(metadata) { mutableStateOf(metadata.notariellesKaufdatum) }
     var editUebergangNutzenLasten by remember(metadata) { mutableStateOf(metadata.uebergangNutzenLasten) }
     var editWohneinheiten by remember(metadata) { mutableStateOf(metadata.wohneinheiten) }
-    var editGesamtKaufpreis by remember(metadata) { mutableStateOf(metadata.gesamtKaufpreis.toString()) }
-    var editGebaeudewert by remember(metadata) { mutableStateOf(metadata.gebaeudewert.toString()) }
-    var editGrundUndBodenWert by remember(metadata) { mutableStateOf(metadata.grundUndBodenWert.toString()) }
+    var editGesamtKaufpreis by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.gesamtKaufpreis)) }
+    var editGebaeudewert by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.gebaeudewert)) }
+    var editGrundUndBodenWert by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundUndBodenWert)) }
+    var metadataInputError by remember(metadata) { mutableStateOf<String?>(null) }
 
     val scrollState = rememberScrollState()
 
@@ -8907,12 +8908,12 @@ fun PropertyMetadataFormDialog(
                     Pair("Baujahr", editBaujahr.toIntOrNull() != null && editBaujahr.toInt() > 0),
                     Pair("Notarielles Kaufdatum", editNotariellesKaufdatum.isNotBlank()),
                     Pair("Übergang Nutzen/Lasten", editUebergangNutzenLasten.isNotBlank()),
-                    Pair("Wohnfläche", editWohnflaeche.toDoubleOrNull() != null && editWohnflaeche.toDouble() > 0.0),
-                    Pair("Grundstücksgröße", editGrundstuecksgroesse.toDoubleOrNull() != null && editGrundstuecksgroesse.toDouble() > 0.0),
+                    Pair("Wohnfläche", GermanNumberInput.parseNonNegative(editWohnflaeche)?.let { it > 0.0 } == true),
+                    Pair("Grundstücksgröße", GermanNumberInput.parseNonNegative(editGrundstuecksgroesse)?.let { it > 0.0 } == true),
                     Pair("Wohneinheiten", editWohneinheiten.isNotBlank()),
-                    Pair("Gesamtkaufpreis", editGesamtKaufpreis.toDoubleOrNull() != null && editGesamtKaufpreis.toDouble() > 0.0),
-                    Pair("Gebäudewert", editGebaeudewert.toDoubleOrNull() != null && editGebaeudewert.toDouble() > 0.0),
-                    Pair("Grund und Boden", editGrundUndBodenWert.toDoubleOrNull() != null && editGrundUndBodenWert.toDouble() >= 0.0)
+                    Pair("Gesamtkaufpreis", GermanNumberInput.parseNonNegative(editGesamtKaufpreis)?.let { it > 0.0 } == true),
+                    Pair("Gebäudewert", GermanNumberInput.parseNonNegative(editGebaeudewert)?.let { it > 0.0 } == true),
+                    Pair("Grund und Boden", GermanNumberInput.parseNonNegative(editGrundUndBodenWert) != null)
                 )
                 val completedCount = completenessChecks.count { it.second }
                 val totalCount = completenessChecks.size
@@ -9161,9 +9162,9 @@ OutlinedTextField(
     )
 )
 
-val allocationDiffPreview = (editGesamtKaufpreis.toDoubleOrNull() ?: 0.0) -
-    (editGebaeudewert.toDoubleOrNull() ?: 0.0) -
-    (editGrundUndBodenWert.toDoubleOrNull() ?: 0.0)
+val allocationDiffPreview = (GermanNumberInput.parse(editGesamtKaufpreis) ?: 0.0) -
+    (GermanNumberInput.parse(editGebaeudewert) ?: 0.0) -
+    (GermanNumberInput.parse(editGrundUndBodenWert) ?: 0.0)
 if (kotlin.math.abs(allocationDiffPreview) > 1.0) {
     Text(
         "Hinweis: Gebäude + Grund/Boden weichen um ${NumberFormatter.format(allocationDiffPreview)} vom Kaufpreis ab.",
@@ -9171,17 +9172,31 @@ if (kotlin.math.abs(allocationDiffPreview) > 1.0) {
         color = WarmOrange
     )
 }
+metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val finalBaujahr = editBaujahr.toIntOrNull() ?: metadata.baujahr
-                    val finalWohnflaeche = editWohnflaeche.toDoubleOrNull() ?: metadata.wohnflaeche
-                    val finalGrundstuecksgroesse = editGrundstuecksgroesse.toDoubleOrNull() ?: metadata.grundstuecksgroesse
-                    val finalGesamtKaufpreis = editGesamtKaufpreis.toDoubleOrNull() ?: metadata.gesamtKaufpreis
-                    val finalGebaeudewert = editGebaeudewert.toDoubleOrNull() ?: metadata.gebaeudewert
-                    val finalGrundUndBodenWert = editGrundUndBodenWert.toDoubleOrNull() ?: metadata.grundUndBodenWert
+                    fun nonNegativeOrExisting(input: String, existing: Double): Double? =
+                        if (input.isBlank()) existing else GermanNumberInput.parseNonNegative(input)
+                    val finalBaujahr = if (editBaujahr.isBlank()) metadata.baujahr else editBaujahr.trim().toIntOrNull()?.takeIf { it >= 0 }
+                    val finalWohnflaeche = nonNegativeOrExisting(editWohnflaeche, metadata.wohnflaeche)
+                    val finalGrundstuecksgroesse = nonNegativeOrExisting(editGrundstuecksgroesse, metadata.grundstuecksgroesse)
+                    val finalGesamtKaufpreis = nonNegativeOrExisting(editGesamtKaufpreis, metadata.gesamtKaufpreis)
+                    val finalGebaeudewert = nonNegativeOrExisting(editGebaeudewert, metadata.gebaeudewert)
+                    val finalGrundUndBodenWert = nonNegativeOrExisting(editGrundUndBodenWert, metadata.grundUndBodenWert)
+                    val purchaseDateValid = editNotariellesKaufdatum.isBlank() || CalendarInput.isValidIsoDate(editNotariellesKaufdatum)
+                    val transferDateValid = editUebergangNutzenLasten.isBlank() || CalendarInput.isValidIsoDate(editUebergangNutzenLasten)
+
+                    metadataInputError = when {
+                        finalBaujahr == null -> "Bitte ein gültiges Baujahr eingeben."
+                        finalWohnflaeche == null || finalGrundstuecksgroesse == null -> "Bitte gültige, nicht negative Flächen eingeben."
+                        finalGesamtKaufpreis == null || finalGebaeudewert == null || finalGrundUndBodenWert == null -> "Bitte gültige Beträge eingeben."
+                        !purchaseDateValid || !transferDateValid -> "Bitte ein gültiges Datum im Format JJJJ-MM-TT eingeben."
+                        else -> null
+                    }
+                    if (metadataInputError != null) return@Button
 
                     val updated = metadata.copy(
                         name = editName,
