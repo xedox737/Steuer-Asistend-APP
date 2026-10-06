@@ -257,6 +257,20 @@ class AdvisorAnnualSummaryIntegrationTest {
         assertTrue(result.propertyOverview.any { it.startsWith("[Haus B]") })
     }
 
+    @Test
+    fun wizardYearsComeFromAvailableReceiptData() {
+        val viewModel = ReceiptViewModel(application)
+        val years = viewModel.wizardYearOptions(
+            listOf(
+                rentReceipt().copy(datum = "2024-12-31"),
+                rentReceipt().copy(id = 12, internalId = "rent-12", datum = "2026-01-01"),
+                rentReceipt().copy(id = 13, internalId = "rent-13", datum = "ungueltig")
+            )
+        )
+
+        assertEquals(listOf("2026", "2024"), years)
+    }
+
     private fun metadata() = PropertyMetadata(
         name = "Testobjekt",
         adresse = "Teststraße 1, 12345 Teststadt",
