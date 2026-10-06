@@ -44,6 +44,23 @@ import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
 
+internal data class RentAmounts(
+    val kaltmiete: Double,
+    val nebenkosten: Double,
+    val sonstige: Double
+) {
+    val monatSoll: Double get() = kaltmiete + nebenkosten + sonstige
+}
+
+internal data class RentAmountChange(
+    val effectiveDate: String,
+    val kaltmiete: Double,
+    val nebenkosten: Double,
+    val sonstige: Double
+) {
+    fun amounts(): RentAmounts = RentAmounts(kaltmiete, nebenkosten, sonstige)
+}
+
 internal data class TenantPeriod(
     val id: Long,
     val unitName: String,
@@ -52,10 +69,20 @@ internal data class TenantPeriod(
     val endDate: String,
     val kaltmiete: Double,
     val nebenkosten: Double,
-    val sonstige: Double
+    val sonstige: Double,
+    val rentChanges: List<RentAmountChange> = emptyList()
 ) {
     val monatSoll: Double get() = kaltmiete + nebenkosten + sonstige
     val active: Boolean get() = endDate.isBlank()
+
+    fun amountsAt(date: LocalDate): RentAmounts {
+        val change = rentChanges.mapNotNull { entry ->
+            CalendarInput.parseIsoDate(entry.effectiveDate)?.let { it to entry }
+        }.filter { (effective, _) -> !effective.isAfter(date) }
+            .maxByOrNull { (effective, _) -> effective }
+            ?.second
+        return change?.amounts() ?: RentAmounts(kaltmiete, nebenkosten, sonstige)
+    }
 }
 
 internal object TenantHistoryStore {
@@ -78,7 +105,23 @@ internal object TenantHistoryStore {
                         endDate = o.optString("endDate"),
                         kaltmiete = o.optDouble("kaltmiete", 0.0),
                         nebenkosten = o.optDouble("nebenkosten", 0.0),
-                        sonstige = o.optDouble("sonstige", 0.0)
+                        sonstige = o.optDouble("sonstige", 0.0),
+                        rentChanges = o.optJSONArray("rentChanges")?.let { changes ->
+                            buildList {
+                                for (j in 0 until changes.length()) {
+                                    val change = changes.optJSONObject(j) ?: continue
+                                    val effectiveDate = change.optString("effectiveDate")
+                                    val kaltmiete = change.optDouble("kaltmiete", Double.NaN)
+                                    val nebenkosten = change.optDouble("nebenkosten", Double.NaN)
+                                    val sonstige = change.optDouble("sonstige", Double.NaN)
+                                    if (CalendarInput.isValidIsoDate(effectiveDate) &&
+                                        kaltmiete.isFinite() && nebenkosten.isFinite() && sonstige.isFinite()
+                                    ) {
+                                        add(RentAmountChange(effectiveDate, kaltmiete, nebenkosten, sonstige))
+                                    }
+                                }
+                            }.sortedBy { it.effectiveDate }
+                        }.orEmpty()
                     )
                 )
             }
@@ -98,6 +141,16 @@ internal object TenantHistoryStore {
                 put("kaltmiete", p.kaltmiete)
                 put("nebenkosten", p.nebenkosten)
                 put("sonstige", p.sonstige)
+                put("rentChanges", JSONArray().apply {
+                    p.rentChanges.sortedBy { it.effectiveDate }.forEach { change ->
+                        put(JSONObject().apply {
+                            put("effectiveDate", change.effectiveDate)
+                            put("kaltmiete", change.kaltmiete)
+                            put("nebenkosten", change.nebenkosten)
+                            put("sonstige", change.sonstige)
+                        })
+                    }
+                })
             })
         }
         return arr.toString()
@@ -146,6 +199,15 @@ internal object TenantHistoryStore {
         save(context, propertyId, unitId, unitName, periods)
     }
 
+    fun changeTenant(
+        periods: List<TenantPeriod>,
+        exitDate: String,
+        newPeriod: TenantPeriod
+    ): List<TenantPeriod> =
+        periods.map { period ->
+            if (period.active) period.copy(endDate = exitDate) else period
+        } + newPeriod
+
     fun ensureCurrentPeriod(
         context: Context,
         unit: WohneinheitStatus,
@@ -170,41 +232,28 @@ internal object TenantHistoryStore {
         return listOf(initial)
     }
 
-    fun expectedForYear(periods: List<TenantPeriod>, year: Int): Double {
-        if (periods.isEmpty()) return 0.0
-        val yearStart = LocalDate.of(year, 1, 1)
-        val yearEnd = LocalDate.of(year, 12, 31)
-        return periods.sumOf { p ->
-            val start = runCatching { LocalDate.parse(p.startDate) }.getOrNull() ?: yearStart
-            val end = runCatching { LocalDate.parse(p.endDate) }.getOrNull() ?: yearEnd
-            val from = if (start.isAfter(yearStart)) start else yearStart
-            val to = if (end.isBefore(yearEnd)) end else yearEnd
-            if (to.isBefore(from)) 0.0 else proratedMonthlyAmount(p.monatSoll, from, to)
-        }
+    fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {
+        val monthStart = month.atDay(1)
+        val monthEnd = month.atEndOfMonth()
+        val start = CalendarInput.parseIsoDate(period.startDate) ?: monthStart
+        val end = CalendarInput.parseIsoDate(period.endDate) ?: monthEnd
+        val from = if (start.isAfter(monthStart)) start else monthStart
+        val to = if (end.isBefore(monthEnd)) end else monthEnd
+        if (to.isBefore(from)) return 0.0
+        val days = ChronoUnit.DAYS.between(from, to).toDouble() + 1.0
+        val monthly = period.amountsAt(monthStart).monatSoll
+        return max(0.0, monthly * (days / month.lengthOfMonth().toDouble()))
     }
 
-    private fun proratedMonthlyAmount(monthly: Double, start: LocalDate, end: LocalDate): Double {
-        var cursor = start.withDayOfMonth(1)
-        val lastMonth = end.withDayOfMonth(1)
-        var total = 0.0
-        while (!cursor.isAfter(lastMonth)) {
-            val ym = YearMonth.from(cursor)
-            val monthStart = ym.atDay(1)
-            val monthEnd = ym.atEndOfMonth()
-            val occupiedStart = if (start.isAfter(monthStart)) start else monthStart
-            val occupiedEnd = if (end.isBefore(monthEnd)) end else monthEnd
-            if (!occupiedEnd.isBefore(occupiedStart)) {
-                val days = ChronoUnit.DAYS.between(occupiedStart, occupiedEnd).toDouble() + 1.0
-                total += monthly * (days / ym.lengthOfMonth().toDouble())
-            }
-            cursor = cursor.plusMonths(1)
+    fun expectedForYear(periods: List<TenantPeriod>, year: Int): Double =
+        (1..12).sumOf { month ->
+            val yearMonth = YearMonth.of(year, month)
+            periods.sumOf { period -> expectedInMonth(period, yearMonth) }
         }
-        return max(0.0, total)
-    }
 }
 
-private fun parseTenantNumber(value: String): Double? =
-    value.trim().replace(".", "").replace(',', '.').toDoubleOrNull()
+internal fun parseTenantNumber(value: String): Double? =
+    GermanNumberInput.parseNonNegative(value)
 
 @Composable
 internal fun TenantHistoryDialog(
@@ -257,7 +306,15 @@ internal fun TenantHistoryDialog(
                                     Text("${p.startDate.ifBlank { "Start unbekannt" }} bis ${p.endDate.ifBlank { "heute" }}", fontSize = 10.sp, color = SlateGray)
                                     HorizontalDivider(color = BorderColor)
                                     Text("Kalt ${NumberFormatter.format(p.kaltmiete)} · NK ${NumberFormatter.format(p.nebenkosten)} · Sonst. ${NumberFormatter.format(p.sonstige)}", fontSize = 9.sp, color = SlateGray)
-                                    Text("Monatliches Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                    Text("Ausgangs-Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                    p.rentChanges.sortedBy { it.effectiveDate }.forEach { change ->
+                                        Text(
+                                            "Mietänderung ab ${change.effectiveDate}: Kalt ${NumberFormatter.format(change.kaltmiete)} · NK ${NumberFormatter.format(change.nebenkosten)} · Sonst. ${NumberFormatter.format(change.sonstige)}",
+                                            fontSize = 9.sp,
+                                            lineHeight = 12.sp,
+                                            color = AccentBlue
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -269,16 +326,18 @@ internal fun TenantHistoryDialog(
     )
 
     if (showChange) {
+        val activePeriod = periods.lastOrNull { it.active }
+        val currentAmounts = activePeriod?.amountsAt(LocalDate.now())
+            ?: RentAmounts(unit.kaltmiete, nebenkostenCurrent, sonstigeCurrent)
         TenantChangeDialog(
             unit = unit,
-            current = periods.lastOrNull { it.active },
-            defaultNk = nebenkostenCurrent,
-            defaultOther = sonstigeCurrent,
+            current = activePeriod,
+            defaultCold = currentAmounts.kaltmiete,
+            defaultNk = currentAmounts.nebenkosten,
+            defaultOther = currentAmounts.sonstige,
             onDismiss = { showChange = false },
             onSave = { exitDate, newPeriod ->
-                val updated = periods.map { p ->
-                    if (p.active) p.copy(endDate = exitDate) else p
-                } + newPeriod
+                val updated = TenantHistoryStore.changeTenant(periods, exitDate, newPeriod)
                 TenantHistoryStore.save(context, propertyId, unitId, unit.name, updated)
                 periods = updated
                 version++
@@ -294,6 +353,7 @@ internal fun TenantHistoryDialog(
 private fun TenantChangeDialog(
     unit: WohneinheitStatus,
     current: TenantPeriod?,
+    defaultCold: Double,
     defaultNk: Double,
     defaultOther: Double,
     onDismiss: () -> Unit,
@@ -302,9 +362,9 @@ private fun TenantChangeDialog(
     var oldEnd by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
     var newStart by remember { mutableStateOf("") }
-    var cold by remember { mutableStateOf(unit.kaltmiete.toString()) }
-    var nk by remember { mutableStateOf(defaultNk.toString()) }
-    var other by remember { mutableStateOf(defaultOther.toString()) }
+    var cold by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultCold)) }
+    var nk by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultNk)) }
+    var other by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultOther)) }
     var error by remember { mutableStateOf<String?>(null) }
     val keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal)
 
@@ -331,14 +391,14 @@ private fun TenantChangeDialog(
                     val startDate = runCatching { LocalDate.parse(newStart.trim()) }.getOrNull()
                     val endDate = if (current != null) runCatching { LocalDate.parse(oldEnd.trim()) }.getOrNull() else null
                     val c = parseTenantNumber(cold)
-                    val n = parseTenantNumber(nk) ?: 0.0
-                    val o = parseTenantNumber(other) ?: 0.0
+                    val n = if (nk.isBlank()) 0.0 else parseTenantNumber(nk)
+                    val o = if (other.isBlank()) 0.0 else parseTenantNumber(other)
                     when {
                         current != null && endDate == null -> error = "Bitte ein gültiges Auszugsdatum eingeben."
                         startDate == null -> error = "Bitte ein gültiges Einzugsdatum eingeben."
                         current != null && endDate != null && startDate.isBefore(endDate.plusDays(1)) -> error = "Der neue Mietbeginn muss nach dem Auszug des bisherigen Mieters liegen."
                         newName.isBlank() -> error = "Bitte den neuen Mieter eintragen."
-                        c == null || c < 0 || n < 0 || o < 0 -> error = "Bitte gültige Mietbeträge eingeben."
+                        c == null || n == null || o == null -> error = "Bitte gültige Mietbeträge eingeben."
                         else -> onSave(
                             oldEnd.trim(),
                             TenantPeriod(

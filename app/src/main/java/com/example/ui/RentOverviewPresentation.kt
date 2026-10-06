@@ -75,22 +75,46 @@ internal object RentOverviewPresentation {
     }
 }
 
-internal data class ValidRentPlan(val kalt: Double, val nk: Double, val other: Double, val start: String)
+internal enum class RentPlanEditMode { CORRECT_EXISTING, CHANGE_FROM_DATE }
+internal data class ValidRentPlan(
+    val kalt: Double,
+    val nk: Double,
+    val other: Double,
+    val date: String,
+    val mode: RentPlanEditMode
+)
 internal object RentPlanInput {
     fun amount(value: String): Double? {
-        val text = value.trim().replace("\u00a0", "").replace(" ", "")
-        if (text.isEmpty()) return 0.0
-        val normalized = if (',' in text) text.replace(".", "").replace(',', '.') else text
-        return normalized.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 && it.toFloat().isFinite() }
+        if (value.isBlank()) return 0.0
+        return GermanNumberInput.parseNonNegative(value)?.takeIf { it.toFloat().isFinite() }
     }
-    fun error(kalt: String, nk: String, other: String, start: String, previousEnd: LocalDate? = null): String? = when {
-        listOf(kalt, nk, other).any { amount(it) == null } -> "Bitte gültige Beträge ab 0 € eingeben (Komma oder Punkt)."
-        start.isNotBlank() && (!Regex("\\d{4}-\\d{2}-\\d{2}").matches(start.trim()) || RentOverviewPresentation.date(start.trim()) == null) ->
+    fun error(
+        kalt: String,
+        nk: String,
+        other: String,
+        date: String,
+        previousEnd: LocalDate? = null,
+        mode: RentPlanEditMode = RentPlanEditMode.CORRECT_EXISTING
+    ): String? = when {
+        listOf(kalt, nk, other).any { amount(it) == null } ->
+            "Bitte gültige Beträge ab 0 € eingeben (Komma oder Punkt)."
+        mode == RentPlanEditMode.CHANGE_FROM_DATE && CalendarInput.parseIsoDate(date) == null ->
+            "Bitte ein gültiges Datum für die Mietänderung im Format JJJJ-MM-TT eingeben."
+        mode == RentPlanEditMode.CHANGE_FROM_DATE && CalendarInput.parseIsoDate(date)?.dayOfMonth != 1 ->
+            "Mietänderungen sind derzeit nur zum Monatsersten möglich."
+        mode == RentPlanEditMode.CORRECT_EXISTING && date.isNotBlank() && CalendarInput.parseIsoDate(date) == null ->
             "Bitte einen gültigen Mietbeginn im Format JJJJ-MM-TT eingeben."
-        previousEnd != null && (dateAfter(start, previousEnd).not()) ->
+        mode == RentPlanEditMode.CORRECT_EXISTING && previousEnd != null && !dateAfter(date, previousEnd) ->
             "Der Mietbeginn muss nach dem Ende des bisherigen Mietvertrags liegen."
         else -> null
     }
+
+    fun needsLargeChangeConfirmation(previous: Double, updated: Double): Boolean {
+        if (previous <= 0.0 || updated <= 0.0) return false
+        val ratio = updated / previous
+        return ratio >= 3.0 || ratio <= (1.0 / 3.0)
+    }
+
     private fun dateAfter(start: String, previousEnd: LocalDate): Boolean =
-        RentOverviewPresentation.date(start.trim())?.isAfter(previousEnd) == true
+        CalendarInput.parseIsoDate(start)?.isAfter(previousEnd) == true
 }

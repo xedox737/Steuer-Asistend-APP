@@ -375,21 +375,69 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
 
 @Composable private fun PropertyEditScreen(property: PropertyMetadata, viewModel: ReceiptViewModel, onBack: () -> Unit) {
     var name by remember(property) { mutableStateOf(property.name) }; var address by remember(property) { mutableStateOf(property.adresse) }; var type by remember(property) { mutableStateOf(property.objektart) }
-    var year by remember(property) { mutableStateOf(property.baujahr.toString()) }; var area by remember(property) { mutableStateOf(property.wohnflaeche.toString()) }; var land by remember(property) { mutableStateOf(property.grundstuecksgroesse.toString()) }; var notes by remember(property) { mutableStateOf(property.notizen) }
+    var year by remember(property) { mutableStateOf(property.baujahr.toString()) }
+    var area by remember(property) { mutableStateOf(GermanNumberInput.formatForInput(property.wohnflaeche)) }
+    var land by remember(property) { mutableStateOf(GermanNumberInput.formatForInput(property.grundstuecksgroesse)) }
+    var notes by remember(property) { mutableStateOf(property.notizen) }
+    var areaError by remember(property) { mutableStateOf<String?>(null) }
+    var landError by remember(property) { mutableStateOf<String?>(null) }
+    var yearError by remember(property) { mutableStateOf<String?>(null) }
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }; Text("Immobilie bearbeiten", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            TextButton(onClick = { viewModel.updatePropertyMetadata(property.copy(name = name, adresse = address, objektart = type, baujahr = year.toIntOrNull() ?: property.baujahr, wohnflaeche = area.replace(',', '.').toDoubleOrNull() ?: property.wohnflaeche, grundstuecksgroesse = land.replace(',', '.').toDoubleOrNull() ?: property.grundstuecksgroesse, notizen = notes)); onBack() }) { Text("Speichern", fontSize = 14.sp, color = AccentBlue) }
+            TextButton(onClick = {
+                val parsedYear = if (year.isBlank()) property.baujahr else year.toIntOrNull()?.takeIf { it >= 0 }
+                val parsedArea = if (area.isBlank()) property.wohnflaeche else GermanNumberInput.parseNonNegative(area)
+                val parsedLand = if (land.isBlank()) property.grundstuecksgroesse else GermanNumberInput.parseNonNegative(land)
+                yearError = if (parsedYear == null) "Bitte ein gültiges Baujahr eingeben." else null
+                areaError = if (parsedArea == null) "Die Fläche darf nicht negativ oder ungültig sein." else null
+                landError = if (parsedLand == null) "Die Fläche darf nicht negativ oder ungültig sein." else null
+                if (yearError != null || areaError != null || landError != null) return@TextButton
+                viewModel.updatePropertyMetadata(
+                    property.copy(
+                        name = name,
+                        adresse = address,
+                        objektart = type,
+                        baujahr = parsedYear!!,
+                        wohnflaeche = parsedArea!!,
+                        grundstuecksgroesse = parsedLand!!,
+                        notizen = notes
+                    )
+                )
+                onBack()
+            }) { Text("Speichern", fontSize = 14.sp, color = AccentBlue) }
         }
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Box { PropertyCoverImage(property, Modifier.fillMaxWidth().height(150.dp)); PropertyImagePicker(property, viewModel, Modifier.align(Alignment.BottomEnd).padding(8.dp)) } }
-            item { PropertyEditField(name, "Name *") { name = it } }; item { PropertyEditField(address, "Adresse *") { address = it } }; item { PropertyEditField(type, "Objektart *") { type = it } }; item { PropertyEditField(year, "Baujahr") { year = it.filter(Char::isDigit) } }; item { PropertyEditField(area, "Wohnfläche (m²)") { area = it } }; item { PropertyEditField(land, "Grundstücksfläche (m²)") { land = it } }; item { PropertyEditField(notes, "Beschreibung / Notizen", false) { notes = it } }
+            item { PropertyEditField(name, "Name *") { name = it } }
+            item { PropertyEditField(address, "Adresse *") { address = it } }
+            item { PropertyEditField(type, "Objektart *") { type = it } }
+            item { PropertyEditField(year, "Baujahr", error = yearError) { yearError = null; year = it.filter(Char::isDigit) } }
+            item { PropertyEditField(area, "Wohnfläche (m²)", error = areaError) { areaError = null; area = it } }
+            item { PropertyEditField(land, "Grundstücksfläche (m²)", error = landError) { landError = null; land = it } }
+            item { PropertyEditField(notes, "Beschreibung / Notizen", false) { notes = it } }
         }
     }
 }
 
-@Composable private fun PropertyEditField(value: String, label: String, singleLine: Boolean = true, onChange: (String) -> Unit) { OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = singleLine) }
+@Composable private fun PropertyEditField(
+    value: String,
+    label: String,
+    singleLine: Boolean = true,
+    error: String? = null,
+    onChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        isError = error != null,
+        supportingText = { error?.let { Text(it) } },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = singleLine
+    )
+}
 
 @Composable
 private fun PropertyDashboard(
@@ -1005,7 +1053,24 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
     val unitNames = remember { mutableStateListOf<String>().apply { repeat(20) { add("WE ${(it + 1).toString().padStart(2, '0')}") } } }
     val unitLocations = remember { mutableStateListOf<String>().apply { repeat(20) { add("") } } }
     val unitAreas = remember { mutableStateListOf<String>().apply { repeat(20) { add("") } } }
-    val field: @Composable (String, String, (String) -> Unit) -> Unit = { value, label, change -> OutlinedTextField(value, change, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+    var fieldErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var wizardMessage by remember { mutableStateOf<String?>(null) }
+    val field: @Composable (String, String, (String) -> Unit) -> Unit = { value, label, change ->
+        val message = fieldErrors[label]
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                fieldErrors = fieldErrors - label
+                wizardMessage = null
+                change(it)
+            },
+            label = { Text(label) },
+            isError = message != null,
+            supportingText = { message?.let { Text(it) } },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Immobilie anlegen · ${step + 1}/5", fontWeight = FontWeight.Bold) },
@@ -1045,30 +1110,94 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                     }
                     else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und 15-%-Prüfung verwenden danach unverändert die bestehende Steuerlogik.", fontSize = 10.sp, color = SlateGray) }
                 }
+                wizardMessage?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
         },
         confirmButton = {
             Button(onClick = {
-                if (step < 4) step++ else {
-                    val count = (unitCount.toIntOrNull() ?: 1).coerceIn(1, 20)
-                    val savedUnitNames = (0 until count).map { unitNames[it].ifBlank { "WE ${(it + 1).toString().padStart(2, '0')}" } }
+                val validation = PropertyWizardInput.validate(
+                    purchasePrice = purchasePrice,
+                    livingArea = livingArea,
+                    landArea = landArea,
+                    purchaseDate = purchaseDate,
+                    yearBuilt = yearBuilt,
+                    buildingValue = buildingValue,
+                    landValue = landValue,
+                    loanAmount = loanAmount
+                )
+                val relevantFields = when (step) {
+                    0 -> setOf(PropertyWizardInput.PURCHASE_PRICE, PropertyWizardInput.PURCHASE_DATE)
+                    1 -> setOf(PropertyWizardInput.LIVING_AREA, PropertyWizardInput.LAND_AREA, PropertyWizardInput.YEAR_BUILT)
+                    2 -> setOf(PropertyWizardInput.LOAN_AMOUNT)
+                    4 -> validation.errors.keys
+                    else -> emptySet()
+                }
+                val currentErrors = validation.errors.filterKeys { it in relevantFields }
+                val count = (unitCount.toIntOrNull() ?: 1).coerceIn(1, 20)
+                val invalidUnitArea = if (step == 3 || step == 4) {
+                    (0 until count).firstOrNull { PropertyWizardInput.unitArea(unitAreas[it]) == null }
+                } else null
+
+                if (currentErrors.isNotEmpty() || invalidUnitArea != null) {
+                    fieldErrors = currentErrors
+                    wizardMessage = if (invalidUnitArea != null) {
+                        "Bitte für Einheit ${invalidUnitArea + 1} eine gültige, nicht negative Wohnfläche eingeben."
+                    } else {
+                        "Bitte die markierten Eingaben prüfen."
+                    }
+                    return@Button
+                }
+
+                if (step < 4) {
+                    fieldErrors = emptyMap()
+                    wizardMessage = null
+                    step++
+                } else {
+                    val values = validation.values ?: run {
+                        fieldErrors = validation.errors
+                        wizardMessage = "Bitte die markierten Eingaben prüfen."
+                        return@Button
+                    }
+                    val savedUnitNames = (0 until count).map {
+                        unitNames[it].ifBlank { "WE ${(it + 1).toString().padStart(2, '0')}" }
+                    }
                     val metadata = PropertyMetadata(
-                        propertyId = generatedPropertyId, name = name.ifBlank { street.ifBlank { "Neue Immobilie" } }, objektart = objectType,
+                        propertyId = generatedPropertyId,
+                        name = name.ifBlank { street.ifBlank { "Neue Immobilie" } },
+                        objektart = objectType,
                         adresse = listOf(street, "$zip $city".trim()).filter(String::isNotBlank).joinToString(", "),
-                        baujahr = yearBuilt.toIntOrNull() ?: 0, wohnflaeche = livingArea.replace(',', '.').toDoubleOrNull() ?: 0.0,
-                        grundstuecksgroesse = landArea.replace(',', '.').toDoubleOrNull() ?: 0.0, notariellesKaufdatum = purchaseDate,
-                        wohneinheiten = savedUnitNames.joinToString(", "), gesamtKaufpreis = purchasePrice.replace(',', '.').toDoubleOrNull() ?: 0.0,
-                        gebaeudewert = buildingValue.replace(',', '.').toDoubleOrNull() ?: 0.0, grundUndBodenWert = landValue.replace(',', '.').toDoubleOrNull() ?: 0.0
+                        baujahr = values.yearBuilt,
+                        wohnflaeche = values.livingArea,
+                        grundstuecksgroesse = values.landArea,
+                        notariellesKaufdatum = purchaseDate.trim(),
+                        wohneinheiten = savedUnitNames.joinToString(", "),
+                        gesamtKaufpreis = values.purchasePrice,
+                        gebaeudewert = values.buildingValue,
+                        grundUndBodenWert = values.landValue
                     )
                     val units = savedUnitNames.mapIndexed { index, unitName ->
-                        WohneinheitStatus(unitName, unitLocations[index].ifBlank { unitName }, "Leerstand", "", 0.0, unitAreas[index].replace(',', '.').toDoubleOrNull() ?: 0.0)
+                        WohneinheitStatus(
+                            unitName,
+                            unitLocations[index].ifBlank { unitName },
+                            "Leerstand",
+                            "",
+                            0.0,
+                            PropertyWizardInput.unitArea(unitAreas[index]) ?: 0.0
+                        )
                     }
-                    val loan = loanAmount.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 }?.let {
-                        Loan(bezeichnung = loanName.ifBlank { "Darlehen ${metadata.name}" }, bank = loanBank, darlehensbetrag = it, restschuld = it)
+                    val loan = values.loanAmount?.takeIf { it > 0.0 }?.let {
+                        Loan(
+                            bezeichnung = loanName.ifBlank { "Darlehen ${metadata.name}" },
+                            bank = loanBank,
+                            darlehensbetrag = it,
+                            restschuld = it
+                        )
                     }
                     onSave(metadata, units, loan)
                 }
-            }, enabled = step > 0 || name.isNotBlank(), modifier = Modifier.testTag("property_wizard_next")) { Text(if (step == 4) "Immobilie anlegen" else "Weiter") }
+            }, enabled = step > 0 || name.isNotBlank(), modifier = Modifier.testTag("property_wizard_next")) {
+                Text(if (step == 4) "Immobilie anlegen" else "Weiter")
+            }
         },
         dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }) { Text("Zurück") }; TextButton(onClick = onDismiss) { Text("Abbrechen") } } }
     )

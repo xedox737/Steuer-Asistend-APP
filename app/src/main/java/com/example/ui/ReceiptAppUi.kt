@@ -745,8 +745,9 @@ fun WohneinheitenStatusSection(
         var editLabel by remember { mutableStateOf(unit.label) }
         var editStatus by remember { mutableStateOf(unit.status) }
         var editMieter by remember { mutableStateOf(unit.mieter) }
-        var editRentStr by remember { mutableStateOf(unit.kaltmiete.toString()) }
-        var editAreaStr by remember { mutableStateOf(unit.wohnflaeche.toString()) }
+        var editRentStr by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
+        var editAreaStr by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.wohnflaeche)) }
+        var unitInputError by remember { mutableStateOf<String?>(null) }
 
         var statusExpanded by remember { mutableStateOf(false) }
 
@@ -848,21 +849,27 @@ fun WohneinheitenStatusSection(
                             }
                         }
                     }
+                    unitInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val rent = editRentStr.toDoubleOrNull() ?: unit.kaltmiete
-                        val area = editAreaStr.toDoubleOrNull() ?: unit.wohnflaeche
+                        val rent = GermanNumberInput.parseNonNegative(editRentStr)
+                        val area = GermanNumberInput.parseNonNegative(editAreaStr)
+                        unitInputError = when {
+                            rent == null -> "Bitte einen gültigen Mietbetrag eingeben."
+                            area == null -> "Bitte eine gültige, nicht negative Fläche eingeben."
+                            else -> null
+                        }
+                        if (unitInputError != null) return@Button
                         viewModel.updateWohneinheit(
-                            WohneinheitStatus(
-                                name = unit.name,
+                            unit.copy(
                                 label = editLabel,
                                 status = editStatus,
                                 mieter = editMieter,
-                                kaltmiete = rent,
-                                wohnflaeche = area
+                                kaltmiete = rent!!,
+                                wohnflaeche = area!!
                             )
                         )
                         selectedUnitForEdit = null
@@ -2936,8 +2943,9 @@ fun ReceiptPositionenEditor(
 ) {
     var showAddItemDialog by remember { mutableStateOf(false) }
     var newItemBezeichnung by remember { mutableStateOf("") }
-    var newItemMenge by remember { mutableStateOf("1.0") }
+    var newItemMenge by remember { mutableStateOf("1,00") }
     var newItemEinzelpreis by remember { mutableStateOf("") }
+    var itemInputError by remember { mutableStateOf<String?>(null) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3071,25 +3079,30 @@ fun ReceiptPositionenEditor(
                     )
                     OutlinedTextField(
                         value = newItemMenge,
-                        onValueChange = { newItemMenge = it },
-                        label = { Text("Menge (z. B. 1.0)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        onValueChange = { newItemMenge = it; itemInputError = null },
+                        label = { Text("Menge (z. B. 1,0)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = newItemEinzelpreis,
-                        onValueChange = { newItemEinzelpreis = it },
+                        onValueChange = { newItemEinzelpreis = it; itemInputError = null },
                         label = { Text("Einzelpreis in EUR") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    itemInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val mengeVal = newItemMenge.toDoubleOrNull() ?: 1.0
-                        val einzelpreisVal = newItemEinzelpreis.toDoubleOrNull() ?: 0.0
+                        val mengeVal = GermanNumberInput.parseNonNegative(newItemMenge)
+                        val einzelpreisVal = GermanNumberInput.parseNonNegative(newItemEinzelpreis)
+                        if (mengeVal == null || einzelpreisVal == null) {
+                            itemInputError = "Bitte gültige Mengen und Beträge eingeben."
+                            return@Button
+                        }
                         val gesamtpreisVal = mengeVal * einzelpreisVal
                         val newItem = com.example.data.ReceiptItem(
                             bezeichnung = newItemBezeichnung,
@@ -3099,7 +3112,7 @@ fun ReceiptPositionenEditor(
                         )
                         onPositionenChanged(positionen + newItem)
                         newItemBezeichnung = ""
-                        newItemMenge = "1.0"
+                        newItemMenge = "1,00"
                         newItemEinzelpreis = ""
                         showAddItemDialog = false
                     },
@@ -3139,7 +3152,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var editAussteller by remember(receipt) { mutableStateOf(receipt.aussteller) }
     var editDatum by remember(receipt) { mutableStateOf(receipt.datum) }
     var editUhrzeit by remember(receipt) { mutableStateOf(receipt.uhrzeit) }
-    var editBruttobetrag by remember(receipt) { mutableStateOf(receipt.bruttobetrag.toString()) }
+    var editBruttobetrag by remember(receipt) { mutableStateOf(GermanNumberInput.formatForInput(receipt.bruttobetrag)) }
     var editHauptkategorie by remember(receipt) { mutableStateOf(receipt.hauptkategorie) }
     var editUnterkategorie by remember(receipt) { mutableStateOf(receipt.unterkategorie) }
     var editKontoNr by remember(receipt) { mutableStateOf(receipt.kontoNr) }
@@ -3158,6 +3171,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var editPropertyId by remember(receipt) { mutableStateOf(receipt.propertyId) }
     var propertyExpanded by remember { mutableStateOf(false) }
     var amountError by remember { mutableStateOf(false) }
+    var dateError by remember { mutableStateOf(false) }
     val metadata = availableProperties.firstOrNull { it.propertyId == editPropertyId } ?: PropertyMetadata()
     val unitsList = remember(metadata.wohneinheiten) {
         metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
@@ -3178,7 +3192,9 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     ) {
                         OutlinedTextField(
                             value = editDatum,
-                            onValueChange = { editDatum = it },
+                            onValueChange = { editDatum = it; dateError = false },
+                            isError = dateError,
+                            supportingText = { if (dateError) Text("Bitte ein gültiges Datum eingeben.") },
                             label = { Text("Datum (YYYY-MM-DD)") },
                             modifier = Modifier.weight(1.1f).testTag("edit_receipt_datum")
                         )
@@ -3194,9 +3210,9 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                         value = editBruttobetrag,
                         isError = amountError,
                         supportingText = { if (amountError) Text("Bitte einen gültigen Betrag eingeben.") },
-                        onValueChange = { editBruttobetrag = it },
+                        onValueChange = { editBruttobetrag = it; amountError = false },
                         label = { Text("Bruttobetrag in EUR") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth().testTag("edit_receipt_betrag")
                     )
 
@@ -3372,16 +3388,16 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     Button(
                         onClick = {
                             val parsedBetrag = parseReceiptEditAmount(editBruttobetrag)
-                            if (parsedBetrag == null) {
-                                amountError = true
-                                return@Button
-                            }
+                            val parsedDate = ReceiptInputValidation.date(editDatum)
+                            amountError = parsedBetrag == null
+                            dateError = parsedDate == null
+                            if (amountError || dateError) return@Button
                             val updatedReceipt = receipt.copy(
                                 aussteller = editAussteller,
                                 propertyId = editPropertyId,
                                 datum = editDatum,
                                 uhrzeit = editUhrzeit,
-                                bruttobetrag = parsedBetrag,
+                                bruttobetrag = parsedBetrag!!,
                                 hauptkategorie = editHauptkategorie,
                                 unterkategorie = editUnterkategorie,
                                 kontoNr = editKontoNr,
@@ -5187,6 +5203,8 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var editPositionen by remember { mutableStateOf<List<com.example.data.ReceiptItem>>(emptyList()) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
     var localImagePaths by remember { mutableStateOf("") }
+    var receiptAmountError by remember { mutableStateOf(false) }
+    var receiptDateError by remember { mutableStateOf(false) }
 
     val propertyMetadataState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = propertyMetadataState ?: PropertyMetadata()
@@ -5285,7 +5303,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             editAussteller = extracted.aussteller
             editDatum = extracted.datum
             editUhrzeit = extracted.uhrzeit
-            editBruttobetrag = extracted.bruttobetrag.toString()
+            editBruttobetrag = GermanNumberInput.formatForInput(extracted.bruttobetrag)
             editHauptkategorie = extracted.hauptkategorie
             editUnterkategorie = extracted.unterkategorie
             editKontoNr = extracted.kontoNr
@@ -5918,7 +5936,9 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = editDatum,
-                    onValueChange = { editDatum = it },
+                    onValueChange = { editDatum = it; receiptDateError = false },
+                    isError = receiptDateError,
+                    supportingText = { if (receiptDateError) Text("Bitte ein gültiges Datum eingeben.") },
                     label = { Text("Datum (JJJJ-MM-TT)") },
                     modifier = Modifier.weight(1f).testTag("edit_datum"),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -5940,10 +5960,12 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
 
             OutlinedTextField(
                 value = editBruttobetrag,
-                onValueChange = { editBruttobetrag = it },
+                onValueChange = { editBruttobetrag = it; receiptAmountError = false },
+                isError = receiptAmountError,
+                supportingText = { if (receiptAmountError) Text("Bitte einen gültigen Betrag eingeben.") },
                 label = { Text("Bruttobetrag (€)") },
                 modifier = Modifier.fillMaxWidth().testTag("edit_betrag"),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White
@@ -6161,12 +6183,16 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 }
                 Button(
                     onClick = {
-                        val amount = editBruttobetrag.toDoubleOrNull() ?: 0.0
+                        val amount = ReceiptInputValidation.amount(editBruttobetrag)
+                        val date = ReceiptInputValidation.date(editDatum)
+                        receiptAmountError = amount == null
+                        receiptDateError = date == null
+                        if (receiptAmountError || receiptDateError) return@Button
                         viewModel.saveReceipt(
                             aussteller = editAussteller,
                             datum = editDatum,
                             uhrzeit = editUhrzeit,
-                            bruttobetrag = amount,
+                            bruttobetrag = amount!!,
                             hauptkategorie = editHauptkategorie,
                             unterkategorie = editUnterkategorie,
                             kontoNr = editKontoNr,
@@ -8841,14 +8867,15 @@ fun PropertyMetadataFormDialog(
     var editAdresse by remember(metadata) { mutableStateOf(metadata.adresse) }
     var editWohnort by remember(metadata) { mutableStateOf(metadata.wohnort) }
     var editBaujahr by remember(metadata) { mutableStateOf(metadata.baujahr.toString()) }
-    var editWohnflaeche by remember(metadata) { mutableStateOf(metadata.wohnflaeche.toString()) }
-    var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(metadata.grundstuecksgroesse.toString()) }
+    var editWohnflaeche by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.wohnflaeche)) }
+    var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundstuecksgroesse)) }
     var editNotariellesKaufdatum by remember(metadata) { mutableStateOf(metadata.notariellesKaufdatum) }
     var editUebergangNutzenLasten by remember(metadata) { mutableStateOf(metadata.uebergangNutzenLasten) }
     var editWohneinheiten by remember(metadata) { mutableStateOf(metadata.wohneinheiten) }
-    var editGesamtKaufpreis by remember(metadata) { mutableStateOf(metadata.gesamtKaufpreis.toString()) }
-    var editGebaeudewert by remember(metadata) { mutableStateOf(metadata.gebaeudewert.toString()) }
-    var editGrundUndBodenWert by remember(metadata) { mutableStateOf(metadata.grundUndBodenWert.toString()) }
+    var editGesamtKaufpreis by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.gesamtKaufpreis)) }
+    var editGebaeudewert by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.gebaeudewert)) }
+    var editGrundUndBodenWert by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundUndBodenWert)) }
+    var metadataInputError by remember(metadata) { mutableStateOf<String?>(null) }
 
     val scrollState = rememberScrollState()
 
@@ -8894,12 +8921,12 @@ fun PropertyMetadataFormDialog(
                     Pair("Baujahr", editBaujahr.toIntOrNull() != null && editBaujahr.toInt() > 0),
                     Pair("Notarielles Kaufdatum", editNotariellesKaufdatum.isNotBlank()),
                     Pair("Übergang Nutzen/Lasten", editUebergangNutzenLasten.isNotBlank()),
-                    Pair("Wohnfläche", editWohnflaeche.toDoubleOrNull() != null && editWohnflaeche.toDouble() > 0.0),
-                    Pair("Grundstücksgröße", editGrundstuecksgroesse.toDoubleOrNull() != null && editGrundstuecksgroesse.toDouble() > 0.0),
+                    Pair("Wohnfläche", GermanNumberInput.parseNonNegative(editWohnflaeche)?.let { it > 0.0 } == true),
+                    Pair("Grundstücksgröße", GermanNumberInput.parseNonNegative(editGrundstuecksgroesse)?.let { it > 0.0 } == true),
                     Pair("Wohneinheiten", editWohneinheiten.isNotBlank()),
-                    Pair("Gesamtkaufpreis", editGesamtKaufpreis.toDoubleOrNull() != null && editGesamtKaufpreis.toDouble() > 0.0),
-                    Pair("Gebäudewert", editGebaeudewert.toDoubleOrNull() != null && editGebaeudewert.toDouble() > 0.0),
-                    Pair("Grund und Boden", editGrundUndBodenWert.toDoubleOrNull() != null && editGrundUndBodenWert.toDouble() >= 0.0)
+                    Pair("Gesamtkaufpreis", GermanNumberInput.parseNonNegative(editGesamtKaufpreis)?.let { it > 0.0 } == true),
+                    Pair("Gebäudewert", GermanNumberInput.parseNonNegative(editGebaeudewert)?.let { it > 0.0 } == true),
+                    Pair("Grund und Boden", GermanNumberInput.parseNonNegative(editGrundUndBodenWert) != null)
                 )
                 val completedCount = completenessChecks.count { it.second }
                 val totalCount = completenessChecks.size
@@ -9148,9 +9175,9 @@ OutlinedTextField(
     )
 )
 
-val allocationDiffPreview = (editGesamtKaufpreis.toDoubleOrNull() ?: 0.0) -
-    (editGebaeudewert.toDoubleOrNull() ?: 0.0) -
-    (editGrundUndBodenWert.toDoubleOrNull() ?: 0.0)
+val allocationDiffPreview = (GermanNumberInput.parse(editGesamtKaufpreis) ?: 0.0) -
+    (GermanNumberInput.parse(editGebaeudewert) ?: 0.0) -
+    (GermanNumberInput.parse(editGrundUndBodenWert) ?: 0.0)
 if (kotlin.math.abs(allocationDiffPreview) > 1.0) {
     Text(
         "Hinweis: Gebäude + Grund/Boden weichen um ${NumberFormatter.format(allocationDiffPreview)} vom Kaufpreis ab.",
@@ -9158,31 +9185,45 @@ if (kotlin.math.abs(allocationDiffPreview) > 1.0) {
         color = WarmOrange
     )
 }
+metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val finalBaujahr = editBaujahr.toIntOrNull() ?: metadata.baujahr
-                    val finalWohnflaeche = editWohnflaeche.toDoubleOrNull() ?: metadata.wohnflaeche
-                    val finalGrundstuecksgroesse = editGrundstuecksgroesse.toDoubleOrNull() ?: metadata.grundstuecksgroesse
-                    val finalGesamtKaufpreis = editGesamtKaufpreis.toDoubleOrNull() ?: metadata.gesamtKaufpreis
-                    val finalGebaeudewert = editGebaeudewert.toDoubleOrNull() ?: metadata.gebaeudewert
-                    val finalGrundUndBodenWert = editGrundUndBodenWert.toDoubleOrNull() ?: metadata.grundUndBodenWert
+                    fun nonNegativeOrExisting(input: String, existing: Double): Double? =
+                        if (input.isBlank()) existing else GermanNumberInput.parseNonNegative(input)
+                    val finalBaujahr = if (editBaujahr.isBlank()) metadata.baujahr else editBaujahr.trim().toIntOrNull()?.takeIf { it >= 0 }
+                    val finalWohnflaeche = nonNegativeOrExisting(editWohnflaeche, metadata.wohnflaeche)
+                    val finalGrundstuecksgroesse = nonNegativeOrExisting(editGrundstuecksgroesse, metadata.grundstuecksgroesse)
+                    val finalGesamtKaufpreis = nonNegativeOrExisting(editGesamtKaufpreis, metadata.gesamtKaufpreis)
+                    val finalGebaeudewert = nonNegativeOrExisting(editGebaeudewert, metadata.gebaeudewert)
+                    val finalGrundUndBodenWert = nonNegativeOrExisting(editGrundUndBodenWert, metadata.grundUndBodenWert)
+                    val purchaseDateValid = editNotariellesKaufdatum.isBlank() || CalendarInput.isValidIsoDate(editNotariellesKaufdatum)
+                    val transferDateValid = editUebergangNutzenLasten.isBlank() || CalendarInput.isValidIsoDate(editUebergangNutzenLasten)
+
+                    metadataInputError = when {
+                        finalBaujahr == null -> "Bitte ein gültiges Baujahr eingeben."
+                        finalWohnflaeche == null || finalGrundstuecksgroesse == null -> "Bitte gültige, nicht negative Flächen eingeben."
+                        finalGesamtKaufpreis == null || finalGebaeudewert == null || finalGrundUndBodenWert == null -> "Bitte gültige Beträge eingeben."
+                        !purchaseDateValid || !transferDateValid -> "Bitte ein gültiges Datum im Format JJJJ-MM-TT eingeben."
+                        else -> null
+                    }
+                    if (metadataInputError != null) return@Button
 
                     val updated = metadata.copy(
                         name = editName,
                         adresse = editAdresse,
                         wohnort = editWohnort,
-                        baujahr = finalBaujahr,
-                        wohnflaeche = finalWohnflaeche,
-                        grundstuecksgroesse = finalGrundstuecksgroesse,
+                        baujahr = finalBaujahr!!,
+                        wohnflaeche = finalWohnflaeche!!,
+                        grundstuecksgroesse = finalGrundstuecksgroesse!!,
                         notariellesKaufdatum = editNotariellesKaufdatum,
                         uebergangNutzenLasten = editUebergangNutzenLasten,
                         wohneinheiten = editWohneinheiten,
-                        gesamtKaufpreis = finalGesamtKaufpreis,
-                        gebaeudewert = finalGebaeudewert,
-                        grundUndBodenWert = finalGrundUndBodenWert,
+                        gesamtKaufpreis = finalGesamtKaufpreis!!,
+                        gebaeudewert = finalGebaeudewert!!,
+                        grundUndBodenWert = finalGrundUndBodenWert!!,
                         kaufpreisAufteilungQuelle = "MANUELL"
                     )
                     viewModel.updatePropertyMetadata(updated)
@@ -10565,8 +10606,9 @@ fun TenantItem(
 ) {
     var mieter by remember { mutableStateOf(unit.mieter) }
     var start by remember { mutableStateOf(unit.mietvertragsstart) }
-    var kaltmiete by remember { mutableStateOf(unit.kaltmiete.toString()) }
+    var kaltmiete by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
     var isEditing by remember { mutableStateOf(false) }
+    var tenantInputError by remember { mutableStateOf<String?>(null) }
 
     Card(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
         Column(modifier = Modifier.padding(8.dp)) {
@@ -10574,9 +10616,17 @@ fun TenantItem(
             if (isEditing) {
                 OutlinedTextField(value = mieter, onValueChange = { mieter = it }, label = { Text("Mieter") })
                 OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Mietvertragsstart") })
-                OutlinedTextField(value = kaltmiete, onValueChange = { kaltmiete = it }, label = { Text("Kaltmiete") })
+                OutlinedTextField(value = kaltmiete, onValueChange = { kaltmiete = it; tenantInputError = null }, label = { Text("Kaltmiete") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                tenantInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 Button(onClick = {
-                    onUpdate(unit.copy(mieter = mieter, mietvertragsstart = start, kaltmiete = kaltmiete.toDoubleOrNull() ?: 0.0))
+                    val amount = GermanNumberInput.parseNonNegative(kaltmiete)
+                    tenantInputError = when {
+                        amount == null -> "Bitte einen gültigen Mietbetrag eingeben."
+                        start.isNotBlank() && !CalendarInput.isValidIsoDate(start) -> "Bitte ein gültiges Datum eingeben."
+                        else -> null
+                    }
+                    if (tenantInputError != null) return@Button
+                    onUpdate(unit.copy(mieter = mieter, mietvertragsstart = start.trim(), kaltmiete = amount!!))
                     isEditing = false
                 }) {
                     Text("Speichern")
