@@ -475,7 +475,7 @@ internal fun RentPlanEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    error = RentPlanInput.error(kalt, nk, other, dateValue, mode, previousTenancyEnd)
+                    error = RentPlanInput.error(kalt, nk, other, dateValue, previousTenancyEnd, mode)
                     if (error != null) return@Button
                     val plan = ValidRentPlan(
                         RentPlanInput.amount(kalt)!!,
