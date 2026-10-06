@@ -89,13 +89,49 @@ fun RentIncomeOverviewScreen(
         val row = editing
         val plan = pendingPlan
         if (row != null && plan != null && metadata?.propertyId == row.property.propertyId) {
-            val id = row.property.propertyId
-            PropertyUnitScopedData.setRentValues(context, id, row.unit, plan.nk, plan.other)
-            val stored = TenantHistoryStore.load(context, id, PropertyUnitScopedData.stableUnitId(id, row.unit), row.unit.name)
+            val propertyId = row.property.propertyId
+            val unitId = PropertyUnitScopedData.stableUnitId(propertyId, row.unit)
+            val stored = TenantHistoryStore.ensureCurrentPeriod(
+                context, row.unit, row.nebenkosten, row.sonstige, propertyId
+            )
             val active = stored.lastOrNull { it.active && it.tenantName == row.unit.mieter }
-            if (active != null) TenantHistoryStore.save(context, id, PropertyUnitScopedData.stableUnitId(id, row.unit), row.unit.name,
-                stored.map { if (it.id == active.id) it.copy(kaltmiete = plan.kalt, nebenkosten = plan.nk, sonstige = plan.other, startDate = plan.start) else it })
-            viewModel.updateWohneinheit(row.unit.copy(kaltmiete = plan.kalt, mietvertragsstart = plan.start))
+                ?: stored.lastOrNull { it.active }
+            val updated = if (active == null) {
+                stored
+            } else when (plan.mode) {
+                RentPlanEditMode.CORRECT_EXISTING -> stored.map { period ->
+                    if (period.id == active.id) period.copy(
+                        kaltmiete = plan.kalt,
+                        nebenkosten = plan.nk,
+                        sonstige = plan.other,
+                        startDate = plan.date
+                    ) else period
+                }
+                RentPlanEditMode.CHANGE_FROM_DATE -> stored.map { period ->
+                    if (period.id != active.id) period else period.copy(
+                        rentChanges = (period.rentChanges.filterNot { it.effectiveDate == plan.date } +
+                            RentAmountChange(plan.date, plan.kalt, plan.nk, plan.other))
+                            .sortedBy { it.effectiveDate }
+                    )
+                }
+            }
+            if (active != null) {
+                TenantHistoryStore.save(context, propertyId, unitId, row.unit.name, updated)
+            }
+
+            val currentPeriod = updated.lastOrNull { it.active && it.tenantName == row.unit.mieter }
+                ?: updated.lastOrNull { it.active }
+            val currentAmounts = currentPeriod?.amountsAt(LocalDate.now())
+                ?: RentAmounts(plan.kalt, plan.nk, plan.other)
+            PropertyUnitScopedData.setRentValues(
+                context, propertyId, row.unit, currentAmounts.nebenkosten, currentAmounts.sonstige
+            )
+            viewModel.updateWohneinheit(
+                row.unit.copy(
+                    kaltmiete = currentAmounts.kaltmiete,
+                    mietvertragsstart = if (plan.mode == RentPlanEditMode.CORRECT_EXISTING) plan.date else row.unit.mietvertragsstart
+                )
+            )
             prefsVersion++
             dismissEditor()
         }
@@ -186,7 +222,7 @@ fun RentIncomeOverviewScreen(
     }
     editing?.let { row ->
         RentPlanEditDialog(row.unit, row.nebenkosten, row.sonstige, onDismiss = { dismissEditor() },
-            onSave = { cold, nk, other, start -> pendingPlan = ValidRentPlan(cold, nk, other, start) },
+            onSave = { plan -> pendingPlan = plan },
             previousTenancyEnd = TenantHistoryStore.load(context, row.property.propertyId,
                 PropertyUnitScopedData.stableUnitId(row.property.propertyId, row.unit), row.unit.name)
                 .filterNot { it.active }.mapNotNull { RentOverviewPresentation.date(it.endDate) }.maxOrNull(),
@@ -327,30 +363,105 @@ private fun RentUnitCard(row: RentOverviewUnit, year: Int, showProperty: Boolean
 }
 
 @Composable
-internal fun RentPlanEditDialog(unit: WohneinheitStatus, nebenkostenInitial: Double, sonstigeInitial: Double,
-    onDismiss: () -> Unit, onSave: (Double, Double, Double, String) -> Unit, incomeBreakdown: Map<String, Double> = emptyMap(), previousTenancyEnd: LocalDate? = null) {
-    var kalt by remember(unit.unitId, unit.name) { mutableStateOf(unit.kaltmiete.toString()) }
-    var nk by remember(unit.unitId, unit.name) { mutableStateOf(nebenkostenInitial.toString()) }
-    var other by remember(unit.unitId, unit.name) { mutableStateOf(sonstigeInitial.toString()) }
-    var start by remember(unit.unitId, unit.name) { mutableStateOf(unit.mietvertragsstart) }
+internal fun RentPlanEditDialog(
+    unit: WohneinheitStatus,
+    nebenkostenInitial: Double,
+    sonstigeInitial: Double,
+    onDismiss: () -> Unit,
+    onSave: (ValidRentPlan) -> Unit,
+    incomeBreakdown: Map<String, Double> = emptyMap(),
+    previousTenancyEnd: LocalDate? = null
+) {
+    var mode by remember(unit.unitId, unit.name) { mutableStateOf(RentPlanEditMode.CORRECT_EXISTING) }
+    var kalt by remember(unit.unitId, unit.name) { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
+    var nk by remember(unit.unitId, unit.name) { mutableStateOf(GermanNumberInput.formatForInput(nebenkostenInitial)) }
+    var other by remember(unit.unitId, unit.name) { mutableStateOf(GermanNumberInput.formatForInput(sonstigeInitial)) }
+    var correctionStart by remember(unit.unitId, unit.name) { mutableStateOf(unit.mietvertragsstart) }
+    var changeDate by remember(unit.unitId, unit.name) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var largeChangeConfirmation by remember { mutableStateOf<ValidRentPlan?>(null) }
     val keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-    AlertDialog(onDismissRequest = onDismiss, containerColor = Color.White, shape = RoundedCornerShape(16.dp),
+    val dateValue = if (mode == RentPlanEditMode.CORRECT_EXISTING) correctionStart else changeDate
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        shape = RoundedCornerShape(16.dp),
         title = { Text("Mietplan: ${unit.label}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = DarkNavy) },
         text = {
-            Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Column(
+                Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
                 Text("Sollwerte für die Mietkontrolle. Vorhandene Belege bleiben unverändert.", fontSize = 10.sp, color = SlateGray)
-                OutlinedTextField(kalt, { kalt = it; error = null }, label = { Text("Kaltmiete / Monat €") }, keyboardOptions = keyboard,
-                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("rent_plan_cold"))
-                OutlinedTextField(nk, { nk = it; error = null }, label = { Text("Nebenkostenvorauszahlung / Monat €") }, keyboardOptions = keyboard,
-                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("rent_plan_utilities"))
-                OutlinedTextField(other, { other = it; error = null }, label = { Text("Sonstige Mietbestandteile / Monat €") }, keyboardOptions = keyboard,
-                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("rent_plan_other"))
-                OutlinedTextField(start, { start = it; error = null }, label = { Text("Mietbeginn JJJJ-MM-TT") }, singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_start"))
-                Text("Monatliches Soll: ${NumberFormatter.format((RentPlanInput.amount(kalt) ?: 0.0) + (RentPlanInput.amount(nk) ?: 0.0) + (RentPlanInput.amount(other) ?: 0.0))}",
-                    fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                Text("Ohne Mietbeginn gilt der vorhandene Jahres-Sollansatz.", fontSize = 9.sp, color = SlateGray)
+                Text("Art der Änderung", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = mode == RentPlanEditMode.CORRECT_EXISTING,
+                        onClick = { mode = RentPlanEditMode.CORRECT_EXISTING; error = null },
+                        label = { Text("Wert korrigieren") },
+                        modifier = Modifier.testTag("rent_plan_mode_correction")
+                    )
+                    FilterChip(
+                        selected = mode == RentPlanEditMode.CHANGE_FROM_DATE,
+                        onClick = { mode = RentPlanEditMode.CHANGE_FROM_DATE; error = null },
+                        label = { Text("Miete ändern ab Datum") },
+                        modifier = Modifier.testTag("rent_plan_mode_change")
+                    )
+                }
+                Text(
+                    if (mode == RentPlanEditMode.CORRECT_EXISTING)
+                        "Korrigiert den bestehenden Mietabschnitt, z. B. nach einer Fehleingabe."
+                    else
+                        "Legt innerhalb desselben Mietverhältnisses einen neuen Mietwert ab dem gewählten Monat an. Frühere Monate bleiben unverändert.",
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp,
+                    color = SlateGray
+                )
+                OutlinedTextField(
+                    kalt, { kalt = it; error = null },
+                    label = { Text("Kaltmiete / Monat €") },
+                    keyboardOptions = keyboard, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_cold")
+                )
+                OutlinedTextField(
+                    nk, { nk = it; error = null },
+                    label = { Text("Nebenkostenvorauszahlung / Monat €") },
+                    keyboardOptions = keyboard, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_utilities")
+                )
+                OutlinedTextField(
+                    other, { other = it; error = null },
+                    label = { Text("Sonstige Mietbestandteile / Monat €") },
+                    keyboardOptions = keyboard, singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_other")
+                )
+                OutlinedTextField(
+                    value = dateValue,
+                    onValueChange = {
+                        if (mode == RentPlanEditMode.CORRECT_EXISTING) correctionStart = it else changeDate = it
+                        error = null
+                    },
+                    label = {
+                        Text(
+                            if (mode == RentPlanEditMode.CORRECT_EXISTING)
+                                "Mietbeginn JJJJ-MM-TT"
+                            else
+                                "Miete gültig ab JJJJ-MM-TT*"
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_start")
+                )
+                Text(
+                    "Monatliches Soll: ${NumberFormatter.format((RentPlanInput.amount(kalt) ?: 0.0) + (RentPlanInput.amount(nk) ?: 0.0) + (RentPlanInput.amount(other) ?: 0.0))}",
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy
+                )
+                if (mode == RentPlanEditMode.CHANGE_FROM_DATE) {
+                    Text("Mietänderungen sind aktuell nur zum Monatsersten zulässig.", fontSize = 9.sp, color = SlateGray)
+                } else {
+                    Text("Ohne Mietbeginn gilt der vorhandene Jahres-Sollansatz.", fontSize = 9.sp, color = SlateGray)
+                }
                 error?.let { Text(it, fontSize = 11.sp, color = CrimsonRed) }
                 if (incomeBreakdown.isNotEmpty()) {
                     HorizontalDivider(color = BorderColor)
@@ -361,9 +472,50 @@ internal fun RentPlanEditDialog(unit: WohneinheitStatus, nebenkostenInitial: Dou
                 }
             }
         },
-        confirmButton = { Button(onClick = {
-            error = RentPlanInput.error(kalt, nk, other, start, previousTenancyEnd)
-            if (error == null) onSave(RentPlanInput.amount(kalt)!!, RentPlanInput.amount(nk)!!, RentPlanInput.amount(other)!!, start.trim())
-        }, modifier = Modifier.testTag("rent_plan_save"), colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) { Text("Speichern") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } })
+        confirmButton = {
+            Button(
+                onClick = {
+                    error = RentPlanInput.error(kalt, nk, other, dateValue, mode, previousTenancyEnd)
+                    if (error != null) return@Button
+                    val plan = ValidRentPlan(
+                        RentPlanInput.amount(kalt)!!,
+                        RentPlanInput.amount(nk)!!,
+                        RentPlanInput.amount(other)!!,
+                        dateValue.trim(),
+                        mode
+                    )
+                    val suspicious = mode == RentPlanEditMode.CHANGE_FROM_DATE &&
+                        (
+                            RentPlanInput.needsLargeChangeConfirmation(unit.kaltmiete, plan.kalt) ||
+                                RentPlanInput.needsLargeChangeConfirmation(nebenkostenInitial, plan.nk) ||
+                                RentPlanInput.needsLargeChangeConfirmation(sonstigeInitial, plan.other)
+                            )
+                    if (suspicious) largeChangeConfirmation = plan else onSave(plan)
+                },
+                modifier = Modifier.testTag("rent_plan_save"),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+            ) { Text("Speichern") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
+
+    largeChangeConfirmation?.let { plan ->
+        AlertDialog(
+            onDismissRequest = { largeChangeConfirmation = null },
+            title = { Text("Ungewöhnlich große Mietänderung") },
+            text = {
+                Text(
+                    "Der neue Mietbetrag weicht sehr stark vom bisherigen Wert ab. Bitte prüfen Sie die Eingabe, bevor Sie die Änderung speichern."
+                )
+            },
+            confirmButton = {
+                Button(onClick = { largeChangeConfirmation = null; onSave(plan) }) {
+                    Text("Trotzdem speichern")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { largeChangeConfirmation = null }) { Text("Eingabe prüfen") }
+            }
+        )
+    }
 }
