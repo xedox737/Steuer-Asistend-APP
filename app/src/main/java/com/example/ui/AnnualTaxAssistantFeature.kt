@@ -164,17 +164,31 @@ private fun Receipt.yearOrNull(): Int? = datum.take(4).toIntOrNull()
 private fun receiptText(r: Receipt): String =
     (r.hauptkategorie + " " + r.unterkategorie + " " + r.beschreibung + " " + r.kontoNr).lowercase()
 
-private fun isDeposit(r: Receipt): Boolean = receiptText(r).contains("kaution")
-
-private fun isRentalIncome(r: Receipt): Boolean {
-    if (isDeposit(r)) return false
-    if (r.hauptkategorie == "Miete, Nebenkosten & Kaution") return true
-    if (r.hauptkategorie == "Sonstige Einnahmen") {
-        val text = receiptText(r)
-        return text.contains("miete") || text.contains("betriebskosten") || text.contains("nebenkosten")
+internal object AnnualTaxReceiptClassifier {
+    fun isDeposit(r: Receipt): Boolean {
+        // The broad main category contains the word "Kaution" for every rent receipt.
+        // Deposit classification must therefore come from the specific booking semantics.
+        val detail = (r.unterkategorie + " " + r.beschreibung).lowercase()
+        return detail.contains("kaution")
     }
-    return false
+
+    fun isRentalIncome(r: Receipt): Boolean {
+        if (isDeposit(r)) return false
+        if (r.hauptkategorie == "Miete, Nebenkosten & Kaution") {
+            val detail = (r.unterkategorie + " " + r.beschreibung).lowercase()
+            return listOf("miete", "nebenkosten", "betriebskosten", "umlage").any { it in detail } ||
+                r.unterkategorie.isBlank()
+        }
+        if (r.hauptkategorie == "Sonstige Einnahmen") {
+            val text = receiptText(r)
+            return text.contains("miete") || text.contains("betriebskosten") || text.contains("nebenkosten")
+        }
+        return false
+    }
 }
+
+private fun isDeposit(r: Receipt): Boolean = AnnualTaxReceiptClassifier.isDeposit(r)
+private fun isRentalIncome(r: Receipt): Boolean = AnnualTaxReceiptClassifier.isRentalIncome(r)
 
 private fun isPrincipalOrLoanFlow(r: Receipt): Boolean {
     val text = receiptText(r)
@@ -242,27 +256,28 @@ private fun fallbackTenantPeriod(unit: WohneinheitStatus, nk: Double, other: Dou
     )
 }
 
-private fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {
-    val start = runCatching { LocalDate.parse(period.startDate) }.getOrNull() ?: month.atDay(1)
-    val end = runCatching { LocalDate.parse(period.endDate) }.getOrNull() ?: month.atEndOfMonth()
-    val from = maxOf(start, month.atDay(1))
-    val to = minOf(end, month.atEndOfMonth())
-    if (to.isBefore(from)) return 0.0
-    val days = java.time.temporal.ChronoUnit.DAYS.between(from, to).toDouble() + 1.0
-    return period.monatSoll * days / month.lengthOfMonth().toDouble()
-}
+private fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double =
+    TenantHistoryStore.expectedInMonth(period, month)
 
 private fun buildAnnualRentRows(
     context: Context,
     year: Int,
     all: List<Receipt>,
-    units: List<WohneinheitStatus>
+    units: List<WohneinheitStatus>,
+    propertyId: String = ""
 ): List<AnnualRentRow> {
     val rentPrefs = context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE)
     return units.map { unit ->
-        val nk = rentPrefs.getFloat("nk_${unit.name}", 0f).toDouble()
-        val other = rentPrefs.getFloat("other_${unit.name}", 0f).toDouble()
-        val stored = TenantHistoryStore.load(context, unit.name)
+        val nk = if (propertyId.isNotBlank()) PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk")
+            else rentPrefs.getFloat("nk_${unit.name}", 0f).toDouble()
+        val other = if (propertyId.isNotBlank()) PropertyUnitScopedData.rentValue(context, propertyId, unit, "other")
+            else rentPrefs.getFloat("other_${unit.name}", 0f).toDouble()
+        val stored = if (propertyId.isNotBlank()) {
+            val stableUnitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
+            TenantHistoryStore.load(context, propertyId, stableUnitId, unit.name)
+        } else {
+            TenantHistoryStore.load(context, unit.name)
+        }
         val periods = if (stored.isNotEmpty()) stored else listOfNotNull(fallbackTenantPeriod(unit, nk, other))
         val expected = TenantHistoryStore.expectedForYear(periods, year)
         val unitReceipts = all.filter {
@@ -631,7 +646,7 @@ internal fun buildAdvisorAnnualSummary(
     units: List<WohneinheitStatus>
 ): com.example.util.AdvisorAnnualSummary {
     val summary = buildAnnualTaxSummary(context, year, receipts, metadata, loans)
-    val rentRows = buildAnnualRentRows(context, year, receipts, units)
+    val rentRows = buildAnnualRentRows(context, year, receipts, units, metadata.propertyId)
     val closingChecks = buildAnnualClosingChecks(summary, rentRows, metadata, receipts)
     val preview = buildAnlageVPreview(summary, closingChecks)
     val dataFingerprint = annualApprovalFingerprint(
@@ -646,8 +661,13 @@ internal fun buildAdvisorAnnualSummary(
         ANNUAL_APPROVAL_PREFS,
         Context.MODE_PRIVATE
     )
-    val approvedFingerprint = approvalPrefs.getString("fingerprint_$year", "").orEmpty()
-    val approvedAt = approvalPrefs.getString("approved_at_$year", "").orEmpty()
+    val approvalScope = metadata.propertyId.takeIf(String::isNotBlank)
+    val scopedFingerprintKey = approvalScope?.let { "fingerprint_${it}_$year" }
+    val scopedApprovedAtKey = approvalScope?.let { "approved_at_${it}_$year" }
+    val approvedFingerprint = (scopedFingerprintKey?.let { approvalPrefs.getString(it, null) }
+        ?: approvalPrefs.getString("fingerprint_$year", "")).orEmpty()
+    val approvedAt = (scopedApprovedAtKey?.let { approvalPrefs.getString(it, null) }
+        ?: approvalPrefs.getString("approved_at_$year", "")).orEmpty()
     val approvalIsCurrent =
         approvedFingerprint.isNotBlank() && approvedFingerprint == dataFingerprint
     val phase1 = TaxPropertyCalculator.calculate(metadata, receipts)
@@ -874,8 +894,8 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val unitSummaries = remember(year, receipts, units) {
         buildUnitAnnualSummaries(year, receipts, units)
     }
-    val rentRows = remember(context, year, receipts, units) {
-        buildAnnualRentRows(context, year, receipts, units)
+    val rentRows = remember(context, year, receipts, units, metadata.propertyId) {
+        buildAnnualRentRows(context, year, receipts, units, metadata.propertyId)
     }
     val closingChecks = remember(summary, rentRows, metadata, receipts) {
         buildAnnualClosingChecks(summary, rentRows, metadata, receipts)
@@ -885,11 +905,19 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         annualApprovalFingerprint(summary, closingChecks, rentRows, receipts, metadata, loans)
     }
     val approvalPrefs = remember(context) { context.getSharedPreferences(ANNUAL_APPROVAL_PREFS, Context.MODE_PRIVATE) }
-    val storedApprovalFingerprint = remember(year, approvalFingerprint, approvalVersion) {
-        approvalPrefs.getString("fingerprint_$year", "").orEmpty()
+    val scopedApprovalFingerprintKey = remember(metadata.propertyId, year) {
+        metadata.propertyId.takeIf(String::isNotBlank)?.let { "fingerprint_${it}_$year" }
     }
-    val approvedAt = remember(year, approvalFingerprint, approvalVersion) {
-        approvalPrefs.getString("approved_at_$year", "").orEmpty()
+    val scopedApprovalAtKey = remember(metadata.propertyId, year) {
+        metadata.propertyId.takeIf(String::isNotBlank)?.let { "approved_at_${it}_$year" }
+    }
+    val storedApprovalFingerprint = remember(year, approvalFingerprint, approvalVersion, scopedApprovalFingerprintKey) {
+        (scopedApprovalFingerprintKey?.let { approvalPrefs.getString(it, null) }
+            ?: approvalPrefs.getString("fingerprint_$year", "")).orEmpty()
+    }
+    val approvedAt = remember(year, approvalFingerprint, approvalVersion, scopedApprovalAtKey) {
+        (scopedApprovalAtKey?.let { approvalPrefs.getString(it, null) }
+            ?: approvalPrefs.getString("approved_at_$year", "")).orEmpty()
     }
     val approvalIsCurrent = storedApprovalFingerprint.isNotBlank() && storedApprovalFingerprint == approvalFingerprint
     val approvalWasSet = storedApprovalFingerprint.isNotBlank()
@@ -933,17 +961,19 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
                 blocked = approvalBlocked,
                 reviewCount = closingChecks.count { it.state == ClosingCheckState.REVIEW },
                 onApprove = {
-                    approvalPrefs.edit()
-                        .putString("fingerprint_$year", approvalFingerprint)
-                        .putString("approved_at_$year", java.time.OffsetDateTime.now().toString())
-                        .apply()
+                    approvalPrefs.edit().apply {
+                        val fingerprintKey = scopedApprovalFingerprintKey ?: "fingerprint_$year"
+                        val approvedAtKey = scopedApprovalAtKey ?: "approved_at_$year"
+                        putString(fingerprintKey, approvalFingerprint)
+                        putString(approvedAtKey, java.time.OffsetDateTime.now().toString())
+                    }.apply()
                     approvalVersion++
                 },
                 onRevoke = {
-                    approvalPrefs.edit()
-                        .remove("fingerprint_$year")
-                        .remove("approved_at_$year")
-                        .apply()
+                    approvalPrefs.edit().apply {
+                        remove(scopedApprovalFingerprintKey ?: "fingerprint_$year")
+                        remove(scopedApprovalAtKey ?: "approved_at_$year")
+                    }.apply()
                     approvalVersion++
                 }
             )
