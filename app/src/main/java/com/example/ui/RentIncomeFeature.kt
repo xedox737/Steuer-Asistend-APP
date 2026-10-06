@@ -57,6 +57,9 @@ fun RentIncomeOverviewScreen(
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     var prefsVersion by remember { mutableIntStateOf(0) }
     val groups = remember(properties, units, metadata, propertyScoped, historyVersion, prefsVersion) {
         val visible = if (propertyScoped) listOfNotNull(metadata) else properties
@@ -66,13 +69,19 @@ fun RentIncomeOverviewScreen(
     val scopedReceipts = remember(receipts, groups, propertyScoped) {
         RentOverviewPresentation.scopedReceipts(groups, receipts, propertyScoped)
     }
-    val years = remember(groups, scopedReceipts, historyVersion, prefsVersion) {
-        RentOverviewPresentation.years(context, groups, scopedReceipts)
+    val years = remember(groups, scopedReceipts, bankAssignments, historyVersion, prefsVersion) {
+        RentOverviewPresentation.years(context, groups, scopedReceipts, bankAssignments)
     }
     var selectedYear by rememberSaveable(if (propertyScoped) metadata?.propertyId else "all") { mutableIntStateOf(LocalDate.now().year) }
     var yearsOpen by remember { mutableStateOf(false) }
-    val overview = remember(groups, scopedReceipts, selectedYear, prefsVersion, historyVersion) {
-        RentOverviewPresentation.year(context, groups, scopedReceipts, selectedYear)
+    val overview = remember(
+        groups, scopedReceipts, selectedYear, prefsVersion, historyVersion,
+        bankAssignments, bankLinks, bankTransactions
+    ) {
+        RentOverviewPresentation.year(
+            context, groups, scopedReceipts, selectedYear,
+            bankAssignments, bankLinks, bankTransactions
+        )
     }
     var editing by remember { mutableStateOf<RentOverviewUnit?>(null) }
     var originalProperty by remember { mutableStateOf<String?>(null) }
