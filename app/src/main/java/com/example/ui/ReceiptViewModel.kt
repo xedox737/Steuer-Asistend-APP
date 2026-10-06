@@ -3443,7 +3443,13 @@ data class AiSearchUiState(
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
-            val document = repository.getManagedDocument(documentId) ?: return@launch
+            val document = repository.getManagedDocument(documentId)
+            if (document == null) {
+                if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
+                _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
+                _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar. Die Prüfung wurde beendet."
+                return@launch
+            }
             val fileId = document.driveFileId?.takeIf(String::isNotBlank) ?: return@launch
             _documentOperationStatus.value = "Original wird aus Google Drive geladen …"
             try {
@@ -3466,16 +3472,33 @@ data class AiSearchUiState(
     fun analyzeManagedDocument(documentId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             _documentOperationStatus.value = "KI-Dokumentanalyse läuft …"
-            val document = repository.getManagedDocument(documentId) ?: return@launch
-            val property = repository.getPropertyByPropertyId(document.propertyId)
-                ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
-            val units = getWohneinheitenForProperty(property)
-            val result = managedDocumentService.analyze(documentId, property, units)
-            if (result != null) {
-                _documentAiReview.value = documentId to result
-                _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-                _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
-            } else _documentOperationStatus.value = "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen."
+            try {
+                val document = repository.getManagedDocument(documentId)
+                if (document == null) {
+                    if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
+                    _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
+                    _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar. Die Analyse wurde beendet."
+                    return@launch
+                }
+                val property = repository.getPropertyByPropertyId(document.propertyId)
+                    ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+                val units = getWohneinheitenForProperty(property)
+                val result = managedDocumentService.analyze(documentId, property, units)
+                if (repository.getManagedDocument(documentId) == null) {
+                    if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
+                    _documentOperationStatus.value = "Das Dokument wurde während der Analyse entfernt."
+                    return@launch
+                }
+                if (result != null) {
+                    _documentAiReview.value = documentId to result
+                    _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
+                    _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
+                } else {
+                    _documentOperationStatus.value = "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen."
+                }
+            } catch (_: Exception) {
+                _documentOperationStatus.value = "Die Dokumentanalyse ist fehlgeschlagen. Bitte später erneut versuchen."
+            }
         }
     }
 
