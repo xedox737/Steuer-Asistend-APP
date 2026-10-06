@@ -3445,9 +3445,7 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) {
             val document = repository.getManagedDocument(documentId)
             if (document == null) {
-                if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
-                _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-                _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar. Die Prüfung wurde beendet."
+                _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar."
                 return@launch
             }
             val fileId = document.driveFileId?.takeIf(String::isNotBlank) ?: return@launch
@@ -3636,7 +3634,13 @@ data class AiSearchUiState(
         proposals: List<com.example.data.DocumentFieldProposal>
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val document = repository.getManagedDocument(documentId) ?: return@launch
+            val document = repository.getManagedDocument(documentId)
+            if (document == null) {
+                if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
+                _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
+                _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar. Die Prüfung wurde beendet."
+                return@launch
+            }
             val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
                 ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
             val validUnitIds = getWohneinheitenForProperty(documentProperty)
