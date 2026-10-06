@@ -33,4 +33,24 @@ class LogbookReliabilityMigrationTest {
             }
         }
     }
+
+    @Test fun receiptUnitIdentityMigrationPreservesRowsAndAddsBlankUnitId() {
+        val helper = FrameworkSQLiteOpenHelperFactory().create(SupportSQLiteOpenHelper.Configuration.builder(
+            ApplicationProvider.getApplicationContext<Context>()).name(null).callback(object : SupportSQLiteOpenHelper.Callback(33) {
+            override fun onCreate(db: SupportSQLiteDatabase) = Unit
+            override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+        }).build())
+        helper.use {
+            val db = helper.writableDatabase
+            db.execSQL("CREATE TABLE receipts (id INTEGER PRIMARY KEY, aussteller TEXT NOT NULL)")
+            db.execSQL("INSERT INTO receipts VALUES(7,'Bestand')")
+            MIGRATION_33_34.migrate(db)
+            db.query("SELECT id,aussteller,unitId FROM receipts").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(7, cursor.getInt(0))
+                assertEquals("Bestand", cursor.getString(1))
+                assertEquals("", cursor.getString(2))
+            }
+        }
+    }
 }
