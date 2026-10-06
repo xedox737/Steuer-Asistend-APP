@@ -57,7 +57,7 @@ class RentHistoryReliabilityTest {
     @Test fun rentChangeRequiresValidMonthStart() {
         val middle = RentPlanInput.error(
             "850,00", "220,00", "0,00", "2026-10-15",
-            RentPlanEditMode.CHANGE_FROM_DATE
+            mode = RentPlanEditMode.CHANGE_FROM_DATE
         )
         assertNotNull(middle)
         assertTrue(middle!!.contains("Monatsersten"))
@@ -65,7 +65,7 @@ class RentHistoryReliabilityTest {
             null,
             RentPlanInput.error(
                 "850,00", "220,00", "0,00", "2026-10-01",
-                RentPlanEditMode.CHANGE_FROM_DATE
+                mode = RentPlanEditMode.CHANGE_FROM_DATE
             )
         )
     }
