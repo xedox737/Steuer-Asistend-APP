@@ -7,14 +7,15 @@ import com.example.data.DatevProfile
 import com.example.data.PersistedAllocation
 import com.example.data.PersistedBookingProposal
 import com.example.data.Receipt
+import com.example.data.StableDocumentIdentity
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import java.util.Locale
 
 data class ReceiptAllocation(
     val receiptId: Int,
-    val propertyId: String,          // Immobilie / Objekt
-    val unitId: String,              // Wohneinheit / Kostenstelle 2
+    val propertyId: String,          // stabile Immobilie / Objekt
+    val unitId: String,              // stabile Wohneinheit / Kostenstelle 2
     val projectId: String,           // Maßnahme / Projekt
     val costCategory: String,        // Kostenart (Hauptkategorie)
     val subCategory: String,         // Unterkategorie
@@ -47,6 +48,64 @@ data class ReceiptAllocation(
     }
 }
 
+data class DatevCostCenterAssignment(
+    val propertyId: String,
+    val unitId: String,
+    val kost1: String,
+    val kost2: String
+)
+
+internal object DatevCostCenterResolver {
+    private fun compact(value: String, max: Int): String {
+        val normalized = value.uppercase(Locale.GERMANY).replace(Regex("[^A-Z0-9]"), "")
+        if (normalized.isNotBlank() && normalized.length <= max) return normalized
+        return StableDocumentIdentity.sha256(value.toByteArray(Charsets.UTF_8)).take(max).uppercase(Locale.GERMANY)
+    }
+
+    fun resolve(
+        receipt: Receipt,
+        profile: DatevProfile,
+        unitLabel: String = receipt.wohneinheit,
+        explicitUnitId: String = receipt.unitId
+    ): DatevCostCenterAssignment {
+        val propertyId = receipt.propertyId.trim()
+        val isGeneral = unitLabel.isBlank() ||
+            unitLabel.equals("Gesamtobjekt / Allgemein", true) ||
+            unitLabel.equals("GESAMT", true) ||
+            unitLabel.equals("ALLG", true)
+        val unitId = when {
+            isGeneral -> ""
+            explicitUnitId.isNotBlank() -> explicitUnitId
+            propertyId.isNotBlank() -> StableDocumentIdentity.legacyUnitId(propertyId, unitLabel)
+            else -> ""
+        }
+        val objectToken = propertyId.takeIf(String::isNotBlank)?.let { compact(it, 12) }.orEmpty()
+        val unitToken = when {
+            isGeneral -> "ALLG"
+            unitId.isBlank() -> ""
+            else -> {
+                val labelToken = unitLabel.uppercase(Locale.GERMANY)
+                    .replace(Regex("[^A-Z0-9]"), "")
+                    .ifBlank { "EINH" }
+                    .take(5)
+                val propertyPart = objectToken.take(4)
+                val stablePart = compact(unitId, 3)
+                listOf(propertyPart, labelToken, stablePart).filter(String::isNotBlank).joinToString("-").take(15)
+            }
+        }
+        val kost1 = when (profile.kost1Logic) {
+            "OBJEKT" -> objectToken.take(15)
+            "WOHNEINHEIT" -> unitToken
+            else -> ""
+        }
+        val kost2 = when (profile.kost2Logic) {
+            "WOHNEINHEIT" -> unitToken
+            else -> ""
+        }
+        return DatevCostCenterAssignment(propertyId, unitId, kost1, kost2)
+    }
+}
+
 object DatevMappingService {
 
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
@@ -74,8 +133,9 @@ object DatevMappingService {
 
         val totalCents = Math.round(Math.abs(receipt.bruttobetrag) * 100.0)
 
-        val propertyId = profile.profileName.take(30)
-        val defaultUnit = receipt.wohneinheit.ifBlank { "Gesamtobjekt / Allgemein" }
+        val propertyId = receipt.propertyId.trim()
+        val defaultUnitLabel = receipt.wohneinheit.ifBlank { "Gesamtobjekt / Allgemein" }
+        val defaultUnitId = DatevCostCenterResolver.resolve(receipt, profile, defaultUnitLabel).unitId
 
         val defaultAccount = when {
             receipt.kontoNr.isNotBlank() && receipt.kontoNr.length == profile.sachkontenLaenge -> receipt.kontoNr
@@ -96,7 +156,7 @@ object DatevMappingService {
                 ReceiptAllocation(
                     receiptId = receipt.id,
                     propertyId = propertyId,
-                    unitId = defaultUnit,
+                    unitId = defaultUnitId,
                     projectId = "OHNE_MASSNAHME",
                     costCategory = receipt.hauptkategorie,
                     subCategory = receipt.unterkategorie,
@@ -124,7 +184,13 @@ object DatevMappingService {
         positions.forEachIndexed { idx, item ->
             val itemCat = item.hauptkategorie.ifBlank { receipt.hauptkategorie }
             val itemSub = item.unterkategorie.ifBlank { receipt.unterkategorie }
-            val itemUnit = item.wohneinheit.ifBlank { defaultUnit }
+            val itemUnitLabel = item.wohneinheit.ifBlank { defaultUnitLabel }
+            val itemUnitId = DatevCostCenterResolver.resolve(
+                receipt = receipt,
+                profile = profile,
+                unitLabel = itemUnitLabel,
+                explicitUnitId = if (itemUnitLabel == receipt.wohneinheit) receipt.unitId else ""
+            ).unitId
             val itemProject = item.massnahme.ifBlank { "OHNE_MASSNAHME" }
 
             val itemAccount = when {
@@ -157,7 +223,7 @@ object DatevMappingService {
                 ReceiptAllocation(
                     receiptId = receipt.id,
                     propertyId = propertyId,
-                    unitId = itemUnit,
+                    unitId = itemUnitId,
                     projectId = itemProject,
                     costCategory = itemCat,
                     subCategory = itemSub,
@@ -208,11 +274,7 @@ object DatevMappingService {
             .uppercase(Locale.GERMANY)
         val belegfeld1 = "BLG-${rawGuid.take(18)}"
 
-        val kost1 = when (profile.kost1Logic) {
-            "OBJEKT" -> profile.profileName.take(15)
-            "WOHNEINHEIT" -> receipt.wohneinheit.ifBlank { "ALLG" }
-            else -> ""
-        }
+        val receiptCostCenters = DatevCostCenterResolver.resolve(receipt, profile)
 
         val records = mutableListOf<BookingRecord>()
 
@@ -234,10 +296,12 @@ object DatevMappingService {
                     "${receipt.aussteller}: ${sample.costCategory}"
             }.take(60)
 
-            val kost2 = when (profile.kost2Logic) {
-                "WOHNEINHEIT" -> sample.unitId.ifBlank { "ALLG" }
-                else -> ""
-            }
+            val costCenters = DatevCostCenterResolver.resolve(
+                receipt = receipt,
+                profile = profile,
+                unitLabel = receipt.wohneinheit,
+                explicitUnitId = sample.unitId
+            )
 
             records.add(
                 BookingRecord(
@@ -256,9 +320,10 @@ object DatevMappingService {
                     gegenkonto = sample.counterAccount,
                     buSchluessel = sample.taxKey,
                     belegfeld1 = belegfeld1,
-                    kost1 = kost1,
-                    kost2 = kost2,
-                    wohneinheitId = sample.unitId,
+                    kost1 = costCenters.kost1.ifBlank { receiptCostCenters.kost1 },
+                    kost2 = costCenters.kost2,
+                    objektId = receipt.propertyId,
+                    wohneinheitId = costCenters.unitId,
                     hauptkategorie = sample.costCategory,
                     unterkategorie = sample.subCategory,
                     steuerlichesJahr = try { receipt.datum.take(4).toInt() } catch (e: Exception) { profile.wirtschaftsjahrBeginn.take(4).toInt() },
@@ -359,15 +424,7 @@ object DatevMappingService {
             .replace("-", "")
             .uppercase(Locale.GERMANY)
         val belegfeld1 = "BLG-${rawGuid.take(18)}"
-        val kost1 = when (profile.kost1Logic) {
-            "OBJEKT" -> profile.profileName.take(15)
-            "WOHNEINHEIT" -> receipt.wohneinheit.ifBlank { "ALLG" }
-            else -> ""
-        }
-        val kost2 = when (profile.kost2Logic) {
-            "WOHNEINHEIT" -> receipt.wohneinheit.ifBlank { "ALLG" }
-            else -> ""
-        }
+        val costCenters = DatevCostCenterResolver.resolve(receipt, profile)
 
         return allocations.mapNotNull { allocation ->
             val proposal = proposalById[allocation.id] ?: return@mapNotNull null
@@ -387,9 +444,10 @@ object DatevMappingService {
                 gegenkonto = proposal.gegenkonto,
                 buSchluessel = proposal.buSchluessel,
                 belegfeld1 = belegfeld1,
-                kost1 = kost1,
-                kost2 = kost2,
-                wohneinheitId = receipt.wohneinheit,
+                kost1 = costCenters.kost1,
+                kost2 = costCenters.kost2,
+                objektId = costCenters.propertyId,
+                wohneinheitId = costCenters.unitId,
                 hauptkategorie = receipt.hauptkategorie,
                 unterkategorie = receipt.unterkategorie,
                 steuerlichesJahr = receipt.datum.take(4).toIntOrNull()
