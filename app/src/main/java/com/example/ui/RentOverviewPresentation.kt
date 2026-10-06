@@ -93,8 +93,8 @@ internal object RentPlanInput {
         nk: String,
         other: String,
         date: String,
-        mode: RentPlanEditMode = RentPlanEditMode.CORRECT_EXISTING,
-        previousEnd: LocalDate? = null
+        previousEnd: LocalDate? = null,
+        mode: RentPlanEditMode = RentPlanEditMode.CORRECT_EXISTING
     ): String? = when {
         listOf(kalt, nk, other).any { amount(it) == null } ->
             "Bitte gültige Beträge ab 0 € eingeben (Komma oder Punkt)."
