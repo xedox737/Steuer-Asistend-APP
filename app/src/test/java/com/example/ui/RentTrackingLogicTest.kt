@@ -77,6 +77,56 @@ class RentTrackingLogicTest {
         assertEquals(RentPaymentStatus.PARTIAL, january.status)
     }
 
+    @Test
+    fun `dated rent increase keeps historical monthly expectations`() {
+        val unit = WohneinheitStatus("OG", "OG", "Vermietet", "Mieter A", 760.0, 60.0, "2026-01-01", "u1")
+        val period = TenantPeriod(
+            id = 1L,
+            unitName = "OG",
+            tenantName = "Mieter A",
+            startDate = "2026-01-01",
+            endDate = "",
+            kaltmiete = 760.0,
+            nebenkosten = 220.0,
+            sonstige = 0.0,
+            rentChanges = listOf(RentAmountChange("2026-10-01", 850.0, 220.0, 0.0))
+        )
+        TenantHistoryStore.save(context, "p1", "u1", "OG", listOf(period))
+
+        assertEquals(980.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 1)).expected, 0.001)
+        assertEquals(980.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 9)).expected, 0.001)
+        assertEquals(1070.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 10)).expected, 0.001)
+        assertEquals(1070.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 11)).expected, 0.001)
+    }
+
+    @Test
+    fun `multiple dated rent changes are resolved by effective month without overwriting`() {
+        val unit = WohneinheitStatus("OG", "OG", "Vermietet", "Mieter A", 760.0, 60.0, "2026-01-01", "u1")
+        val period = TenantPeriod(
+            id = 2L,
+            unitName = "OG",
+            tenantName = "Mieter A",
+            startDate = "2026-01-01",
+            endDate = "",
+            kaltmiete = 760.0,
+            nebenkosten = 0.0,
+            sonstige = 0.0,
+            rentChanges = listOf(
+                RentAmountChange("2026-07-01", 800.0, 0.0, 0.0),
+                RentAmountChange("2026-10-01", 850.0, 0.0, 0.0)
+            )
+        )
+        TenantHistoryStore.save(context, "p1", "u1", "OG", listOf(period))
+
+        assertEquals(760.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 1)).expected, 0.001)
+        assertEquals(800.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 7)).expected, 0.001)
+        assertEquals(850.0, RentTrackingLogic.month(context, "p1", unit, emptyList(), YearMonth.of(2026, 10)).expected, 0.001)
+
+        val reloaded = TenantHistoryStore.load(context, "p1", "u1", "OG").single()
+        assertEquals(2, reloaded.rentChanges.size)
+        assertEquals(760.0, reloaded.kaltmiete, 0.001)
+    }
+
     private fun rent(id: Int, date: String, amount: Double) = Receipt(
         id = id,
         aussteller = "Mieter",
