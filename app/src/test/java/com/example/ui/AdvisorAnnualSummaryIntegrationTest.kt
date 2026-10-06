@@ -200,6 +200,63 @@ class AdvisorAnnualSummaryIntegrationTest {
         assertTrue(readiness.blockers.any { it.contains("Originalunterlagen") })
     }
 
+    @Test
+    fun rentCategoryIsNotMisclassifiedAsDeposit() {
+        val rent = rentReceipt()
+        assertTrue(AnnualTaxReceiptClassifier.isRentalIncome(rent))
+        assertFalse(AnnualTaxReceiptClassifier.isDeposit(rent))
+        assertTrue(AnnualTaxReceiptClassifier.isDeposit(rent.copy(unterkategorie = "Kaution", beschreibung = "Mietkaution")))
+    }
+
+    @Test
+    fun unapprovedReceiptsAreExcludedFromBindingAnnualValues() {
+        val approved = rentReceipt().copy(
+            internalId = "rent-approved",
+            freigabestatus = "FREIGEGEBEN",
+            pruefstatus = "GEPRUEFT",
+            exportStatus = "EXPORTBEREIT",
+            allocationsJson = AccountingApprovalJson.encodeAllocations(listOf(PersistedAllocation("r", "Miete", 100.0, 80_000))),
+            bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(listOf(PersistedBookingProposal("r", "8100", "1200", 80_000, "")))
+        )
+        val open = rentReceipt().copy(id = 11, internalId = "rent-open", bruttobetrag = 999.0, freigabestatus = "OFFEN", pruefstatus = "UNGEPRUEFT")
+
+        val result = buildAdvisorAnnualSummary(
+            context,
+            2026,
+            listOf(approved, open),
+            metadata(),
+            emptyList(),
+            emptyList()
+        )
+
+        assertEquals(800.0, result.totalIncome, 0.001)
+        assertTrue(result.openIssues.any { it.contains("Nicht in Jahreswerten berücksichtigt") })
+    }
+
+    @Test
+    fun portfolioSummaryKeepsPropertiesSeparated() {
+        val a = metadata().copy(id = 1, propertyId = "property-a", name = "Haus A")
+        val b = metadata().copy(id = 2, propertyId = "property-b", name = "Haus B")
+        val receiptA = approvedReceiptWithoutOriginal().copy(
+            id = 21, internalId = "a", propertyId = "property-a", bruttobetrag = 100.0
+        )
+        val receiptB = approvedReceiptWithoutOriginal().copy(
+            id = 22, internalId = "b", propertyId = "property-b", bruttobetrag = 200.0
+        )
+        val result = buildAdvisorPortfolioAnnualSummary(
+            context = context,
+            year = 2026,
+            receipts = listOf(receiptA, receiptB),
+            properties = listOf(a, b),
+            loans = emptyList(),
+            unitsByProperty = emptyMap()
+        )
+
+        assertEquals("Portfolio (2 Immobilien)", result.propertyTitle)
+        assertTrue(result.propertyOverview.any { it.startsWith("[Haus A]") })
+        assertTrue(result.propertyOverview.any { it.startsWith("[Haus B]") })
+    }
+
     private fun metadata() = PropertyMetadata(
         name = "Testobjekt",
         adresse = "Teststraße 1, 12345 Teststadt",
