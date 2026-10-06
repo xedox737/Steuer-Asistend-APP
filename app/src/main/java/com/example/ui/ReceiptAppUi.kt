@@ -1593,7 +1593,7 @@ fun AiSearchCard(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = resultFg
+                                        color = Color(0xFF166534)
                                     )
                                 }
                             }
@@ -3531,7 +3531,6 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
 
                                 if (receipt.syncStatus != "SYNCED") {
                                     Button(
-                                        enabled = advisorReady,
                                         onClick = { viewModel.syncReceiptManually(receipt) },
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                         modifier = Modifier.height(32.dp).testTag("retry_sync_button_${receipt.id}"),
@@ -3759,7 +3758,7 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
                             Text(
                                 "Diese DATEV-Aufteilung wurde ausdrücklich freigegeben.",
                                 modifier = Modifier.padding(12.dp),
-                                color = resultFg,
+                                color = Color(0xFF166534),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
@@ -10688,10 +10687,9 @@ fun DatevExportScreen(
     val yearFilter by viewModel.wizardYearFilter.collectAsStateWithLifecycle()
     val typeFilter by viewModel.wizardCategoryTypeFilter.collectAsStateWithLifecycle()
     val targetFormat by viewModel.wizardTargetFormat.collectAsStateWithLifecycle()
+    val datevProperties by viewModel.properties.collectAsStateWithLifecycle()
     val datevYearOptions = remember(receipts) { viewModel.wizardYearOptions(receipts) }
-    val datevUnitOptions = remember(receipts, viewModel.properties.collectAsStateWithLifecycle().value) {
-        viewModel.wizardUnitOptions()
-    }
+    val datevUnitOptions = remember(receipts, datevProperties) { viewModel.wizardUnitOptions() }
 
     var editableBeraterNr by remember(activeProfile) { mutableStateOf(activeProfile.beraterNummer) }
     var editableMandantenNr by remember(activeProfile) { mutableStateOf(activeProfile.mandantenNummer) }
@@ -11081,8 +11079,8 @@ fun DatevExportScreen(
                                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF166534))
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
-                                                    Text("Vorprüfung erfolgreich!", fontWeight = FontWeight.Bold, color = resultFg, fontSize = 14.sp)
-                                                    Text("Alle ${report.totalRecords} Buchungssätze sind DATEV-konform und freigegeben.", fontSize = 12.sp, color = resultFg)
+                                                    Text("Vorprüfung erfolgreich!", fontWeight = FontWeight.Bold, color = Color(0xFF166534), fontSize = 14.sp)
+                                                    Text("Alle ${report.totalRecords} Buchungssätze sind DATEV-konform und freigegeben.", fontSize = 12.sp, color = Color(0xFF166534))
                                                 }
                                             }
                                         }
@@ -11317,6 +11315,7 @@ fun DatevExportScreen(
                                     }
 
                                     Button(
+                                        enabled = advisorReady,
                                         onClick = {
                                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                                 context,
@@ -11356,7 +11355,7 @@ fun DatevExportScreen(
                                                     horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
                                                     Text(run.exportlaufId, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                                    Text(run.status, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = resultFg)
+                                                    Text(run.status, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
                                                 }
                                                 Text("${run.kanzleiprofilNameVersion} | ${run.bookingCount} Sätze | ${String.format(Locale.GERMANY, "%.2f", run.totalAmount)} EUR", fontSize = 11.sp)
                                                 Text("SHA-256: ${run.zipSha256.take(20)}...", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
