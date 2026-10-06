@@ -1,6 +1,8 @@
 package com.example.ui
 
 import com.example.api.ManagedDocumentAiResult
+import com.example.data.ManagedDocument
+import com.example.data.PropertyMetadata
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +15,21 @@ class DocumentReviewPresentationTest {
         assertTrue(DocumentReviewPresentation.isPendingFor("document-a", review))
         assertFalse(DocumentReviewPresentation.isPendingFor("document-b", review))
         assertFalse(DocumentReviewPresentation.isPendingFor("document-a", null))
+    }
+
+    @Test
+    fun documentPropertyWinsOverGloballySelectedProperty() {
+        val propertyA = PropertyMetadata(propertyId = "property-a", name = "A")
+        val propertyB = PropertyMetadata(propertyId = "property-b", name = "B")
+        val documentB = ManagedDocument(documentId = "document-b", propertyId = "property-b")
+
+        val resolved = DocumentReviewPresentation.propertyFor(
+            documentB,
+            listOf(propertyA, propertyB),
+            propertyA
+        )
+
+        assertTrue(resolved?.propertyId == "property-b")
     }
 
     @Test
