@@ -174,6 +174,14 @@ internal object DocumentReviewPresentation {
         review: Pair<String, com.example.api.ManagedDocumentAiResult>?,
         dismissedDocumentIds: Set<String>
     ): Boolean = isPendingFor(documentId, review) && documentId !in dismissedDocumentIds
+
+    fun propertyFor(
+        document: ManagedDocument,
+        properties: List<PropertyMetadata>,
+        current: PropertyMetadata?
+    ): PropertyMetadata? =
+        properties.firstOrNull { it.propertyId == document.propertyId }
+            ?: current?.takeIf { it.propertyId == document.propertyId }
 }
 
 @Composable
