@@ -829,9 +829,11 @@ private fun UnifiedUnitDetailScreen(
                 UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         UnifiedStatusMetric(
-                            if (isCurrentlyRented) "Letzte Zahlung" else "Letzte Mieterzahlung",
-                            lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
-                            lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
+                            if (isCurrentlyRented) "Ist bestätigt" else "Letzte Mieterzahlung",
+                            if (isCurrentlyRented) unifiedMoney(currentActual)
+                            else lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
+                            if (isCurrentlyRented) paymentMonthLabel
+                            else lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
                             EmeraldGreen,
                             Color(0xFFF0FAF5),
                             Modifier.weight(1f)
