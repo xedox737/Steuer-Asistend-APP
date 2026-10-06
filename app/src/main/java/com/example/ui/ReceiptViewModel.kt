@@ -3407,7 +3407,6 @@ data class AiSearchUiState(
                             _documentAiReview.value = result.document.documentId to analysis
                             _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
                         }
-                        _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
                         val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
                         _documentOperationStatus.value = if (driveSynced) {
                             "Dokument separat importiert, in Drive gesichert und zur Prüfung vorbereitet."
