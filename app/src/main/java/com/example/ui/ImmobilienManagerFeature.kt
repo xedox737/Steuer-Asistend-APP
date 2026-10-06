@@ -336,7 +336,7 @@ private fun PropertyDetailHost(
             PropertySection.DASHBOARD -> PropertyReferenceDetail(property, currentRentSummary, viewModel, onSection)
             PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
-            PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(viewModel, property, units, propertyReceipts)
+            PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
             PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true) } }
             PropertySection.RENOVATIONS -> PropertyRenovations(propertyReceipts)
