@@ -243,6 +243,42 @@ class RentTrackingLogicTest {
     }
 
     @Test
+    fun `review bank assignment is not counted as actual rent`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transaction = bankTransaction("tx-review", 890.0, BankReconciliationStatus.MATCHED)
+        val review = assignment("a-review", "tx-review", "p1", "u1", 890.0, BankSplitPaymentType.RENT)
+            .copy(status = com.example.data.BankRentAssignmentStatus.REVIEW)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            listOf(review), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(0.0, row.actual, 0.001)
+        assertEquals(890.0, row.missing, 0.001)
+    }
+
+    @Test
+    fun `assignment receipt reference prevents double count even without separate bank link`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val receipt = rent(41, "2026-10-03", 890.0).copy(unitId = "u1")
+        val transaction = bankTransaction("tx-assignment-receipt", 890.0, BankReconciliationStatus.MATCHED)
+        val assignment = assignment(
+            "a-assignment-receipt", "tx-assignment-receipt", "p1", "u1", 890.0, BankSplitPaymentType.RENT
+        ).copy(receiptId = receipt.id)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, listOf(receipt), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(890.0, row.actual, 0.001)
+        assertEquals(0.0, row.missing, 0.001)
+    }
+
+    @Test
     fun `confirmed overpayment is preserved while missing stays zero`() {
         val unit = rentalUnit()
         prepareExpected(unit, 690.0, 200.0)
