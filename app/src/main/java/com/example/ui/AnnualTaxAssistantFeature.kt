@@ -865,6 +865,75 @@ internal fun buildAdvisorAnnualSummary(
     )
 }
 
+
+internal fun buildAdvisorPortfolioAnnualSummary(
+    context: Context,
+    year: Int,
+    receipts: List<Receipt>,
+    properties: List<PropertyMetadata>,
+    loans: List<Loan>,
+    unitsByProperty: Map<String, List<WohneinheitStatus>>
+): com.example.util.AdvisorAnnualSummary {
+    val scopedProperties = properties.filter { property ->
+        receipts.any { it.propertyId == property.propertyId } ||
+            loans.any { it.propertyId == property.propertyId }
+    }.ifEmpty { properties.take(1) }
+
+    val summaries = scopedProperties.map { property ->
+        buildAdvisorAnnualSummary(
+            context = context,
+            year = year,
+            receipts = receipts.filter { it.propertyId == property.propertyId },
+            metadata = property,
+            loans = loans.filter { it.propertyId == property.propertyId },
+            units = unitsByProperty[property.propertyId].orEmpty()
+        )
+    }
+    if (summaries.size == 1) return summaries.single()
+
+    val digestInput = summaries.sortedBy { it.propertyTitle }
+        .joinToString("|") { it.dataFingerprint }
+    val portfolioFingerprint = java.security.MessageDigest.getInstance("SHA-256")
+        .digest(digestInput.toByteArray(Charsets.UTF_8))
+        .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+    val allApproved = summaries.isNotEmpty() && summaries.all { it.manualApprovalCurrent }
+
+    fun prefixed(summary: com.example.util.AdvisorAnnualSummary, lines: List<String>): List<String> =
+        lines.map { "[${summary.propertyTitle}] $it" }
+
+    return com.example.util.AdvisorAnnualSummary(
+        year = year,
+        propertyTitle = "Portfolio (${summaries.size} Immobilien)",
+        closingStatus = when {
+            summaries.any { it.closingStatus == "KRITISCH" } -> "KRITISCH"
+            summaries.any { it.closingStatus == "PRÜFEN" } -> "PRÜFEN"
+            else -> "OK"
+        },
+        manualApprovalCurrent = allApproved,
+        approvedAt = summaries.map { it.approvedAt }.filter(String::isNotBlank).minOrNull().orEmpty(),
+        dataFingerprint = portfolioFingerprint,
+        approvedFingerprint = if (allApproved) portfolioFingerprint else "",
+        criticalAnnualIssues = summaries.sumOf { it.criticalAnnualIssues },
+        criticalClosingChecks = summaries.sumOf { it.criticalClosingChecks },
+        missingRequiredOriginals = summaries.flatMap { it.missingRequiredOriginals }.distinct(),
+        totalIncome = summaries.sumOf { it.totalIncome },
+        totalExpenses = summaries.sumOf { it.totalExpenses },
+        result = summaries.sumOf { it.result },
+        propertyOverview = summaries.flatMap { prefixed(it, it.propertyOverview) },
+        financing = summaries.flatMap { prefixed(it, it.financing) },
+        rentOverview = summaries.flatMap { prefixed(it, it.rentOverview) },
+        renovationsAndAfa = summaries.flatMap { prefixed(it, it.renovationsAndAfa) },
+        incomeValues = summaries.flatMap { summary ->
+            summary.incomeValues.map { value -> value.copy(label = "[${summary.propertyTitle}] ${value.label}") }
+        },
+        expenseValues = summaries.flatMap { summary ->
+            summary.expenseValues.map { value -> value.copy(label = "[${summary.propertyTitle}] ${value.label}") }
+        },
+        openIssues = summaries.flatMap { prefixed(it, it.openIssues) },
+        attachedOriginalDocuments = summaries.flatMap { it.attachedOriginalDocuments }.distinct()
+    )
+}
+
 @Composable
 fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
