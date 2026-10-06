@@ -171,14 +171,16 @@ fun DocumentManagementScreen(
             hasPendingReview = selectedReview != null,
             onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
-        if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, selectedReview, dismissedAiReviews)) {
-            DocumentAiReviewDialog(
-                selectedDocument,
-                selectedReview.second,
-                selectedUnits,
-                selectedProperty,
-                viewModel
-            )
+        selectedReview?.let { review ->
+            if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, review, dismissedAiReviews)) {
+                DocumentAiReviewDialog(
+                    selectedDocument,
+                    review.second,
+                    selectedUnits,
+                    selectedProperty,
+                    viewModel
+                )
+            }
         }
         return
     }
