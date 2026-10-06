@@ -638,11 +638,8 @@ internal fun receiptDisplayDate(value: String): String = runCatching {
 }.getOrDefault(value)
 
 /** Accept both existing decimal-dot values and German amount input without silently saving zero. */
-internal fun parseReceiptEditAmount(value: String): Double? {
-    val compact = value.trim().replace(" ", "").replace("€", "")
-    val normalized = if (compact.contains(',')) compact.replace(".", "").replace(',', '.') else compact
-    return normalized.toDoubleOrNull()?.takeIf { it.isFinite() }
-}
+internal fun parseReceiptEditAmount(value: String): Double? =
+    ReceiptInputValidation.amount(value)
 
 /** Bounded first-page rendering, off the UI thread. Full document workflows remain available. */
 private fun receiptDetailBitmap(path: String): Bitmap? = runCatching {
