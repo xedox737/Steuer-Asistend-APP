@@ -140,6 +140,31 @@ internal object ImmobilienManagerProjection {
             actualRent = actual
         )
     }
+    
+    fun summary(
+        context: android.content.Context,
+        property: PropertyMetadata,
+        units: List<WohneinheitStatus>,
+        receipts: List<Receipt>,
+        bankAssignments: List<com.example.data.BankRentAssignment>,
+        bankLinks: List<com.example.data.BankReceiptLink>,
+        bankTransactions: List<com.example.data.BankTransaction>,
+        month: YearMonth = YearMonth.now()
+    ): PropertyManagerSummary {
+        val rows = units.map { unit ->
+            RentTrackingLogic.month(
+                context, property.propertyId, unit, receipts, month,
+                bankAssignments, bankLinks, bankTransactions
+            )
+        }
+        return PropertyManagerSummary(
+            unitCount = units.size,
+            rentedCount = units.count { it.status == "Vermietet" },
+            vacantCount = units.count { it.status != "Vermietet" },
+            expectedRent = rows.sumOf { it.expected },
+            actualRent = rows.sumOf { it.actual }
+        )
+    }
 }
 
 private enum class PropertySection { DASHBOARD, UNITS, RENT, RENT_MATRIX, RECEIPTS, FINANCE, RENOVATIONS, DOCUMENTS, TAX, TASKS, UTILITIES_PREP, DATA }
@@ -147,9 +172,13 @@ private enum class UnitDetailSection { OVERVIEW, TENANT, RENT, DOCUMENTS, COSTS 
 
 @Composable
 fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
+    val context = LocalContext.current
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val allReceipts by viewModel.receipts.collectAsStateWithLifecycle()
     val selected by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val visibleProperties = remember(properties) { properties.filterNot { it.status == "Archiviert" } }
     var openedPropertyId by remember { mutableStateOf<String?>(null) }
     var section by remember { mutableStateOf(PropertySection.DASHBOARD) }
@@ -193,7 +222,13 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
             items(properties, key = { it.propertyId }) { property ->
                 val units = viewModel.getWohneinheitenForProperty(property)
                 val propertyReceipts = ImmobilienManagerProjection.receipts(property, units, allReceipts)
-                PropertyOverviewCard(property, ImmobilienManagerProjection.summary(units, propertyReceipts)) {
+                PropertyOverviewCard(
+                    property,
+                    ImmobilienManagerProjection.summary(
+                        context, property, units, propertyReceipts,
+                        bankAssignments, bankLinks, bankTransactions
+                    )
+                ) {
                     viewModel.selectProperty(property.propertyId)
                     openedPropertyId = property.propertyId
                     section = PropertySection.DASHBOARD
@@ -204,7 +239,11 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
         LaunchedEffect(opened.propertyId) {
             if (selected?.propertyId != opened.propertyId) viewModel.selectProperty(opened.propertyId)
         }
-        PropertyDetailHost(viewModel, opened, section, { section = it }) { openedPropertyId = null }
+        PropertyDetailHost(
+            viewModel, opened, section,
+            bankAssignments, bankLinks, bankTransactions,
+            { section = it }
+        ) { openedPropertyId = null }
     }
 }
 
@@ -254,9 +293,13 @@ private fun PropertyDetailHost(
     viewModel: ReceiptViewModel,
     property: PropertyMetadata,
     section: PropertySection,
+    bankAssignments: List<com.example.data.BankRentAssignment>,
+    bankLinks: List<com.example.data.BankReceiptLink>,
+    bankTransactions: List<com.example.data.BankTransaction>,
     onSection: (PropertySection) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val documents by viewModel.managedDocuments.collectAsStateWithLifecycle()
     val loans by viewModel.loans.collectAsStateWithLifecycle()
@@ -264,6 +307,15 @@ private fun PropertyDetailHost(
     val propertyReceipts = ImmobilienManagerProjection.receipts(property, units, receipts)
     val propertyDocuments = ImmobilienManagerProjection.documents(property, documents)
     val propertyLoans = ImmobilienManagerProjection.loans(property, loans)
+    val currentRentSummary = remember(
+        property.propertyId, units, propertyReceipts,
+        bankAssignments, bankLinks, bankTransactions
+    ) {
+        ImmobilienManagerProjection.summary(
+            context, property, units, propertyReceipts,
+            bankAssignments, bankLinks, bankTransactions
+        )
+    }
     var deleteRequested by remember(property.propertyId) { mutableStateOf(false) }
     BackHandler { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }
     Column(Modifier.fillMaxSize()) {
@@ -281,7 +333,7 @@ private fun PropertyDetailHost(
             }
         }
         when (section) {
-            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, ImmobilienManagerProjection.summary(units, propertyReceipts), viewModel, onSection)
+            PropertySection.DASHBOARD -> PropertyReferenceDetail(property, currentRentSummary, viewModel, onSection)
             PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(viewModel, property, units, propertyReceipts)
