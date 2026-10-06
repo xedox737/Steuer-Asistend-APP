@@ -78,10 +78,8 @@ internal object RentOverviewPresentation {
 internal data class ValidRentPlan(val kalt: Double, val nk: Double, val other: Double, val start: String)
 internal object RentPlanInput {
     fun amount(value: String): Double? {
-        val text = value.trim().replace("\u00a0", "").replace(" ", "")
-        if (text.isEmpty()) return 0.0
-        val normalized = if (',' in text) text.replace(".", "").replace(',', '.') else text
-        return normalized.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 && it.toFloat().isFinite() }
+        if (value.isBlank()) return 0.0
+        return GermanNumberInput.parseNonNegative(value)?.takeIf { it.toFloat().isFinite() }
     }
     fun error(kalt: String, nk: String, other: String, start: String, previousEnd: LocalDate? = null): String? = when {
         listOf(kalt, nk, other).any { amount(it) == null } -> "Bitte gültige Beträge ab 0 € eingeben (Komma oder Punkt)."
