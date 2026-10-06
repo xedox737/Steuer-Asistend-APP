@@ -3479,7 +3479,10 @@ data class AiSearchUiState(
                     return@launch
                 }
                 val property = repository.getPropertyByPropertyId(document.propertyId)
-                    ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+                if (property == null) {
+                    _documentOperationStatus.value = "Die zugehörige Immobilie ist nicht mehr verfügbar. Die Analyse wurde nicht gestartet."
+                    return@launch
+                }
                 val units = getWohneinheitenForProperty(property)
                 val result = managedDocumentService.analyze(documentId, property, units)
                 if (repository.getManagedDocument(documentId) == null) {
@@ -3642,16 +3645,25 @@ data class AiSearchUiState(
                 return@launch
             }
             val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
-                ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+            if (documentProperty == null) {
+                _documentOperationStatus.value = "Die zugehörige Immobilie ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+                return@launch
+            }
             val validUnitIds = getWohneinheitenForProperty(documentProperty)
                 .map { PropertyUnitScopedData.stableUnitId(document.propertyId, it) }
                 .toSet()
-            val confirmedUnitId = unitId?.takeIf { it in validUnitIds }
+            if (!unitId.isNullOrBlank() && unitId !in validUnitIds) {
+                _documentOperationStatus.value = "Die zugehörige Wohneinheit ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+                return@launch
+            }
+            val confirmedUnitId = unitId?.takeIf(String::isNotBlank)
             val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
             val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
             val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
             applyConfirmedDocumentValues(updated, accepted)
-            _documentAiReview.value = null
+            if (_documentAiReview.value?.first == documentId) {
+                _documentAiReview.value = null
+            }
             _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
             val email = _googleAccountEmail.value
             if (!email.isNullOrBlank() && _isDriveConnected.value) {
