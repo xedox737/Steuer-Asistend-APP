@@ -63,19 +63,19 @@ class TenantHistoryReliabilityTest {
         assertEquals(
             null,
             RentPlanInput.error(
-                "850,00", "220,00", "0,00", "2026-10-01", RentPlanEditMode.CHANGE_FROM_DATE
+                "850,00", "220,00", "0,00", "2026-10-01", mode = RentPlanEditMode.CHANGE_FROM_DATE
             )
         )
         assertEquals(
             "Mietänderungen sind derzeit nur zum Monatsersten möglich.",
             RentPlanInput.error(
-                "850,00", "220,00", "0,00", "2026-10-15", RentPlanEditMode.CHANGE_FROM_DATE
+                "850,00", "220,00", "0,00", "2026-10-15", mode = RentPlanEditMode.CHANGE_FROM_DATE
             )
         )
         assertEquals(
             "Bitte ein gültiges Datum für die Mietänderung im Format JJJJ-MM-TT eingeben.",
             RentPlanInput.error(
-                "850,00", "220,00", "0,00", "2026-02-30", RentPlanEditMode.CHANGE_FROM_DATE
+                "850,00", "220,00", "0,00", "2026-02-30", mode = RentPlanEditMode.CHANGE_FROM_DATE
             )
         )
     }
