@@ -3272,6 +3272,9 @@ data class AiSearchUiState(
 
     fun openDatevExport() {
         datevReturnScreen = _currentScreen.value
+        _wizardYearFilter.value = wizardYearOptions().firstOrNull()
+            ?: java.time.LocalDate.now().year.toString()
+        _wizardUnitFilter.value = "ALLE"
         setWizardStep(1)
         setScreen(AppScreen.DATEV_EXPORT)
     }
