@@ -93,7 +93,7 @@ internal object RentPlanInput {
         nk: String,
         other: String,
         date: String,
-        mode: RentPlanEditMode,
+        mode: RentPlanEditMode = RentPlanEditMode.CORRECT_EXISTING,
         previousEnd: LocalDate? = null
     ): String? = when {
         listOf(kalt, nk, other).any { amount(it) == null } ->
