@@ -146,7 +146,7 @@ class DatevStableIdentityTest {
     @Test
     fun missingObjectIdentityBlocksObjectCostCenterValidation() {
         val profile = DatevProfile.createDefaultSkr03()
-        val open = receipt(10, "no-property")
+        val open = receipt(10, "no-property").copy(propertyId = "", unitId = "")
         val confirmed = requireNotNull(
             DatevMappingService.confirmDatevPreview(
                 open,
