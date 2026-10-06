@@ -128,6 +128,37 @@ class DatevStableIdentityTest {
         assertNotEquals(a.kost2, b.kost2)
     }
 
+    @Test
+    fun alreadyExportedReceiptRemainsApprovedForAnnualAccounting() {
+        val profile = DatevProfile.createDefaultSkr03()
+        val open = receipt(9, "already-exported").copy(propertyId = "property-a")
+        val confirmed = requireNotNull(
+            DatevMappingService.confirmDatevPreview(
+                open,
+                DatevMappingService.buildDatevBookingRows(open, profile)
+            )
+        ).copy(exportStatus = "EXPORTIERT")
+
+        assertEquals(true, DatevReceiptEligibility.isAccountingApproved(confirmed))
+        assertEquals(true, DatevReceiptEligibility.issues(confirmed).any { it.code == "ALREADY_EXPORTED" })
+    }
+
+    @Test
+    fun missingObjectIdentityBlocksObjectCostCenterValidation() {
+        val profile = DatevProfile.createDefaultSkr03()
+        val open = receipt(10, "no-property")
+        val confirmed = requireNotNull(
+            DatevMappingService.confirmDatevPreview(
+                open,
+                DatevMappingService.buildDatevBookingRows(open, profile)
+            )
+        )
+        val rows = DatevMappingService.mapReceiptToBookingRecords(confirmed, profile)
+        val report = BookingValidationService.validateRecords(rows, profile)
+
+        assertEquals(true, report.errors.any { it.field == "objektId" || it.field == "kost1" })
+    }
+
     private fun receipt(id: Int, internalId: String) = Receipt(
         id = id,
         aussteller = "Testlieferant",
