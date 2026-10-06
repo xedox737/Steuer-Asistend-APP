@@ -107,7 +107,7 @@ internal object PersistentPreferenceInventory {
                 val value = values.optJSONObject(key) ?: return@entryLoop
 
                 if (mode == RestoreMode.MERGE && prefs.contains(key)) {
-                    val merged = mergeStructuredStringValue(store.name, prefs.getString(key, null), value)
+                    val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
                     if (merged != null) editor.putString(key, merged)
                     return@entryLoop
                 }
@@ -136,11 +136,13 @@ internal object PersistentPreferenceInventory {
     ): String? {
         if (backupEntry.optString("type") != "string" || localRaw == null) return null
         val backupRaw = backupEntry.optString("value", "")
-        return when (storeName) {
-            "tenant_history_prefs" -> mergeTenantHistory(localRaw, backupRaw)
-            "property_tasks_prefs" -> mergeTasks(localRaw, backupRaw)
-            else -> null
-        }
+        return runCatching {
+            when (storeName) {
+                "tenant_history_prefs" -> mergeTenantHistory(localRaw, backupRaw)
+                "property_tasks_prefs" -> mergeTasks(localRaw, backupRaw)
+                else -> null
+            }
+        }.getOrNull()
     }
 
     private fun mergeTenantHistory(localRaw: String, backupRaw: String): String {
