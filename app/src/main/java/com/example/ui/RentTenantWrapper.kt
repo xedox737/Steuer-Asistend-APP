@@ -46,6 +46,9 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
     val metadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     var showMonthlyCheck by remember { mutableStateOf(false) }
     var selectedUnit by remember { mutableStateOf<Pair<String, WohneinheitStatus>?>(null) }
     var originalProperty by remember { mutableStateOf<String?>(null) }
@@ -77,7 +80,11 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
             selectedUnit = propertyId to unit
             viewModel.selectProperty(propertyId)
         })
-    if (showMonthlyCheck) MonthlyRentCheckDialog(groups, scopedReceipts, historyVersion, onDismiss = { showMonthlyCheck = false })
+    if (showMonthlyCheck) MonthlyRentCheckDialog(
+        groups, scopedReceipts, historyVersion,
+        bankAssignments, bankLinks, bankTransactions,
+        onDismiss = { showMonthlyCheck = false }
+    )
     selectedUnit?.let { (propertyId, unit) ->
         TenantHistoryDialog(unit, PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk"),
             PropertyUnitScopedData.rentValue(context, propertyId, unit, "other"),
@@ -97,14 +104,23 @@ private fun MonthlyRentCheckDialog(
     groups: List<RentPropertyUnits>,
     receipts: List<Receipt>,
     historyVersion: Int,
+    bankAssignments: List<com.example.data.BankRentAssignment>,
+    bankLinks: List<com.example.data.BankReceiptLink>,
+    bankTransactions: List<com.example.data.BankTransaction>,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     var month by remember { mutableStateOf(YearMonth.now()) }
 
-    val rows = remember(groups, receipts, month, historyVersion) {
+    val rows = remember(
+        groups, receipts, month, historyVersion,
+        bankAssignments, bankLinks, bankTransactions
+    ) {
         groups.flatMap { group -> group.units.map { unit ->
-            group.property to RentTrackingLogic.month(context, group.property.propertyId, unit, receipts, month)
+            group.property to RentTrackingLogic.month(
+                context, group.property.propertyId, unit, receipts, month,
+                bankAssignments, bankLinks, bankTransactions
+            )
         } }
     }
 
@@ -142,7 +158,7 @@ private fun MonthlyRentCheckDialog(
                         Column(modifier = Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text("Monatsübersicht", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
                             MonthlySummaryRow("Soll", totalExpected)
-                            MonthlySummaryRow("Ist laut Belegen", totalActual)
+                            MonthlySummaryRow("Ist bestätigt", totalActual)
                             MonthlySummaryRow("Offener Rückstand", totalMissing)
                             if (missingCount > 0) {
                                 Text("⚠ $missingCount Wohneinheit${if (missingCount == 1) "" else "en"} mit fehlender/zu geringer Zahlung", fontSize = 10.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
@@ -203,7 +219,7 @@ private fun MonthlyRentCheckDialog(
                 }
                 item {
                     Text(
-                        "Ist = tatsächlich erfasste Miet-/Nebenkosteneinnahmen der Wohneinheit. Kautionen werden nicht als Mietzahlung gewertet.",
+                        "Ist = bestätigte Miet-/Nebenkosteneinnahmen aus Belegen und Bankzuordnungen. Verknüpfte Zahlungen werden nur einmal gezählt; Kautionen zählen nicht als Mietzahlung.",
                         fontSize = 9.sp,
                         color = SlateGray
                     )
