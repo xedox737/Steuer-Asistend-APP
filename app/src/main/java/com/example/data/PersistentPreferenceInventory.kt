@@ -106,7 +106,10 @@ internal object PersistentPreferenceInventory {
                 if (!permits(store, key)) return@entryLoop
                 val value = values.optJSONObject(key) ?: return@entryLoop
 
-                if (mode == RestoreMode.MERGE && prefs.contains(key)) {
+                if (mode == RestoreMode.MERGE &&
+                    prefs.contains(key) &&
+                    store.name in setOf("tenant_history_prefs", "property_tasks_prefs")
+                ) {
                     val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
                     if (merged != null) editor.putString(key, merged)
                     return@entryLoop
