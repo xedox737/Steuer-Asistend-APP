@@ -122,6 +122,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private var pendingDocumentDuplicateUri: android.net.Uri? = null
     private val _documentAiReview = MutableStateFlow<Pair<String, com.example.api.ManagedDocumentAiResult>?>(null)
     val documentAiReview = _documentAiReview.asStateFlow()
+    private val _dismissedDocumentAiReviewIds = MutableStateFlow<Set<String>>(emptySet())
+    val dismissedDocumentAiReviewIds = _dismissedDocumentAiReviewIds.asStateFlow()
     private val _documentMigrationPreview = MutableStateFlow<com.example.data.DocumentMigrationPreview?>(null)
     val documentMigrationPreview = _documentMigrationPreview.asStateFlow()
 
@@ -3360,6 +3362,7 @@ data class AiSearchUiState(
                     val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
                     if (analysis != null) {
                         _documentAiReview.value = result.document.documentId to analysis
+                        _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
                         _documentOperationStatus.value = if (driveSynced) {
                             "Dokument in Drive gesichert. Erkannte Daten müssen vor der Übernahme geprüft werden."
                         } else {
@@ -3400,7 +3403,11 @@ data class AiSearchUiState(
                     if (result is com.example.data.ManagedDocumentImportResult.Imported) {
                         managedDocumentService.runOcr(result.document.documentId)
                         val analysis = managedDocumentService.analyze(result.document.documentId, propertyMetadata.value ?: com.example.data.PropertyMetadata(), _wohneinheitenStatus.value)
-                        if (analysis != null) _documentAiReview.value = result.document.documentId to analysis
+                        if (analysis != null) {
+                            _documentAiReview.value = result.document.documentId to analysis
+                            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
+                        }
+                        _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
                         val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
                         _documentOperationStatus.value = if (driveSynced) {
                             "Dokument separat importiert, in Drive gesichert und zur Prüfung vorbereitet."
@@ -3467,6 +3474,7 @@ data class AiSearchUiState(
             val result = managedDocumentService.analyze(documentId, property, units)
             if (result != null) {
                 _documentAiReview.value = documentId to result
+                _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
                 _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
             } else _documentOperationStatus.value = "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen."
         }
@@ -3546,7 +3554,17 @@ data class AiSearchUiState(
         }
     }
 
-    fun dismissDocumentAiReview() { _documentAiReview.value = null }
+    fun dismissDocumentAiReview() {
+        _documentAiReview.value?.first?.let { documentId ->
+            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value + documentId
+        }
+    }
+
+    fun showDocumentAiReview(documentId: String) {
+        if (_documentAiReview.value?.first == documentId) {
+            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
+        }
+    }
 
     fun previewDocumentStorageMigration() {
         val email = _googleAccountEmail.value
@@ -3599,13 +3617,16 @@ data class AiSearchUiState(
             val document = repository.getManagedDocument(documentId) ?: return@launch
             val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
                 ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
-            val validUnitIds = getWohneinheitenForProperty(documentProperty).map { it.unitId }.toSet()
+            val validUnitIds = getWohneinheitenForProperty(documentProperty)
+                .map { PropertyUnitScopedData.stableUnitId(document.propertyId, it) }
+                .toSet()
             val confirmedUnitId = unitId?.takeIf { it in validUnitIds }
             val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
             val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
             val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
             applyConfirmedDocumentValues(updated, accepted)
             _documentAiReview.value = null
+            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
             val email = _googleAccountEmail.value
             if (!email.isNullOrBlank() && _isDriveConnected.value) {
                 val synced = try {
@@ -3673,7 +3694,9 @@ data class AiSearchUiState(
             repository.upsertManagedDocument(document.copy(loanId = if (loan.id != 0) loan.id else loanId))
         }
 
-        val unit = getWohneinheitenForProperty(property).firstOrNull { it.unitId == document.unitId }
+        val unit = getWohneinheitenForProperty(property).firstOrNull {
+            PropertyUnitScopedData.stableUnitId(document.propertyId, it) == document.unitId
+        }
         if (unit != null && document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name) {
             updateWohneinheit(unit.copy(
                 mieter = values["mieter"] ?: unit.mieter,
