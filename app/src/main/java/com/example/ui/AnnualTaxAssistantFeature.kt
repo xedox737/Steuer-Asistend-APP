@@ -281,7 +281,10 @@ private fun buildAnnualRentRows(
         val periods = if (stored.isNotEmpty()) stored else listOfNotNull(fallbackTenantPeriod(unit, nk, other))
         val expected = TenantHistoryStore.expectedForYear(periods, year)
         val unitReceipts = all.filter {
-            it.yearOrNull() == year && it.wohneinheit == unit.name && isRentalIncome(it)
+            it.yearOrNull() == year &&
+                it.wohneinheit == unit.name &&
+                isRentalIncome(it) &&
+                com.example.util.DatevReceiptEligibility.isAccountingApproved(it)
         }
         val actual = unitReceipts.sumOf { it.bruttobetrag }
         val missingMonths = (1..12).filter { monthNo ->
@@ -301,8 +304,11 @@ private fun buildAnnualTaxSummary(
     metadata: PropertyMetadata,
     loans: List<Loan>
 ): AnnualTaxSummary {
-    val receipts = all.filter { it.yearOrNull() == year }
-    val phase1 = TaxPropertyCalculator.calculate(metadata, all)
+    val yearReceipts = all.filter { it.yearOrNull() == year }
+    val approvedAll = all.filter(com.example.util.DatevReceiptEligibility::isAccountingApproved)
+    val receipts = approvedAll.filter { it.yearOrNull() == year }
+    val excludedFromAnnualValues = yearReceipts.filterNot(com.example.util.DatevReceiptEligibility::isAccountingApproved)
+    val phase1 = TaxPropertyCalculator.calculate(metadata, approvedAll)
     val rentalReceipts = receipts.filter(::isRentalIncome)
     val regularRental = rentalReceipts.filter { it.hauptkategorie == "Miete, Nebenkosten & Kaution" }
     val otherRental = rentalReceipts.filter { it.hauptkategorie == "Sonstige Einnahmen" }
@@ -317,7 +323,7 @@ private fun buildAnnualTaxSummary(
         r.bruttobetrag * loan.vermietungsanteilProzent.coerceIn(0.0, 100.0) / 100.0
     }
 
-    val afa = afaForYear(metadata, all, year)
+    val afa = afaForYear(metadata, approvedAll, year)
     val renovationReceipts = receipts.filter {
         it.hauptkategorie == "Renovierungs- / Reparaturkosten & Investitionen"
     }
@@ -418,7 +424,7 @@ private fun buildAnnualTaxSummary(
         )
     }
 
-    val open = receipts.filter { it.freigabestatus != "FREIGEGEBEN" }
+    val open = yearReceipts.filter { it.freigabestatus != "FREIGEGEBEN" }
     if (open.isNotEmpty()) {
         issues += TaxIssue(
             "Nicht freigegebene Belege",
@@ -428,7 +434,7 @@ private fun buildAnnualTaxSummary(
         )
     }
 
-    val review = receipts.filter {
+    val review = yearReceipts.filter {
         it.exportStatus == "ZU_PRUEFEN" || it.pruefstatus == "UNGEPRUEFT" || it.syncStatus == "REVIEW_REQUIRED"
     }
     if (review.isNotEmpty()) {
@@ -437,6 +443,15 @@ private fun buildAnnualTaxSummary(
             "${review.size} Beleg(e) benötigen noch Prüfung.",
             TaxIssueSeverity.YELLOW,
             review
+        )
+    }
+
+    if (excludedFromAnnualValues.isNotEmpty()) {
+        issues += TaxIssue(
+            "Nicht in Jahreswerten berücksichtigt",
+            "${excludedFromAnnualValues.size} Beleg(e) sind nicht vollständig DATEV-freigegeben und wurden aus den verbindlichen Jahreswerten ausgeschlossen.",
+            TaxIssueSeverity.YELLOW,
+            excludedFromAnnualValues
         )
     }
 
@@ -473,7 +488,7 @@ private fun buildAnnualTaxSummary(
         )
     }
 
-    val duplicates = receipts.filter { it.internalId.isNotBlank() }
+    val duplicates = yearReceipts.filter { it.internalId.isNotBlank() }
         .groupBy { it.internalId }
         .filterValues { it.size > 1 }
         .values
