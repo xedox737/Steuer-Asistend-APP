@@ -498,7 +498,7 @@ private fun UnifiedUnitDetailScreen(
 
     val selectedDocument = selectedDocumentId?.let { id -> unitDocs.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
-        val selectedReview = aiReview?.takeIf { it.first == selectedDocument.documentId }
+        val selectedReview = aiReview?.takeIf { DocumentReviewPresentation.isPendingFor(selectedDocument.documentId, it) }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = property,
@@ -513,7 +513,7 @@ private fun UnifiedUnitDetailScreen(
             hasPendingReview = selectedReview != null,
             onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
-        if (selectedReview != null && selectedDocument.documentId !in dismissedAiReviews) {
+        if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, selectedReview, dismissedAiReviews)) {
             DocumentAiReviewDialog(
                 selectedDocument,
                 selectedReview.second,
