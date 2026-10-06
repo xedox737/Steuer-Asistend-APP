@@ -199,14 +199,18 @@ internal object RentTrackingLogic {
                         }?.id
                     }
                     .toMutableSet()
-                assignments.mapNotNullTo(linkedReceiptIds) {
+                val directlyLinkedAssignmentReceiptIds = assignments.mapNotNull {
                     it.receiptId?.takeIf(countedReceiptIds::contains)
-                }
+                }.toSet()
+                linkedReceiptIds += directlyLinkedAssignmentReceiptIds
                 val linkedReceiptAmount = countedReceipts.asSequence()
                     .filter { it.id in linkedReceiptIds }
                     .sumOf { it.bruttobetrag }
                     .coerceAtMost(transaction.absoluteAmount)
-                val assignmentAmount = assignments.sumOf { it.allocatedAmount }.coerceAtLeast(0.0)
+                val assignmentAmount = assignments.asSequence()
+                    .filterNot { it.receiptId != null && it.receiptId in directlyLinkedAssignmentReceiptIds }
+                    .sumOf { it.allocatedAmount }
+                    .coerceAtLeast(0.0)
                 minOf(assignmentAmount, (transaction.absoluteAmount - linkedReceiptAmount).coerceAtLeast(0.0))
             }
         val actual = receiptActual + bankActual
