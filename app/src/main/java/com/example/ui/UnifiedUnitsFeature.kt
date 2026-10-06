@@ -518,14 +518,16 @@ private fun UnifiedUnitDetailScreen(
             hasPendingReview = selectedReview != null,
             onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
-        if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, selectedReview, dismissedAiReviews)) {
-            DocumentAiReviewDialog(
-                selectedDocument,
-                selectedReview.second,
-                listOf(unit),
-                property,
-                viewModel
-            )
+        selectedReview?.let { review ->
+            if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, review, dismissedAiReviews)) {
+                DocumentAiReviewDialog(
+                    selectedDocument,
+                    review.second,
+                    listOf(unit),
+                    property,
+                    viewModel
+                )
+            }
         }
         return
     }
