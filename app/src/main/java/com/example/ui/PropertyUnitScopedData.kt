@@ -5,7 +5,6 @@ import com.example.data.Receipt
 import com.example.data.StableDocumentIdentity
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.temporal.ChronoUnit
 
 /**
  * Backward-compatible property/unit namespace used by Immobilien-Manager Phase 2.
@@ -99,17 +98,8 @@ internal object RentTrackingLogic {
     private fun receiptMonth(receipt: Receipt): YearMonth? =
         runCatching { YearMonth.from(LocalDate.parse(receipt.datum)) }.getOrNull()
 
-    private fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {
-        val monthStart = month.atDay(1)
-        val monthEnd = month.atEndOfMonth()
-        val start = runCatching { LocalDate.parse(period.startDate) }.getOrNull() ?: monthStart
-        val end = runCatching { LocalDate.parse(period.endDate) }.getOrNull() ?: monthEnd
-        val from = if (start.isAfter(monthStart)) start else monthStart
-        val to = if (end.isBefore(monthEnd)) end else monthEnd
-        if (to.isBefore(from)) return 0.0
-        val days = ChronoUnit.DAYS.between(from, to).toDouble() + 1.0
-        return period.monatSoll * days / month.lengthOfMonth().toDouble()
-    }
+    private fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double =
+        TenantHistoryStore.expectedInMonth(period, month)
 
     private fun fallbackPeriod(context: Context, propertyId: String, unit: WohneinheitStatus): TenantPeriod? {
         val nk = PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk")
