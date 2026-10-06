@@ -92,6 +92,9 @@ internal fun UnifiedPropertyUnitsScreen(
             unit = selected,
             receipts = receipts,
             documents = documents,
+            bankAssignments = bankAssignments,
+            bankLinks = bankLinks,
+            bankTransactions = bankTransactions,
             onBack = { selectedUnitId = null }
         )
         return
@@ -448,13 +451,13 @@ private fun UnifiedUnitDetailScreen(
     unit: WohneinheitStatus,
     receipts: List<Receipt>,
     documents: List<ManagedDocument>,
+    bankAssignments: List<com.example.data.BankRentAssignment>,
+    bankLinks: List<com.example.data.BankReceiptLink>,
+    bankTransactions: List<com.example.data.BankTransaction>,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
-    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
-    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
-    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
     val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
     var showHistory by remember { mutableStateOf(false) }
