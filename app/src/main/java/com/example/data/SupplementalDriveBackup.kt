@@ -477,7 +477,7 @@ object SupplementalDriveBackup {
     private fun findManagedFileByHash(context: Context, expectedHash: String): String? {
         if (expectedHash.isBlank()) return null
         val folder = File(context.filesDir, "managed_documents")
-        val files = folder.listFiles()?.filter(File::isFile).orEmpty()
+        val files = folder.listFiles()?.filter { it.isFile }.orEmpty()
         return files.firstOrNull { file ->
             runCatching {
                 val digest = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
