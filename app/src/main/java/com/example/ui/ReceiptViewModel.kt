@@ -701,86 +701,141 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         return sb.toString().trim()
     }
 
-    fun getWohneinheitenFromPrefs(metaUnitsStr: String? = null, propertyId: String = propertyMetadata.value?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID): List<WohneinheitStatus> {
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val rawUnitsStr = metaUnitsStr ?: propertyMetadata.value?.wohneinheiten.orEmpty()
-        val unitNames = rawUnitsStr.split(",").map(String::trim).filter(String::isNotBlank)
-        if (unitNames.isEmpty()) return emptyList()
+    private fun scopedUnitPrefix(propertyId: String, unitId: String): String =
+        "property_${propertyId}_unitid_${unitId}_"
 
-        return unitNames.mapIndexed { index, name ->
-            val stableUnitId = unitPrefs.getString("unit_id_$name", null)
-                ?: unitPrefs.getString("unit_id_index_$index", null)
-                ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name).also {
-                    unitPrefs.edit().putString("unit_id_$name", it).putString("unit_id_index_$index", it).apply()
-                }
+    private fun scopedUnitNamePrefix(propertyId: String, unitName: String): String =
+        "property_${propertyId}_unit_${unitName}_"
 
-            val exists = unitPrefs.contains("unit_status_$name") ||
-                unitPrefs.contains("unit_label_$name") ||
-                unitPrefs.contains("unit_mieter_$name") ||
-                unitPrefs.contains("unit_rent_$name") ||
-                unitPrefs.contains("unit_area_$name") ||
-                unitPrefs.contains("unit_start_$name")
-
-            if (exists) {
-                WohneinheitStatus(
-                    name = name,
-                    label = unitPrefs.getString("unit_label_$name", name) ?: name,
-                    status = unitPrefs.getString("unit_status_$name", "Leerstand") ?: "Leerstand",
-                    mieter = unitPrefs.getString("unit_mieter_$name", "") ?: "",
-                    kaltmiete = unitPrefs.getFloat("unit_rent_$name", 0f).toDouble(),
-                    wohnflaeche = unitPrefs.getFloat("unit_area_$name", 0f).toDouble(),
-                    mietvertragsstart = unitPrefs.getString("unit_start_$name", "") ?: "",
-                    unitId = stableUnitId
-                )
-            } else {
-                WohneinheitStatus(
-                    name = name,
-                    label = name,
-                    status = "Leerstand",
-                    mieter = "",
-                    kaltmiete = 0.0,
-                    wohnflaeche = 0.0,
-                    mietvertragsstart = "",
-                    unitId = stableUnitId
-                )
-            }
-        }
+    private fun resolveUnitId(
+        unitPrefs: android.content.SharedPreferences,
+        propertyId: String,
+        index: Int,
+        name: String
+    ): String {
+        val scopedNamePrefix = scopedUnitNamePrefix(propertyId, name)
+        val scopedIndexKey = "property_${propertyId}_unit_id_index_$index"
+        val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val storedId = unitPrefs.getString(scopedNamePrefix + "id", null)
+            ?: unitPrefs.getString(scopedIndexKey, null)
+            ?: if (legacyAllowed) unitPrefs.getString("unit_id_$name", null) else null
+            ?: if (legacyAllowed) unitPrefs.getString("unit_id_index_$index", null) else null
+        val stableId = storedId ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name)
+        unitPrefs.edit()
+            .putString(scopedNamePrefix + "id", stableId)
+            .putString(scopedIndexKey, stableId)
+            .apply()
+        return stableId
     }
 
-    fun getWohneinheitenForProperty(metadata: PropertyMetadata): List<WohneinheitStatus> {
-        if (metadata.id == 1) return getWohneinheitenFromPrefs(metadata.wohneinheiten, metadata.propertyId)
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        return metadata.wohneinheiten.split(',').map(String::trim).filter(String::isNotBlank).mapIndexed { index, name ->
-            val prefix = "property_${metadata.propertyId}_unit_${name}_"
-            val stableId = unitPrefs.getString(prefix + "id", null)
-                ?: com.example.data.StableDocumentIdentity.legacyUnitId(metadata.propertyId, name).also {
-                    unitPrefs.edit().putString(prefix + "id", it).putString("property_${metadata.propertyId}_unit_id_index_$index", it).apply()
-                }
-            WohneinheitStatus(
-                name = name,
-                label = unitPrefs.getString(prefix + "label", name) ?: name,
-                status = unitPrefs.getString(prefix + "status", "Leerstand") ?: "Leerstand",
-                mieter = unitPrefs.getString(prefix + "mieter", "") ?: "",
-                kaltmiete = unitPrefs.getFloat(prefix + "rent", 0f).toDouble(),
-                wohnflaeche = unitPrefs.getFloat(prefix + "area", 0f).toDouble(),
-                mietvertragsstart = unitPrefs.getString(prefix + "start", "") ?: "",
-                unitId = stableId
-            )
+    private fun loadUnit(
+        unitPrefs: android.content.SharedPreferences,
+        propertyId: String,
+        index: Int,
+        name: String
+    ): WohneinheitStatus {
+        val unitId = resolveUnitId(unitPrefs, propertyId, index, name)
+        val idPrefix = scopedUnitPrefix(propertyId, unitId)
+        val namePrefix = scopedUnitNamePrefix(propertyId, name)
+        val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+
+        fun string(field: String, legacyKey: String, default: String): String {
+            if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getString(idPrefix + field, default) ?: default
+            if (unitPrefs.contains(namePrefix + field)) {
+                val value = unitPrefs.getString(namePrefix + field, default) ?: default
+                unitPrefs.edit().putString(idPrefix + field, value).apply()
+                return value
+            }
+            if (legacyAllowed && unitPrefs.contains(legacyKey)) {
+                val value = unitPrefs.getString(legacyKey, default) ?: default
+                unitPrefs.edit().putString(idPrefix + field, value).apply()
+                return value
+            }
+            return default
         }
+
+        fun number(field: String, legacyKey: String): Double {
+            if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
+            if (unitPrefs.contains(namePrefix + field)) {
+                val value = unitPrefs.getFloat(namePrefix + field, 0f)
+                unitPrefs.edit().putFloat(idPrefix + field, value).apply()
+                return value.toDouble()
+            }
+            if (legacyAllowed && unitPrefs.contains(legacyKey)) {
+                val value = unitPrefs.getFloat(legacyKey, 0f)
+                unitPrefs.edit().putFloat(idPrefix + field, value).apply()
+                return value.toDouble()
+            }
+            return 0.0
+        }
+
+        return WohneinheitStatus(
+            name = name,
+            label = string("label", "unit_label_$name", name),
+            status = string("status", "unit_status_$name", "Leerstand"),
+            mieter = string("mieter", "unit_mieter_$name", ""),
+            kaltmiete = number("rent", "unit_rent_$name"),
+            wohnflaeche = number("area", "unit_area_$name"),
+            mietvertragsstart = string("start", "unit_start_$name", ""),
+            unitId = unitId
+        )
+    }
+
+    private fun loadUnits(metaUnitsStr: String, propertyId: String): List<WohneinheitStatus> {
+        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        return metaUnitsStr.split(",").map(String::trim).filter(String::isNotBlank)
+            .mapIndexed { index, name -> loadUnit(unitPrefs, propertyId, index, name) }
+    }
+
+    fun getWohneinheitenFromPrefs(
+        metaUnitsStr: String? = null,
+        propertyId: String = propertyMetadata.value?.propertyId
+            ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+    ): List<WohneinheitStatus> =
+        loadUnits(metaUnitsStr ?: propertyMetadata.value?.wohneinheiten.orEmpty(), propertyId)
+
+    fun getWohneinheitenForProperty(metadata: PropertyMetadata): List<WohneinheitStatus> =
+        loadUnits(metadata.wohneinheiten, metadata.propertyId)
+
+    private fun resolveReceiptUnitId(propertyId: String, unitName: String, existingUnitId: String = ""): String {
+        if (unitName.isBlank()) return ""
+        val property = properties.value.firstOrNull { it.propertyId == propertyId }
+            ?: propertyMetadata.value?.takeIf { it.propertyId == propertyId }
+            ?: return existingUnitId
+        val units = getWohneinheitenForProperty(property)
+        if (existingUnitId.isNotBlank() && units.any { it.unitId == existingUnitId }) return existingUnitId
+        return units.firstOrNull {
+            it.name.equals(unitName, ignoreCase = true) || it.label.equals(unitName, ignoreCase = true)
+        }?.unitId.orEmpty()
     }
 
     fun updateWohneinheit(updated: WohneinheitStatus) {
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val selectedProperty = propertyMetadata.value ?: PropertyMetadata()
+        val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
+            properties.value.firstOrNull { property ->
+                getWohneinheitenForProperty(property).any { it.unitId == stableId }
+            }
+        } ?: propertyMetadata.value ?: PropertyMetadata()
+
+        val unitNames = targetProperty.wohneinheiten.split(",").map(String::trim).filter(String::isNotBlank)
+        val unitIndex = unitNames.indexOfFirst { it.equals(updated.name, ignoreCase = true) }
         val stableId = updated.unitId.ifBlank {
-            com.example.data.StableDocumentIdentity.legacyUnitId(
-                selectedProperty.propertyId,
-                updated.name
-            )
+            resolveUnitId(unitPrefs, targetProperty.propertyId, unitIndex.coerceAtLeast(0), updated.name)
         }
-        val unitIndex = _wohneinheitenStatus.value.indexOfFirst { it.unitId == updated.unitId || it.name == updated.name }
+        val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
+        val namePrefix = scopedUnitNamePrefix(targetProperty.propertyId, updated.name)
+
         unitPrefs.edit().apply {
-            if (selectedProperty.id == 1) {
+            putString(idPrefix + "status", updated.status)
+            putString(idPrefix + "label", updated.label)
+            putString(idPrefix + "mieter", updated.mieter)
+            putFloat(idPrefix + "rent", updated.kaltmiete.toFloat())
+            putFloat(idPrefix + "area", updated.wohnflaeche.toFloat())
+            putString(idPrefix + "start", updated.mietvertragsstart)
+            putString(namePrefix + "id", stableId)
+            if (unitIndex >= 0) putString("property_${targetProperty.propertyId}_unit_id_index_$unitIndex", stableId)
+
+            if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID) {
                 putString("unit_status_${updated.name}", updated.status)
                 putString("unit_label_${updated.name}", updated.label)
                 putString("unit_mieter_${updated.name}", updated.mieter)
@@ -789,28 +844,20 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 putString("unit_start_${updated.name}", updated.mietvertragsstart)
                 putString("unit_id_${updated.name}", stableId)
                 if (unitIndex >= 0) putString("unit_id_index_$unitIndex", stableId)
-            } else {
-                val prefix = "property_${selectedProperty.propertyId}_unit_${updated.name}_"
-                putString(prefix + "status", updated.status)
-                putString(prefix + "label", updated.label)
-                putString(prefix + "mieter", updated.mieter)
-                putFloat(prefix + "rent", updated.kaltmiete.toFloat())
-                putFloat(prefix + "area", updated.wohnflaeche.toFloat())
-                putString(prefix + "start", updated.mietvertragsstart)
-                putString(prefix + "id", stableId)
-                if (unitIndex >= 0) putString("property_${selectedProperty.propertyId}_unit_id_index_$unitIndex", stableId)
             }
         }.apply()
-        _wohneinheitenStatus.value = getWohneinheitenForProperty(selectedProperty)
+
+        if (propertyMetadata.value?.propertyId == targetProperty.propertyId) {
+            _wohneinheitenStatus.value = getWohneinheitenForProperty(targetProperty)
+        }
 
         if (FirestoreService.isCloudActive()) {
             viewModelScope.launch {
-                FirestoreService.saveWohneinheit(updated)
+                FirestoreService.saveWohneinheit(updated.copy(unitId = stableId))
             }
         }
-        
-        // Auto drive backup if enabled
-        if (_isDriveConnected.value && _autoDriveBackup.value) {
+
+        if (_isDriveConnected.value && _autoDriveBackup.value && propertyMetadata.value?.propertyId == targetProperty.propertyId) {
             val email = _googleAccountEmail.value
             if (email != null) {
                 viewModelScope.launch(Dispatchers.IO) {
@@ -1880,9 +1927,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             _bankImportStatus.value = "Bestehende Objekt-/Einheitszuordnung weicht vom Vormonat ab. Nichts wurde überschrieben."
             return
         }
-        suggestion.suggestedPropertyId.takeIf {
-            it.isNotBlank() && it != com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-        }?.let(::selectProperty)
+        suggestion.suggestedPropertyId.takeIf(String::isNotBlank)?.let(::selectProperty)
         _pendingBankTransactionId.value = transaction.transactionId
         _scanState.value = ScanUiState.Success(
             com.example.api.ExtractedReceipt(
@@ -3376,7 +3421,11 @@ data class AiSearchUiState(
     fun analyzeManagedDocument(documentId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             _documentOperationStatus.value = "KI-Dokumentanalyse läuft …"
-            val result = managedDocumentService.analyze(documentId, propertyMetadata.value ?: com.example.data.PropertyMetadata(), _wohneinheitenStatus.value)
+            val document = repository.getManagedDocument(documentId) ?: return@launch
+            val property = repository.getPropertyByPropertyId(document.propertyId)
+                ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+            val units = getWohneinheitenForProperty(property)
+            val result = managedDocumentService.analyze(documentId, property, units)
             if (result != null) {
                 _documentAiReview.value = documentId to result
                 _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
@@ -3509,9 +3558,13 @@ data class AiSearchUiState(
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val document = repository.getManagedDocument(documentId) ?: return@launch
+            val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
+                ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+            val validUnitIds = getWohneinheitenForProperty(documentProperty).map { it.unitId }.toSet()
+            val confirmedUnitId = unitId?.takeIf { it in validUnitIds }
             val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
             val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
-            val updated = managedDocumentService.confirmReview(document, type, date, unitId, json)
+            val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
             applyConfirmedDocumentValues(updated, accepted)
             _documentAiReview.value = null
             val email = _googleAccountEmail.value
@@ -3553,7 +3606,8 @@ data class AiSearchUiState(
                     }
                 }.toDoubleOrNull()
         }
-        val currentProperty = database.propertyDao().getPropertyMetadata() ?: com.example.data.PropertyMetadata()
+        val currentProperty = repository.getPropertyByPropertyId(document.propertyId)
+            ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
         var property = currentProperty
         values["objektadresse"]?.let { property = property.copy(adresse = it) }
         number("kaufpreis")?.let { property = property.copy(gesamtKaufpreis = it) }
@@ -3580,7 +3634,7 @@ data class AiSearchUiState(
             repository.upsertManagedDocument(document.copy(loanId = if (loan.id != 0) loan.id else loanId))
         }
 
-        val unit = _wohneinheitenStatus.value.firstOrNull { it.unitId == document.unitId }
+        val unit = getWohneinheitenForProperty(property).firstOrNull { it.unitId == document.unitId }
         if (unit != null && document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name) {
             updateWohneinheit(unit.copy(
                 mieter = values["mieter"] ?: unit.mieter,
@@ -4026,6 +4080,9 @@ data class AiSearchUiState(
             // Learn rule automatically for KI adaptive memory
             learnVendorRule(aussteller, hauptkategorie, unterkategorie, kontoNr, wohneinheit)
 
+            val targetPropertyId = propertyMetadata.value?.propertyId
+                ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+            val stableUnitId = resolveReceiptUnitId(targetPropertyId, wohneinheit)
             val newReceipt = Receipt(
                 aussteller = aussteller,
                 datum = datum,
@@ -4038,8 +4095,8 @@ data class AiSearchUiState(
                 isEigenleistungSanierung = isEigenleistung,
                 imageUrl = imageUrl,
                 wohneinheit = wohneinheit,
-                propertyId = propertyMetadata.value?.propertyId
-                    ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID,
+                propertyId = targetPropertyId,
+                unitId = stableUnitId,
                 mieter = mieter,
                 zahlungsart = normalizePaymentMethod(zahlungsart),
                 zahlungsartQuelle = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") "UNBEKANNT" else "NUTZER_BESTAETIGT",
@@ -4082,9 +4139,12 @@ data class AiSearchUiState(
     fun updateReceipt(receipt: Receipt) {
         viewModelScope.launch {
             val persistedReceipt = repository.getReceiptById(receipt.id)
+            val normalizedReceipt = receipt.copy(
+                unitId = resolveReceiptUnitId(receipt.propertyId, receipt.wohneinheit, receipt.unitId)
+            )
             val receiptToSave = com.example.data.DatevApprovalInvalidationPolicy.apply(
                 persistedReceipt,
-                receipt
+                normalizedReceipt
             )
 
             // Learn rule automatically on user corrections

@@ -531,7 +531,7 @@ private fun UnitDetailScreen(
     var showHistory by remember { mutableStateOf(false) }
     var showStatus by remember { mutableStateOf(false) }
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
-    val unitReceipts = receipts.filter { it.wohneinheit == unit.name }
+    val unitReceipts = receipts.filter { receipt -> receipt.unitId == unitId || (receipt.unitId.isBlank() && (receipt.wohneinheit.equals(unit.name, true) || receipt.wohneinheit.equals(unit.label, true))) }
     val unitDocs = documents.filter { it.unitId == unitId }
     val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
     val nk = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")

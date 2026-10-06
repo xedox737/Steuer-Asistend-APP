@@ -54,6 +54,29 @@ class RentTrackingLogicTest {
         assertEquals(11, year.suspiciousMonths)
     }
 
+
+    @Test
+    fun `stable receipt unit id prevents same-name cross-unit payment leakage`() {
+        val unit = WohneinheitStatus("OG", "OG", "Vermietet", "A", 1000.0, 60.0, "2026-01-01", "unit-a")
+        PropertyUnitScopedData.setRentValues(context, "p1", unit, 0.0, 0.0)
+        TenantHistoryStore.ensureCurrentPeriod(context, unit, 0.0, 0.0, "p1")
+
+        val wrongUnit = rent(1, "2026-01-03", 1000.0).copy(unitId = "unit-b")
+        val correctUnit = rent(2, "2026-01-04", 400.0).copy(unitId = "unit-a")
+        val legacy = rent(3, "2026-01-05", 100.0)
+
+        val january = RentTrackingLogic.month(
+            context,
+            "p1",
+            unit,
+            listOf(wrongUnit, correctUnit, legacy),
+            YearMonth.of(2026, 1)
+        )
+
+        assertEquals(500.0, january.actual, 0.001)
+        assertEquals(RentPaymentStatus.PARTIAL, january.status)
+    }
+
     private fun rent(id: Int, date: String, amount: Double) = Receipt(
         id = id,
         aussteller = "Mieter",
