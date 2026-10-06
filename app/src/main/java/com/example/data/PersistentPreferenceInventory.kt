@@ -3,6 +3,7 @@ package com.example.data
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
 
 /** Explicit inventory. Mixed stores export only the named non-credential fields. */
 internal object PersistentPreferenceInventory {
@@ -87,31 +88,148 @@ internal object PersistentPreferenceInventory {
         }
     }
 
-    fun restorePayload(context: Context, root: JSONObject) {
+    fun restorePayload(
+        context: Context,
+        root: JSONObject,
+        mode: RestoreMode = RestoreMode.MERGE
+    ) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
-            // Missing fields in older backups must leave the current local store alone.
             val values = root.optJSONObject(requireNotNull(store.payloadKey)) ?: return@forEach
-            val editor = context.getSharedPreferences(store.name, Context.MODE_PRIVATE).edit()
+            val prefs = context.getSharedPreferences(store.name, Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+
+            if (mode == RestoreMode.REPLACE_FULL) {
+                prefs.all.keys.filter { permits(store, it) }.forEach(editor::remove)
+            }
+
             values.keys().forEach entryLoop@ { key ->
-                if (permits(store, key)) {
-                    val value = values.optJSONObject(key) ?: return@entryLoop
-                    when (value.optString("type")) {
-                        "string" -> editor.putString(key, value.getString("value"))
-                        "int" -> editor.putInt(key, value.getInt("value"))
-                        "long" -> editor.putLong(key, value.getLong("value"))
-                        "float" -> editor.putFloat(key, value.getDouble("value").toFloat())
-                        "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
-                        "stringSet" -> {
-                            val array = value.getJSONArray("value")
-                            editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
-                        }
-                        else -> error("Unbekannter Preference-Typ in der Sicherung.")
+                if (!permits(store, key)) return@entryLoop
+                val value = values.optJSONObject(key) ?: return@entryLoop
+
+                if (mode == RestoreMode.MERGE && prefs.contains(key)) {
+                    val merged = mergeStructuredStringValue(store.name, prefs.getString(key, null), value)
+                    if (merged != null) editor.putString(key, merged)
+                    return@entryLoop
+                }
+
+                when (value.optString("type")) {
+                    "string" -> editor.putString(key, value.getString("value"))
+                    "int" -> editor.putInt(key, value.getInt("value"))
+                    "long" -> editor.putLong(key, value.getLong("value"))
+                    "float" -> editor.putFloat(key, value.getDouble("value").toFloat())
+                    "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
+                    "stringSet" -> {
+                        val array = value.getJSONArray("value")
+                        editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
                     }
+                    else -> error("Unbekannter Preference-Typ in der Sicherung.")
                 }
             }
-            // Merge by stable key: restore is repeatable and does not erase local-only entries.
             check(editor.commit()) { "Einstellungen konnten nicht dauerhaft wiederhergestellt werden." }
         }
+    }
+
+    private fun mergeStructuredStringValue(
+        storeName: String,
+        localRaw: String?,
+        backupEntry: JSONObject
+    ): String? {
+        if (backupEntry.optString("type") != "string" || localRaw == null) return null
+        val backupRaw = backupEntry.optString("value", "")
+        return when (storeName) {
+            "tenant_history_prefs" -> mergeTenantHistory(localRaw, backupRaw)
+            "property_tasks_prefs" -> mergeTasks(localRaw, backupRaw)
+            else -> null
+        }
+    }
+
+    private fun mergeTenantHistory(localRaw: String, backupRaw: String): String {
+        val local = JSONArray(localRaw)
+        val backup = JSONArray(backupRaw)
+        val merged = linkedMapOf<String, JSONObject>()
+
+        fun tenantKey(item: JSONObject): String {
+            val id = item.optLong("id", Long.MIN_VALUE)
+            if (id != Long.MIN_VALUE && id != 0L) return "id:$id"
+            return "legacy:${item.optString("startDate")}|${item.optString("endDate")}|${item.optString("tenantName")}"
+        }
+
+        for (i in 0 until local.length()) {
+            val item = local.getJSONObject(i)
+            merged[tenantKey(item)] = JSONObject(item.toString())
+        }
+        for (i in 0 until backup.length()) {
+            val incoming = backup.getJSONObject(i)
+            val key = tenantKey(incoming)
+            val current = merged[key]
+            merged[key] = if (current == null) JSONObject(incoming.toString()) else mergeTenantPeriod(current, incoming)
+        }
+
+        return JSONArray().apply {
+            merged.values.sortedBy { it.optString("startDate", "") }.forEach(::put)
+        }.toString()
+    }
+
+    private fun mergeTenantPeriod(local: JSONObject, backup: JSONObject): JSONObject {
+        val result = JSONObject(local.toString())
+        val byDate = linkedMapOf<String, JSONObject>()
+
+        fun collect(source: JSONArray?) {
+            if (source == null) return
+            for (i in 0 until source.length()) {
+                val change = source.optJSONObject(i) ?: continue
+                val effective = change.optString("effectiveDate", "")
+                if (effective.isBlank()) continue
+                byDate.putIfAbsent(effective, JSONObject(change.toString()))
+            }
+        }
+
+        collect(local.optJSONArray("rentChanges"))
+        collect(backup.optJSONArray("rentChanges"))
+        result.put("rentChanges", JSONArray().apply {
+            byDate.toSortedMap().values.forEach(::put)
+        })
+        return result
+    }
+
+    private fun mergeTasks(localRaw: String, backupRaw: String): String {
+        val local = JSONArray(localRaw)
+        val backup = JSONArray(backupRaw)
+        val merged = linkedMapOf<String, JSONObject>()
+
+        fun taskKey(item: JSONObject): String =
+            item.optString("id", "").takeIf(String::isNotBlank)
+                ?: "legacy:${item.optString("propertyId")}|${item.optString("unitId")}|${item.optString("createdAt")}"
+
+        for (i in 0 until local.length()) {
+            val item = local.getJSONObject(i)
+            merged[taskKey(item)] = JSONObject(item.toString())
+        }
+        for (i in 0 until backup.length()) {
+            val incoming = backup.getJSONObject(i)
+            val key = taskKey(incoming)
+            val current = merged[key]
+            merged[key] = when {
+                current == null -> JSONObject(incoming.toString())
+                backupIsNewer(current.optString("updatedAt"), incoming.optString("updatedAt")) ->
+                    JSONObject(incoming.toString())
+                else -> current
+            }
+        }
+
+        return JSONArray().apply {
+            merged.values.sortedWith(
+                compareBy<JSONObject> { it.optBoolean("done", false) }
+                    .thenBy { it.optString("dueDate", "").ifBlank { "9999-99-99" } }
+                    .thenBy { it.optString("id", "") }
+            ).forEach(::put)
+        }.toString()
+    }
+
+    private fun backupIsNewer(localUpdatedAt: String, backupUpdatedAt: String): Boolean {
+        val local = runCatching { Instant.parse(localUpdatedAt) }.getOrNull() ?: return false
+        val backup = runCatching { Instant.parse(backupUpdatedAt) }.getOrNull() ?: return false
+        return backup.isAfter(local)
     }
 
     private fun entry(type: String, value: Any) = JSONObject().put("type", type).put("value", value)
