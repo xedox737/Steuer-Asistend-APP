@@ -306,7 +306,15 @@ internal fun TenantHistoryDialog(
                                     Text("${p.startDate.ifBlank { "Start unbekannt" }} bis ${p.endDate.ifBlank { "heute" }}", fontSize = 10.sp, color = SlateGray)
                                     HorizontalDivider(color = BorderColor)
                                     Text("Kalt ${NumberFormatter.format(p.kaltmiete)} · NK ${NumberFormatter.format(p.nebenkosten)} · Sonst. ${NumberFormatter.format(p.sonstige)}", fontSize = 9.sp, color = SlateGray)
-                                    Text("Monatliches Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                    Text("Ausgangs-Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                                    p.rentChanges.sortedBy { it.effectiveDate }.forEach { change ->
+                                        Text(
+                                            "Mietänderung ab ${change.effectiveDate}: Kalt ${NumberFormatter.format(change.kaltmiete)} · NK ${NumberFormatter.format(change.nebenkosten)} · Sonst. ${NumberFormatter.format(change.sonstige)}",
+                                            fontSize = 9.sp,
+                                            lineHeight = 12.sp,
+                                            color = AccentBlue
+                                        )
+                                    }
                                 }
                             }
                         }
