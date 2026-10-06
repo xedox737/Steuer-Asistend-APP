@@ -61,3 +61,95 @@ internal object ReceiptInputValidation {
 
     fun date(value: String): LocalDate? = CalendarInput.parseIsoDate(value)
 }
+
+
+internal data class PropertyWizardValues(
+    val purchasePrice: Double,
+    val livingArea: Double,
+    val landArea: Double,
+    val yearBuilt: Int,
+    val buildingValue: Double,
+    val landValue: Double,
+    val loanAmount: Double?
+)
+
+internal data class PropertyWizardValidation(
+    val values: PropertyWizardValues?,
+    val errors: Map<String, String>
+)
+
+internal object PropertyWizardInput {
+    const val PURCHASE_PRICE = "Kaufpreis €"
+    const val LIVING_AREA = "Wohnfläche m²"
+    const val LAND_AREA = "Grundstücksfläche m²"
+    const val PURCHASE_DATE = "Kaufdatum YYYY-MM-DD"
+    const val YEAR_BUILT = "Baujahr"
+    const val BUILDING_VALUE = "Gebäudeanteil € (optional)"
+    const val LAND_VALUE = "Grund und Boden € (optional)"
+    const val LOAN_AMOUNT = "Darlehensbetrag €"
+
+    fun validate(
+        purchasePrice: String,
+        livingArea: String,
+        landArea: String,
+        purchaseDate: String,
+        yearBuilt: String,
+        buildingValue: String,
+        landValue: String,
+        loanAmount: String
+    ): PropertyWizardValidation {
+        val errors = linkedMapOf<String, String>()
+
+        fun optionalNonNegative(raw: String, field: String, area: Boolean = false): Double {
+            if (raw.isBlank()) return 0.0
+            val parsed = GermanNumberInput.parse(raw)
+            when {
+                parsed == null -> errors[field] =
+                    if (raw.contains("e", true) || raw.contains("Infinity", true) || raw.contains("NaN", true))
+                        "Der eingegebene Wert ist zu groß oder ungültig."
+                    else if (area) "Bitte eine gültige Fläche eingeben." else "Bitte einen gültigen Betrag eingeben."
+                parsed < 0.0 -> errors[field] =
+                    if (area) "Die Fläche darf nicht negativ sein." else "Der Betrag darf nicht negativ sein."
+            }
+            return parsed?.takeIf { it >= 0.0 } ?: 0.0
+        }
+
+        val purchase = optionalNonNegative(purchasePrice, PURCHASE_PRICE)
+        val living = optionalNonNegative(livingArea, LIVING_AREA, area = true)
+        val land = optionalNonNegative(landArea, LAND_AREA, area = true)
+        val building = optionalNonNegative(buildingValue, BUILDING_VALUE)
+        val landPart = optionalNonNegative(landValue, LAND_VALUE)
+        val loan = if (loanAmount.isBlank()) null else optionalNonNegative(loanAmount, LOAN_AMOUNT)
+
+        if (purchaseDate.isNotBlank() && !CalendarInput.isValidIsoDate(purchaseDate)) {
+            errors[PURCHASE_DATE] = "Bitte ein gültiges Datum eingeben."
+        }
+
+        val year = if (yearBuilt.isBlank()) {
+            0
+        } else {
+            yearBuilt.trim().toIntOrNull()?.takeIf { it >= 0 } ?: run {
+                errors[YEAR_BUILT] = "Bitte ein gültiges Baujahr eingeben."
+                0
+            }
+        }
+
+        return PropertyWizardValidation(
+            values = if (errors.isEmpty()) PropertyWizardValues(
+                purchasePrice = purchase,
+                livingArea = living,
+                landArea = land,
+                yearBuilt = year,
+                buildingValue = building,
+                landValue = landPart,
+                loanAmount = loan
+            ) else null,
+            errors = errors
+        )
+    }
+
+    fun unitArea(value: String): Double? {
+        if (value.isBlank()) return 0.0
+        return GermanNumberInput.parse(value)?.takeIf { it >= 0.0 }
+    }
+}
