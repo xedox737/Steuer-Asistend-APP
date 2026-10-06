@@ -49,6 +49,44 @@ class UnitDocumentBackNavigationTest {
         ui.runOnIdle { assertEquals(1, parentBack) }
     }
 
+    @Test fun pendingDocumentReviewActionIsVisibleInsideDetailAndKeepsLocalBack() {
+        var parentBack = 0
+        var detailBack = 0
+        var reviewClicks = 0
+        ui.setContent {
+            MaterialTheme {
+                BackHandler { parentBack++ }
+                ManagedDocumentDetailScreen(
+                    ManagedDocument(
+                        documentId = "review-document",
+                        propertyId = "review-property",
+                        title = "Prüfdokument"
+                    ),
+                    PropertyMetadata(propertyId = "review-property", name = "Objekt B"),
+                    emptyList(),
+                    onBack = { detailBack++ },
+                    onAnalyze = {},
+                    onDownload = {},
+                    onSync = {},
+                    onUpdatePresentation = { _, _ -> },
+                    hasPendingReview = true,
+                    onReviewPending = { reviewClicks++ }
+                )
+            }
+        }
+
+        ui.onNodeWithTag("review_managed_document_ai").performScrollTo().assertIsDisplayed().performClick()
+        ui.runOnIdle {
+            assertEquals(1, reviewClicks)
+            assertEquals(0, parentBack)
+        }
+        ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }
+        ui.runOnIdle {
+            assertEquals(1, detailBack)
+            assertEquals(0, parentBack)
+        }
+    }
+
     @Test fun documentSystemBackAndArrowUseTheSameLocalDestination() {
         var parentBack = 0
         var detailBack = 0
