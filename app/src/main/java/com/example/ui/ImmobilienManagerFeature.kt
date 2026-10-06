@@ -575,6 +575,9 @@ private fun UnitDetailScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(UnitDetailSection.OVERVIEW) }
     var showHistory by remember { mutableStateOf(false) }
     var showStatus by remember { mutableStateOf(false) }
