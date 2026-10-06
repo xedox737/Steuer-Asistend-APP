@@ -150,7 +150,6 @@ fun DocumentManagementScreen(
 
     val selectedDocument = selectedDocumentId?.let { id -> documents.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
-        BackHandler { selectedDocumentId = null }
         LaunchedEffect(selectedDocument.documentId) {
             viewModel.ensureManagedDocumentReady(selectedDocument.documentId)
         }
