@@ -1593,7 +1593,7 @@ fun AiSearchCard(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF166534)
+                                        color = resultFg
                                     )
                                 }
                             }
@@ -3531,6 +3531,7 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
 
                                 if (receipt.syncStatus != "SYNCED") {
                                     Button(
+                                        enabled = advisorReady,
                                         onClick = { viewModel.syncReceiptManually(receipt) },
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                         modifier = Modifier.height(32.dp).testTag("retry_sync_button_${receipt.id}"),
@@ -3758,7 +3759,7 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
                             Text(
                                 "Diese DATEV-Aufteilung wurde ausdrücklich freigegeben.",
                                 modifier = Modifier.padding(12.dp),
-                                color = Color(0xFF166534),
+                                color = resultFg,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
@@ -10687,6 +10688,10 @@ fun DatevExportScreen(
     val yearFilter by viewModel.wizardYearFilter.collectAsStateWithLifecycle()
     val typeFilter by viewModel.wizardCategoryTypeFilter.collectAsStateWithLifecycle()
     val targetFormat by viewModel.wizardTargetFormat.collectAsStateWithLifecycle()
+    val datevYearOptions = remember(receipts) { viewModel.wizardYearOptions(receipts) }
+    val datevUnitOptions = remember(receipts, viewModel.properties.collectAsStateWithLifecycle().value) {
+        viewModel.wizardUnitOptions()
+    }
 
     var editableBeraterNr by remember(activeProfile) { mutableStateOf(activeProfile.beraterNummer) }
     var editableMandantenNr by remember(activeProfile) { mutableStateOf(activeProfile.mandantenNummer) }
@@ -10837,7 +10842,7 @@ fun DatevExportScreen(
                                             )
                                             Text(
                                                 text = when {
-                                                    hasExportableRecords -> "$mappedRecords von $totalCount Buchungen exportierbar"
+                                                    hasExportableRecords -> "${mappedRecords.size} von $totalCount Buchungen exportierbar"
                                                     totalCount > 0 -> "Derzeit keine Buchungen exportierbar"
                                                     else -> "Noch keine Buchungen vorhanden"
                                                 },
@@ -10935,7 +10940,7 @@ fun DatevExportScreen(
                                 Ui2Section("Exportumfang") {
                                     Text("Wirtschaftsjahr", fontSize = 11.sp, color = SlateGray)
                                     Row(horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
-                                        listOf("2026", "2025", "ALLE").forEach { year ->
+                                        (datevYearOptions + "ALLE").distinct().forEach { year ->
                                             FilterChip(selected = yearFilter == year, onClick = { viewModel.setWizardFilters(year = year) }, label = { Text(year, fontSize = 11.sp) })
                                         }
                                     }
@@ -10947,8 +10952,9 @@ fun DatevExportScreen(
                                     }
                                     Text("Wohneinheit", fontSize = 11.sp, color = SlateGray)
                                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
-                                        listOf("ALLE", "WE 1", "WE 2", "WE 3", "WE 4", "WE 5", "WE 6", "WE 7").forEach { unit ->
-                                            FilterChip(selected = unitFilter == unit, onClick = { viewModel.setWizardFilters(unit = unit) }, label = { Text(unit, fontSize = 11.sp) })
+                                        FilterChip(selected = unitFilter == "ALLE", onClick = { viewModel.setWizardFilters(unit = "ALLE") }, label = { Text("Alle", fontSize = 11.sp) })
+                                        datevUnitOptions.forEach { (unitId, label) ->
+                                            FilterChip(selected = unitFilter == unitId, onClick = { viewModel.setWizardFilters(unit = unitId) }, label = { Text(label, fontSize = 11.sp) })
                                         }
                                     }
                                 }
@@ -11075,8 +11081,8 @@ fun DatevExportScreen(
                                                 Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF166534))
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Column {
-                                                    Text("Vorprüfung erfolgreich!", fontWeight = FontWeight.Bold, color = Color(0xFF166534), fontSize = 14.sp)
-                                                    Text("Alle ${report.totalRecords} Buchungssätze sind DATEV-konform und freigegeben.", fontSize = 12.sp, color = Color(0xFF166534))
+                                                    Text("Vorprüfung erfolgreich!", fontWeight = FontWeight.Bold, color = resultFg, fontSize = 14.sp)
+                                                    Text("Alle ${report.totalRecords} Buchungssätze sind DATEV-konform und freigegeben.", fontSize = 12.sp, color = resultFg)
                                                 }
                                             }
                                         }
@@ -11283,21 +11289,30 @@ fun DatevExportScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 if (res != null) {
+                                    val advisorReady = targetFormat != "FULL_ZIP" || res.advisorStatus == "BEREIT FÜR STEUERBERATER"
+                                    val resultBg = if (advisorReady) Color(0xFFDCFCE7) else Color(0xFFFFF7ED)
+                                    val resultFg = if (advisorReady) Color(0xFF166534) else Color(0xFF9A3412)
                                     Card(
-                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7)),
+                                        colors = CardDefaults.cardColors(containerColor = resultBg),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Column(modifier = Modifier.padding(14.dp)) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF166534))
+                                                Icon(if (advisorReady) Icons.Default.CheckCircle else Icons.Default.Warning, contentDescription = null, tint = resultFg)
                                                 Spacer(modifier = Modifier.width(8.dp))
-                                                Text("Exportpaket erfolgreich erstellt!", fontWeight = FontWeight.Bold, color = Color(0xFF166534), fontSize = 15.sp)
+                                                Text(
+                                                    if (advisorReady) "Exportpaket erfolgreich erstellt!" else "Paket technisch erstellt – fachlich noch nicht bereit",
+                                                    fontWeight = FontWeight.Bold, color = resultFg, fontSize = 15.sp
+                                                )
+                                            }
+                                            if (!advisorReady) {
+                                                Text("Paketstatus: ${res.advisorStatus}. Die Belege werden erst bei fachlicher Freigabe als exportiert markiert.", fontSize = 11.sp, color = resultFg)
                                             }
                                             Spacer(modifier = Modifier.height(8.dp))
-                                            Text("Exportlauf-ID: ${res.exportId}", fontSize = 12.sp, color = Color(0xFF166534), fontWeight = FontWeight.SemiBold)
-                                            Text("Dateiname: ${res.zipFile.name}", fontSize = 12.sp, color = Color(0xFF166534))
-                                            Text("SHA-256: ${res.sha256Checksum.take(24)}...", fontSize = 11.sp, color = Color(0xFF166534))
-                                            Text("Gesamtsumme: ${String.format(Locale.GERMANY, "%.2f", res.totalAmountEur)} EUR (${res.totalRecords} Sätze)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                                            Text("Exportlauf-ID: ${res.exportId}", fontSize = 12.sp, color = resultFg, fontWeight = FontWeight.SemiBold)
+                                            Text("Dateiname: ${res.zipFile.name}", fontSize = 12.sp, color = resultFg)
+                                            Text("SHA-256: ${res.sha256Checksum.take(24)}...", fontSize = 11.sp, color = resultFg)
+                                            Text("Gesamtsumme: ${String.format(Locale.GERMANY, "%.2f", res.totalAmountEur)} EUR (${res.totalRecords} Sätze)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = resultFg)
                                         }
                                     }
 
@@ -11341,7 +11356,7 @@ fun DatevExportScreen(
                                                     horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
                                                     Text(run.exportlaufId, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                                    Text(run.status, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
+                                                    Text(run.status, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = resultFg)
                                                 }
                                                 Text("${run.kanzleiprofilNameVersion} | ${run.bookingCount} Sätze | ${String.format(Locale.GERMANY, "%.2f", run.totalAmount)} EUR", fontSize = 11.sp)
                                                 Text("SHA-256: ${run.zipSha256.take(20)}...", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
