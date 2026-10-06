@@ -162,6 +162,20 @@ internal fun ManagedDocumentCard(
     }
 }
 
+
+internal object DocumentReviewPresentation {
+    fun isPendingFor(
+        documentId: String,
+        review: Pair<String, com.example.api.ManagedDocumentAiResult>?
+    ): Boolean = review?.first == documentId
+
+    fun shouldShowDialog(
+        documentId: String,
+        review: Pair<String, com.example.api.ManagedDocumentAiResult>?,
+        dismissedDocumentIds: Set<String>
+    ): Boolean = isPendingFor(documentId, review) && documentId !in dismissedDocumentIds
+}
+
 @Composable
 internal fun ManagedDocumentDetailScreen(
     document: ManagedDocument,
