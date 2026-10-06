@@ -392,8 +392,11 @@ private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptVi
 }
 
 @Composable
-private fun DocumentAiReviewDialog(document: ManagedDocument, result: com.example.api.ManagedDocumentAiResult, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel) {
-    val currentUnit = units.firstOrNull { it.unitId == (result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }) }
+internal fun DocumentAiReviewDialog(document: ManagedDocument, result: com.example.api.ManagedDocumentAiResult, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel) {
+    val targetUnitId = result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }
+    val currentUnit = units.firstOrNull {
+        PropertyUnitScopedData.stableUnitId(document.propertyId, it) == targetUnitId
+    }
     val currentValues = mapOf(
         "objektadresse" to property?.adresse.orEmpty(), "kaufpreis" to (property?.gesamtKaufpreis?.toString() ?: ""),
         "kaufvertragsdatum" to property?.notariellesKaufdatum.orEmpty(), "nutzen_lasten" to property?.uebergangNutzenLasten.orEmpty(),
