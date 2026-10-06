@@ -294,6 +294,44 @@ class RentTrackingLogicTest {
         assertEquals(RentPaymentStatus.PAID, row.status)
     }
 
+
+    @Test
+    fun `same visible unit name in two properties never shares bank rent`() {
+        val unitA = WohneinheitStatus("WE 01", "WE 01", "Vermietet", "A", 690.0, 60.0, "2026-01-01", "unit-a")
+        val unitB = WohneinheitStatus("WE 01", "WE 01", "Vermietet", "B", 690.0, 60.0, "2026-01-01", "unit-b")
+        PropertyUnitScopedData.setRentValues(context, "property-a", unitA, 200.0, 0.0)
+        PropertyUnitScopedData.setRentValues(context, "property-b", unitB, 200.0, 0.0)
+        TenantHistoryStore.save(
+            context, "property-a", "unit-a", "WE 01",
+            listOf(TenantPeriod(201, "WE 01", "A", "2026-01-01", "", 690.0, 200.0, 0.0))
+        )
+        TenantHistoryStore.save(
+            context, "property-b", "unit-b", "WE 01",
+            listOf(TenantPeriod(202, "WE 01", "B", "2026-01-01", "", 690.0, 200.0, 0.0))
+        )
+        val transaction = bankTransaction("tx-property-b", 890.0, BankReconciliationStatus.MATCHED).copy(
+            propertyId = "property-b",
+            unitId = "unit-b"
+        )
+        val assignment = assignment(
+            "assignment-property-b", "tx-property-b", "property-b", "unit-b", 890.0, BankSplitPaymentType.RENT
+        )
+
+        val a = RentTrackingLogic.month(
+            context, "property-a", unitA, emptyList(), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+        val b = RentTrackingLogic.month(
+            context, "property-b", unitB, emptyList(), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(0.0, a.actual, 0.001)
+        assertEquals(890.0, a.missing, 0.001)
+        assertEquals(890.0, b.actual, 0.001)
+        assertEquals(0.0, b.missing, 0.001)
+    }
+
     private fun rentalUnit() =
         WohneinheitStatus("OG", "OG", "Vermietet", "Mieter", 690.0, 60.0, "2026-01-01", "u1")
 
