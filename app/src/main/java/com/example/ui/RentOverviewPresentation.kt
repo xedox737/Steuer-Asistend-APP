@@ -1,6 +1,9 @@
 package com.example.ui
 
 import android.content.Context
+import com.example.data.BankReceiptLink
+import com.example.data.BankRentAssignment
+import com.example.data.BankTransaction
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import java.time.LocalDate
@@ -36,9 +39,18 @@ internal object RentOverviewPresentation {
     fun scopedReceipts(groups: List<RentPropertyUnits>, receipts: List<Receipt>, propertyScoped: Boolean): List<Receipt> =
         if (!propertyScoped) receipts else receipts.filter { receipt -> groups.any { it.property.propertyId == receipt.propertyId } }
 
-    fun years(context: Context, groups: List<RentPropertyUnits>, receipts: List<Receipt>, today: LocalDate = LocalDate.now()): List<Int> {
+    fun years(
+        context: Context,
+        groups: List<RentPropertyUnits>,
+        receipts: List<Receipt>,
+        bankAssignments: List<BankRentAssignment> = emptyList(),
+        today: LocalDate = LocalDate.now()
+    ): List<Int> {
         val years = mutableSetOf<Int>()
         receipts.filter(::isRentalIncomeReceipt).mapNotNullTo(years) { date(it.datum)?.year }
+        bankAssignments.mapNotNullTo(years) { assignment ->
+            runCatching { java.time.YearMonth.parse(assignment.rentMonth).year }.getOrNull()
+        }
         groups.forEach { group -> group.units.forEach { unit ->
             date(unit.mietvertragsstart)?.year?.let(years::add)
             TenantHistoryStore.load(context, group.property.propertyId,
@@ -52,12 +64,23 @@ internal object RentOverviewPresentation {
         return (years + today.year).sortedDescending()
     }
 
-    fun year(context: Context, groups: List<RentPropertyUnits>, receipts: List<Receipt>, year: Int): RentOverviewYear {
+    fun year(
+        context: Context,
+        groups: List<RentPropertyUnits>,
+        receipts: List<Receipt>,
+        year: Int,
+        bankAssignments: List<BankRentAssignment> = emptyList(),
+        bankLinks: List<BankReceiptLink> = emptyList(),
+        bankTransactions: List<BankTransaction> = emptyList()
+    ): RentOverviewYear {
         val rental = receipts.filter { date(it.datum)?.year == year && isRentalIncomeReceipt(it) }
         val rows = groups.flatMap { group ->
             val propertyId = group.property.propertyId
             val propertyReceipts = rental.filter { it.propertyId == propertyId }
-            RentTrackingLogic.year(context, propertyId, group.units, propertyReceipts, year).map { projection ->
+            RentTrackingLogic.year(
+                context, propertyId, group.units, propertyReceipts, year,
+                bankAssignments, bankLinks, bankTransactions
+            ).map { projection ->
                 RentOverviewUnit(group.property, projection,
                     PropertyUnitScopedData.rentValue(context, propertyId, projection.unit, "nk"),
                     PropertyUnitScopedData.rentValue(context, propertyId, projection.unit, "other"))
