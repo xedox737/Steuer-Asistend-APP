@@ -81,9 +81,11 @@ fun DocumentManagementScreen(
     val operationStatus by viewModel.documentOperationStatus.collectAsStateWithLifecycle()
     val duplicate by viewModel.pendingDocumentDuplicate.collectAsStateWithLifecycle()
     val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
+    val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
     val migrationPreview by viewModel.documentMigrationPreview.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val property by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf("Alle") }
     var importUnitId by remember { mutableStateOf("") }
@@ -152,18 +154,35 @@ fun DocumentManagementScreen(
         LaunchedEffect(selectedDocument.documentId) {
             viewModel.ensureManagedDocumentReady(selectedDocument.documentId)
         }
+        val selectedProperty = properties.firstOrNull { it.propertyId == selectedDocument.propertyId }
+            ?: property?.takeIf { it.propertyId == selectedDocument.propertyId }
+        val selectedUnits = selectedProperty?.let { selected ->
+            if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
+        }.orEmpty()
+        val selectedReview = aiReview?.takeIf { it.first == selectedDocument.documentId }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
-            property = property,
-            units = units,
+            property = selectedProperty,
+            units = selectedUnits,
             onBack = { selectedDocumentId = null },
             onAnalyze = { viewModel.analyzeManagedDocument(selectedDocument.documentId) },
             onDownload = { viewModel.downloadManagedDocument(selectedDocument.documentId) },
             onSync = { viewModel.syncManagedDocumentNow(selectedDocument.documentId) },
             onUpdatePresentation = { title, description ->
                 viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
-            }
+            },
+            hasPendingReview = selectedReview != null,
+            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
+        if (selectedReview != null && selectedDocument.documentId !in dismissedAiReviews) {
+            DocumentAiReviewDialog(
+                selectedDocument,
+                selectedReview.second,
+                selectedUnits,
+                selectedProperty,
+                viewModel
+            )
+        }
         return
     }
 
@@ -314,8 +333,17 @@ fun DocumentManagementScreen(
         )
     }
     aiReview?.let { (documentId, result) ->
-        val document = documents.firstOrNull { it.documentId == documentId }
-        if (document != null) DocumentAiReviewDialog(document, result, units, property, viewModel)
+        if (documentId !in dismissedAiReviews) {
+            val document = documents.firstOrNull { it.documentId == documentId }
+            if (document != null) {
+                val reviewProperty = properties.firstOrNull { it.propertyId == document.propertyId }
+                    ?: property?.takeIf { it.propertyId == document.propertyId }
+                val reviewUnits = reviewProperty?.let { selected ->
+                    if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
+                }.orEmpty()
+                DocumentAiReviewDialog(document, result, reviewUnits, reviewProperty, viewModel)
+            }
+        }
     }
     migrationPreview?.let { preview ->
         AlertDialog(
