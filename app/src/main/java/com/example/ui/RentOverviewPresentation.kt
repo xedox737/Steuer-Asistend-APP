@@ -3,6 +3,7 @@ package com.example.ui
 import android.content.Context
 import com.example.data.BankReceiptLink
 import com.example.data.BankRentAssignment
+import com.example.data.BankSplitPaymentType
 import com.example.data.BankTransaction
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
@@ -48,9 +49,15 @@ internal object RentOverviewPresentation {
     ): List<Int> {
         val years = mutableSetOf<Int>()
         receipts.filter(::isRentalIncomeReceipt).mapNotNullTo(years) { date(it.datum)?.year }
-        bankAssignments.mapNotNullTo(years) { assignment ->
-            runCatching { java.time.YearMonth.parse(assignment.rentMonth).year }.getOrNull()
-        }
+        val propertyIds = groups.map { it.property.propertyId }.toSet()
+        bankAssignments.asSequence()
+            .filter { it.status == com.example.data.BankRentAssignmentStatus.CONFIRMED }
+            .filter { it.propertyId in propertyIds }
+            .filter { it.paymentType != BankSplitPaymentType.DEPOSIT && it.paymentType != RentPaymentType.KAUTION }
+            .mapNotNull { assignment ->
+                runCatching { java.time.YearMonth.parse(assignment.rentMonth).year }.getOrNull()
+            }
+            .forEach(years::add)
         groups.forEach { group -> group.units.forEach { unit ->
             date(unit.mietvertragsstart)?.year?.let(years::add)
             TenantHistoryStore.load(context, group.property.propertyId,
