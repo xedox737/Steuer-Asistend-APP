@@ -92,14 +92,16 @@ class RestoreMergeDataIntegrityTest {
             SupplementalDriveBackup.restorePayload(
                 context, database, payload, restoreMode = RestoreMode.MERGE
             )
+            val periodsAfterRestore = TenantHistoryStore.load(context, propertyId, unitId, unitName)
+            val tasksAfterRestore = PropertyTaskStore.load(context, propertyId)
+            assertEquals("Restore ${it + 1}: Mietperioden", 2, periodsAfterRestore.size)
+            assertEquals("Restore ${it + 1}: Aufgaben", 2, tasksAfterRestore.size)
+            assertEquals(setOf(101L, 202L), periodsAfterRestore.map { period -> period.id }.toSet())
+            assertEquals(setOf("task-A", "task-B"), tasksAfterRestore.map { task -> task.id }.toSet())
         }
 
         val periods = TenantHistoryStore.load(context, propertyId, unitId, unitName)
-        assertEquals(setOf(101L, 202L), periods.map { it.id }.toSet())
         assertEquals("2026-09-30", periods.single { it.id == 101L }.endDate)
-        assertEquals(setOf("task-A", "task-B"), PropertyTaskStore.load(context, propertyId).map { it.id }.toSet())
-        assertEquals(2, periods.size)
-        assertEquals(2, PropertyTaskStore.load(context, propertyId).size)
     }
 
     @Test
