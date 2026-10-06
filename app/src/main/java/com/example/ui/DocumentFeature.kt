@@ -159,7 +159,7 @@ fun DocumentManagementScreen(
         val selectedUnits = selectedProperty?.let { selected ->
             if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
         }.orEmpty()
-        val selectedReview = aiReview?.takeIf { it.first == selectedDocument.documentId }
+        val selectedReview = aiReview?.takeIf { DocumentReviewPresentation.isPendingFor(selectedDocument.documentId, it) }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = selectedProperty,
@@ -174,7 +174,7 @@ fun DocumentManagementScreen(
             hasPendingReview = selectedReview != null,
             onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
-        if (selectedReview != null && selectedDocument.documentId !in dismissedAiReviews) {
+        if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, selectedReview, dismissedAiReviews)) {
             DocumentAiReviewDialog(
                 selectedDocument,
                 selectedReview.second,
