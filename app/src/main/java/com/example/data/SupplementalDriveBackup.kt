@@ -5,6 +5,7 @@ import android.util.Base64
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
+import java.time.Instant
 import androidx.room.withTransaction
 import com.example.api.GoogleDriveClient
 import org.json.JSONArray
@@ -36,12 +37,19 @@ object SupplementalDriveBackup {
         database: AppDatabase,
         accessToken: String,
         systemFolderId: String,
-        replaceManagedDocuments: Boolean = false
+        replaceManagedDocuments: Boolean = false,
+        restoreMode: RestoreMode = if (replaceManagedDocuments) RestoreMode.REPLACE_FULL else RestoreMode.MERGE
     ): Result =
         try {
             val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE)
                 ?: return Result(true, "Keine Zusatzdaten-Sicherung vorhanden")
-            restorePayload(context, database, JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)), replaceManagedDocuments)
+            restorePayload(
+                context,
+                database,
+                JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)),
+                replaceManagedDocuments,
+                restoreMode
+            )
             Result(true, "Zusatzdaten einschließlich Fahrtenbuch wiederhergestellt")
         } catch (e: Exception) {
             Result(false, e.message ?: "Zusatzdaten-Wiederherstellung fehlgeschlagen")
@@ -70,7 +78,8 @@ object SupplementalDriveBackup {
         context: Context,
         database: AppDatabase,
         root: JSONObject,
-        replaceManagedDocuments: Boolean = false
+        replaceManagedDocuments: Boolean = false,
+        restoreMode: RestoreMode = if (replaceManagedDocuments) RestoreMode.REPLACE_FULL else RestoreMode.MERGE
     ) {
         require(root.optInt("schemaVersion", 1) <= SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
         PersistentPreferenceInventory.validatePayload(root)
@@ -109,6 +118,7 @@ object SupplementalDriveBackup {
             }
             property.copy(bildPfad = localImage)
         }
+        val existingDocuments = database.managedDocumentDao().getAll().associateBy { it.documentId }
         database.withTransaction {
             val loans = root.optJSONArray("loans") ?: JSONArray()
             for (index in 0 until loans.length()) database.loanDao().upsertLoan(loans.getJSONObject(index).toLoan())
@@ -125,7 +135,17 @@ object SupplementalDriveBackup {
                 database.managedDocumentDao().clearMigrationJournal()
             }
             val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
-            for (index in 0 until documents.length()) database.managedDocumentDao().upsert(documents.getJSONObject(index).toManagedDocument())
+            for (index in 0 until documents.length()) {
+                val backupDocument = documents.getJSONObject(index).toManagedDocument()
+                val localDocument = existingDocuments[backupDocument.documentId]
+                val mergedDocument = mergeManagedDocument(
+                    context = context,
+                    local = localDocument,
+                    backup = backupDocument,
+                    restoreMode = restoreMode
+                )
+                database.managedDocumentDao().upsert(mergedDocument)
+            }
             val bankAccounts = root.optJSONArray("bankAccounts") ?: JSONArray()
             for (index in 0 until bankAccounts.length()) database.bankDao().upsertAccount(bankAccounts.getJSONObject(index).toBankAccount())
             val bankTransactions = root.optJSONArray("bankTransactions") ?: JSONArray()
@@ -156,7 +176,7 @@ object SupplementalDriveBackup {
             }
         }
         // Preferences are intentionally written only after the Room transaction committed.
-        PersistentPreferenceInventory.restorePayload(context, root)
+        PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
     }
 
     private fun ExportAuditRun.toBackupJson() = JSONObject().apply {
@@ -405,6 +425,68 @@ object SupplementalDriveBackup {
 
     // OCR full text and local device paths are intentionally excluded. They are rebuilt locally;
     // document identity, Drive references and extraction/review metadata remain restorable.
+    private fun mergeManagedDocument(
+        context: Context,
+        local: ManagedDocument?,
+        backup: ManagedDocument,
+        restoreMode: RestoreMode
+    ): ManagedDocument {
+        val preservedLocalUri = when {
+            local != null && isUsableLocalUri(context, local.localUri) -> local.localUri
+            backup.sha256.isNotBlank() -> findManagedFileByHash(context, backup.sha256).orEmpty()
+            else -> ""
+        }
+        if (local == null) return backup.copy(localUri = preservedLocalUri)
+
+        val backupNewer = backupIsNewer(local.updatedAt, backup.updatedAt)
+        val base = if (restoreMode == RestoreMode.MERGE && !backupNewer) local else backup
+        val other = if (base === local) backup else local
+
+        return base.copy(
+            localUri = preservedLocalUri,
+            driveFileId = base.driveFileId ?: other.driveFileId,
+            driveFolderId = base.driveFolderId ?: other.driveFolderId,
+            sha256 = base.sha256.ifBlank { other.sha256 },
+            fileSizeBytes = if (base.fileSizeBytes > 0L) base.fileSizeBytes else other.fileSizeBytes,
+            originalFilename = base.originalFilename.ifBlank { other.originalFilename },
+            storedFilename = base.storedFilename.ifBlank { other.storedFilename },
+            mimeType = base.mimeType.takeUnless { it.isBlank() || it == "application/octet-stream" }
+                ?: other.mimeType,
+            ocrText = local.ocrText.takeIf(String::isNotBlank) ?: base.ocrText,
+            ocrStatus = if (local.ocrText.isNotBlank()) local.ocrStatus else base.ocrStatus
+        )
+    }
+
+    private fun backupIsNewer(localUpdatedAt: String, backupUpdatedAt: String): Boolean {
+        val localTime = runCatching { Instant.parse(localUpdatedAt) }.getOrNull() ?: return false
+        val backupTime = runCatching { Instant.parse(backupUpdatedAt) }.getOrNull() ?: return false
+        return backupTime.isAfter(localTime)
+    }
+
+    private fun isUsableLocalUri(context: Context, value: String): Boolean {
+        if (value.isBlank()) return false
+        return runCatching {
+            when {
+                value.startsWith("content://") -> context.contentResolver.openInputStream(android.net.Uri.parse(value))?.use { true } ?: false
+                value.startsWith("file://") -> File(requireNotNull(android.net.Uri.parse(value).path)).isFile
+                else -> File(value).isFile
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun findManagedFileByHash(context: Context, expectedHash: String): String? {
+        if (expectedHash.isBlank()) return null
+        val folder = File(context.filesDir, "managed_documents")
+        val files = folder.listFiles()?.filter { it.isFile }.orEmpty()
+        return files.firstOrNull { file ->
+            runCatching {
+                val digest = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+                    .joinToString("") { "%02x".format(it) }
+                digest.equals(expectedHash, ignoreCase = true)
+            }.getOrDefault(false)
+        }?.absolutePath
+    }
+
     private fun ManagedDocument.toBackupJson() = JSONObject().apply {
         put("documentId", documentId); put("propertyId", propertyId); putNullable("unitId", unitId)
         putNullable("receiptInternalId", receiptInternalId); put("documentType", documentType)

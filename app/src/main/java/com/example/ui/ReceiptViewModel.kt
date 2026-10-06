@@ -1111,7 +1111,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         supplementalRestore = {
                             com.example.data.SupplementalDriveBackup.restore(
                                 getApplication(), database, token, initResult.config.systemFolderId,
-                                replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL
+                                replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL,
+                                restoreMode = mode
                             )
                         },
                         onPhase = { phase ->
