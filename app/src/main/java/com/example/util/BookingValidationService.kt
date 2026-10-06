@@ -84,7 +84,47 @@ object BookingValidationService {
                 )
             }
 
-            // 3. Amount check
+            // 3. Object / unit cost-center identity
+            if (profile.kost1Logic == "OBJEKT") {
+                if (record.objektId.isBlank()) {
+                    errors.add(
+                        ValidationIssue(
+                            isError = true,
+                            bookingId = record.bookingId,
+                            receiptId = record.receiptId,
+                            field = "objektId",
+                            message = "Immobilienzuordnung fehlt; KOST1 kann nicht eindeutig gebildet werden."
+                        )
+                    )
+                }
+                if (record.kost1.isBlank()) {
+                    errors.add(
+                        ValidationIssue(
+                            isError = true,
+                            bookingId = record.bookingId,
+                            receiptId = record.receiptId,
+                            field = "kost1",
+                            message = "Objekt-Kostenstelle KOST1 fehlt."
+                        )
+                    )
+                }
+            }
+            if (profile.kost2Logic == "WOHNEINHEIT" &&
+                record.wohneinheitId.isNotBlank() &&
+                record.kost2.isBlank()
+            ) {
+                errors.add(
+                    ValidationIssue(
+                        isError = true,
+                        bookingId = record.bookingId,
+                        receiptId = record.receiptId,
+                        field = "kost2",
+                        message = "Einheiten-Kostenstelle KOST2 fehlt."
+                    )
+                )
+            }
+
+            // 4. Amount check
             if (record.bruttobetrag <= 0.0) {
                 errors.add(
                     ValidationIssue(
@@ -97,7 +137,7 @@ object BookingValidationService {
                 )
             }
 
-            // 4. Belegnummer check
+            // 5. Belegnummer check
             if (record.belegfeld1.isBlank()) {
                 errors.add(
                     ValidationIssue(
@@ -110,7 +150,7 @@ object BookingValidationService {
                 )
             }
 
-            // 5. Date check
+            // 6. Date check
             if (!record.belegdatum.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
                 errors.add(
                     ValidationIssue(
@@ -123,7 +163,7 @@ object BookingValidationService {
                 )
             }
 
-            // 6. Verification status
+            // 7. Verification status
             val isUnverified = record.pruefstatus == "UNGEPRUEFT" ||
                     record.exportStatus in listOf("ENTWURF", "KI_VORSCHLAG", "ZU_PRUEFEN")
 
@@ -163,7 +203,7 @@ object BookingValidationService {
                 )
             }
 
-            // 7. Attached file warning
+            // 8. Attached file warning
             if (record.originalFileId.isNotBlank()) {
                 val file = File(record.originalFileId)
                 if (!file.exists() && !record.originalFileId.startsWith("http")) {

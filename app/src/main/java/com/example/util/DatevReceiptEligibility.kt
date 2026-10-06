@@ -10,6 +10,11 @@ data class DatevReceiptEligibilityIssue(
 )
 
 object DatevReceiptEligibility {
+    fun accountingIssues(receipt: Receipt): List<DatevReceiptEligibilityIssue> =
+        issues(receipt).filterNot { it.code == "ALREADY_EXPORTED" }
+
+    fun isAccountingApproved(receipt: Receipt): Boolean = accountingIssues(receipt).isEmpty()
+
     fun issues(receipt: Receipt): List<DatevReceiptEligibilityIssue> {
         val issues = mutableListOf<DatevReceiptEligibilityIssue>()
         if (receipt.internalId.isBlank()) {
