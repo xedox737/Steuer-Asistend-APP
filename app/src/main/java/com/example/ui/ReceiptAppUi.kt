@@ -2936,8 +2936,9 @@ fun ReceiptPositionenEditor(
 ) {
     var showAddItemDialog by remember { mutableStateOf(false) }
     var newItemBezeichnung by remember { mutableStateOf("") }
-    var newItemMenge by remember { mutableStateOf("1.0") }
+    var newItemMenge by remember { mutableStateOf("1,00") }
     var newItemEinzelpreis by remember { mutableStateOf("") }
+    var itemInputError by remember { mutableStateOf<String?>(null) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3071,25 +3072,30 @@ fun ReceiptPositionenEditor(
                     )
                     OutlinedTextField(
                         value = newItemMenge,
-                        onValueChange = { newItemMenge = it },
-                        label = { Text("Menge (z. B. 1.0)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        onValueChange = { newItemMenge = it; itemInputError = null },
+                        label = { Text("Menge (z. B. 1,0)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = newItemEinzelpreis,
-                        onValueChange = { newItemEinzelpreis = it },
+                        onValueChange = { newItemEinzelpreis = it; itemInputError = null },
                         label = { Text("Einzelpreis in EUR") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
+                    itemInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val mengeVal = newItemMenge.toDoubleOrNull() ?: 1.0
-                        val einzelpreisVal = newItemEinzelpreis.toDoubleOrNull() ?: 0.0
+                        val mengeVal = GermanNumberInput.parseNonNegative(newItemMenge)
+                        val einzelpreisVal = GermanNumberInput.parseNonNegative(newItemEinzelpreis)
+                        if (mengeVal == null || einzelpreisVal == null) {
+                            itemInputError = "Bitte gültige Mengen und Beträge eingeben."
+                            return@Button
+                        }
                         val gesamtpreisVal = mengeVal * einzelpreisVal
                         val newItem = com.example.data.ReceiptItem(
                             bezeichnung = newItemBezeichnung,
@@ -3099,7 +3105,7 @@ fun ReceiptPositionenEditor(
                         )
                         onPositionenChanged(positionen + newItem)
                         newItemBezeichnung = ""
-                        newItemMenge = "1.0"
+                        newItemMenge = "1,00"
                         newItemEinzelpreis = ""
                         showAddItemDialog = false
                     },
