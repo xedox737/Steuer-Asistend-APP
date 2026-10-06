@@ -70,7 +70,7 @@ fun RentIncomeOverviewScreen(
         RentOverviewPresentation.scopedReceipts(groups, receipts, propertyScoped)
     }
     val years = remember(groups, scopedReceipts, bankAssignments, historyVersion, prefsVersion) {
-        RentOverviewPresentation.years(context, groups, scopedReceipts, bankAssignments)
+        RentOverviewPresentation.years(context, groups, scopedReceipts, bankAssignments = bankAssignments)
     }
     var selectedYear by rememberSaveable(if (propertyScoped) metadata?.propertyId else "all") { mutableIntStateOf(LocalDate.now().year) }
     var yearsOpen by remember { mutableStateOf(false) }
