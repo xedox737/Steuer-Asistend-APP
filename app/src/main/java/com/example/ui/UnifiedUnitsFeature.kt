@@ -74,6 +74,9 @@ internal fun UnifiedPropertyUnitsScreen(
     onBackToProperty: () -> Unit
 ) {
     val context = LocalContext.current
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     var selectedUnitId by remember { mutableStateOf<String?>(null) }
     var year by remember { mutableIntStateOf(LocalDate.now().year) }
 
@@ -92,8 +95,14 @@ internal fun UnifiedPropertyUnitsScreen(
         return
     }
 
-    val yearRows = remember(property.propertyId, units, receipts, year) {
-        RentTrackingLogic.year(context, property.propertyId, units, receipts, year)
+    val yearRows = remember(
+        property.propertyId, units, receipts, year,
+        bankAssignments, bankLinks, bankTransactions
+    ) {
+        RentTrackingLogic.year(
+            context, property.propertyId, units, receipts, year,
+            bankAssignments, bankLinks, bankTransactions
+        )
     }
     val totalExpected = yearRows.sumOf { it.expected }
     val totalActual = yearRows.sumOf { it.actual }
@@ -250,7 +259,10 @@ internal fun UnifiedPropertyUnitsScreen(
         items(units, key = { PropertyUnitScopedData.stableUnitId(property.propertyId, it) }) { unit ->
             val nk = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")
             val other = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other")
-            val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
+            val month = RentTrackingLogic.month(
+                context, property.propertyId, unit, receipts, YearMonth.now(),
+                bankAssignments, bankLinks, bankTransactions
+            )
             UnifiedUnitOverviewCard(
                 unit = unit,
                 nk = if (unit.status == "Vermietet") nk else 0.0,
@@ -438,6 +450,11 @@ private fun UnifiedUnitDetailScreen(
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
+    val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
     var showHistory by remember { mutableStateOf(false) }
     var showMonthCheck by remember { mutableStateOf(false) }
     var showDocuments by remember { mutableStateOf(false) }
@@ -463,7 +480,10 @@ private fun UnifiedUnitDetailScreen(
     val extraDetails = remember(unitId, detailsVersion) {
         UnitRentalDetailStore.load(context, property.propertyId, unitId)
     }
-    val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
+    val month = RentTrackingLogic.month(
+        context, property.propertyId, unit, receipts, YearMonth.now(),
+        bankAssignments, bankLinks, bankTransactions
+    )
     val isCurrentlyRented = unit.status == "Vermietet" && activePeriod != null
     val nk = if (isCurrentlyRented) activePeriod?.nebenkosten ?: 0.0 else 0.0
     val other = if (isCurrentlyRented) activePeriod?.sonstige ?: 0.0 else 0.0
@@ -478,6 +498,7 @@ private fun UnifiedUnitDetailScreen(
 
     val selectedDocument = selectedDocumentId?.let { id -> unitDocs.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
+        val selectedReview = aiReview?.takeIf { it.first == selectedDocument.documentId }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = property,
@@ -488,8 +509,19 @@ private fun UnifiedUnitDetailScreen(
             onSync = { viewModel.syncManagedDocumentNow(selectedDocument.documentId) },
             onUpdatePresentation = { title, description ->
                 viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
-            }
+            },
+            hasPendingReview = selectedReview != null,
+            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
+        if (selectedReview != null && selectedDocument.documentId !in dismissedAiReviews) {
+            DocumentAiReviewDialog(
+                selectedDocument,
+                selectedReview.second,
+                listOf(unit),
+                property,
+                viewModel
+            )
+        }
         return
     }
 
