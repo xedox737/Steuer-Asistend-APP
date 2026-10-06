@@ -199,6 +199,15 @@ internal object TenantHistoryStore {
         save(context, propertyId, unitId, unitName, periods)
     }
 
+    fun changeTenant(
+        periods: List<TenantPeriod>,
+        exitDate: String,
+        newPeriod: TenantPeriod
+    ): List<TenantPeriod> =
+        periods.map { period ->
+            if (period.active) period.copy(endDate = exitDate) else period
+        } + newPeriod
+
     fun ensureCurrentPeriod(
         context: Context,
         unit: WohneinheitStatus,
@@ -316,9 +325,7 @@ internal fun TenantHistoryDialog(
             defaultOther = sonstigeCurrent,
             onDismiss = { showChange = false },
             onSave = { exitDate, newPeriod ->
-                val updated = periods.map { p ->
-                    if (p.active) p.copy(endDate = exitDate) else p
-                } + newPeriod
+                val updated = TenantHistoryStore.changeTenant(periods, exitDate, newPeriod)
                 TenantHistoryStore.save(context, propertyId, unitId, unit.name, updated)
                 periods = updated
                 version++
