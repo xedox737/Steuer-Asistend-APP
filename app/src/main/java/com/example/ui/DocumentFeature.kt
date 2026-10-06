@@ -154,8 +154,7 @@ fun DocumentManagementScreen(
         LaunchedEffect(selectedDocument.documentId) {
             viewModel.ensureManagedDocumentReady(selectedDocument.documentId)
         }
-        val selectedProperty = properties.firstOrNull { it.propertyId == selectedDocument.propertyId }
-            ?: property?.takeIf { it.propertyId == selectedDocument.propertyId }
+        val selectedProperty = DocumentReviewPresentation.propertyFor(selectedDocument, properties, property)
         val selectedUnits = selectedProperty?.let { selected ->
             if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
         }.orEmpty()
@@ -336,8 +335,7 @@ fun DocumentManagementScreen(
         if (documentId !in dismissedAiReviews) {
             val document = documents.firstOrNull { it.documentId == documentId }
             if (document != null) {
-                val reviewProperty = properties.firstOrNull { it.propertyId == document.propertyId }
-                    ?: property?.takeIf { it.propertyId == document.propertyId }
+                val reviewProperty = DocumentReviewPresentation.propertyFor(document, properties, property)
                 val reviewUnits = reviewProperty?.let { selected ->
                     if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
                 }.orEmpty()
