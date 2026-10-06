@@ -716,16 +716,16 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val scopedNamePrefix = scopedUnitNamePrefix(propertyId, name)
         val scopedIndexKey = "property_${propertyId}_unit_id_index_$index"
         val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-        val resolved = unitPrefs.getString(scopedNamePrefix + "id", null)
+        val storedId = unitPrefs.getString(scopedNamePrefix + "id", null)
             ?: unitPrefs.getString(scopedIndexKey, null)
             ?: if (legacyAllowed) unitPrefs.getString("unit_id_$name", null) else null
             ?: if (legacyAllowed) unitPrefs.getString("unit_id_index_$index", null) else null
-            ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name)
+        val stableId = storedId ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name)
         unitPrefs.edit()
-            .putString(scopedNamePrefix + "id", resolved)
-            .putString(scopedIndexKey, resolved)
+            .putString(scopedNamePrefix + "id", stableId)
+            .putString(scopedIndexKey, stableId)
             .apply()
-        return resolved
+        return stableId
     }
 
     private fun loadUnit(
