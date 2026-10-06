@@ -326,11 +326,15 @@ internal fun TenantHistoryDialog(
     )
 
     if (showChange) {
+        val activePeriod = periods.lastOrNull { it.active }
+        val currentAmounts = activePeriod?.amountsAt(LocalDate.now())
+            ?: RentAmounts(unit.kaltmiete, nebenkostenCurrent, sonstigeCurrent)
         TenantChangeDialog(
             unit = unit,
-            current = periods.lastOrNull { it.active },
-            defaultNk = nebenkostenCurrent,
-            defaultOther = sonstigeCurrent,
+            current = activePeriod,
+            defaultCold = currentAmounts.kaltmiete,
+            defaultNk = currentAmounts.nebenkosten,
+            defaultOther = currentAmounts.sonstige,
             onDismiss = { showChange = false },
             onSave = { exitDate, newPeriod ->
                 val updated = TenantHistoryStore.changeTenant(periods, exitDate, newPeriod)
@@ -349,6 +353,7 @@ internal fun TenantHistoryDialog(
 private fun TenantChangeDialog(
     unit: WohneinheitStatus,
     current: TenantPeriod?,
+    defaultCold: Double,
     defaultNk: Double,
     defaultOther: Double,
     onDismiss: () -> Unit,
@@ -357,7 +362,7 @@ private fun TenantChangeDialog(
     var oldEnd by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
     var newStart by remember { mutableStateOf("") }
-    var cold by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
+    var cold by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultCold)) }
     var nk by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultNk)) }
     var other by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultOther)) }
     var error by remember { mutableStateOf<String?>(null) }
