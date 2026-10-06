@@ -95,6 +95,39 @@ class DatevStableIdentityTest {
         assertNotEquals(first.bookingId, second.bookingId)
     }
 
+    @Test
+    fun objectAndUnitCostCentersUseStableReceiptIdentityNotProfileName() {
+        val profileA = DatevProfile.createDefaultSkr03().copy(profileName = "Kanzlei Alpha")
+        val profileB = DatevProfile.createDefaultSkr03().copy(profileName = "Kanzlei Beta")
+        val receipt = receipt(id = 7, internalId = "stable-receipt-id").copy(
+            propertyId = "property-b",
+            unitId = "unit-b-1",
+            wohneinheit = "WE 1"
+        )
+
+        val rowA = DatevMappingService.buildDatevBookingRows(receipt, profileA).single()
+        val rowB = DatevMappingService.buildDatevBookingRows(receipt, profileB).single()
+
+        assertEquals("property-b", rowA.objektId)
+        assertEquals("unit-b-1", rowA.wohneinheitId)
+        assertEquals(rowA.kost1, rowB.kost1)
+        assertEquals(rowA.kost2, rowB.kost2)
+        assertNotEquals("Kanzlei Alpha".take(15), rowA.kost1)
+    }
+
+    @Test
+    fun sameUnitLabelAcrossPropertiesGetsDifferentCostCenter() {
+        val profile = DatevProfile.createDefaultSkr03()
+        val first = receipt(1, "r-a").copy(propertyId = "property-a", unitId = "unit-a", wohneinheit = "WE 1")
+        val second = receipt(2, "r-b").copy(propertyId = "property-b", unitId = "unit-b", wohneinheit = "WE 1")
+
+        val a = DatevMappingService.buildDatevBookingRows(first, profile).single()
+        val b = DatevMappingService.buildDatevBookingRows(second, profile).single()
+
+        assertNotEquals(a.kost1, b.kost1)
+        assertNotEquals(a.kost2, b.kost2)
+    }
+
     private fun receipt(id: Int, internalId: String) = Receipt(
         id = id,
         aussteller = "Testlieferant",
