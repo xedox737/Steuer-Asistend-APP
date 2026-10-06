@@ -171,7 +171,9 @@ internal fun ManagedDocumentDetailScreen(
     onAnalyze: () -> Unit,
     onDownload: () -> Unit,
     onSync: () -> Unit,
-    onUpdatePresentation: (String, String) -> Unit
+    onUpdatePresentation: (String, String) -> Unit,
+    hasPendingReview: Boolean = false,
+    onReviewPending: () -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -314,6 +316,19 @@ internal fun ManagedDocumentDetailScreen(
                             if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
+                }
+            }
+        }
+        item {
+            if (hasPendingReview) {
+                Button(
+                    onClick = onReviewPending,
+                    modifier = Modifier.fillMaxWidth().testTag("review_managed_document_ai"),
+                    shape = Ui2.controlShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = WarmOrange)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp))
+                    Text(" Erkannte Daten prüfen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
