@@ -745,8 +745,9 @@ fun WohneinheitenStatusSection(
         var editLabel by remember { mutableStateOf(unit.label) }
         var editStatus by remember { mutableStateOf(unit.status) }
         var editMieter by remember { mutableStateOf(unit.mieter) }
-        var editRentStr by remember { mutableStateOf(unit.kaltmiete.toString()) }
-        var editAreaStr by remember { mutableStateOf(unit.wohnflaeche.toString()) }
+        var editRentStr by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
+        var editAreaStr by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.wohnflaeche)) }
+        var unitInputError by remember { mutableStateOf<String?>(null) }
 
         var statusExpanded by remember { mutableStateOf(false) }
 
@@ -848,21 +849,27 @@ fun WohneinheitenStatusSection(
                             }
                         }
                     }
+                    unitInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val rent = editRentStr.toDoubleOrNull() ?: unit.kaltmiete
-                        val area = editAreaStr.toDoubleOrNull() ?: unit.wohnflaeche
+                        val rent = GermanNumberInput.parseNonNegative(editRentStr)
+                        val area = GermanNumberInput.parseNonNegative(editAreaStr)
+                        unitInputError = when {
+                            rent == null -> "Bitte einen gültigen Mietbetrag eingeben."
+                            area == null -> "Bitte eine gültige, nicht negative Fläche eingeben."
+                            else -> null
+                        }
+                        if (unitInputError != null) return@Button
                         viewModel.updateWohneinheit(
-                            WohneinheitStatus(
-                                name = unit.name,
+                            unit.copy(
                                 label = editLabel,
                                 status = editStatus,
                                 mieter = editMieter,
-                                kaltmiete = rent,
-                                wohnflaeche = area
+                                kaltmiete = rent!!,
+                                wohnflaeche = area!!
                             )
                         )
                         selectedUnitForEdit = null
@@ -10599,8 +10606,9 @@ fun TenantItem(
 ) {
     var mieter by remember { mutableStateOf(unit.mieter) }
     var start by remember { mutableStateOf(unit.mietvertragsstart) }
-    var kaltmiete by remember { mutableStateOf(unit.kaltmiete.toString()) }
+    var kaltmiete by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
     var isEditing by remember { mutableStateOf(false) }
+    var tenantInputError by remember { mutableStateOf<String?>(null) }
 
     Card(modifier = Modifier.fillMaxWidth().padding(4.dp)) {
         Column(modifier = Modifier.padding(8.dp)) {
@@ -10608,9 +10616,17 @@ fun TenantItem(
             if (isEditing) {
                 OutlinedTextField(value = mieter, onValueChange = { mieter = it }, label = { Text("Mieter") })
                 OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Mietvertragsstart") })
-                OutlinedTextField(value = kaltmiete, onValueChange = { kaltmiete = it }, label = { Text("Kaltmiete") })
+                OutlinedTextField(value = kaltmiete, onValueChange = { kaltmiete = it; tenantInputError = null }, label = { Text("Kaltmiete") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                tenantInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 Button(onClick = {
-                    onUpdate(unit.copy(mieter = mieter, mietvertragsstart = start, kaltmiete = kaltmiete.toDoubleOrNull() ?: 0.0))
+                    val amount = GermanNumberInput.parseNonNegative(kaltmiete)
+                    tenantInputError = when {
+                        amount == null -> "Bitte einen gültigen Mietbetrag eingeben."
+                        start.isNotBlank() && !CalendarInput.isValidIsoDate(start) -> "Bitte ein gültiges Datum eingeben."
+                        else -> null
+                    }
+                    if (tenantInputError != null) return@Button
+                    onUpdate(unit.copy(mieter = mieter, mietvertragsstart = start.trim(), kaltmiete = amount!!))
                     isEditing = false
                 }) {
                     Text("Speichern")
