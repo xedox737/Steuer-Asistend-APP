@@ -375,21 +375,69 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
 
 @Composable private fun PropertyEditScreen(property: PropertyMetadata, viewModel: ReceiptViewModel, onBack: () -> Unit) {
     var name by remember(property) { mutableStateOf(property.name) }; var address by remember(property) { mutableStateOf(property.adresse) }; var type by remember(property) { mutableStateOf(property.objektart) }
-    var year by remember(property) { mutableStateOf(property.baujahr.toString()) }; var area by remember(property) { mutableStateOf(property.wohnflaeche.toString()) }; var land by remember(property) { mutableStateOf(property.grundstuecksgroesse.toString()) }; var notes by remember(property) { mutableStateOf(property.notizen) }
+    var year by remember(property) { mutableStateOf(property.baujahr.toString()) }
+    var area by remember(property) { mutableStateOf(GermanNumberInput.formatForInput(property.wohnflaeche)) }
+    var land by remember(property) { mutableStateOf(GermanNumberInput.formatForInput(property.grundstuecksgroesse)) }
+    var notes by remember(property) { mutableStateOf(property.notizen) }
+    var areaError by remember(property) { mutableStateOf<String?>(null) }
+    var landError by remember(property) { mutableStateOf<String?>(null) }
+    var yearError by remember(property) { mutableStateOf<String?>(null) }
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }; Text("Immobilie bearbeiten", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            TextButton(onClick = { viewModel.updatePropertyMetadata(property.copy(name = name, adresse = address, objektart = type, baujahr = year.toIntOrNull() ?: property.baujahr, wohnflaeche = area.replace(',', '.').toDoubleOrNull() ?: property.wohnflaeche, grundstuecksgroesse = land.replace(',', '.').toDoubleOrNull() ?: property.grundstuecksgroesse, notizen = notes)); onBack() }) { Text("Speichern", fontSize = 14.sp, color = AccentBlue) }
+            TextButton(onClick = {
+                val parsedYear = if (year.isBlank()) property.baujahr else year.toIntOrNull()?.takeIf { it >= 0 }
+                val parsedArea = if (area.isBlank()) property.wohnflaeche else GermanNumberInput.parseNonNegative(area)
+                val parsedLand = if (land.isBlank()) property.grundstuecksgroesse else GermanNumberInput.parseNonNegative(land)
+                yearError = if (parsedYear == null) "Bitte ein gültiges Baujahr eingeben." else null
+                areaError = if (parsedArea == null) "Die Fläche darf nicht negativ oder ungültig sein." else null
+                landError = if (parsedLand == null) "Die Fläche darf nicht negativ oder ungültig sein." else null
+                if (yearError != null || areaError != null || landError != null) return@TextButton
+                viewModel.updatePropertyMetadata(
+                    property.copy(
+                        name = name,
+                        adresse = address,
+                        objektart = type,
+                        baujahr = parsedYear!!,
+                        wohnflaeche = parsedArea!!,
+                        grundstuecksgroesse = parsedLand!!,
+                        notizen = notes
+                    )
+                )
+                onBack()
+            }) { Text("Speichern", fontSize = 14.sp, color = AccentBlue) }
         }
         LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Box { PropertyCoverImage(property, Modifier.fillMaxWidth().height(150.dp)); PropertyImagePicker(property, viewModel, Modifier.align(Alignment.BottomEnd).padding(8.dp)) } }
-            item { PropertyEditField(name, "Name *") { name = it } }; item { PropertyEditField(address, "Adresse *") { address = it } }; item { PropertyEditField(type, "Objektart *") { type = it } }; item { PropertyEditField(year, "Baujahr") { year = it.filter(Char::isDigit) } }; item { PropertyEditField(area, "Wohnfläche (m²)") { area = it } }; item { PropertyEditField(land, "Grundstücksfläche (m²)") { land = it } }; item { PropertyEditField(notes, "Beschreibung / Notizen", false) { notes = it } }
+            item { PropertyEditField(name, "Name *") { name = it } }
+            item { PropertyEditField(address, "Adresse *") { address = it } }
+            item { PropertyEditField(type, "Objektart *") { type = it } }
+            item { PropertyEditField(year, "Baujahr", error = yearError) { yearError = null; year = it.filter(Char::isDigit) } }
+            item { PropertyEditField(area, "Wohnfläche (m²)", error = areaError) { areaError = null; area = it } }
+            item { PropertyEditField(land, "Grundstücksfläche (m²)", error = landError) { landError = null; land = it } }
+            item { PropertyEditField(notes, "Beschreibung / Notizen", false) { notes = it } }
         }
     }
 }
 
-@Composable private fun PropertyEditField(value: String, label: String, singleLine: Boolean = true, onChange: (String) -> Unit) { OutlinedTextField(value, onChange, label = { Text(label) }, modifier = Modifier.fillMaxWidth(), singleLine = singleLine) }
+@Composable private fun PropertyEditField(
+    value: String,
+    label: String,
+    singleLine: Boolean = true,
+    error: String? = null,
+    onChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        isError = error != null,
+        supportingText = { error?.let { Text(it) } },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = singleLine
+    )
+}
 
 @Composable
 private fun PropertyDashboard(
