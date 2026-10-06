@@ -223,37 +223,24 @@ internal object TenantHistoryStore {
         return listOf(initial)
     }
 
-    fun expectedForYear(periods: List<TenantPeriod>, year: Int): Double {
-        if (periods.isEmpty()) return 0.0
-        val yearStart = LocalDate.of(year, 1, 1)
-        val yearEnd = LocalDate.of(year, 12, 31)
-        return periods.sumOf { p ->
-            val start = runCatching { LocalDate.parse(p.startDate) }.getOrNull() ?: yearStart
-            val end = runCatching { LocalDate.parse(p.endDate) }.getOrNull() ?: yearEnd
-            val from = if (start.isAfter(yearStart)) start else yearStart
-            val to = if (end.isBefore(yearEnd)) end else yearEnd
-            if (to.isBefore(from)) 0.0 else proratedMonthlyAmount(p.monatSoll, from, to)
-        }
+    fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {
+        val monthStart = month.atDay(1)
+        val monthEnd = month.atEndOfMonth()
+        val start = CalendarInput.parseIsoDate(period.startDate) ?: monthStart
+        val end = CalendarInput.parseIsoDate(period.endDate) ?: monthEnd
+        val from = if (start.isAfter(monthStart)) start else monthStart
+        val to = if (end.isBefore(monthEnd)) end else monthEnd
+        if (to.isBefore(from)) return 0.0
+        val days = ChronoUnit.DAYS.between(from, to).toDouble() + 1.0
+        val monthly = period.amountsAt(monthStart).monatSoll
+        return max(0.0, monthly * (days / month.lengthOfMonth().toDouble()))
     }
 
-    private fun proratedMonthlyAmount(monthly: Double, start: LocalDate, end: LocalDate): Double {
-        var cursor = start.withDayOfMonth(1)
-        val lastMonth = end.withDayOfMonth(1)
-        var total = 0.0
-        while (!cursor.isAfter(lastMonth)) {
-            val ym = YearMonth.from(cursor)
-            val monthStart = ym.atDay(1)
-            val monthEnd = ym.atEndOfMonth()
-            val occupiedStart = if (start.isAfter(monthStart)) start else monthStart
-            val occupiedEnd = if (end.isBefore(monthEnd)) end else monthEnd
-            if (!occupiedEnd.isBefore(occupiedStart)) {
-                val days = ChronoUnit.DAYS.between(occupiedStart, occupiedEnd).toDouble() + 1.0
-                total += monthly * (days / ym.lengthOfMonth().toDouble())
-            }
-            cursor = cursor.plusMonths(1)
+    fun expectedForYear(periods: List<TenantPeriod>, year: Int): Double =
+        (1..12).sumOf { month ->
+            val yearMonth = YearMonth.of(year, month)
+            periods.sumOf { period -> expectedInMonth(period, yearMonth) }
         }
-        return max(0.0, total)
-    }
 }
 
 internal fun parseTenantNumber(value: String): Double? =
