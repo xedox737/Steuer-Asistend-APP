@@ -278,6 +278,27 @@ class RentTrackingLogicTest {
         assertEquals(0.0, row.missing, 0.001)
     }
 
+
+    @Test
+    fun `direct receipt reference never fills unassigned transaction remainder as rent`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val receipt = rent(42, "2026-10-03", 500.0).copy(unitId = "u1")
+        val transaction = bankTransaction("tx-partial-receipt", 890.0, BankReconciliationStatus.MATCHED)
+        val assignment = assignment(
+            "a-partial-receipt", "tx-partial-receipt", "p1", "u1", 500.0, BankSplitPaymentType.RENT
+        ).copy(receiptId = receipt.id)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, listOf(receipt), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(500.0, row.actual, 0.001)
+        assertEquals(390.0, row.missing, 0.001)
+        assertEquals(RentPaymentStatus.PARTIAL, row.status)
+    }
+
     @Test
     fun `confirmed overpayment is preserved while missing stays zero`() {
         val unit = rentalUnit()
