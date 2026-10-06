@@ -3139,7 +3139,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var editAussteller by remember(receipt) { mutableStateOf(receipt.aussteller) }
     var editDatum by remember(receipt) { mutableStateOf(receipt.datum) }
     var editUhrzeit by remember(receipt) { mutableStateOf(receipt.uhrzeit) }
-    var editBruttobetrag by remember(receipt) { mutableStateOf(receipt.bruttobetrag.toString()) }
+    var editBruttobetrag by remember(receipt) { mutableStateOf(GermanNumberInput.formatForInput(receipt.bruttobetrag)) }
     var editHauptkategorie by remember(receipt) { mutableStateOf(receipt.hauptkategorie) }
     var editUnterkategorie by remember(receipt) { mutableStateOf(receipt.unterkategorie) }
     var editKontoNr by remember(receipt) { mutableStateOf(receipt.kontoNr) }
@@ -3158,6 +3158,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var editPropertyId by remember(receipt) { mutableStateOf(receipt.propertyId) }
     var propertyExpanded by remember { mutableStateOf(false) }
     var amountError by remember { mutableStateOf(false) }
+    var dateError by remember { mutableStateOf(false) }
     val metadata = availableProperties.firstOrNull { it.propertyId == editPropertyId } ?: PropertyMetadata()
     val unitsList = remember(metadata.wohneinheiten) {
         metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
@@ -3178,7 +3179,9 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     ) {
                         OutlinedTextField(
                             value = editDatum,
-                            onValueChange = { editDatum = it },
+                            onValueChange = { editDatum = it; dateError = false },
+                            isError = dateError,
+                            supportingText = { if (dateError) Text("Bitte ein gültiges Datum eingeben.") },
                             label = { Text("Datum (YYYY-MM-DD)") },
                             modifier = Modifier.weight(1.1f).testTag("edit_receipt_datum")
                         )
@@ -3194,9 +3197,9 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                         value = editBruttobetrag,
                         isError = amountError,
                         supportingText = { if (amountError) Text("Bitte einen gültigen Betrag eingeben.") },
-                        onValueChange = { editBruttobetrag = it },
+                        onValueChange = { editBruttobetrag = it; amountError = false },
                         label = { Text("Bruttobetrag in EUR") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth().testTag("edit_receipt_betrag")
                     )
 
@@ -3372,10 +3375,10 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     Button(
                         onClick = {
                             val parsedBetrag = parseReceiptEditAmount(editBruttobetrag)
-                            if (parsedBetrag == null) {
-                                amountError = true
-                                return@Button
-                            }
+                            val parsedDate = ReceiptInputValidation.date(editDatum)
+                            amountError = parsedBetrag == null
+                            dateError = parsedDate == null
+                            if (amountError || dateError) return@Button
                             val updatedReceipt = receipt.copy(
                                 aussteller = editAussteller,
                                 propertyId = editPropertyId,
@@ -5187,6 +5190,8 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var editPositionen by remember { mutableStateOf<List<com.example.data.ReceiptItem>>(emptyList()) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
     var localImagePaths by remember { mutableStateOf("") }
+    var receiptAmountError by remember { mutableStateOf(false) }
+    var receiptDateError by remember { mutableStateOf(false) }
 
     val propertyMetadataState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = propertyMetadataState ?: PropertyMetadata()
@@ -5285,7 +5290,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             editAussteller = extracted.aussteller
             editDatum = extracted.datum
             editUhrzeit = extracted.uhrzeit
-            editBruttobetrag = extracted.bruttobetrag.toString()
+            editBruttobetrag = GermanNumberInput.formatForInput(extracted.bruttobetrag)
             editHauptkategorie = extracted.hauptkategorie
             editUnterkategorie = extracted.unterkategorie
             editKontoNr = extracted.kontoNr
@@ -5918,7 +5923,9 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = editDatum,
-                    onValueChange = { editDatum = it },
+                    onValueChange = { editDatum = it; receiptDateError = false },
+                    isError = receiptDateError,
+                    supportingText = { if (receiptDateError) Text("Bitte ein gültiges Datum eingeben.") },
                     label = { Text("Datum (JJJJ-MM-TT)") },
                     modifier = Modifier.weight(1f).testTag("edit_datum"),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -5940,10 +5947,12 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
 
             OutlinedTextField(
                 value = editBruttobetrag,
-                onValueChange = { editBruttobetrag = it },
+                onValueChange = { editBruttobetrag = it; receiptAmountError = false },
+                isError = receiptAmountError,
+                supportingText = { if (receiptAmountError) Text("Bitte einen gültigen Betrag eingeben.") },
                 label = { Text("Bruttobetrag (€)") },
                 modifier = Modifier.fillMaxWidth().testTag("edit_betrag"),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
                     unfocusedContainerColor = Color.White
@@ -6161,12 +6170,16 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 }
                 Button(
                     onClick = {
-                        val amount = editBruttobetrag.toDoubleOrNull() ?: 0.0
+                        val amount = ReceiptInputValidation.amount(editBruttobetrag)
+                        val date = ReceiptInputValidation.date(editDatum)
+                        receiptAmountError = amount == null
+                        receiptDateError = date == null
+                        if (receiptAmountError || receiptDateError) return@Button
                         viewModel.saveReceipt(
                             aussteller = editAussteller,
                             datum = editDatum,
                             uhrzeit = editUhrzeit,
-                            bruttobetrag = amount,
+                            bruttobetrag = amount!!,
                             hauptkategorie = editHauptkategorie,
                             unterkategorie = editUnterkategorie,
                             kontoNr = editKontoNr,
