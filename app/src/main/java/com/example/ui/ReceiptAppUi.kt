@@ -9202,15 +9202,15 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                         name = editName,
                         adresse = editAdresse,
                         wohnort = editWohnort,
-                        baujahr = finalBaujahr,
-                        wohnflaeche = finalWohnflaeche,
-                        grundstuecksgroesse = finalGrundstuecksgroesse,
+                        baujahr = finalBaujahr!!,
+                        wohnflaeche = finalWohnflaeche!!,
+                        grundstuecksgroesse = finalGrundstuecksgroesse!!,
                         notariellesKaufdatum = editNotariellesKaufdatum,
                         uebergangNutzenLasten = editUebergangNutzenLasten,
                         wohneinheiten = editWohneinheiten,
-                        gesamtKaufpreis = finalGesamtKaufpreis,
-                        gebaeudewert = finalGebaeudewert,
-                        grundUndBodenWert = finalGrundUndBodenWert,
+                        gesamtKaufpreis = finalGesamtKaufpreis!!,
+                        gebaeudewert = finalGebaeudewert!!,
+                        grundUndBodenWert = finalGrundUndBodenWert!!,
                         kaufpreisAufteilungQuelle = "MANUELL"
                     )
                     viewModel.updatePropertyMetadata(updated)
