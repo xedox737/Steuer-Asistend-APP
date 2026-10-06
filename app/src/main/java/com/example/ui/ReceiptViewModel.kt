@@ -2688,7 +2688,7 @@ data class AiSearchUiState(
     private val _wizardUnitFilter = MutableStateFlow("ALLE")
     val wizardUnitFilter: StateFlow<String> = _wizardUnitFilter.asStateFlow()
 
-    private val _wizardYearFilter = MutableStateFlow("2026")
+    private val _wizardYearFilter = MutableStateFlow(java.time.LocalDate.now().year.toString())
     val wizardYearFilter: StateFlow<String> = _wizardYearFilter.asStateFlow()
 
     private val _wizardCategoryTypeFilter = MutableStateFlow("ALLE")
@@ -2759,8 +2759,18 @@ data class AiSearchUiState(
         allRecs.forEach { receipt ->
             val reasons = mutableListOf<String>()
 
-            if (unitFilter != "ALLE" && receipt.wohneinheit != unitFilter) {
-                reasons += "Wohneinheit entspricht nicht dem gewählten Filter."
+            if (unitFilter != "ALLE") {
+                val property = properties.value.firstOrNull { it.propertyId == receipt.propertyId }
+                val resolvedUnitId = receipt.unitId.ifBlank {
+                    property?.let { metadata ->
+                        getWohneinheitenForProperty(metadata)
+                            .firstOrNull { it.name == receipt.wohneinheit }
+                            ?.let { PropertyUnitScopedData.stableUnitId(metadata.propertyId, it) }
+                    }.orEmpty()
+                }
+                if (resolvedUnitId != unitFilter) {
+                    reasons += "Wohneinheit entspricht nicht dem gewählten Filter."
+                }
             }
             if (yearFilter != "ALLE" && !receipt.datum.startsWith(yearFilter)) {
                 reasons += "Belegdatum liegt außerhalb des gewählten Jahres."
@@ -2820,6 +2830,22 @@ data class AiSearchUiState(
         _wizardValidationReport.value = report
     }
 
+    internal fun wizardYearOptions(allRecs: List<Receipt> = receipts.value): List<String> =
+        allRecs.mapNotNull { receipt ->
+            receipt.datum.take(4).toIntOrNull()
+                ?.takeIf { receipt.datum.length >= 10 && runCatching { java.time.LocalDate.parse(receipt.datum) }.isSuccess }
+        }.distinct().sortedDescending().map(Int::toString).ifEmpty {
+            listOf(java.time.LocalDate.now().year.toString())
+        }
+
+    internal fun wizardUnitOptions(): List<Pair<String, String>> =
+        properties.value.flatMap { property ->
+            getWohneinheitenForProperty(property).map { unit ->
+                PropertyUnitScopedData.stableUnitId(property.propertyId, unit) to
+                    listOf(property.name.ifBlank { property.propertyId }, unit.label.ifBlank { unit.name }).joinToString(" · ")
+            }
+        }.distinctBy { it.first }
+
     internal fun buildAdvisorAnnualSummaryForExport(
         context: Context,
         year: Int,
@@ -2855,25 +2881,29 @@ data class AiSearchUiState(
             return null
         }
 
+        val allProperties = database.propertyDao().getAllProperties()
+        val allLoans = database.loanDao().getAllLoans()
+        val unitsByProperty = allProperties.associate { property ->
+            property.propertyId to getWohneinheitenForProperty(property)
+        }
+        val exportReceipts = _wizardIncludedReceipts.value
         val packageResult = com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
             records = records,
-            includedReceipts = _wizardIncludedReceipts.value,
+            includedReceipts = exportReceipts,
             excludedReceipts = excluded,
             includeOriginals = _wizardTargetFormat.value == "FULL_ZIP",
             profile = profile,
             validationReport = report,
             periodSummary = _wizardYearFilter.value,
             annualSummary = selectedYear?.let { year ->
-                buildAdvisorAnnualSummaryForExport(
-                    context = context,
+                buildAdvisorPortfolioAnnualSummary(
+                    context = context.applicationContext,
                     year = year,
-                    currentReceipts = currentReceipts,
-                    currentMetadata = propertyMetadata.value
-                        ?: database.propertyDao().getPropertyMetadata()
-                        ?: PropertyMetadata(),
-                    currentLoans = database.loanDao().getAllLoans(),
-                    currentUnits = _wohneinheitenStatus.value
+                    receipts = exportReceipts,
+                    properties = allProperties,
+                    loans = allLoans,
+                    unitsByProperty = unitsByProperty
                 )
             }
         )
@@ -2885,10 +2915,10 @@ data class AiSearchUiState(
             val auditRun = com.example.data.ExportAuditRun(
                 exportlaufId = packageResult.exportId,
                 timestamp = System.currentTimeMillis(),
-                propertyName = profile.profileName,
+                propertyName = if (records.map { it.objektId }.filter(String::isNotBlank).distinct().size > 1) "Portfolio" else records.firstOrNull()?.objektId.orEmpty(),
                 periodStart = "${_wizardYearFilter.value}-01-01",
                 periodEnd = "${_wizardYearFilter.value}-12-31",
-                filterSummary = "Objekt: ${profile.profileName}, Wohneinheit: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
+                filterSummary = "Objekte: ${records.map { it.objektId }.filter(String::isNotBlank).distinct().joinToString()}, Wohneinheit-ID: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
                 exportierteReceiptIdsJson = org.json.JSONArray(
                     records.map { it.receiptId }
                         .distinct()
@@ -2902,26 +2932,31 @@ data class AiSearchUiState(
                 zipFileName = packageResult.zipFile.name,
                 zipFileSizeBytes = packageResult.zipFile.length(),
                 zipSha256 = packageResult.sha256Checksum,
-                status = "SUCCESS",
+                status = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER") "SUCCESS" else "CREATED_NOT_READY",
                 totalAmount = packageResult.totalAmountEur,
                 bookingCount = packageResult.totalRecords,
                 warningsCount = packageResult.warningsCount,
-                logMessage = "Erfolgreich exportiert mit ${packageResult.totalRecords} Buchungssätzen."
+                logMessage = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER")
+                    "Erfolgreich exportiert mit ${packageResult.totalRecords} Buchungssätzen."
+                else "Paket technisch erstellt, fachlich aber noch nicht bereit: ${packageResult.advisorStatus}."
             )
 
             repository.insertAuditRun(auditRun)
 
-            // Update receipt statuses to EXPORTIERT
-            val distinctReceiptIds = records.map { it.receiptId }.distinct()
-            val currentList = receipts.value.toMutableList()
-            val updatedList = currentList.map { r ->
-                if (distinctReceiptIds.contains(r.id)) {
-                    r.copy(exportStatus = "EXPORTIERT", exportlaufId = packageResult.exportId)
-                } else {
-                    r
+            // A technically generated advisor ZIP is not automatically a fachlich freigegebener export.
+            val exportIsFinal = _wizardTargetFormat.value != "FULL_ZIP" ||
+                packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER"
+            if (exportIsFinal) {
+                val distinctReceiptIds = records.map { it.receiptId }.distinct()
+                val updatedList = receipts.value.map { r ->
+                    if (distinctReceiptIds.contains(r.id)) {
+                        r.copy(exportStatus = "EXPORTIERT", exportlaufId = packageResult.exportId)
+                    } else {
+                        r
+                    }
                 }
+                repository.insertAll(updatedList)
             }
-            repository.insertAll(updatedList)
         }
 
         _wizardStep.value = 6
