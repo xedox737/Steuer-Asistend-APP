@@ -44,15 +44,8 @@ internal object RentOverviewPresentation {
         context: Context,
         groups: List<RentPropertyUnits>,
         receipts: List<Receipt>,
-        today: LocalDate = LocalDate.now()
-    ): List<Int> = years(context, groups, receipts, emptyList(), today)
-
-    fun years(
-        context: Context,
-        groups: List<RentPropertyUnits>,
-        receipts: List<Receipt>,
-        bankAssignments: List<BankRentAssignment>,
-        today: LocalDate = LocalDate.now()
+        today: LocalDate = LocalDate.now(),
+        bankAssignments: List<BankRentAssignment> = emptyList()
     ): List<Int> {
         val years = mutableSetOf<Int>()
         receipts.filter(::isRentalIncomeReceipt).mapNotNullTo(years) { date(it.datum)?.year }
