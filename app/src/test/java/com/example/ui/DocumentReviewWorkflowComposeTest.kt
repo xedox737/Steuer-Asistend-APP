@@ -1,6 +1,9 @@
 package com.example.ui
 
 import android.app.Application
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.room.Room
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.material3.MaterialTheme
@@ -9,11 +12,11 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.example.api.ManagedDocumentAiField
 import com.example.api.ManagedDocumentAiResult
 import com.example.data.*
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
+import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,6 +31,9 @@ class DocumentReviewWorkflowComposeTest {
     @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
     private lateinit var vm: ReceiptViewModel
     private lateinit var database: AppDatabase
+    private lateinit var viewModelStore: ViewModelStore
+    private var previousDatabase: AppDatabase? = null
+    private val instanceField = AppDatabase::class.java.getDeclaredField("INSTANCE").apply { isAccessible = true }
     private var parentBack = 0
     private val documentA = ManagedDocument("review-a", "review-property-b", "review-unit-b", title = "Dokument A", documentDate = "2026-10-01", ocrStatus = "ERFOLGREICH", ocrText = "Testvertrag")
     private val documentB = ManagedDocument("review-b", "review-property-a", title = "Dokument B", documentDate = "2026-10-01", ocrStatus = "ERFOLGREICH", ocrText = "Testvertrag")
@@ -40,8 +46,12 @@ class DocumentReviewWorkflowComposeTest {
             .putString("property_review-property-a_unit_WE 01_id", "review-unit-a")
             .putString("property_review-property-b_unit_WE 01_id", "review-unit-b")
             .commit()
-        vm = ReceiptViewModel(application)
-        database = AppDatabase.getDatabase(application, CoroutineScope(Dispatchers.IO))
+        // Each case owns its database and cancels the ViewModel's collectors on teardown.
+        previousDatabase = instanceField.get(null) as AppDatabase?
+        database = Room.inMemoryDatabaseBuilder(application, AppDatabase::class.java).build()
+        instanceField.set(null, database)
+        viewModelStore = ViewModelStore()
+        vm = ViewModelProvider(viewModelStore, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
         runBlocking(Dispatchers.IO) {
             database.clearAllTables()
             database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 1, propertyId = "review-property-a", name = "Objekt A", adresse = "Adresse A", wohneinheiten = "WE 01"))
@@ -59,6 +69,12 @@ class DocumentReviewWorkflowComposeTest {
             vm.documentAiReviewStore.offer(documentB, ManagedDocumentAiResult())
             vm.documentAiReviewStore.dismiss(documentB.documentId)
         }
+    }
+
+    @After fun tearDown() {
+        if (::viewModelStore.isInitialized) viewModelStore.clear()
+        instanceField.set(null, previousDatabase)
+        if (::database.isInitialized) database.close()
     }
 
     private fun openReviewA() {
