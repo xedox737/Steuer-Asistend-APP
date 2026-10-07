@@ -6,7 +6,6 @@ import com.example.util.DiagnosticLog
 
 import android.app.Activity
 import android.content.Intent
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.IntentSenderRequest
@@ -81,9 +80,11 @@ fun DocumentManagementScreen(
     val operationStatus by viewModel.documentOperationStatus.collectAsStateWithLifecycle()
     val duplicate by viewModel.pendingDocumentDuplicate.collectAsStateWithLifecycle()
     val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
+    val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
     val migrationPreview by viewModel.documentMigrationPreview.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val property by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf("Alle") }
     var importUnitId by remember { mutableStateOf("") }
@@ -148,22 +149,39 @@ fun DocumentManagementScreen(
 
     val selectedDocument = selectedDocumentId?.let { id -> documents.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
-        BackHandler { selectedDocumentId = null }
         LaunchedEffect(selectedDocument.documentId) {
             viewModel.ensureManagedDocumentReady(selectedDocument.documentId)
         }
+        val selectedProperty = DocumentReviewPresentation.propertyFor(selectedDocument, properties, property)
+        val selectedUnits = selectedProperty?.let { selected ->
+            if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
+        }.orEmpty()
+        val selectedReview = aiReview?.takeIf { DocumentReviewPresentation.isPendingFor(selectedDocument.documentId, it) }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
-            property = property,
-            units = units,
+            property = selectedProperty,
+            units = selectedUnits,
             onBack = { selectedDocumentId = null },
             onAnalyze = { viewModel.analyzeManagedDocument(selectedDocument.documentId) },
             onDownload = { viewModel.downloadManagedDocument(selectedDocument.documentId) },
             onSync = { viewModel.syncManagedDocumentNow(selectedDocument.documentId) },
             onUpdatePresentation = { title, description ->
                 viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
-            }
+            },
+            hasPendingReview = selectedReview != null,
+            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
+        selectedReview?.let { review ->
+            if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, review, dismissedAiReviews)) {
+                DocumentAiReviewDialog(
+                    selectedDocument,
+                    review.second,
+                    selectedUnits,
+                    selectedProperty,
+                    viewModel
+                )
+            }
+        }
         return
     }
 
@@ -314,8 +332,16 @@ fun DocumentManagementScreen(
         )
     }
     aiReview?.let { (documentId, result) ->
-        val document = documents.firstOrNull { it.documentId == documentId }
-        if (document != null) DocumentAiReviewDialog(document, result, units, property, viewModel)
+        if (documentId !in dismissedAiReviews) {
+            val document = documents.firstOrNull { it.documentId == documentId }
+            if (document != null) {
+                val reviewProperty = DocumentReviewPresentation.propertyFor(document, properties, property)
+                val reviewUnits = reviewProperty?.let { selected ->
+                    if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
+                }.orEmpty()
+                DocumentAiReviewDialog(document, result, reviewUnits, reviewProperty, viewModel)
+            }
+        }
     }
     migrationPreview?.let { preview ->
         AlertDialog(
@@ -364,8 +390,11 @@ private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptVi
 }
 
 @Composable
-private fun DocumentAiReviewDialog(document: ManagedDocument, result: com.example.api.ManagedDocumentAiResult, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel) {
-    val currentUnit = units.firstOrNull { it.unitId == (result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }) }
+internal fun DocumentAiReviewDialog(document: ManagedDocument, result: com.example.api.ManagedDocumentAiResult, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel) {
+    val targetUnitId = result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }
+    val currentUnit = units.firstOrNull {
+        PropertyUnitScopedData.stableUnitId(document.propertyId, it) == targetUnitId
+    }
     val currentValues = mapOf(
         "objektadresse" to property?.adresse.orEmpty(), "kaufpreis" to (property?.gesamtKaufpreis?.toString() ?: ""),
         "kaufvertragsdatum" to property?.notariellesKaufdatum.orEmpty(), "nutzen_lasten" to property?.uebergangNutzenLasten.orEmpty(),

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -74,6 +76,9 @@ internal fun UnifiedPropertyUnitsScreen(
     onBackToProperty: () -> Unit
 ) {
     val context = LocalContext.current
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     var selectedUnitId by remember { mutableStateOf<String?>(null) }
     var year by remember { mutableIntStateOf(LocalDate.now().year) }
 
@@ -87,13 +92,22 @@ internal fun UnifiedPropertyUnitsScreen(
             unit = selected,
             receipts = receipts,
             documents = documents,
+            bankAssignments = bankAssignments,
+            bankLinks = bankLinks,
+            bankTransactions = bankTransactions,
             onBack = { selectedUnitId = null }
         )
         return
     }
 
-    val yearRows = remember(property.propertyId, units, receipts, year) {
-        RentTrackingLogic.year(context, property.propertyId, units, receipts, year)
+    val yearRows = remember(
+        property.propertyId, units, receipts, year,
+        bankAssignments, bankLinks, bankTransactions
+    ) {
+        RentTrackingLogic.year(
+            context, property.propertyId, units, receipts, year,
+            bankAssignments, bankLinks, bankTransactions
+        )
     }
     val totalExpected = yearRows.sumOf { it.expected }
     val totalActual = yearRows.sumOf { it.actual }
@@ -250,7 +264,10 @@ internal fun UnifiedPropertyUnitsScreen(
         items(units, key = { PropertyUnitScopedData.stableUnitId(property.propertyId, it) }) { unit ->
             val nk = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk")
             val other = PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other")
-            val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
+            val month = RentTrackingLogic.month(
+                context, property.propertyId, unit, receipts, YearMonth.now(),
+                bankAssignments, bankLinks, bankTransactions
+            )
             UnifiedUnitOverviewCard(
                 unit = unit,
                 nk = if (unit.status == "Vermietet") nk else 0.0,
@@ -434,10 +451,15 @@ private fun UnifiedUnitDetailScreen(
     unit: WohneinheitStatus,
     receipts: List<Receipt>,
     documents: List<ManagedDocument>,
+    bankAssignments: List<com.example.data.BankRentAssignment>,
+    bankLinks: List<com.example.data.BankReceiptLink>,
+    bankTransactions: List<com.example.data.BankTransaction>,
     onBack: () -> Unit
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
+    val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
+    val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
     var showHistory by remember { mutableStateOf(false) }
     var showMonthCheck by remember { mutableStateOf(false) }
     var showDocuments by remember { mutableStateOf(false) }
@@ -463,7 +485,10 @@ private fun UnifiedUnitDetailScreen(
     val extraDetails = remember(unitId, detailsVersion) {
         UnitRentalDetailStore.load(context, property.propertyId, unitId)
     }
-    val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now())
+    val month = RentTrackingLogic.month(
+        context, property.propertyId, unit, receipts, YearMonth.now(),
+        bankAssignments, bankLinks, bankTransactions
+    )
     val isCurrentlyRented = unit.status == "Vermietet" && activePeriod != null
     val nk = if (isCurrentlyRented) activePeriod?.nebenkosten ?: 0.0 else 0.0
     val other = if (isCurrentlyRented) activePeriod?.sonstige ?: 0.0 else 0.0
@@ -478,6 +503,7 @@ private fun UnifiedUnitDetailScreen(
 
     val selectedDocument = selectedDocumentId?.let { id -> unitDocs.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
+        val selectedReview = aiReview?.takeIf { DocumentReviewPresentation.isPendingFor(selectedDocument.documentId, it) }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = property,
@@ -488,8 +514,21 @@ private fun UnifiedUnitDetailScreen(
             onSync = { viewModel.syncManagedDocumentNow(selectedDocument.documentId) },
             onUpdatePresentation = { title, description ->
                 viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
-            }
+            },
+            hasPendingReview = selectedReview != null,
+            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
         )
+        selectedReview?.let { review ->
+            if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, review, dismissedAiReviews)) {
+                DocumentAiReviewDialog(
+                    selectedDocument,
+                    review.second,
+                    listOf(unit),
+                    property,
+                    viewModel
+                )
+            }
+        }
         return
     }
 
@@ -795,9 +834,11 @@ private fun UnifiedUnitDetailScreen(
                 UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         UnifiedStatusMetric(
-                            if (isCurrentlyRented) "Letzte Zahlung" else "Letzte Mieterzahlung",
-                            lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
-                            lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
+                            if (isCurrentlyRented) "Ist bestätigt" else "Letzte Mieterzahlung",
+                            if (isCurrentlyRented) unifiedMoney(currentActual)
+                            else lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
+                            if (isCurrentlyRented) paymentMonthLabel
+                            else lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
                             EmeraldGreen,
                             Color(0xFFF0FAF5),
                             Modifier.weight(1f)

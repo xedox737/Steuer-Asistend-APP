@@ -65,6 +65,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -162,6 +163,64 @@ internal fun ManagedDocumentCard(
     }
 }
 
+
+internal data class DocumentReviewContextResult(
+    val confirmedUnitId: String?,
+    val error: String? = null
+) {
+    val allowed: Boolean get() = error == null
+}
+
+internal object DocumentReviewContextPolicy {
+    fun validate(
+        document: ManagedDocument,
+        property: PropertyMetadata?,
+        units: List<WohneinheitStatus>,
+        requestedUnitId: String?
+    ): DocumentReviewContextResult {
+        if (property == null || property.propertyId != document.propertyId) {
+            return DocumentReviewContextResult(
+                confirmedUnitId = null,
+                error = "Die zugehörige Immobilie ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+            )
+        }
+        val normalizedUnitId = requestedUnitId?.takeIf(String::isNotBlank)
+        if (normalizedUnitId != null) {
+            val validUnitIds = units.map {
+                PropertyUnitScopedData.stableUnitId(document.propertyId, it)
+            }.toSet()
+            if (normalizedUnitId !in validUnitIds) {
+                return DocumentReviewContextResult(
+                    confirmedUnitId = null,
+                    error = "Die zugehörige Wohneinheit ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+                )
+            }
+        }
+        return DocumentReviewContextResult(normalizedUnitId)
+    }
+}
+
+internal object DocumentReviewPresentation {
+    fun isPendingFor(
+        documentId: String,
+        review: Pair<String, com.example.api.ManagedDocumentAiResult>?
+    ): Boolean = review?.first == documentId
+
+    fun shouldShowDialog(
+        documentId: String,
+        review: Pair<String, com.example.api.ManagedDocumentAiResult>?,
+        dismissedDocumentIds: Set<String>
+    ): Boolean = isPendingFor(documentId, review) && documentId !in dismissedDocumentIds
+
+    fun propertyFor(
+        document: ManagedDocument,
+        properties: List<PropertyMetadata>,
+        current: PropertyMetadata?
+    ): PropertyMetadata? =
+        properties.firstOrNull { it.propertyId == document.propertyId }
+            ?: current?.takeIf { it.propertyId == document.propertyId }
+}
+
 @Composable
 internal fun ManagedDocumentDetailScreen(
     document: ManagedDocument,
@@ -171,7 +230,9 @@ internal fun ManagedDocumentDetailScreen(
     onAnalyze: () -> Unit,
     onDownload: () -> Unit,
     onSync: () -> Unit,
-    onUpdatePresentation: (String, String) -> Unit
+    onUpdatePresentation: (String, String) -> Unit,
+    hasPendingReview: Boolean = false,
+    onReviewPending: () -> Unit = {}
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -314,6 +375,19 @@ internal fun ManagedDocumentDetailScreen(
                             if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
                     }
+                }
+            }
+        }
+        item {
+            if (hasPendingReview) {
+                Button(
+                    onClick = onReviewPending,
+                    modifier = Modifier.fillMaxWidth().testTag("review_managed_document_ai"),
+                    shape = Ui2.controlShape,
+                    colors = ButtonDefaults.buttonColors(containerColor = WarmOrange)
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(18.dp))
+                    Text(" Erkannte Daten prüfen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

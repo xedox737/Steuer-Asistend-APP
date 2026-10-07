@@ -2,6 +2,14 @@ package com.example.ui
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.BankLinkStatus
+import com.example.data.BankReceiptLink
+import com.example.data.BankReconciliationStatus
+import com.example.data.BankRentAssignment
+import com.example.data.BankRentAssignmentSource
+import com.example.data.BankRentAssignmentStatus
+import com.example.data.BankSplitPaymentType
+import com.example.data.BankTransaction
 import com.example.data.Receipt
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -126,6 +134,279 @@ class RentTrackingLogicTest {
         assertEquals(2, reloaded.rentChanges.size)
         assertEquals(760.0, reloaded.kaltmiete, 0.001)
     }
+
+    @Test
+    fun `confirmed bank split satisfies monthly rent without receipt`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transaction = bankTransaction("tx-split", 890.0, BankReconciliationStatus.MATCHED)
+        val assignments = listOf(
+            assignment("a-rent", "tx-split", "p1", "u1", 690.0, BankSplitPaymentType.RENT),
+            assignment("a-nk", "tx-split", "p1", "u1", 200.0, BankSplitPaymentType.UTILITIES_PREPAYMENT)
+        )
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            assignments, emptyList(), listOf(transaction)
+        )
+
+        assertEquals(890.0, row.actual, 0.001)
+        assertEquals(0.0, row.missing, 0.001)
+        assertEquals(RentPaymentStatus.PAID, row.status)
+    }
+
+    @Test
+    fun `confirmed bank partial payment reduces open amount`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transaction = bankTransaction("tx-partial", 500.0, BankReconciliationStatus.PARTIAL)
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            listOf(assignment("a-partial", "tx-partial", "p1", "u1", 500.0, BankSplitPaymentType.RENT)),
+            emptyList(), listOf(transaction)
+        )
+
+        assertEquals(500.0, row.actual, 0.001)
+        assertEquals(390.0, row.missing, 0.001)
+        assertEquals(RentPaymentStatus.PARTIAL, row.status)
+    }
+
+    @Test
+    fun `multiple confirmed bank payments are summed for same month`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transactions = listOf(
+            bankTransaction("tx-one", 500.0, BankReconciliationStatus.MATCHED),
+            bankTransaction("tx-two", 390.0, BankReconciliationStatus.MATCHED)
+        )
+        val assignments = listOf(
+            assignment("a-one", "tx-one", "p1", "u1", 500.0, BankSplitPaymentType.RENT),
+            assignment("a-two", "tx-two", "p1", "u1", 390.0, BankSplitPaymentType.RENT)
+        )
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            assignments, emptyList(), transactions
+        )
+
+        assertEquals(890.0, row.actual, 0.001)
+        assertEquals(RentPaymentStatus.PAID, row.status)
+    }
+
+    @Test
+    fun `linked receipt and bank assignment are not double counted`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val receipt = rent(40, "2026-10-03", 890.0).copy(unitId = "u1")
+        val transaction = bankTransaction("tx-linked", 890.0, BankReconciliationStatus.MATCHED)
+        val link = BankReceiptLink(
+            linkId = "link-1",
+            transactionId = "tx-linked",
+            receiptId = receipt.id,
+            receiptInternalId = receipt.internalId,
+            allocatedAmount = 890.0,
+            status = BankLinkStatus.CONFIRMED,
+            createdAt = "2026-10-03T12:00:00Z"
+        )
+        val assignment = assignment("a-linked", "tx-linked", "p1", "u1", 890.0, BankSplitPaymentType.RENT)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, listOf(receipt), YearMonth.of(2026, 10),
+            listOf(assignment), listOf(link), listOf(transaction)
+        )
+
+        assertEquals(890.0, row.actual, 0.001)
+        assertEquals(RentPaymentStatus.PAID, row.status)
+    }
+
+    @Test
+    fun `bank payment never leaks across stable unit or property ids`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transactions = listOf(
+            bankTransaction("tx-wrong-unit", 890.0, BankReconciliationStatus.MATCHED),
+            bankTransaction("tx-wrong-property", 890.0, BankReconciliationStatus.MATCHED)
+        )
+        val assignments = listOf(
+            assignment("wrong-unit", "tx-wrong-unit", "p1", "u2", 890.0, BankSplitPaymentType.RENT),
+            assignment("wrong-property", "tx-wrong-property", "p2", "u1", 890.0, BankSplitPaymentType.RENT)
+        )
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            assignments, emptyList(), transactions
+        )
+
+        assertEquals(0.0, row.actual, 0.001)
+        assertEquals(890.0, row.missing, 0.001)
+        assertEquals(RentPaymentStatus.MISSING, row.status)
+    }
+
+    @Test
+    fun `review bank assignment is not counted as actual rent`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transaction = bankTransaction("tx-review", 890.0, BankReconciliationStatus.MATCHED)
+        val review = assignment("a-review", "tx-review", "p1", "u1", 890.0, BankSplitPaymentType.RENT)
+            .copy(status = com.example.data.BankRentAssignmentStatus.REVIEW)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            listOf(review), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(0.0, row.actual, 0.001)
+        assertEquals(890.0, row.missing, 0.001)
+    }
+
+    @Test
+    fun `assignment receipt reference prevents double count even without separate bank link`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val receipt = rent(41, "2026-10-03", 890.0).copy(unitId = "u1")
+        val transaction = bankTransaction("tx-assignment-receipt", 890.0, BankReconciliationStatus.MATCHED)
+        val assignment = assignment(
+            "a-assignment-receipt", "tx-assignment-receipt", "p1", "u1", 890.0, BankSplitPaymentType.RENT
+        ).copy(receiptId = receipt.id)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, listOf(receipt), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(890.0, row.actual, 0.001)
+        assertEquals(0.0, row.missing, 0.001)
+    }
+
+
+    @Test
+    fun `direct receipt reference never fills unassigned transaction remainder as rent`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val receipt = rent(42, "2026-10-03", 500.0).copy(unitId = "u1")
+        val transaction = bankTransaction("tx-partial-receipt", 890.0, BankReconciliationStatus.MATCHED)
+        val assignment = assignment(
+            "a-partial-receipt", "tx-partial-receipt", "p1", "u1", 500.0, BankSplitPaymentType.RENT
+        ).copy(receiptId = receipt.id)
+
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, listOf(receipt), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(500.0, row.actual, 0.001)
+        assertEquals(390.0, row.missing, 0.001)
+        assertEquals(RentPaymentStatus.PARTIAL, row.status)
+    }
+
+    @Test
+    fun `confirmed overpayment is preserved while missing stays zero`() {
+        val unit = rentalUnit()
+        prepareExpected(unit, 690.0, 200.0)
+        val transaction = bankTransaction("tx-over", 950.0, BankReconciliationStatus.MATCHED)
+        val row = RentTrackingLogic.month(
+            context, "p1", unit, emptyList(), YearMonth.of(2026, 10),
+            listOf(assignment("a-over", "tx-over", "p1", "u1", 950.0, BankSplitPaymentType.RENT)),
+            emptyList(), listOf(transaction)
+        )
+
+        assertEquals(950.0, row.actual, 0.001)
+        assertEquals(0.0, row.missing, 0.001)
+        assertEquals(RentPaymentStatus.PAID, row.status)
+    }
+
+
+    @Test
+    fun `same visible unit name in two properties never shares bank rent`() {
+        val unitA = WohneinheitStatus("WE 01", "WE 01", "Vermietet", "A", 690.0, 60.0, "2026-01-01", "unit-a")
+        val unitB = WohneinheitStatus("WE 01", "WE 01", "Vermietet", "B", 690.0, 60.0, "2026-01-01", "unit-b")
+        PropertyUnitScopedData.setRentValues(context, "property-a", unitA, 200.0, 0.0)
+        PropertyUnitScopedData.setRentValues(context, "property-b", unitB, 200.0, 0.0)
+        TenantHistoryStore.save(
+            context, "property-a", "unit-a", "WE 01",
+            listOf(TenantPeriod(201, "WE 01", "A", "2026-01-01", "", 690.0, 200.0, 0.0))
+        )
+        TenantHistoryStore.save(
+            context, "property-b", "unit-b", "WE 01",
+            listOf(TenantPeriod(202, "WE 01", "B", "2026-01-01", "", 690.0, 200.0, 0.0))
+        )
+        val transaction = bankTransaction("tx-property-b", 890.0, BankReconciliationStatus.MATCHED).copy(
+            propertyId = "property-b",
+            unitId = "unit-b"
+        )
+        val assignment = assignment(
+            "assignment-property-b", "tx-property-b", "property-b", "unit-b", 890.0, BankSplitPaymentType.RENT
+        )
+
+        val a = RentTrackingLogic.month(
+            context, "property-a", unitA, emptyList(), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+        val b = RentTrackingLogic.month(
+            context, "property-b", unitB, emptyList(), YearMonth.of(2026, 10),
+            listOf(assignment), emptyList(), listOf(transaction)
+        )
+
+        assertEquals(0.0, a.actual, 0.001)
+        assertEquals(890.0, a.missing, 0.001)
+        assertEquals(890.0, b.actual, 0.001)
+        assertEquals(0.0, b.missing, 0.001)
+    }
+
+    private fun rentalUnit() =
+        WohneinheitStatus("OG", "OG", "Vermietet", "Mieter", 690.0, 60.0, "2026-01-01", "u1")
+
+    private fun prepareExpected(unit: WohneinheitStatus, cold: Double, utilities: Double) {
+        PropertyUnitScopedData.setRentValues(context, "p1", unit, utilities, 0.0)
+        TenantHistoryStore.save(
+            context, "p1", "u1", "OG",
+            listOf(
+                TenantPeriod(
+                    id = 101,
+                    unitName = "OG",
+                    tenantName = "Mieter",
+                    startDate = "2026-01-01",
+                    endDate = "",
+                    kaltmiete = cold,
+                    nebenkosten = utilities,
+                    sonstige = 0.0
+                )
+            )
+        )
+    }
+
+    private fun bankTransaction(id: String, amount: Double, status: String) = BankTransaction(
+        transactionId = id,
+        accountId = "account",
+        bookingDate = "2026-10-03",
+        amount = amount,
+        propertyId = "p1",
+        unitId = "u1",
+        reconciliationStatus = status
+    )
+
+    private fun assignment(
+        id: String,
+        transactionId: String,
+        propertyId: String,
+        unitId: String,
+        amount: Double,
+        paymentType: String
+    ) = BankRentAssignment(
+        assignmentId = id,
+        transactionId = transactionId,
+        propertyId = propertyId,
+        unitId = unitId,
+        rentMonth = "2026-10",
+        tenantReference = "tenant-101",
+        allocatedAmount = amount,
+        paymentType = paymentType,
+        status = BankRentAssignmentStatus.CONFIRMED,
+        source = BankRentAssignmentSource.USER_CONFIRMED,
+        createdAt = "2026-10-03T12:00:00Z",
+        updatedAt = "2026-10-03T12:00:00Z"
+    )
+
 
     private fun rent(id: Int, date: String, amount: Double) = Receipt(
         id = id,

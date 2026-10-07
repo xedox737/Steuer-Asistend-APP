@@ -1,6 +1,13 @@
 package com.example.ui
 
 import android.content.Context
+import com.example.data.BankLinkStatus
+import com.example.data.BankReceiptLink
+import com.example.data.BankReconciliationStatus
+import com.example.data.BankRentAssignment
+import com.example.data.BankRentAssignmentStatus
+import com.example.data.BankSplitPaymentType
+import com.example.data.BankTransaction
 import com.example.data.Receipt
 import com.example.data.StableDocumentIdentity
 import java.time.LocalDate
@@ -123,7 +130,10 @@ internal object RentTrackingLogic {
         propertyId: String,
         unit: WohneinheitStatus,
         receipts: List<Receipt>,
-        month: YearMonth
+        month: YearMonth,
+        bankAssignments: List<BankRentAssignment> = emptyList(),
+        bankLinks: List<BankReceiptLink> = emptyList(),
+        bankTransactions: List<BankTransaction> = emptyList()
     ): RentMonthProjection {
         val stored = TenantHistoryStore.load(
             context = context,
@@ -135,7 +145,7 @@ internal object RentTrackingLogic {
         val relevant = periods.filter { expectedInMonth(it, month) > 0.0 }
         val expected = relevant.sumOf { expectedInMonth(it, month) }
         val stableUnitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
-        val actual = receipts.filter { receipt ->
+        val countedReceipts = receipts.filter { receipt ->
             receipt.propertyId == propertyId &&
                 (receipt.unitId == stableUnitId ||
                     (receipt.unitId.isBlank() &&
@@ -143,7 +153,67 @@ internal object RentTrackingLogic {
                             receipt.wohneinheit.equals(unit.label, ignoreCase = true)))) &&
                 receiptMonth(receipt) == month &&
                 isRentalIncomeReceipt(receipt)
-        }.sumOf { it.bruttobetrag }
+        }
+        val receiptActual = countedReceipts.sumOf { it.bruttobetrag }
+
+        val countedReceiptIds = countedReceipts.map { it.id }.toSet()
+        val countedReceiptInternalIds = countedReceipts.mapNotNull { it.internalId.takeIf(String::isNotBlank) }.toSet()
+        val confirmedLinksByTransaction = bankLinks.asSequence()
+            .filter { it.status == BankLinkStatus.CONFIRMED }
+            .filter {
+                it.receiptId in countedReceiptIds ||
+                    (it.receiptInternalId.isNotBlank() && it.receiptInternalId in countedReceiptInternalIds)
+            }
+            .groupBy { it.transactionId }
+        val transactionsById = bankTransactions.associateBy { it.transactionId }
+        val rentPaymentTypes = setOf(
+            BankSplitPaymentType.RENT,
+            BankSplitPaymentType.UTILITIES_PREPAYMENT,
+            BankSplitPaymentType.UTILITIES_SETTLEMENT,
+            RentPaymentType.NEBENKOSTEN
+        )
+        val bankActual = bankAssignments.asSequence()
+            .filter {
+                it.status == BankRentAssignmentStatus.CONFIRMED &&
+                    it.propertyId == propertyId &&
+                    it.unitId == stableUnitId &&
+                    it.rentMonth == month.toString() &&
+                    it.paymentType in rentPaymentTypes
+            }
+            .groupBy { it.transactionId }
+            .entries
+            .sumOf { (transactionId, assignments) ->
+                val transaction = transactionsById[transactionId] ?: return@sumOf 0.0
+                if (transaction.reconciliationStatus !in setOf(
+                        BankReconciliationStatus.MATCHED,
+                        BankReconciliationStatus.PARTIAL
+                    )
+                ) return@sumOf 0.0
+
+                val linkedReceiptIds = confirmedLinksByTransaction[transactionId]
+                    .orEmpty()
+                    .mapNotNull { link ->
+                        countedReceipts.firstOrNull { receipt ->
+                            receipt.id == link.receiptId ||
+                                (link.receiptInternalId.isNotBlank() && receipt.internalId == link.receiptInternalId)
+                        }?.id
+                    }
+                    .toMutableSet()
+                val directlyLinkedAssignmentReceiptIds = assignments.mapNotNull {
+                    it.receiptId?.takeIf(countedReceiptIds::contains)
+                }.toSet()
+                linkedReceiptIds += directlyLinkedAssignmentReceiptIds
+                val linkedReceiptAmount = countedReceipts.asSequence()
+                    .filter { it.id in linkedReceiptIds }
+                    .sumOf { it.bruttobetrag }
+                    .coerceAtMost(transaction.absoluteAmount)
+                val assignmentAmount = assignments.asSequence()
+                    .filterNot { it.receiptId != null && it.receiptId in directlyLinkedAssignmentReceiptIds }
+                    .sumOf { it.allocatedAmount }
+                    .coerceAtLeast(0.0)
+                minOf(assignmentAmount, (transaction.absoluteAmount - linkedReceiptAmount).coerceAtLeast(0.0))
+            }
+        val actual = receiptActual + bankActual
         val tenants = relevant.map { it.tenantName.ifBlank { "Mieter nicht hinterlegt" } }
             .distinct().joinToString(" → ").ifBlank {
                 if (unit.status == "Vermietet") unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else unit.status
@@ -156,11 +226,19 @@ internal object RentTrackingLogic {
         propertyId: String,
         units: List<WohneinheitStatus>,
         receipts: List<Receipt>,
-        year: Int
+        year: Int,
+        bankAssignments: List<BankRentAssignment> = emptyList(),
+        bankLinks: List<BankReceiptLink> = emptyList(),
+        bankTransactions: List<BankTransaction> = emptyList()
     ): List<RentYearProjection> = units.map { unit ->
         RentYearProjection(
             unit = unit,
-            months = (1..12).map { month(context, propertyId, unit, receipts, YearMonth.of(year, it)) }
+            months = (1..12).map {
+                month(
+                    context, propertyId, unit, receipts, YearMonth.of(year, it),
+                    bankAssignments, bankLinks, bankTransactions
+                )
+            }
         )
     }
 }
