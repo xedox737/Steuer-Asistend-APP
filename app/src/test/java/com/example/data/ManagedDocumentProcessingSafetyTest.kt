@@ -4,6 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -29,6 +33,7 @@ class ManagedDocumentProcessingSafetyTest {
         assertNull(dao.updateProcessingIfPresent(document, ocrStatus = "ERFOLGREICH", ocrText = "Text"))
         assertNull(dao.updateProcessingIfPresent(document, aiStatus = "ERFOLGREICH", fieldsJson = pendingJson))
         assertNull(dao.updateReviewIfPresent(document, document.copy(reviewStatus = "GEPRUEFT")))
+        assertNull(dao.updateLoanIfPresent(document, 7))
         assertNull(dao.getById(document.documentId))
         assertTrue(dao.getAll().isEmpty())
     }
@@ -39,6 +44,7 @@ class ManagedDocumentProcessingSafetyTest {
         dao.upsert(moved)
         assertNull(dao.updateProcessingIfPresent(document, aiStatus = "ERFOLGREICH", fieldsJson = pendingJson))
         assertNull(dao.updateReviewIfPresent(document, document.copy(reviewStatus = "GEPRUEFT")))
+        assertNull(dao.updateLoanIfPresent(document, 7))
         assertEquals(moved, dao.getById(document.documentId))
     }
 
@@ -81,5 +87,28 @@ class ManagedDocumentProcessingSafetyTest {
         assertEquals("DRIVE_REORGANIZATION_PENDING", saved.migrationStatus)
         assertTrue(saved.extractedFieldsJson.contains("Aktuelle Beschreibung"))
         assertEquals("GEPRUEFT", saved.reviewStatus)
+        val linked = dao.updateLoanIfPresent(saved, 7)!!
+        assertEquals(saved.copy(loanId = 7), linked)
+    }
+
+    @Test fun confirmedReviewIsEmittedToExistingDocumentObserver() = runBlocking {
+        val dao = database.managedDocumentDao()
+        dao.upsert(document)
+        val initial = CompletableDeferred<Unit>()
+        val confirmed = CompletableDeferred<ManagedDocument>()
+        val observer = launch {
+            dao.observeAll().collect { documents ->
+                documents.firstOrNull { it.documentId == document.documentId }?.let {
+                    initial.complete(Unit)
+                    if (it.reviewStatus == "GEPRUEFT") confirmed.complete(it)
+                }
+            }
+        }
+        try {
+            withTimeout(5000) { initial.await() }
+            val saved = dao.updateReviewIfPresent(document, document.copy(reviewStatus = "GEPRUEFT"))!!
+            assertEquals(saved, dao.getById(document.documentId))
+            assertEquals(saved, withTimeout(5000) { confirmed.await() })
+        } finally { observer.cancel() }
     }
 }

@@ -50,11 +50,11 @@ internal class DocumentAiReviewStore {
         if (existing != null) {
             if (!existing.matches(document)) {
                 remove(document.documentId, existing.revision)
-                message(document.documentId, "Die Dokumentzuordnung wurde geändert. Bitte die Analyse erneut starten.")
+                message(document.documentId, "Die Zuordnung des Dokuments wurde geändert. Bitte die Analyse erneut starten.")
             }
             return
         }
-        if (document.documentId in state.value.analyzing) return
+        if (document.documentId in state.value.analyzing || document.documentId in state.value.confirming) return
         pendingDocumentAnalysis(document)?.let { offer(document, it) }
     }
 

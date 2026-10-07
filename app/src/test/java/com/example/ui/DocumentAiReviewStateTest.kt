@@ -100,5 +100,10 @@ class DocumentAiReviewStateTest {
         assertNull(pendingDocumentAnalysis(persisted.copy(reviewStatus = DocumentReviewStatus.GEPRUEFT.name)))
         assertNull(pendingDocumentAnalysis(persisted.copy(extractedFieldsJson = "broken")))
         assertNull(pendingDocumentAnalysis(persisted.copy(extractedFieldsJson = "{}")))
+        assertTrue(store.beginConfirmation(review))
+        store.remove("a", review.revision)
+        store.restore(persisted)
+        assertFalse("a" in store.state.value.pending)
+        store.endConfirmation("a")
     }
 }

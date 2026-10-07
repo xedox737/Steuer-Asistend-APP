@@ -811,13 +811,16 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateWohneinheit(updated: WohneinheitStatus) {
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
             properties.value.firstOrNull { property ->
                 getWohneinheitenForProperty(property).any { it.unitId == stableId }
             }
         } ?: propertyMetadata.value ?: PropertyMetadata()
+        updateWohneinheitForProperty(updated, targetProperty)
+    }
 
+    private fun updateWohneinheitForProperty(updated: WohneinheitStatus, targetProperty: PropertyMetadata) {
+        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val unitNames = targetProperty.wohneinheiten.split(",").map(String::trim).filter(String::isNotBlank)
         val unitIndex = unitNames.indexOfFirst { it.equals(updated.name, ignoreCase = true) }
         val stableId = updated.unitId.ifBlank {
@@ -3731,7 +3734,7 @@ data class AiSearchUiState(
                 }.toDoubleOrNull()
         }
         val currentProperty = repository.getPropertyByPropertyId(document.propertyId)
-            ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+            ?: throw IllegalStateException("Die zugehörige Immobilie ist nicht mehr verfügbar.")
         var property = currentProperty
         values["objektadresse"]?.let { property = property.copy(adresse = it) }
         number("kaufpreis")?.let { property = property.copy(gesamtKaufpreis = it) }
@@ -3755,19 +3758,20 @@ data class AiSearchUiState(
                 laufzeitBis = values["laufzeit"] ?: existing?.laufzeitBis.orEmpty()
             )
             val loanId = database.loanDao().upsertLoan(loan).toInt()
-            repository.upsertManagedDocument(document.copy(loanId = if (loan.id != 0) loan.id else loanId))
+            repository.updateManagedDocumentLoan(document, if (loan.id != 0) loan.id else loanId)
+                ?: throw IllegalStateException("Das Dokument ist nicht mehr verfügbar oder wurde neu zugeordnet.")
         }
 
         val unit = getWohneinheitenForProperty(property).firstOrNull {
             PropertyUnitScopedData.stableUnitId(document.propertyId, it) == document.unitId
         }
         if (unit != null && document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name) {
-            updateWohneinheit(unit.copy(
+            updateWohneinheitForProperty(unit.copy(
                 mieter = values["mieter"] ?: unit.mieter,
                 kaltmiete = number("kaltmiete") ?: unit.kaltmiete,
                 wohnflaeche = number("wohnflaeche") ?: unit.wohnflaeche,
                 mietvertragsstart = values["vertragsbeginn"] ?: unit.mietvertragsstart
-            ))
+            ), property)
         }
     }
 

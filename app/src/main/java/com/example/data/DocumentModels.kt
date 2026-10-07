@@ -120,6 +120,14 @@ interface ManagedDocumentDao {
     suspend fun updateExisting(document: ManagedDocument): Int
 
     @Transaction
+    suspend fun updateLoanIfPresent(expected: ManagedDocument, loanId: Int): ManagedDocument? {
+        val current = getById(expected.documentId) ?: return null
+        if (current.propertyId != expected.propertyId || current.unitId != expected.unitId) return null
+        val updated = current.copy(loanId = loanId)
+        return updated.takeIf { updateExisting(it) == 1 }
+    }
+
+    @Transaction
     suspend fun updateReviewIfPresent(expected: ManagedDocument, reviewed: ManagedDocument): ManagedDocument? {
         val current = getById(expected.documentId) ?: return null
         if (current.propertyId != expected.propertyId || current.unitId != expected.unitId) return null

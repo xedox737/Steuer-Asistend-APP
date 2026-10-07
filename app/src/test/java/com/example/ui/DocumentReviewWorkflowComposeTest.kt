@@ -29,19 +29,23 @@ class DocumentReviewWorkflowComposeTest {
     private lateinit var vm: ReceiptViewModel
     private lateinit var database: AppDatabase
     private var parentBack = 0
-    private val documentA = ManagedDocument("review-a", "review-property-b", title = "Dokument A", documentDate = "2026-10-01", ocrStatus = "ERFOLGREICH", ocrText = "Testvertrag")
+    private val documentA = ManagedDocument("review-a", "review-property-b", "review-unit-b", title = "Dokument A", documentDate = "2026-10-01", ocrStatus = "ERFOLGREICH", ocrText = "Testvertrag")
     private val documentB = ManagedDocument("review-b", "review-property-a", title = "Dokument B", documentDate = "2026-10-01", ocrStatus = "ERFOLGREICH", ocrText = "Testvertrag")
     private val resultA = ManagedDocumentAiResult(documentDate = "2026-10-01", fields = listOf(ManagedDocumentAiField("objektadresse", "Objektadresse", "Neue Adresse B", .9)))
 
     @Before fun setUp() {
         val application = ui.activity.application as Application
         listOf("google_drive_prefs", "wohneinheiten_prefs", "tenant_history_prefs", "rent_plan_prefs").forEach { application.getSharedPreferences(it, 0).edit().clear().commit() }
+        application.getSharedPreferences("wohneinheiten_prefs", 0).edit()
+            .putString("property_review-property-a_unit_WE 01_id", "review-unit-a")
+            .putString("property_review-property-b_unit_WE 01_id", "review-unit-b")
+            .commit()
         vm = ReceiptViewModel(application)
         database = AppDatabase.getDatabase(application, CoroutineScope(Dispatchers.IO))
         runBlocking(Dispatchers.IO) {
             database.clearAllTables()
-            database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 1, propertyId = "review-property-a", name = "Objekt A", adresse = "Adresse A"))
-            database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 2, propertyId = "review-property-b", name = "Objekt B", adresse = "Adresse B"))
+            database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 1, propertyId = "review-property-a", name = "Objekt A", adresse = "Adresse A", wohneinheiten = "WE 01"))
+            database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 2, propertyId = "review-property-b", name = "Objekt B", adresse = "Adresse B", wohneinheiten = "WE 01"))
             database.managedDocumentDao().upsert(documentA)
             database.managedDocumentDao().upsert(documentB)
         }
@@ -76,6 +80,8 @@ class DocumentReviewWorkflowComposeTest {
         ui.onNode(isToggleable()).performScrollTo().performClick()
         ui.onNodeWithTag("confirm_document_ai_review").performClick()
         ui.waitUntil(10000) { documentA.documentId !in vm.documentAiReviewState.value.pending && documentA.documentId !in vm.documentAiReviewState.value.confirming }
+        val saved = runBlocking(Dispatchers.IO) { database.managedDocumentDao().getById(documentA.documentId)!! }
+        assertEquals("GEPRUEFT", saved.reviewStatus)
         ui.waitUntil(10000) { vm.managedDocuments.value.any { it.documentId == documentA.documentId && it.reviewStatus == "GEPRUEFT" } }
         runBlocking(Dispatchers.IO) {
             assertEquals("Neue Adresse B", database.propertyDao().getPropertyByPropertyId("review-property-b")!!.adresse)
@@ -104,5 +110,33 @@ class DocumentReviewWorkflowComposeTest {
         assertTrue(documentA.documentId in vm.documentAiReviewState.value.pending)
         ui.onNodeWithTag("review_managed_document_ai").performScrollTo().assertIsDisplayed()
         assertEquals(0, parentBack)
+    }
+
+    @Test fun confirmingLeaseUpdatesOnlyDocumentUnitWithSameUnitNameInTwoProperties() {
+        val result = ManagedDocumentAiResult(documentType = "MIETVERTRAG", suggestedUnitId = "review-unit-b",
+            fields = listOf(ManagedDocumentAiField("mieter", "Mieter", "Martin Weber", .9),
+                ManagedDocumentAiField("kaltmiete", "Kaltmiete", "690", .9)))
+        ui.runOnIdle {
+            vm.documentAiReviewStore.offer(documentA, result)
+            vm.documentAiReviewStore.dismiss(documentA.documentId)
+            val review = vm.documentAiReviewState.value.pending.getValue(documentA.documentId)
+            vm.confirmManagedDocumentReview(documentA.documentId, ManagedDocumentType.MIETVERTRAG,
+                documentA.documentDate, documentA.unitId,
+                result.reviewFields(emptyMap()).map { it.copy(decision = DocumentFieldDecision.UEBERNEHMEN) }, review.revision)
+        }
+        ui.waitUntil(10000) { documentA.documentId !in vm.documentAiReviewState.value.pending && documentA.documentId !in vm.documentAiReviewState.value.confirming }
+        val properties = runBlocking(Dispatchers.IO) { listOf(
+            database.propertyDao().getPropertyByPropertyId("review-property-a")!!,
+            database.propertyDao().getPropertyByPropertyId("review-property-b")!!
+        ) }
+        val unitA = vm.getWohneinheitenForProperty(properties[0]).single()
+        val unitB = vm.getWohneinheitenForProperty(properties[1]).single()
+        assertEquals("review-unit-a", unitA.unitId)
+        assertEquals("", unitA.mieter)
+        assertEquals(0.0, unitA.kaltmiete, .001)
+        assertEquals("review-unit-b", unitB.unitId)
+        assertEquals("Martin Weber", unitB.mieter)
+        assertEquals(690.0, unitB.kaltmiete, .001)
+        assertEquals("review-property-a", vm.propertyMetadata.value?.propertyId)
     }
 }

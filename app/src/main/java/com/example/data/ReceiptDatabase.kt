@@ -814,6 +814,8 @@ class ReceiptRepository(
     suspend fun getManagedDocument(id: String): ManagedDocument? = managedDocumentDao?.getById(id)
     suspend fun updateManagedDocumentReview(expected: ManagedDocument, reviewed: ManagedDocument): ManagedDocument? =
         managedDocumentDao?.updateReviewIfPresent(expected, reviewed)
+    suspend fun updateManagedDocumentLoan(expected: ManagedDocument, loanId: Int): ManagedDocument? =
+        managedDocumentDao?.updateLoanIfPresent(expected, loanId)
     suspend fun updateManagedDocumentProcessing(
         expected: ManagedDocument,
         ocrStatus: String? = null,
