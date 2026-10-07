@@ -164,6 +164,42 @@ internal fun ManagedDocumentCard(
 }
 
 
+internal data class DocumentReviewContextResult(
+    val confirmedUnitId: String?,
+    val error: String? = null
+) {
+    val allowed: Boolean get() = error == null
+}
+
+internal object DocumentReviewContextPolicy {
+    fun validate(
+        document: ManagedDocument,
+        property: PropertyMetadata?,
+        units: List<WohneinheitStatus>,
+        requestedUnitId: String?
+    ): DocumentReviewContextResult {
+        if (property == null || property.propertyId != document.propertyId) {
+            return DocumentReviewContextResult(
+                confirmedUnitId = null,
+                error = "Die zugehörige Immobilie ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+            )
+        }
+        val normalizedUnitId = requestedUnitId?.takeIf(String::isNotBlank)
+        if (normalizedUnitId != null) {
+            val validUnitIds = units.map {
+                PropertyUnitScopedData.stableUnitId(document.propertyId, it)
+            }.toSet()
+            if (normalizedUnitId !in validUnitIds) {
+                return DocumentReviewContextResult(
+                    confirmedUnitId = null,
+                    error = "Die zugehörige Wohneinheit ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+                )
+            }
+        }
+        return DocumentReviewContextResult(normalizedUnitId)
+    }
+}
+
 internal object DocumentReviewPresentation {
     fun isPendingFor(
         documentId: String,
