@@ -30,6 +30,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -120,10 +121,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _pendingDocumentDuplicate = MutableStateFlow<Pair<com.example.data.ManagedDocument, com.example.data.ManagedDocument>?>(null)
     val pendingDocumentDuplicate = _pendingDocumentDuplicate.asStateFlow()
     private var pendingDocumentDuplicateUri: android.net.Uri? = null
-    private val _documentAiReview = MutableStateFlow<Pair<String, com.example.api.ManagedDocumentAiResult>?>(null)
-    val documentAiReview = _documentAiReview.asStateFlow()
-    private val _dismissedDocumentAiReviewIds = MutableStateFlow<Set<String>>(emptySet())
-    val dismissedDocumentAiReviewIds = _dismissedDocumentAiReviewIds.asStateFlow()
+    internal val documentAiReviewStore = DocumentAiReviewStore()
+    internal val documentAiReviewState = documentAiReviewStore.state
     private val _documentMigrationPreview = MutableStateFlow<com.example.data.DocumentMigrationPreview?>(null)
     val documentMigrationPreview = _documentMigrationPreview.asStateFlow()
 
@@ -812,13 +811,16 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateWohneinheit(updated: WohneinheitStatus) {
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
             properties.value.firstOrNull { property ->
                 getWohneinheitenForProperty(property).any { it.unitId == stableId }
             }
         } ?: propertyMetadata.value ?: PropertyMetadata()
+        updateWohneinheitForProperty(updated, targetProperty)
+    }
 
+    private fun updateWohneinheitForProperty(updated: WohneinheitStatus, targetProperty: PropertyMetadata) {
+        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val unitNames = targetProperty.wohneinheiten.split(",").map(String::trim).filter(String::isNotBlank)
         val unitIndex = unitNames.indexOfFirst { it.equals(updated.name, ignoreCase = true) }
         val stableId = updated.unitId.ifBlank {
@@ -3357,12 +3359,9 @@ data class AiSearchUiState(
             when (val result = managedDocumentService.prepareImport(uri, property, unitId)) {
                 is com.example.data.ManagedDocumentImportResult.Imported -> {
                     _documentOperationStatus.value = "Dokument importiert. OCR und KI-Zuordnung laufen …"
-                    managedDocumentService.runOcr(result.document.documentId)
-                    val analysis = managedDocumentService.analyze(result.document.documentId, property, _wohneinheitenStatus.value)
+                    val analyzed = analyzeDocumentForReview(result.document.documentId)
                     val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
-                    if (analysis != null) {
-                        _documentAiReview.value = result.document.documentId to analysis
-                        _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
+                    if (analyzed) {
                         _documentOperationStatus.value = if (driveSynced) {
                             "Dokument in Drive gesichert. Erkannte Daten müssen vor der Übernahme geprüft werden."
                         } else {
@@ -3401,12 +3400,7 @@ data class AiSearchUiState(
                 keepSeparate && uri != null -> {
                     val result = managedDocumentService.persistPossibleDuplicate(pending.first, uri)
                     if (result is com.example.data.ManagedDocumentImportResult.Imported) {
-                        managedDocumentService.runOcr(result.document.documentId)
-                        val analysis = managedDocumentService.analyze(result.document.documentId, propertyMetadata.value ?: com.example.data.PropertyMetadata(), _wohneinheitenStatus.value)
-                        if (analysis != null) {
-                            _documentAiReview.value = result.document.documentId to analysis
-                            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - result.document.documentId
-                        }
+                        analyzeDocumentForReview(result.document.documentId)
                         val driveSynced = tryAutoSyncManagedDocument(result.document.documentId)
                         _documentOperationStatus.value = if (driveSynced) {
                             "Dokument separat importiert, in Drive gesichert und zur Prüfung vorbereitet."
@@ -3469,37 +3463,57 @@ data class AiSearchUiState(
 
     fun analyzeManagedDocument(documentId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            _documentOperationStatus.value = "KI-Dokumentanalyse läuft …"
-            try {
-                val document = repository.getManagedDocument(documentId)
-                if (document == null) {
-                    if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
-                    _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-                    _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar. Die Analyse wurde beendet."
-                    return@launch
-                }
-                val property = repository.getPropertyByPropertyId(document.propertyId)
-                if (property == null) {
-                    _documentOperationStatus.value = "Die zugehörige Immobilie ist nicht mehr verfügbar. Die Analyse wurde nicht gestartet."
-                    return@launch
-                }
-                val units = getWohneinheitenForProperty(property)
-                val result = managedDocumentService.analyze(documentId, property, units)
-                if (repository.getManagedDocument(documentId) == null) {
-                    if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
-                    _documentOperationStatus.value = "Das Dokument wurde während der Analyse entfernt."
-                    return@launch
-                }
-                if (result != null) {
-                    _documentAiReview.value = documentId to result
-                    _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-                    _documentOperationStatus.value = "Erkannte Daten müssen geprüft werden."
-                } else {
-                    _documentOperationStatus.value = "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen."
-                }
-            } catch (_: Exception) {
-                _documentOperationStatus.value = "Die Dokumentanalyse ist fehlgeschlagen. Bitte später erneut versuchen."
+            analyzeDocumentForReview(documentId)
+        }
+    }
+
+    private fun documentReviewMessage(documentId: String, message: String) {
+        documentAiReviewStore.message(documentId, message)
+        _documentOperationStatus.value = message
+    }
+
+    private suspend fun analyzeDocumentForReview(documentId: String): Boolean {
+        if (!documentAiReviewStore.beginAnalysis(documentId)) return false
+        try {
+            val document = repository.getManagedDocument(documentId)
+            if (document == null) {
+                documentAiReviewStore.remove(documentId)
+                documentReviewMessage(documentId, "Das Dokument ist nicht mehr verfügbar. Die Analyse wurde beendet.")
+                return false
             }
+            val property = repository.getPropertyByPropertyId(document.propertyId)
+            val units = property?.let(::getWohneinheitenForProperty).orEmpty()
+            val validation = DocumentReviewContextPolicy.validate(document, property, units, document.unitId)
+            if (!validation.allowed) {
+                documentReviewMessage(documentId, requireNotNull(validation.error))
+                return false
+            }
+            val result = managedDocumentService.analyze(documentId, requireNotNull(property), units)
+            val current = repository.getManagedDocument(documentId)
+            if (current == null) {
+                documentAiReviewStore.remove(documentId)
+                documentReviewMessage(documentId, "Das Dokument wurde während der Analyse entfernt.")
+                return false
+            }
+            if (current.propertyId != document.propertyId || current.unitId != document.unitId) {
+                documentAiReviewStore.remove(documentId)
+                documentReviewMessage(documentId, "Die Dokumentzuordnung wurde geändert. Bitte die Analyse erneut starten.")
+                return false
+            }
+            if (result != null) {
+                documentAiReviewStore.offer(current, result)
+                documentReviewMessage(documentId, "Erkannte Daten müssen geprüft werden.")
+                return true
+            }
+            documentReviewMessage(documentId, "KI-Dokumentanalyse nicht verfügbar oder fehlgeschlagen. Bitte später erneut versuchen.")
+            return false
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            documentReviewMessage(documentId, "Die Dokumentanalyse ist fehlgeschlagen. Bitte später erneut versuchen.")
+            return false
+        } finally {
+            documentAiReviewStore.endAnalysis(documentId)
         }
     }
 
@@ -3544,6 +3558,7 @@ data class AiSearchUiState(
     fun ensureManagedDocumentReady(documentId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             var document = repository.getManagedDocument(documentId) ?: return@launch
+            documentAiReviewStore.restore(document)
 
             if (document.ocrText.isBlank() && java.io.File(document.localUri).isFile) {
                 managedDocumentService.runOcr(documentId)
@@ -3577,16 +3592,12 @@ data class AiSearchUiState(
         }
     }
 
-    fun dismissDocumentAiReview() {
-        _documentAiReview.value?.first?.let { documentId ->
-            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value + documentId
-        }
+    fun dismissDocumentAiReview(documentId: String) {
+        documentAiReviewStore.dismiss(documentId)
     }
 
     fun showDocumentAiReview(documentId: String) {
-        if (_documentAiReview.value?.first == documentId) {
-            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-        }
+        documentAiReviewStore.reopen(documentId)
     }
 
     fun previewDocumentStorageMigration() {
@@ -3634,54 +3645,72 @@ data class AiSearchUiState(
         type: com.example.data.ManagedDocumentType,
         date: String,
         unitId: String?,
-        proposals: List<com.example.data.DocumentFieldProposal>
+        proposals: List<com.example.data.DocumentFieldProposal>,
+        reviewRevision: Long
     ) {
+        val review = documentAiReviewState.value.pending[documentId]?.takeIf { it.revision == reviewRevision }
+        if (review == null || !documentAiReviewStore.beginConfirmation(review)) {
+            documentReviewMessage(documentId, "Das Prüfergebnis ist nicht mehr aktuell oder wird gerade bearbeitet. Bitte erneut prüfen.")
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            val document = repository.getManagedDocument(documentId)
-            if (document == null) {
-                if (_documentAiReview.value?.first == documentId) _documentAiReview.value = null
-                _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-                _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar. Die Prüfung wurde beendet."
-                return@launch
-            }
-            val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
-            val documentUnits = documentProperty?.let(::getWohneinheitenForProperty).orEmpty()
-            val contextValidation = DocumentReviewContextPolicy.validate(
-                document = document,
-                property = documentProperty,
-                units = documentUnits,
-                requestedUnitId = unitId
-            )
-            if (!contextValidation.allowed) {
-                _documentOperationStatus.value = contextValidation.error
-                return@launch
-            }
-            val confirmedUnitId = contextValidation.confirmedUnitId
-            val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
-            val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
-            val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
-            applyConfirmedDocumentValues(updated, accepted)
-            if (_documentAiReview.value?.first == documentId) {
-                _documentAiReview.value = null
-            }
-            _dismissedDocumentAiReviewIds.value = _dismissedDocumentAiReviewIds.value - documentId
-            val email = _googleAccountEmail.value
-            if (!email.isNullOrBlank() && _isDriveConnected.value) {
-                val synced = try {
-                    val token = getValidToken(email)
-                    val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
-                    config != null && drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
-                } catch (e: Exception) {
-                    DiagnosticLog.w("ReceiptViewModel", "Confirmed document remains pending for Drive sync")
-                    false
+            try {
+                val document = repository.getManagedDocument(documentId)
+                if (document == null) {
+                    documentAiReviewStore.remove(documentId, review.revision)
+                    documentReviewMessage(documentId, "Das Dokument ist nicht mehr verfügbar. Die Prüfung wurde beendet.")
+                    return@launch
                 }
-                _documentOperationStatus.value = if (synced) {
-                    "Geprüfte Dokumentdaten übernommen und Drive-Ablage aktualisiert."
+                if (!review.matches(document)) {
+                    documentReviewMessage(documentId, "Die Dokumentzuordnung wurde geändert. Bitte die Analyse erneut starten.")
+                    return@launch
+                }
+                if (date.isNotBlank() && CalendarInput.parseIsoDate(date) == null) {
+                    documentReviewMessage(documentId, "Bitte ein gültiges Dokumentdatum im Format JJJJ-MM-TT eingeben.")
+                    return@launch
+                }
+                val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
+                val documentUnits = documentProperty?.let(::getWohneinheitenForProperty).orEmpty()
+                val contextValidation = DocumentReviewContextPolicy.validate(
+                    document = document,
+                    property = documentProperty,
+                    units = documentUnits,
+                    requestedUnitId = unitId
+                )
+                if (!contextValidation.allowed) {
+                    documentReviewMessage(documentId, requireNotNull(contextValidation.error))
+                    return@launch
+                }
+                val confirmedUnitId = contextValidation.confirmedUnitId
+                val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
+                val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
+                val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
+                applyConfirmedDocumentValues(updated, accepted)
+                documentAiReviewStore.remove(documentId, review.revision)
+                val email = _googleAccountEmail.value
+                if (!email.isNullOrBlank() && _isDriveConnected.value) {
+                    val synced = try {
+                        val token = getValidToken(email)
+                        val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
+                        config != null && drivePersistenceRepository.syncManagedDocumentToDrive(token, config, documentId)
+                    } catch (e: Exception) {
+                        DiagnosticLog.w("ReceiptViewModel", "Confirmed document remains pending for Drive sync")
+                        false
+                    }
+                    documentReviewMessage(documentId, if (synced) {
+                        "Geprüfte Dokumentdaten übernommen und Drive-Ablage aktualisiert."
+                    } else {
+                        "Geprüfte Dokumentdaten lokal übernommen. Drive-Synchronisierung muss erneut geprüft werden."
+                    })
                 } else {
-                    "Geprüfte Dokumentdaten lokal übernommen. Drive-Synchronisierung muss erneut geprüft werden."
+                    documentReviewMessage(documentId, "Geprüfte Dokumentdaten lokal übernommen. Drive-Synchronisierung folgt bei der nächsten Verbindung.")
                 }
-            } else {
-                _documentOperationStatus.value = "Geprüfte Dokumentdaten lokal übernommen. Drive-Synchronisierung folgt bei der nächsten Verbindung."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                documentReviewMessage(documentId, "Die Dokumentprüfung konnte nicht gespeichert werden. Bitte erneut versuchen.")
+            } finally {
+                documentAiReviewStore.endConfirmation(documentId)
             }
         }
     }
@@ -3705,7 +3734,7 @@ data class AiSearchUiState(
                 }.toDoubleOrNull()
         }
         val currentProperty = repository.getPropertyByPropertyId(document.propertyId)
-            ?: com.example.data.PropertyMetadata(propertyId = document.propertyId)
+            ?: throw IllegalStateException("Die zugehörige Immobilie ist nicht mehr verfügbar.")
         var property = currentProperty
         values["objektadresse"]?.let { property = property.copy(adresse = it) }
         number("kaufpreis")?.let { property = property.copy(gesamtKaufpreis = it) }
@@ -3729,19 +3758,20 @@ data class AiSearchUiState(
                 laufzeitBis = values["laufzeit"] ?: existing?.laufzeitBis.orEmpty()
             )
             val loanId = database.loanDao().upsertLoan(loan).toInt()
-            repository.upsertManagedDocument(document.copy(loanId = if (loan.id != 0) loan.id else loanId))
+            repository.updateManagedDocumentLoan(document, if (loan.id != 0) loan.id else loanId)
+                ?: throw IllegalStateException("Das Dokument ist nicht mehr verfügbar oder wurde neu zugeordnet.")
         }
 
         val unit = getWohneinheitenForProperty(property).firstOrNull {
             PropertyUnitScopedData.stableUnitId(document.propertyId, it) == document.unitId
         }
         if (unit != null && document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name) {
-            updateWohneinheit(unit.copy(
+            updateWohneinheitForProperty(unit.copy(
                 mieter = values["mieter"] ?: unit.mieter,
                 kaltmiete = number("kaltmiete") ?: unit.kaltmiete,
                 wohnflaeche = number("wohnflaeche") ?: unit.wohnflaeche,
                 mietvertragsstart = values["vertragsbeginn"] ?: unit.mietvertragsstart
-            ))
+            ), property)
         }
     }
 

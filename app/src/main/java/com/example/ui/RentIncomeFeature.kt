@@ -44,6 +44,30 @@ internal fun isRentalIncomeReceipt(receipt: Receipt): Boolean {
         (sub.contains("Betriebskosten", true) || sub.contains("Miete", true))
 }
 
+// The receipt's accounting/DATEV release is independent of payment confirmation.
+internal fun isConfirmedRentalIncomeReceipt(receipt: Receipt): Boolean =
+    isRentalIncomeReceipt(receipt) && receipt.pruefstatus in setOf("GEPRUEFT", "KORRIGIERT") &&
+        receipt.exportStatus !in setOf("ENTWURF", "KI_VORSCHLAG", "ZU_PRUEFEN", "AUSGESCHLOSSEN") &&
+        receipt.deletionStatus in setOf("", "ACTIVE") && receipt.bruttobetrag.isFinite()
+
+internal enum class RentPaymentComponent { RENT, UTILITIES, COMBINED }
+
+internal fun rentPaymentComponent(paymentType: String): RentPaymentComponent =
+    if (paymentType == com.example.data.BankSplitPaymentType.RENT) RentPaymentComponent.RENT
+    else RentPaymentComponent.UTILITIES
+
+internal fun rentPaymentComponent(receipt: Receipt): RentPaymentComponent {
+    val sub = receipt.unterkategorie
+    val utilities = sub.contains("Nebenkosten", true) || sub.contains("Betriebskosten", true)
+    val rent = sub.contains("Miete", true)
+    return when {
+        utilities && !rent -> RentPaymentComponent.UTILITIES
+        !utilities && rent && !sub.contains("Warm", true) && !sub.contains("Pauschal", true) &&
+            !sub.contains("Gesamt", true) -> RentPaymentComponent.RENT
+        else -> RentPaymentComponent.COMBINED
+    }
+}
+
 @Composable
 fun RentIncomeOverviewScreen(
     viewModel: ReceiptViewModel,

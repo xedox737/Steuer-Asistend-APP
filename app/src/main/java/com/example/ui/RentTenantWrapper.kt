@@ -129,7 +129,7 @@ private fun MonthlyRentCheckDialog(
     val totalMissing = rows.sumOf { it.second.missing }
     val missingCount = rows.count { it.second.expected > 0.01 && it.second.missing > 0.01 }
     val unassigned = receipts.filter {
-        receiptMonth(it) == month && isRentalIncomeReceipt(it) &&
+        receiptMonth(it) == month && isConfirmedRentalIncomeReceipt(it) &&
             (it.wohneinheit.isBlank() || groups.none { group -> group.property.propertyId == it.propertyId && group.units.any { unit -> unit.name == it.wohneinheit } })
     }.sumOf { it.bruttobetrag }
 

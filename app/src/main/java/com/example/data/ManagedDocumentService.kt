@@ -14,6 +14,7 @@ import java.time.LocalDate
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 
 sealed class ManagedDocumentImportResult {
     data class Imported(val document: ManagedDocument) : ManagedDocumentImportResult()
@@ -83,17 +84,16 @@ class ManagedDocumentService(
 
     suspend fun runOcr(documentId: String): ManagedDocument? {
         val document = repository.getManagedDocument(documentId) ?: return null
-        repository.upsertManagedDocument(document.copy(ocrStatus = DocumentProcessingStatus.LAEUFT.name, updatedAt = Instant.now().toString()))
+        repository.updateManagedDocumentProcessing(document, ocrStatus = DocumentProcessingStatus.LAEUFT.name) ?: return null
         val result = ocrService.extract(File(document.localUri), document.mimeType)
-        val updated = document.copy(ocrStatus = result.status.name, ocrText = result.text, updatedAt = Instant.now().toString())
-        repository.upsertManagedDocument(updated)
-        return updated
+        return repository.updateManagedDocumentProcessing(document, ocrStatus = result.status.name, ocrText = result.text)
     }
 
     suspend fun analyze(documentId: String, property: PropertyMetadata, units: List<com.example.ui.WohneinheitStatus>): ManagedDocumentAiResult? {
         val document = repository.getManagedDocument(documentId) ?: return null
-        val withText = if (document.ocrStatus != DocumentProcessingStatus.ERFOLGREICH.name) runOcr(documentId) ?: document else document
-        repository.upsertManagedDocument(withText.copy(aiAnalysisStatus = DocumentProcessingStatus.LAEUFT.name))
+        if (property.propertyId != document.propertyId) return null
+        val withText = if (document.ocrStatus != DocumentProcessingStatus.ERFOLGREICH.name) runOcr(documentId) ?: return null else document
+        repository.updateManagedDocumentProcessing(withText, aiStatus = DocumentProcessingStatus.LAEUFT.name) ?: return null
         val state = AiProviderSettings.loadState(context)
         val contextText = buildString {
             append("Property ${property.propertyId}: ${property.name}, ${property.adresse}\n")
@@ -106,22 +106,22 @@ class ManagedDocumentService(
                     GeminiClient.analyzeManagedDocument(withText.ocrText, propertyContext = contextText, apiKeyOverride = key)
                 }
                 ReceiptAnalysisProvider.OPENAI -> {
-                    val key = AiProviderSettings.getOpenAiKey(context) ?: return null
+                    val key = AiProviderSettings.getOpenAiKey(context) ?: throw IllegalStateException("KI-Schlüssel fehlt.")
                     try { OpenAiClient.analyzeManagedDocument(key, state.openAiModel, withText.ocrText, propertyContext = contextText) }
                     finally { key.fill('\u0000') }
                 }
             }
-            val updated = withText.copy(
-                aiAnalysisStatus = if (result == null) DocumentProcessingStatus.FEHLGESCHLAGEN.name else DocumentProcessingStatus.ERFOLGREICH.name,
-                aiConfidence = result?.confidence ?: 0.0,
-                extractedFieldsJson = result?.toPendingJson().orEmpty(),
-                reviewStatus = DocumentReviewStatus.PRUEFEN.name,
-                updatedAt = Instant.now().toString()
+            val updated = repository.updateManagedDocumentProcessing(
+                withText,
+                aiStatus = if (result == null) DocumentProcessingStatus.FEHLGESCHLAGEN.name else DocumentProcessingStatus.ERFOLGREICH.name,
+                confidence = result?.confidence,
+                fieldsJson = result?.toPendingJson()
             )
-            repository.upsertManagedDocument(updated)
-            result
+            result.takeIf { updated != null }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            repository.upsertManagedDocument(withText.copy(aiAnalysisStatus = DocumentProcessingStatus.FEHLGESCHLAGEN.name, updatedAt = Instant.now().toString()))
+            repository.updateManagedDocumentProcessing(withText, aiStatus = DocumentProcessingStatus.FEHLGESCHLAGEN.name)
             null
         }
     }
@@ -153,8 +153,8 @@ class ManagedDocumentService(
             ),
             updatedAt = Instant.now().toString()
         )
-        repository.upsertManagedDocument(updated)
-        return updated
+        return repository.updateManagedDocumentReview(document, updated)
+            ?: throw IllegalStateException("Das Dokument ist nicht mehr verfügbar oder wurde neu zugeordnet.")
     }
 
     private suspend fun persistPrepared(candidate: ManagedDocument, bytes: ByteArray): ManagedDocumentImportResult {

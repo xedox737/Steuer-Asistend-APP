@@ -80,10 +80,10 @@ internal object RentOverviewPresentation {
         bankLinks: List<BankReceiptLink> = emptyList(),
         bankTransactions: List<BankTransaction> = emptyList()
     ): RentOverviewYear {
-        val rental = receipts.filter { date(it.datum)?.year == year && isRentalIncomeReceipt(it) }
+        val rental = receipts.filter { date(it.datum)?.year == year && isConfirmedRentalIncomeReceipt(it) }
         val rows = groups.flatMap { group ->
             val propertyId = group.property.propertyId
-            val propertyReceipts = rental.filter { it.propertyId == propertyId }
+            val propertyReceipts = receipts.filter { it.propertyId == propertyId }
             RentTrackingLogic.year(
                 context, propertyId, group.units, propertyReceipts, year,
                 bankAssignments, bankLinks, bankTransactions

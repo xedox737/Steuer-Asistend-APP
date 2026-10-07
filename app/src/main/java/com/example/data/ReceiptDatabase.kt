@@ -812,6 +812,18 @@ class ReceiptRepository(
 
     suspend fun getAllManagedDocuments(): List<ManagedDocument> = managedDocumentDao?.getAll().orEmpty()
     suspend fun getManagedDocument(id: String): ManagedDocument? = managedDocumentDao?.getById(id)
+    suspend fun updateManagedDocumentReview(expected: ManagedDocument, reviewed: ManagedDocument): ManagedDocument? =
+        managedDocumentDao?.updateReviewIfPresent(expected, reviewed)
+    suspend fun updateManagedDocumentLoan(expected: ManagedDocument, loanId: Int): ManagedDocument? =
+        managedDocumentDao?.updateLoanIfPresent(expected, loanId)
+    suspend fun updateManagedDocumentProcessing(
+        expected: ManagedDocument,
+        ocrStatus: String? = null,
+        ocrText: String? = null,
+        aiStatus: String? = null,
+        confidence: Double? = null,
+        fieldsJson: String? = null
+    ): ManagedDocument? = managedDocumentDao?.updateProcessingIfPresent(expected, ocrStatus, ocrText, aiStatus, confidence, fieldsJson)
     suspend fun findManagedDocumentsByHash(hash: String): List<ManagedDocument> = managedDocumentDao?.getByHash(hash).orEmpty()
     suspend fun upsertManagedDocument(document: ManagedDocument, receipt: Receipt? = null) {
         val dao = managedDocumentDao ?: return

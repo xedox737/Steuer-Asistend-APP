@@ -232,7 +232,8 @@ internal fun ManagedDocumentDetailScreen(
     onSync: () -> Unit,
     onUpdatePresentation: (String, String) -> Unit,
     hasPendingReview: Boolean = false,
-    onReviewPending: () -> Unit = {}
+    onReviewPending: () -> Unit = {},
+    operationStatus: String? = null
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -265,6 +266,9 @@ internal fun ManagedDocumentDetailScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
         ) {
+        operationStatus?.let { status ->
+            item { Text(status, color = SlateGray, fontSize = 11.sp, modifier = Modifier.testTag("document_detail_operation_status")) }
+        }
         item {
             Card(
                 onClick = {
