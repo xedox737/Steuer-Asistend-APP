@@ -140,7 +140,7 @@ internal object ImmobilienManagerProjection {
             actualRent = actual
         )
     }
-    
+
     fun summary(
         context: android.content.Context,
         property: PropertyMetadata,
