@@ -218,6 +218,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithText("TEILZAHLUNG").assertExists()
         ui.onNodeWithText("BEZAHLT").assertDoesNotExist()
         ui.onNodeWithText("Alle (3)").performClick()
+        ui.onNodeWithTag("rent_monthly_list").performScrollToNode(hasText("BEZAHLT"))
         ui.onNodeWithText("BEZAHLT").assertExists()
         ui.onNodeWithText("Schließen").performClick()
         scroll("rent_unit_${key("OG links")}")
