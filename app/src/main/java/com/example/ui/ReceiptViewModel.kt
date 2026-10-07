@@ -3645,18 +3645,18 @@ data class AiSearchUiState(
                 return@launch
             }
             val documentProperty = repository.getPropertyByPropertyId(document.propertyId)
-            if (documentProperty == null) {
-                _documentOperationStatus.value = "Die zugehörige Immobilie ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
+            val documentUnits = documentProperty?.let(::getWohneinheitenForProperty).orEmpty()
+            val contextValidation = DocumentReviewContextPolicy.validate(
+                document = document,
+                property = documentProperty,
+                units = documentUnits,
+                requestedUnitId = unitId
+            )
+            if (!contextValidation.allowed) {
+                _documentOperationStatus.value = contextValidation.error
                 return@launch
             }
-            val validUnitIds = getWohneinheitenForProperty(documentProperty)
-                .map { PropertyUnitScopedData.stableUnitId(document.propertyId, it) }
-                .toSet()
-            if (!unitId.isNullOrBlank() && unitId !in validUnitIds) {
-                _documentOperationStatus.value = "Die zugehörige Wohneinheit ist nicht mehr verfügbar. Die Prüfung wurde nicht übernommen."
-                return@launch
-            }
-            val confirmedUnitId = unitId?.takeIf(String::isNotBlank)
+            val confirmedUnitId = contextValidation.confirmedUnitId
             val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
             val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
             val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
