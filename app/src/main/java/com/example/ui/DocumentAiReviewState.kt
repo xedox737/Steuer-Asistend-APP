@@ -46,7 +46,15 @@ internal class DocumentAiReviewStore {
     }
 
     @Synchronized fun restore(document: ManagedDocument) {
-        if (document.documentId in state.value.pending || document.documentId in state.value.analyzing) return
+        val existing = state.value.pending[document.documentId]
+        if (existing != null) {
+            if (!existing.matches(document)) {
+                remove(document.documentId, existing.revision)
+                message(document.documentId, "Die Dokumentzuordnung wurde geändert. Bitte die Analyse erneut starten.")
+            }
+            return
+        }
+        if (document.documentId in state.value.analyzing) return
         pendingDocumentAnalysis(document)?.let { offer(document, it) }
     }
 

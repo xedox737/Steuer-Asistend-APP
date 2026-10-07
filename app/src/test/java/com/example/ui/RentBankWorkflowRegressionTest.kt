@@ -100,6 +100,42 @@ class RentBankWorkflowRegressionTest {
         assertEquals(0.0, september.actual, .001)
     }
 
+    @Test fun linkedPaymentIsNotCountedAgainInReceiptMonthOrYear() {
+        val receipt = receipt(890.0).copy(datum = "2025-12-31")
+        val assignments = listOf(assignment(890.0))
+        val links = listOf(link(890.0))
+        val transactions = listOf(transaction())
+        assertEquals(890.0, project(listOf(receipt), assignments, links).actual, .001)
+        assertEquals(0.0, RentTrackingLogic.month(context, "property-a", unit, listOf(receipt), YearMonth.of(2025, 12), assignments, links, transactions).actual, .001)
+        val group = RentPropertyUnits(PropertyMetadata(propertyId = "property-a"), listOf(unit))
+        assertEquals(0.0, RentOverviewPresentation.year(context, listOf(group), listOf(receipt), 2025, assignments, links, transactions).actual, .001)
+        assertEquals(890.0, RentOverviewPresentation.year(context, listOf(group), listOf(receipt), 2026, assignments, links, transactions).actual, .001)
+    }
+
+    @Test fun oneLinkedReceiptWithTwoExplicitRentMonthsIsDistributedOnlyByConfirmedBankAssignments() {
+        val receipt = receipt(1780.0)
+        val transaction = transaction().copy(amount = 1780.0)
+        val october = assignment(890.0)
+        val november = assignment(890.0).copy(assignmentId = "november", rentMonth = "2026-11")
+        val assignments = listOf(october, november)
+        val links = listOf(link(1780.0))
+        val year = RentTrackingLogic.year(context, "property-a", listOf(unit), listOf(receipt), 2026, assignments, links, listOf(transaction)).single()
+        assertEquals(890.0, year.months[9].actual, .001)
+        assertEquals(890.0, year.months[10].actual, .001)
+        assertEquals(1780.0, year.actual, .001)
+    }
+
+    @Test fun multipleLinkedReceiptsShareCoverageOnceAndKeepTheirUncoveredAmounts() {
+        val first = receipt(400.0)
+        val second = receipt(400.0).copy(id = 2, internalId = "second")
+        val links = listOf(link(400.0), link(400.0).copy(linkId = "second-link", receiptId = 2, receiptInternalId = "second"))
+        assertEquals(800.0, project(listOf(first, second), listOf(assignment(500.0)), links).actual, .001)
+    }
+
+    @Test fun proposalSourceCannotMasqueradeAsConfirmedPayment() {
+        assertEquals(0.0, project(emptyList(), listOf(assignment(890.0).copy(source = "KI_VORSCHLAG")), emptyList()).actual, .001)
+    }
+
     private fun project(receipts: List<Receipt>, assignments: List<BankRentAssignment>, links: List<BankReceiptLink>, transaction: BankTransaction = transaction()) =
         RentTrackingLogic.month(context, "property-a", unit, receipts, month, assignments, links, listOf(transaction))
 

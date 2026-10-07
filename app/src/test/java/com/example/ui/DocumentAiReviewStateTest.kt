@@ -79,6 +79,13 @@ class DocumentAiReviewStateTest {
         assertTrue(store.state.value.analyzing.isEmpty())
     }
 
+    @Test fun openingReassignedDocumentInvalidatesOldContextInsteadOfShowingItsReview() {
+        store.offer(a, ManagedDocumentAiResult())
+        store.restore(a.copy(unitId = "new-unit"))
+        assertFalse("a" in store.state.value.pending)
+        assertTrue(store.state.value.messages.getValue("a").contains("Zuordnung"))
+    }
+
     @Test fun persistedPendingAnalysisCanBeOpenedAgainWithoutAnalyzingOrOverwritingOtherReview() {
         val persisted = a.copy(extractedFieldsJson = """{"documentType":"MIETVERTRAG","confidence":0.9,"documentDate":"2026-10-01","suggestedUnitId":"unit-a","fields":[{"key":"kaltmiete","label":"Kaltmiete","value":"690","confidence":0.9}]}""")
         store.offer(b, ManagedDocumentAiResult())

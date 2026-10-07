@@ -69,4 +69,17 @@ class ManagedDocumentProcessingSafetyTest {
         assertTrue(updated.extractedFieldsJson.contains("Meine Beschreibung"))
         assertEquals(listOf(updated), dao.search("weber", "property-b", "unit-b", "", "", ""))
     }
+
+    @Test fun confirmingReviewPreservesConcurrentDriveAndDescriptionChanges() = runBlocking {
+        val dao = database.managedDocumentDao()
+        dao.upsert(document.copy(driveFileId = "drive-stable", driveFolderId = "folder-stable", migrationStatus = "SYNCED",
+            extractedFieldsJson = """{"_displayDescription":"Aktuelle Beschreibung"}"""))
+        val reviewed = document.copy(documentType = "MIETVERTRAG", storedFilename = "Mietvertrag.pdf", reviewStatus = "GEPRUEFT", extractedFieldsJson = "{}")
+        val saved = dao.updateReviewIfPresent(document, reviewed)!!
+        assertEquals("drive-stable", saved.driveFileId)
+        assertEquals("folder-stable", saved.driveFolderId)
+        assertEquals("DRIVE_REORGANIZATION_PENDING", saved.migrationStatus)
+        assertTrue(saved.extractedFieldsJson.contains("Aktuelle Beschreibung"))
+        assertEquals("GEPRUEFT", saved.reviewStatus)
+    }
 }

@@ -123,15 +123,22 @@ interface ManagedDocumentDao {
     suspend fun updateReviewIfPresent(expected: ManagedDocument, reviewed: ManagedDocument): ManagedDocument? {
         val current = getById(expected.documentId) ?: return null
         if (current.propertyId != expected.propertyId || current.unitId != expected.unitId) return null
+        val fields = org.json.JSONObject(reviewed.extractedFieldsJson.ifBlank { "{}" }).apply {
+            val description = runCatching { org.json.JSONObject(current.extractedFieldsJson).optString("_displayDescription") }.getOrDefault("")
+            if (description.isNotBlank()) put("_displayDescription", description)
+        }.toString()
+        val targetChanged = current.documentType != reviewed.documentType || current.documentDate != reviewed.documentDate ||
+            current.unitId != reviewed.unitId || current.storedFilename != reviewed.storedFilename
         val updated = current.copy(
             documentType = reviewed.documentType,
             documentCategory = reviewed.documentCategory,
             documentDate = reviewed.documentDate,
             unitId = reviewed.unitId,
             storedFilename = reviewed.storedFilename,
-            extractedFieldsJson = reviewed.extractedFieldsJson,
+            extractedFieldsJson = fields,
             reviewStatus = reviewed.reviewStatus,
-            migrationStatus = reviewed.migrationStatus,
+            migrationStatus = ManagedDocumentDriveReorganization.statusAfterConfirmedChange(
+                !current.driveFileId.isNullOrBlank(), targetChanged, current.migrationStatus),
             updatedAt = reviewed.updatedAt
         )
         if (updateExisting(updated) != 1) return null
