@@ -50,19 +50,23 @@ class DocumentReviewWorkflowComposeTest {
         previousDatabase = instanceField.get(null) as AppDatabase?
         database = Room.inMemoryDatabaseBuilder(application, AppDatabase::class.java).build()
         instanceField.set(null, database)
-        viewModelStore = ViewModelStore()
-        vm = ViewModelProvider(viewModelStore, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
         runBlocking(Dispatchers.IO) {
-            database.clearAllTables()
             database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 1, propertyId = "review-property-a", name = "Objekt A", adresse = "Adresse A", wohneinheiten = "WE 01"))
             database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 2, propertyId = "review-property-b", name = "Objekt B", adresse = "Adresse B", wohneinheiten = "WE 01"))
             database.managedDocumentDao().upsert(documentA)
             database.managedDocumentDao().upsert(documentB)
         }
+        ui.runOnUiThread {
+            viewModelStore = ViewModelStore()
+            vm = ViewModelProvider(viewModelStore, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
+        }
+        assertSame(application, vm.getApplication<Application>())
+        val viewModelDatabase = ReceiptViewModel::class.java.getDeclaredField("database").apply { isAccessible = true }
+        assertSame(database, viewModelDatabase.get(vm))
         ui.setContent { MaterialTheme { BackHandler { parentBack++ }; DocumentManagementScreen(vm) } }
-        ui.waitUntil(10000) { vm.managedDocuments.value.size == 2 && vm.properties.value.size == 2 }
+        waitForModel { vm.managedDocuments.value.size == 2 && vm.properties.value.size == 2 }
         ui.runOnIdle { vm.selectProperty("review-property-a") }
-        ui.waitUntil(10000) { vm.propertyMetadata.value?.propertyId == "review-property-a" }
+        waitForModel { vm.propertyMetadata.value?.propertyId == "review-property-a" }
         ui.runOnIdle {
             vm.documentAiReviewStore.offer(documentA, resultA)
             vm.documentAiReviewStore.dismiss(documentA.documentId)
@@ -75,6 +79,21 @@ class DocumentReviewWorkflowComposeTest {
         if (::viewModelStore.isInitialized) viewModelStore.clear()
         instanceField.set(null, previousDatabase)
         if (::database.isInitialized) database.close()
+    }
+
+    private fun waitForModel(condition: () -> Boolean) {
+        // Room completes on IO, then StateFlow delivers on Robolectric's paused main Looper.
+        // Advance Android work as well as Compose frames while awaiting the real model state.
+        try {
+            ui.waitUntil(10000) {
+                ui.waitForIdle()
+                condition()
+            }
+        } catch (error: ComposeTimeoutException) {
+            throw AssertionError("Documents=${vm.managedDocuments.value.map { it.documentId to it.reviewStatus }}, " +
+                "properties=${vm.properties.value.map { it.propertyId }}, " +
+                "lifecycle=${ui.activity.lifecycle.currentState}", error)
+        }
     }
 
     private fun openReviewA() {
@@ -95,10 +114,10 @@ class DocumentReviewWorkflowComposeTest {
         openReviewA()
         ui.onNode(isToggleable()).performScrollTo().performClick()
         ui.onNodeWithTag("confirm_document_ai_review").performClick()
-        ui.waitUntil(10000) { documentA.documentId !in vm.documentAiReviewState.value.pending && documentA.documentId !in vm.documentAiReviewState.value.confirming }
+        waitForModel { documentA.documentId !in vm.documentAiReviewState.value.pending && documentA.documentId !in vm.documentAiReviewState.value.confirming }
         val saved = runBlocking(Dispatchers.IO) { database.managedDocumentDao().getById(documentA.documentId)!! }
         assertEquals("GEPRUEFT", saved.reviewStatus)
-        ui.waitUntil(10000) { vm.managedDocuments.value.any { it.documentId == documentA.documentId && it.reviewStatus == "GEPRUEFT" } }
+        waitForModel { vm.managedDocuments.value.any { it.documentId == documentA.documentId && it.reviewStatus == "GEPRUEFT" } }
         runBlocking(Dispatchers.IO) {
             assertEquals("Neue Adresse B", database.propertyDao().getPropertyByPropertyId("review-property-b")!!.adresse)
             assertEquals("Adresse A", database.propertyDao().getPropertyByPropertyId("review-property-a")!!.adresse)
@@ -118,7 +137,7 @@ class DocumentReviewWorkflowComposeTest {
         openReviewA()
         runBlocking(Dispatchers.IO) { database.propertyDao().deletePropertyByPropertyId("review-property-b") }
         ui.onNodeWithTag("confirm_document_ai_review").performClick()
-        ui.waitUntil(10000) { vm.documentAiReviewState.value.messages[documentA.documentId]?.contains("Immobilie ist nicht mehr verfügbar") == true }
+        waitForModel { vm.documentAiReviewState.value.messages[documentA.documentId]?.contains("Immobilie ist nicht mehr verfügbar") == true }
         ui.onNodeWithTag("document_review_message").assertTextContains("Immobilie ist nicht mehr verfügbar", substring = true)
         ui.onNodeWithText("Abbrechen").performClick()
         ui.onNodeWithText("Dokumentendetail").assertIsDisplayed()
@@ -140,7 +159,7 @@ class DocumentReviewWorkflowComposeTest {
                 documentA.documentDate, documentA.unitId,
                 result.reviewFields(emptyMap()).map { it.copy(decision = DocumentFieldDecision.UEBERNEHMEN) }, review.revision)
         }
-        ui.waitUntil(10000) { documentA.documentId !in vm.documentAiReviewState.value.pending && documentA.documentId !in vm.documentAiReviewState.value.confirming }
+        waitForModel { documentA.documentId !in vm.documentAiReviewState.value.pending && documentA.documentId !in vm.documentAiReviewState.value.confirming }
         val properties = runBlocking(Dispatchers.IO) { listOf(
             database.propertyDao().getPropertyByPropertyId("review-property-a")!!,
             database.propertyDao().getPropertyByPropertyId("review-property-b")!!
