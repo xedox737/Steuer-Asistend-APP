@@ -215,7 +215,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithText("Miet-Monatscheck").assertExists()
         repeat(5) { ui.onNodeWithText("‹").performClick() }
         ui.onNodeWithText("Offen (1)").assertExists()
-        ui.onNodeWithText("FEHLT").assertExists()
+        ui.onNodeWithText("TEILZAHLUNG").assertExists()
         ui.onNodeWithText("BEZAHLT").assertDoesNotExist()
         ui.onNodeWithText("Alle (3)").performClick()
         ui.onNodeWithText("BEZAHLT").assertExists()
