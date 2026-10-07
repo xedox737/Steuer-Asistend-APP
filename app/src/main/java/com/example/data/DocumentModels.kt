@@ -8,6 +8,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Transaction
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -113,6 +115,63 @@ interface ManagedDocumentDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(document: ManagedDocument)
+
+    @Update
+    suspend fun updateExisting(document: ManagedDocument): Int
+
+    @Transaction
+    suspend fun updateReviewIfPresent(expected: ManagedDocument, reviewed: ManagedDocument): ManagedDocument? {
+        val current = getById(expected.documentId) ?: return null
+        if (current.propertyId != expected.propertyId || current.unitId != expected.unitId) return null
+        val updated = current.copy(
+            documentType = reviewed.documentType,
+            documentCategory = reviewed.documentCategory,
+            documentDate = reviewed.documentDate,
+            unitId = reviewed.unitId,
+            storedFilename = reviewed.storedFilename,
+            extractedFieldsJson = reviewed.extractedFieldsJson,
+            reviewStatus = reviewed.reviewStatus,
+            migrationStatus = reviewed.migrationStatus,
+            updatedAt = reviewed.updatedAt
+        )
+        if (updateExisting(updated) != 1) return null
+        deleteSearchEntry(updated.documentId)
+        insertSearchEntry(DocumentSearchFts(updated.documentId, DocumentSearchTextBuilder.build(updated)))
+        return updated
+    }
+
+    /** Processing may finish after deletion or reassignment; it must never reinsert a document. */
+    @Transaction
+    suspend fun updateProcessingIfPresent(
+        expected: ManagedDocument,
+        ocrStatus: String? = null,
+        ocrText: String? = null,
+        aiStatus: String? = null,
+        confidence: Double? = null,
+        fieldsJson: String? = null
+    ): ManagedDocument? {
+        val current = getById(expected.documentId) ?: return null
+        if (current.propertyId != expected.propertyId || current.unitId != expected.unitId) return null
+        val fields = fieldsJson?.let { json ->
+            org.json.JSONObject(json).apply {
+                val description = runCatching { org.json.JSONObject(current.extractedFieldsJson).optString("_displayDescription") }.getOrDefault("")
+                if (description.isNotBlank()) put("_displayDescription", description)
+            }.toString()
+        }
+        val updated = current.copy(
+            ocrStatus = ocrStatus ?: current.ocrStatus,
+            ocrText = ocrText ?: current.ocrText,
+            aiAnalysisStatus = aiStatus ?: current.aiAnalysisStatus,
+            aiConfidence = confidence ?: current.aiConfidence,
+            extractedFieldsJson = fields ?: current.extractedFieldsJson,
+            reviewStatus = if (fields != null) DocumentReviewStatus.PRUEFEN.name else current.reviewStatus,
+            updatedAt = java.time.Instant.now().toString()
+        )
+        if (updateExisting(updated) != 1) return null
+        deleteSearchEntry(updated.documentId)
+        insertSearchEntry(DocumentSearchFts(updated.documentId, DocumentSearchTextBuilder.build(updated)))
+        return updated
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(documents: List<ManagedDocument>)

@@ -79,8 +79,7 @@ fun DocumentManagementScreen(
     val documents by viewModel.managedDocuments.collectAsStateWithLifecycle()
     val operationStatus by viewModel.documentOperationStatus.collectAsStateWithLifecycle()
     val duplicate by viewModel.pendingDocumentDuplicate.collectAsStateWithLifecycle()
-    val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
-    val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
+    val reviewState by viewModel.documentAiReviewState.collectAsStateWithLifecycle()
     val migrationPreview by viewModel.documentMigrationPreview.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val property by viewModel.propertyMetadata.collectAsStateWithLifecycle()
@@ -156,7 +155,7 @@ fun DocumentManagementScreen(
         val selectedUnits = selectedProperty?.let { selected ->
             if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
         }.orEmpty()
-        val selectedReview = aiReview?.takeIf { DocumentReviewPresentation.isPendingFor(selectedDocument.documentId, it) }
+        val selectedReview = reviewState.pending[selectedDocument.documentId]?.takeIf { it.matches(selectedDocument) }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = selectedProperty,
@@ -169,16 +168,18 @@ fun DocumentManagementScreen(
                 viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
             },
             hasPendingReview = selectedReview != null,
-            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
+            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) },
+            operationStatus = reviewState.messages[selectedDocument.documentId]
         )
         selectedReview?.let { review ->
-            if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, review, dismissedAiReviews)) {
+            if (selectedDocument.documentId !in reviewState.dismissed) {
                 DocumentAiReviewDialog(
                     selectedDocument,
-                    review.second,
+                    review,
                     selectedUnits,
                     selectedProperty,
-                    viewModel
+                    viewModel,
+                    reviewState
                 )
             }
         }
@@ -331,17 +332,15 @@ fun DocumentManagementScreen(
             dismissButton = { Row { TextButton(onClick = { viewModel.resolvePossibleDocumentDuplicate(false, true) }) { Text("Separat übernehmen") }; TextButton(onClick = { viewModel.resolvePossibleDocumentDuplicate(false) }) { Text("Abbrechen") } } }
         )
     }
-    aiReview?.let { (documentId, result) ->
-        if (documentId !in dismissedAiReviews) {
-            val document = documents.firstOrNull { it.documentId == documentId }
-            if (document != null) {
-                val reviewProperty = DocumentReviewPresentation.propertyFor(document, properties, property)
-                val reviewUnits = reviewProperty?.let { selected ->
-                    if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
-                }.orEmpty()
-                DocumentAiReviewDialog(document, result, reviewUnits, reviewProperty, viewModel)
-            }
-        }
+    propertyDocuments.firstOrNull { document ->
+        reviewState.pending[document.documentId]?.matches(document) == true && document.documentId !in reviewState.dismissed
+    }?.let { document ->
+        val review = reviewState.pending.getValue(document.documentId)
+        val reviewProperty = DocumentReviewPresentation.propertyFor(document, properties, property)
+        val reviewUnits = reviewProperty?.let { selected ->
+            if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
+        }.orEmpty()
+        DocumentAiReviewDialog(document, review, reviewUnits, reviewProperty, viewModel, reviewState)
     }
     migrationPreview?.let { preview ->
         AlertDialog(
@@ -390,7 +389,8 @@ private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptVi
 }
 
 @Composable
-internal fun DocumentAiReviewDialog(document: ManagedDocument, result: com.example.api.ManagedDocumentAiResult, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel) {
+internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDocumentAiReview, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel, reviewState: DocumentAiReviewState) {
+    val result = review.result
     val targetUnitId = result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }
     val currentUnit = units.firstOrNull {
         PropertyUnitScopedData.stableUnitId(document.propertyId, it) == targetUnitId
@@ -402,17 +402,18 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, result: com.examp
         "mieter" to currentUnit?.mieter.orEmpty(), "kaltmiete" to (currentUnit?.kaltmiete?.toString() ?: ""),
         "wohnflaeche" to (currentUnit?.wohnflaeche?.toString() ?: ""), "vertragsbeginn" to currentUnit?.mietvertragsstart.orEmpty()
     )
-    var proposals by remember(result, property, currentUnit) { mutableStateOf(result.reviewFields(currentValues)) }
-    var selectedType by remember(result) { mutableStateOf(runCatching { ManagedDocumentType.valueOf(result.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)) }
-    var selectedDate by remember(result) { mutableStateOf(result.documentDate.ifBlank { document.documentDate }) }
-    var selectedUnitId by remember(result) { mutableStateOf(result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }) }
+    var proposals by remember(document.documentId, review.revision, property, currentUnit) { mutableStateOf(result.reviewFields(currentValues)) }
+    var selectedType by remember(document.documentId, review.revision) { mutableStateOf(runCatching { ManagedDocumentType.valueOf(result.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)) }
+    var selectedDate by remember(document.documentId, review.revision) { mutableStateOf(result.documentDate.ifBlank { document.documentDate }) }
+    var selectedUnitId by remember(document.documentId, review.revision) { mutableStateOf(result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }) }
     var typeMenu by remember { mutableStateOf(false) }
     AlertDialog(
-        onDismissRequest = viewModel::dismissDocumentAiReview,
+        onDismissRequest = { viewModel.dismissDocumentAiReview(document.documentId) },
         shape = Ui2.shape,
         title = { Text("Erkannte Daten prüfen") },
         text = {
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                reviewState.messages[document.documentId]?.let { Text(it, color = SlateGray, fontSize = 11.sp, modifier = Modifier.testTag("document_review_message")) }
                 Text("KI-Vorschlag ${(result.confidence * 100).toInt()} %. Nichts wird ohne Auswahl übernommen.", fontSize = 11.sp, color = SlateGray)
                 OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${selectedType.name}") }
                 DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(type.name) }, { selectedType = type; typeMenu = false }) } }
@@ -436,7 +437,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, result: com.examp
                 }
             }
         },
-        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.ifBlank { null }, proposals) }, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
-        dismissButton = { TextButton(onClick = viewModel::dismissDocumentAiReview) { Text("Abbrechen") } }
+        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.ifBlank { null }, proposals, review.revision) }, enabled = document.documentId !in reviewState.analyzing && document.documentId !in reviewState.confirming, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
+        dismissButton = { TextButton(onClick = { viewModel.dismissDocumentAiReview(document.documentId) }) { Text("Abbrechen") } }
     )
 }

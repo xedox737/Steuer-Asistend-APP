@@ -8,6 +8,7 @@ import com.example.data.BankRentAssignment
 import com.example.data.BankRentAssignmentStatus
 import com.example.data.BankSplitPaymentType
 import com.example.data.BankTransaction
+import com.example.data.BankTransactionClassification
 import com.example.data.Receipt
 import com.example.data.StableDocumentIdentity
 import java.time.LocalDate
@@ -152,7 +153,7 @@ internal object RentTrackingLogic {
                         (receipt.wohneinheit.equals(unit.name, ignoreCase = true) ||
                             receipt.wohneinheit.equals(unit.label, ignoreCase = true)))) &&
                 receiptMonth(receipt) == month &&
-                isRentalIncomeReceipt(receipt)
+                isConfirmedRentalIncomeReceipt(receipt)
         }
         val receiptActual = countedReceipts.sumOf { it.bruttobetrag }
 
@@ -175,15 +176,20 @@ internal object RentTrackingLogic {
         val bankActual = bankAssignments.asSequence()
             .filter {
                 it.status == BankRentAssignmentStatus.CONFIRMED &&
+                    it.propertyId.isNotBlank() && it.unitId.isNotBlank() && it.transactionId.isNotBlank() &&
                     it.propertyId == propertyId &&
                     it.unitId == stableUnitId &&
                     it.rentMonth == month.toString() &&
-                    it.paymentType in rentPaymentTypes
+                    it.paymentType in rentPaymentTypes &&
+                    it.allocatedAmount.isFinite() && it.allocatedAmount > 0.0
             }
             .groupBy { it.transactionId }
             .entries
             .sumOf { (transactionId, assignments) ->
                 val transaction = transactionsById[transactionId] ?: return@sumOf 0.0
+                if (!transaction.amount.isFinite() || !transaction.isIncome ||
+                    transaction.classification != BankTransactionClassification.NORMAL
+                ) return@sumOf 0.0
                 if (transaction.reconciliationStatus !in setOf(
                         BankReconciliationStatus.MATCHED,
                         BankReconciliationStatus.PARTIAL
@@ -194,8 +200,8 @@ internal object RentTrackingLogic {
                     .orEmpty()
                     .mapNotNull { link ->
                         countedReceipts.firstOrNull { receipt ->
-                            receipt.id == link.receiptId ||
-                                (link.receiptInternalId.isNotBlank() && receipt.internalId == link.receiptInternalId)
+                            if (link.receiptInternalId.isNotBlank()) receipt.internalId == link.receiptInternalId
+                            else receipt.id == link.receiptId
                         }?.id
                     }
                     .toMutableSet()
@@ -207,11 +213,27 @@ internal object RentTrackingLogic {
                     .filter { it.id in linkedReceiptIds }
                     .sumOf { it.bruttobetrag }
                     .coerceAtMost(transaction.absoluteAmount)
-                val assignmentAmount = assignments.asSequence()
+                val unlinkedAssignments = assignments.asSequence()
                     .filterNot { it.receiptId != null && it.receiptId in directlyLinkedAssignmentReceiptIds }
-                    .sumOf { it.allocatedAmount }
-                    .coerceAtLeast(0.0)
-                minOf(assignmentAmount, (transaction.absoluteAmount - linkedReceiptAmount).coerceAtLeast(0.0))
+                    .toList()
+                // A receipt link identifies the payment, not the still unallocated bank
+                // balance. Subtract covered components before applying the transaction cap.
+                val indirectlyLinkedReceipts = countedReceipts.filter {
+                    it.id in linkedReceiptIds && it.id !in directlyLinkedAssignmentReceiptIds
+                }
+                val uncoveredComponents = listOf(RentPaymentComponent.RENT, RentPaymentComponent.UTILITIES).sumOf { component ->
+                    val allocated = unlinkedAssignments.filter { rentPaymentComponent(it.paymentType) == component }
+                        .sumOf { it.allocatedAmount }
+                    val covered = indirectlyLinkedReceipts.filter { rentPaymentComponent(it) == component }
+                        .sumOf { it.bruttobetrag }
+                    (allocated - covered).coerceAtLeast(0.0)
+                }
+                val combinedCoverage = indirectlyLinkedReceipts.filter { rentPaymentComponent(it) == RentPaymentComponent.COMBINED }
+                    .sumOf { it.bruttobetrag }
+                minOf(
+                    (uncoveredComponents - combinedCoverage).coerceAtLeast(0.0),
+                    (transaction.amount - linkedReceiptAmount).coerceAtLeast(0.0)
+                )
             }
         val actual = receiptActual + bankActual
         val tenants = relevant.map { it.tenantName.ifBlank { "Mieter nicht hinterlegt" } }

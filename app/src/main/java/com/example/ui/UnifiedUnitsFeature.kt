@@ -458,8 +458,7 @@ private fun UnifiedUnitDetailScreen(
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
-    val aiReview by viewModel.documentAiReview.collectAsStateWithLifecycle()
-    val dismissedAiReviews by viewModel.dismissedDocumentAiReviewIds.collectAsStateWithLifecycle()
+    val reviewState by viewModel.documentAiReviewState.collectAsStateWithLifecycle()
     var showHistory by remember { mutableStateOf(false) }
     var showMonthCheck by remember { mutableStateOf(false) }
     var showDocuments by remember { mutableStateOf(false) }
@@ -503,7 +502,8 @@ private fun UnifiedUnitDetailScreen(
 
     val selectedDocument = selectedDocumentId?.let { id -> unitDocs.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
-        val selectedReview = aiReview?.takeIf { DocumentReviewPresentation.isPendingFor(selectedDocument.documentId, it) }
+        LaunchedEffect(selectedDocument.documentId) { viewModel.ensureManagedDocumentReady(selectedDocument.documentId) }
+        val selectedReview = reviewState.pending[selectedDocument.documentId]?.takeIf { it.matches(selectedDocument) }
         ManagedDocumentDetailScreen(
             document = selectedDocument,
             property = property,
@@ -516,16 +516,18 @@ private fun UnifiedUnitDetailScreen(
                 viewModel.updateManagedDocumentPresentation(selectedDocument.documentId, title, description)
             },
             hasPendingReview = selectedReview != null,
-            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) }
+            onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) },
+            operationStatus = reviewState.messages[selectedDocument.documentId]
         )
         selectedReview?.let { review ->
-            if (DocumentReviewPresentation.shouldShowDialog(selectedDocument.documentId, review, dismissedAiReviews)) {
+            if (selectedDocument.documentId !in reviewState.dismissed) {
                 DocumentAiReviewDialog(
                     selectedDocument,
-                    review.second,
+                    review,
                     listOf(unit),
                     property,
-                    viewModel
+                    viewModel,
+                    reviewState
                 )
             }
         }
