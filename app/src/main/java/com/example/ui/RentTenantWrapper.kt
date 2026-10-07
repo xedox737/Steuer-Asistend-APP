@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -145,7 +146,10 @@ private fun MonthlyRentCheckDialog(
         onDismissRequest = onDismiss,
         title = { Text("Miet-Monatscheck", fontWeight = FontWeight.Bold) },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            LazyColumn(
+                modifier = Modifier.testTag("rent_monthly_list"),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
