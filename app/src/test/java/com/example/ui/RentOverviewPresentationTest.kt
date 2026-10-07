@@ -94,9 +94,9 @@ class RentOverviewPresentationTest {
     }
     @Test fun availableYearsUseReceiptsContractsAndHistoryWithCurrentYearFallback() {
         val today = LocalDate.of(2026, 10, 4)
-        assertEquals(listOf(2026), RentOverviewPresentation.years(context, emptyList(), emptyList(), today))
+        assertEquals(listOf(2026), RentOverviewPresentation.years(context, emptyList(), emptyList(), today = today))
         TenantHistoryStore.save(context, "p-a", "u-a", unit.name, listOf(TenantPeriod(1, unit.name, "Alt", "2023-01-01", "2024-12-31", 500.0, 100.0, 0.0)))
-        assertEquals(listOf(2026, 2025, 2024, 2023), RentOverviewPresentation.years(context, listOf(group()), listOf(receipt(date = "2025-12-01")), today))
+        assertEquals(listOf(2026, 2025, 2024, 2023), RentOverviewPresentation.years(context, listOf(group()), listOf(receipt(date = "2025-12-01")), today = today))
         assertEquals(0.0, overview(listOf(receipt(date = "2025-12-01"))).actual, .001)
         assertEquals(600.0, overview(listOf(receipt(date = "2025-12-01")), year = 2025).actual, .001)
     }
