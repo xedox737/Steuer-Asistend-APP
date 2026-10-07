@@ -219,7 +219,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithText("BEZAHLT").assertDoesNotExist()
         ui.onNodeWithText("Alle (3)").performClick()
         ui.onNodeWithTag("rent_monthly_list").performScrollToNode(hasText("BEZAHLT"))
-        ui.onNodeWithText("BEZAHLT").assertExists()
+        ui.onAllNodesWithText("BEZAHLT").assertCountEquals(2)
         ui.onNodeWithText("Schließen").performClick()
         scroll("rent_unit_${key("OG links")}")
         ui.onNodeWithTag("rent_history_${key("OG links")}", useUnmergedTree = true).performClick()
