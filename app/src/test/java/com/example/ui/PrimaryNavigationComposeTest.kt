@@ -99,6 +99,12 @@ class PrimaryNavigationComposeTest {
             wohneinheiten = units.joinToString(", ") { it.name })
         ui.runOnIdle { vm.createProperty(property, units) }
         ui.waitUntil(15000) { vm.properties.value.any { it.propertyId == newId } }
+        ui.waitUntil(15000) {
+            vm.properties.value.firstOrNull { it.propertyId == newId }?.let { saved ->
+                val restored = vm.getWohneinheitenForProperty(saved)
+                restored.size == 25 && restored.map { it.unitId } == units.map { it.unitId }
+            } == true
+        }
         ui.waitForIdle()
         val stored = vm.properties.value.single { it.propertyId == newId }
         val loaded = vm.getWohneinheitenForProperty(stored)
