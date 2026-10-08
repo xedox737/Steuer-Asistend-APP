@@ -16,6 +16,7 @@ internal object PersistentPreferenceInventory {
         Store("tenant_history_prefs", Kind.BACKUP, "tenantHistoryPrefs"),
         Store("loan_interest_assignments", Kind.BACKUP, "loanInterestAssignments"),
         Store("annual_tax_approval_prefs", Kind.BACKUP, "annualTaxApprovalPrefs"),
+        Store("afa_confirmed_values_prefs", Kind.BACKUP, "confirmedAfaValuesPrefs"),
         Store("wohneinheiten_prefs", Kind.BACKUP, "propertyUnitPrefs"),
         Store("datev_kanzleiprofil_prefs", Kind.BACKUP, "datevProfilePrefs", setOf("active_profile_json")),
         Store("property_tasks_prefs", Kind.BACKUP, "propertyTaskPrefs"),
@@ -104,6 +105,8 @@ internal object PersistentPreferenceInventory {
 
             values.keys().forEach entryLoop@ { key ->
                 if (!permits(store, key)) return@entryLoop
+                // Verified tax history has no conflict timestamp: local values take precedence during MERGE.
+                if (mode == RestoreMode.MERGE && store.name == "afa_confirmed_values_prefs" && prefs.contains(key)) return@entryLoop
                 val value = values.optJSONObject(key) ?: return@entryLoop
 
                 if (mode == RestoreMode.MERGE &&

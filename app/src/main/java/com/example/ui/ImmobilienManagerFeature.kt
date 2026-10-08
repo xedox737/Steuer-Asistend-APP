@@ -1108,9 +1108,9 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
     var livingArea by remember { mutableStateOf("") }; var landArea by remember { mutableStateOf("") }; var unitCount by remember { mutableStateOf("1") }
     var buildingValue by remember { mutableStateOf("") }; var landValue by remember { mutableStateOf("") }
     var loanName by remember { mutableStateOf("") }; var loanBank by remember { mutableStateOf("") }; var loanAmount by remember { mutableStateOf("") }
-    val unitNames = remember { mutableStateListOf<String>().apply { repeat(20) { add("WE ${(it + 1).toString().padStart(2, '0')}") } } }
-    val unitLocations = remember { mutableStateListOf<String>().apply { repeat(20) { add("") } } }
-    val unitAreas = remember { mutableStateListOf<String>().apply { repeat(20) { add("") } } }
+    val unitNames = remember { mutableStateListOf<String>().apply { add("WE 01") } }
+    val unitLocations = remember { mutableStateListOf<String>().apply { add("") } }
+    val unitAreas = remember { mutableStateListOf<String>().apply { add("") } }
     var fieldErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var wizardMessage by remember { mutableStateOf<String?>(null) }
     val field: @Composable (String, String, (String) -> Unit) -> Unit = { value, label, change ->
@@ -1156,14 +1156,43 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                         field(purchaseDate, "Kaufdatum YYYY-MM-DD") { purchaseDate = it }
                         field(purchasePrice, "Kaufpreis €") { purchasePrice = it }
                     }
-                    1 -> { field(yearBuilt, "Baujahr") { yearBuilt = it }; field(livingArea, "Wohnfläche m²") { livingArea = it }; field(landArea, "Grundstücksfläche m²") { landArea = it }; field(unitCount, "Anzahl Einheiten (max. 20)") { unitCount = it.filter(Char::isDigit).take(2) } }
+                    1 -> { field(yearBuilt, "Baujahr") { yearBuilt = it }; field(livingArea, "Wohnfläche m²") { livingArea = it }; field(landArea, "Grundstücksfläche m²") { landArea = it }; field(unitCount, "Anzahl Einheiten") { raw ->
+                            val digits = raw.filter(Char::isDigit).take(4)
+                            unitCount = digits
+                            val requested = digits.toIntOrNull() ?: 0
+                            while (unitNames.size < requested) {
+                                unitNames.add(generateSequence(1) { it + 1 }
+                                    .map { "WE ${it.toString().padStart(2, '0')}" }
+                                    .first { it !in unitNames })
+                                unitLocations.add("")
+                                unitAreas.add("")
+                            }
+                        } }
                     2 -> { Text("Finanzierung (optional)", fontWeight = FontWeight.Bold); field(loanName, "Darlehensbezeichnung") { loanName = it }; field(loanBank, "Bank") { loanBank = it }; field(loanAmount, "Darlehensbetrag €") { loanAmount = it } }
                     3 -> LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items((0 until (unitCount.toIntOrNull() ?: 1).coerceIn(1, 20)).toList()) { index ->
+                        items((0 until (unitCount.toIntOrNull() ?: 1).coerceAtLeast(1)).toList()) { index ->
                             Text("Einheit ${index + 1}", fontWeight = FontWeight.Bold)
                             field(unitNames[index], "Name") { unitNames[index] = it }
                             field(unitLocations[index], "Lage / Bezeichnung") { unitLocations[index] = it }
                             field(unitAreas[index], "Wohnfläche m²") { unitAreas[index] = it }
+                            if ((unitCount.toIntOrNull() ?: 1) > 1) {
+                                TextButton(onClick = {
+                                    unitNames.removeAt(index)
+                                    unitLocations.removeAt(index)
+                                    unitAreas.removeAt(index)
+                                    unitCount = unitNames.size.toString()
+                                }) { Text("Einheit entfernen") }
+                            }
+                        }
+                        item {
+                            TextButton(onClick = {
+                                unitNames.add(generateSequence(1) { it + 1 }
+                                    .map { "WE ${it.toString().padStart(2, '0')}" }
+                                    .first { it !in unitNames })
+                                unitLocations.add("")
+                                unitAreas.add("")
+                                unitCount = unitNames.size.toString()
+                            }) { Text("+ Einheit hinzufügen") }
                         }
                     }
                     else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und 15-%-Prüfung verwenden danach unverändert die bestehende Steuerlogik.", fontSize = 10.sp, color = SlateGray) }
@@ -1191,14 +1220,28 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                     else -> emptySet()
                 }
                 val currentErrors = validation.errors.filterKeys { it in relevantFields }
-                val count = (unitCount.toIntOrNull() ?: 1).coerceIn(1, 20)
+                val count = unitCount.toIntOrNull() ?: 0
+                if (count < 1) {
+                    wizardMessage = "Bitte mindestens eine Wohneinheit angeben."
+                    return@Button
+                }
+                val invalidUnitName = if (step == 3 || step == 4) {
+                    (0 until count).firstOrNull { unitNames[it].isBlank() }
+                } else null
+                val duplicateUnitName = if (step == 3 || step == 4) {
+                    (0 until count).groupBy { unitNames[it].trim().lowercase() }.values.firstOrNull { it.size > 1 }?.firstOrNull()
+                } else null
                 val invalidUnitArea = if (step == 3 || step == 4) {
                     (0 until count).firstOrNull { PropertyWizardInput.unitArea(unitAreas[it]) == null }
                 } else null
 
-                if (currentErrors.isNotEmpty() || invalidUnitArea != null) {
+                if (currentErrors.isNotEmpty() || invalidUnitArea != null || invalidUnitName != null || duplicateUnitName != null) {
                     fieldErrors = currentErrors
-                    wizardMessage = if (invalidUnitArea != null) {
+                    wizardMessage = if (invalidUnitName != null) {
+                        "Bitte für Einheit ${invalidUnitName + 1} einen Namen eingeben."
+                    } else if (duplicateUnitName != null) {
+                        "Bitte eindeutige Einheitsnamen vergeben."
+                    } else if (invalidUnitArea != null) {
                         "Bitte für Einheit ${invalidUnitArea + 1} eine gültige, nicht negative Wohnfläche eingeben."
                     } else {
                         "Bitte die markierten Eingaben prüfen."
@@ -1240,7 +1283,8 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                             "Leerstand",
                             "",
                             0.0,
-                            PropertyWizardInput.unitArea(unitAreas[index]) ?: 0.0
+                            PropertyWizardInput.unitArea(unitAreas[index]) ?: 0.0,
+                            unitId = java.util.UUID.randomUUID().toString()
                         )
                     }
                     val loan = values.loanAmount?.takeIf { it > 0.0 }?.let {

@@ -106,6 +106,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val accounts by viewModel.bankAccounts.collectAsStateWithLifecycle()
     val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
     val suggestions by viewModel.bankMatchSuggestions.collectAsStateWithLifecycle()
     val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
@@ -491,7 +492,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         )
     }
     if (pendingPropertyChoice) {
-        val propertyIds = (transactions.map { it.propertyId } + receipts.map { it.propertyId }).filter { it.isNotBlank() }.distinct().sorted()
+        val selectableProperties = properties.sortedWith(compareBy({ it.name }, { it.adresse }))
         AlertDialog(
             onDismissRequest = { pendingPropertyChoice = false },
             shape = Ui2.shape,
@@ -499,10 +500,10 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             titleContentColor = DarkNavy,
             textContentColor = SlateGray,
             title = { Text("Immobilie zuweisen", fontWeight = FontWeight.Bold) },
-            text = { Column { propertyIds.forEach { propertyId -> TextButton(onClick = {
-                viewModel.applyBankBatchAction(selectedTransactionIds, com.example.data.BankBatchAction.PROPERTY, propertyId)
+            text = { Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState())) { selectableProperties.forEach { property -> TextButton(onClick = {
+                viewModel.applyBankBatchAction(selectedTransactionIds, com.example.data.BankBatchAction.PROPERTY, property.propertyId)
                 selectedTransactionIds = emptySet(); pendingPropertyChoice = false
-            }, modifier = Modifier.fillMaxWidth()) { Text(propertyId) } }; if (propertyIds.isEmpty()) Text("Noch keine Immobilie vorhanden.") } },
+            }, modifier = Modifier.fillMaxWidth()) { Text("${property.name.ifBlank { "Immobilie" }} · ${property.adresse}") } }; if (selectableProperties.isEmpty()) Text("Noch keine Immobilie vorhanden.") } },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { pendingPropertyChoice = false }) { Text("Abbrechen") } }
         )

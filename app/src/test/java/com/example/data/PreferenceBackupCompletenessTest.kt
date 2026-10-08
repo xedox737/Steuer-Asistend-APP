@@ -87,6 +87,21 @@ class PreferenceBackupCompletenessTest {
         assertEquals(2, prefs("ki_learned_rules_prefs").all.size)
     }
 
+    @Test fun confirmedAfaBackupRestoresAndMergeKeepsLocalVerifiedValues() = runTest {
+        val propertyId = "confirmed-afa-property"
+        val original = """{"cutoffDate":"2025-12-31","cumulativeAfa":40000.0,"remainingBookValue":360000.0,"source":"Steuerberater Jahresabschluss 2025"}"""
+        val local = """{"cutoffDate":"2026-12-31","cumulativeAfa":50000.0,"remainingBookValue":350000.0,"source":"Lokaler Steuerbescheid 2026"}"""
+        val store = prefs("afa_confirmed_values_prefs")
+        store.edit().putString(propertyId, original).commit()
+        val backup = SupplementalDriveBackup.createPayload(context, database)
+        store.edit().clear().commit()
+        SupplementalDriveBackup.restorePayload(context, database, backup)
+        assertEquals(original, store.getString(propertyId, null))
+        store.edit().putString(propertyId, local).commit()
+        repeat(2) { SupplementalDriveBackup.restorePayload(context, database, backup) }
+        assertEquals(local, store.getString(propertyId, null))
+    }
+
     @Test fun mergingPropertySnapshotsUsesStableIdentityAndPreservesUnrelatedLocalObjects() = runTest {
         database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 1, propertyId = "remote-A", name = "Objekt A"))
         database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 2, propertyId = "remote-B", name = "Objekt B"))

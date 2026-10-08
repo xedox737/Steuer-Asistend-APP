@@ -905,8 +905,8 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     // large Android font scale, normal German labels otherwise break into
     // fragments inside standard phone-sized cards.
     val parentDensity = LocalDensity.current
-    val dashboardDensity = remember(parentDensity.density) {
-        Density(density = parentDensity.density, fontScale = 1f)
+    val dashboardDensity = remember(parentDensity.density, parentDensity.fontScale) {
+        Density(density = parentDensity.density, fontScale = parentDensity.fontScale)
     }
     CompositionLocalProvider(LocalDensity provides dashboardDensity) {
         Column(
@@ -926,7 +926,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             ) {
                 Text("☀️", fontSize = 38.sp)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Hallo Sergej!", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Willkommen bei ImmoPilot", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -5406,7 +5406,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                     }
                     Column {
                         Text(
-                            "Beleg-Scan & Upload Center",
+                            "Belege scannen oder importieren",
                             fontWeight = FontWeight.Bold,
                             color = DarkNavy,
                             fontSize = 16.sp
@@ -5488,7 +5488,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                                     .padding(horizontal = 5.dp, vertical = 1.dp)
                                             ) {
                                                 Text(
-                                                    text = "AUTO-CROP",
+                                                    text = "Automatischer Zuschnitt",
                                                     fontSize = 7.5.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = Color(0xFF059669)
@@ -5587,7 +5587,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp)
+                            .heightIn(min = 130.dp)
                             .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
                             .drawBehind {
                                 drawRoundRect(
@@ -5925,7 +5925,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             OutlinedTextField(
                 value = editAussteller,
                 onValueChange = { editAussteller = it },
-                label = { Text("Aussteller / Creditor") },
+                label = { Text("Aussteller / Zahlungspartner") },
                 modifier = Modifier.fillMaxWidth().testTag("edit_aussteller"),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = Color.White,
@@ -6659,8 +6659,9 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     val metadataCleanupResult by viewModel.metadataCleanupResult.collectAsStateWithLifecycle()
     val isCleaningMetadataDuplicates by viewModel.isCleaningMetadataDuplicates.collectAsStateWithLifecycle()
 
+    var showAdvancedDriveLogin by remember { mutableStateOf(false) }
     var showManualInput by remember { mutableStateOf(false) }
-    var manualEmail by remember { mutableStateOf("sergej.alc28@gmail.com") }
+    var manualEmail by remember { mutableStateOf("") }
     var manualTokenInput by remember { mutableStateOf("") }
     var showWebViewLogin by remember { mutableStateOf(false) }
 
@@ -6722,7 +6723,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                                                 }
                                                 val accessToken = params["access_token"]
                                                 if (!accessToken.isNullOrEmpty()) {
-                                                    viewModel.connectDrive("sergej.alc28@gmail.com", accessToken)
+                                                    viewModel.connectDrive(manualEmail.ifBlank { email?.takeIf(String::isNotBlank) ?: "Google-Konto (E-Mail nicht verfügbar)" }, accessToken)
                                                     showWebViewLogin = false
                                                 }
                                             }
@@ -6739,7 +6740,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                                             }
                                             val accessToken = params["access_token"]
                                             if (!accessToken.isNullOrEmpty()) {
-                                                viewModel.connectDrive("sergej.alc28@gmail.com", accessToken)
+                                                viewModel.connectDrive(manualEmail.ifBlank { email?.takeIf(String::isNotBlank) ?: "Google-Konto (E-Mail nicht verfügbar)" }, accessToken)
                                                 showWebViewLogin = false
                                                 return true
                                             }
@@ -6816,11 +6817,15 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                 ) {
                     Icon(Icons.Default.Cloud, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Über Google-Login verbinden", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Mit Google Drive verbinden", fontWeight = FontWeight.Bold, color = Color.White)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                TextButton(onClick = { showAdvancedDriveLogin = !showAdvancedDriveLogin }) {
+                    Text(if (showAdvancedDriveLogin) "Erweiterte Anmeldung schließen" else "Alternative Anmeldung / Erweitert")
+                }
+                if (showAdvancedDriveLogin) {
                 OutlinedButton(
                     onClick = {
                         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -6894,6 +6899,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                         color = Color.Gray,
                         lineHeight = 14.sp
                     )
+                }
                 }
             } else {
                 // Connected state
@@ -10705,8 +10711,8 @@ fun DatevExportScreen(
         if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
     })
     val datevParentDensity = LocalDensity.current
-    val datevDensity = remember(datevParentDensity.density) {
-        Density(density = datevParentDensity.density, fontScale = 1f)
+    val datevDensity = remember(datevParentDensity.density, datevParentDensity.fontScale) {
+        Density(density = datevParentDensity.density, fontScale = datevParentDensity.fontScale)
     }
     CompositionLocalProvider(LocalDensity provides datevDensity) {
     Box(modifier = Modifier.fillMaxSize()) {
