@@ -1161,7 +1161,9 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                             unitCount = digits
                             val requested = digits.toIntOrNull() ?: 0
                             while (unitNames.size < requested) {
-                                unitNames.add("WE ${(unitNames.size + 1).toString().padStart(2, '0')}")
+                                unitNames.add(generateSequence(1) { it + 1 }
+                                    .map { "WE ${it.toString().padStart(2, '0')}" }
+                                    .first { it !in unitNames })
                                 unitLocations.add("")
                                 unitAreas.add("")
                             }
@@ -1184,7 +1186,9 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                         }
                         item {
                             TextButton(onClick = {
-                                unitNames.add("WE ${(unitNames.size + 1).toString().padStart(2, '0')}")
+                                unitNames.add(generateSequence(1) { it + 1 }
+                                    .map { "WE ${it.toString().padStart(2, '0')}" }
+                                    .first { it !in unitNames })
                                 unitLocations.add("")
                                 unitAreas.add("")
                                 unitCount = unitNames.size.toString()
