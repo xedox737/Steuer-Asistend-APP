@@ -393,10 +393,13 @@ private fun ConfirmedAfaValuesDialog(
     var bookValue by remember(current) { mutableStateOf(current?.remainingBookValue?.toString().orEmpty()) }
     var source by remember(current) { mutableStateOf(current?.source.orEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
-    fun amount(raw: String): Double? = raw.trim().let { text ->
-        if (text.contains(',')) text.replace(".", "").replace(",", ".") else text
-    }
-        .toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+    fun amount(raw: String): Double? = raw.trim().replace("€", "").replace(" ", "").let { text ->
+        when {
+            text.contains(',') -> text.replace(".", "").replace(",", ".")
+            Regex("""\d{1,3}(\.\d{3})+""").matches(text) -> text.replace(".", "")
+            else -> text
+        }
+    }.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bestätigte AfA-Vorjahreswerte") },
