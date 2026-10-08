@@ -31,4 +31,27 @@ class ConfirmedAfaValuesStoreTest {
             prefs.edit().remove(propertyId).remove(otherId).commit()
         }
     }
+    @Test fun `corrupt or cross-property confirmed Afa values remain isolated`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val prefs = context.getSharedPreferences("afa_confirmed_values_prefs", Context.MODE_PRIVATE)
+        val good = ConfirmedAfaValues("2025-12-31", 40000.0, 360000.0, "Steuerbescheid")
+        prefs.edit().remove("phase4-valid").remove("phase4-broken").commit()
+        try {
+            assertTrue(ConfirmedAfaValuesStore.write(context, "phase4-valid", good))
+            val badPayloads = listOf(
+                "broken JSON",
+                """{"cutoffDate":"2025-02-31","cumulativeAfa":100,"remainingBookValue":400,"source":"Berater"}""",
+                """{"cutoffDate":"2025-12-31","cumulativeAfa":-10,"remainingBookValue":400,"source":"Berater"}""",
+                """{"cutoffDate":"2025-12-31","cumulativeAfa":100,"remainingBookValue":400,"source":""}"""
+            )
+            badPayloads.forEach { raw ->
+                prefs.edit().putString("phase4-broken", raw).commit()
+                assertNull(ConfirmedAfaValuesStore.read(context, "phase4-broken"))
+                assertEquals(good, ConfirmedAfaValuesStore.read(context, "phase4-valid"))
+            }
+        } finally {
+            prefs.edit().remove("phase4-valid").remove("phase4-broken").commit()
+        }
+    }
+
 }
