@@ -407,6 +407,10 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
     var selectedDate by remember(document.documentId, review.revision) { mutableStateOf(result.documentDate.ifBlank { document.documentDate }) }
     var selectedUnitId by remember(document.documentId, review.revision) { mutableStateOf(result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }) }
     var typeMenu by remember { mutableStateOf(false) }
+    var unitMenu by remember { mutableStateOf(false) }
+    val validUnitIds = units.map { PropertyUnitScopedData.stableUnitId(document.propertyId, it) }
+    val selectedUnit = units.firstOrNull { PropertyUnitScopedData.stableUnitId(document.propertyId, it) == selectedUnitId }
+    val displayedUnit = selectedUnit?.let { "${it.name} · ${it.lage}" } ?: "Keine Wohneinheit"
     AlertDialog(
         onDismissRequest = { viewModel.dismissDocumentAiReview(document.documentId) },
         shape = Ui2.shape,
@@ -418,7 +422,16 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                 OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${selectedType.name}") }
                 DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(type.name) }, { selectedType = type; typeMenu = false }) } }
                 OutlinedTextField(selectedDate, { selectedDate = it }, label = { Text("Dokumentdatum") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
-                OutlinedTextField(selectedUnitId, { selectedUnitId = it }, label = { Text("Wohneinheit-ID (optional)") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
+                OutlinedButton(onClick = { unitMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Wohneinheit: $displayedUnit") }
+                DropdownMenu(unitMenu, { unitMenu = false }) {
+                    DropdownMenuItem({ Text("Keine Wohneinheit") }, { selectedUnitId = ""; unitMenu = false })
+                    units.forEach { unit ->
+                        DropdownMenuItem({ Text("${unit.name} · ${unit.lage}") }, {
+                            selectedUnitId = PropertyUnitScopedData.stableUnitId(document.propertyId, unit)
+                            unitMenu = false
+                        })
+                    }
+                }
                 proposals.forEachIndexed { index, proposal ->
                     Card(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), shape = Ui2.shape) {
                         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
@@ -437,7 +450,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                 }
             }
         },
-        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.ifBlank { null }, proposals, review.revision) }, enabled = document.documentId !in reviewState.analyzing && document.documentId !in reviewState.confirming, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
+        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.takeIf { it in validUnitIds }, proposals, review.revision) }, enabled = document.documentId !in reviewState.analyzing && document.documentId !in reviewState.confirming, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
         dismissButton = { TextButton(onClick = { viewModel.dismissDocumentAiReview(document.documentId) }) { Text("Abbrechen") } }
     )
 }
