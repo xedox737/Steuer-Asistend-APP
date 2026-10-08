@@ -6723,7 +6723,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                                                 }
                                                 val accessToken = params["access_token"]
                                                 if (!accessToken.isNullOrEmpty()) {
-                                                    viewModel.connectDrive(manualEmail.ifBlank { email }, accessToken)
+                                                    viewModel.connectDrive(manualEmail.ifBlank { email.orEmpty() }, accessToken)
                                                     showWebViewLogin = false
                                                 }
                                             }
@@ -6740,7 +6740,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                                             }
                                             val accessToken = params["access_token"]
                                             if (!accessToken.isNullOrEmpty()) {
-                                                viewModel.connectDrive(manualEmail.ifBlank { email }, accessToken)
+                                                viewModel.connectDrive(manualEmail.ifBlank { email.orEmpty() }, accessToken)
                                                 showWebViewLogin = false
                                                 return true
                                             }
