@@ -258,7 +258,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     } else {
                         var remaining = confirmedAfa?.remainingBookValue ?: summary.buildingAcquisitionCosts
                         val forecast = (0 until 10).map { index ->
-                            val amount = (if (index == 0) summary.firstYearAfa else summary.annualAfa)
+                            val amount = (if (confirmedAfa == null && index == 0) summary.firstYearAfa else summary.annualAfa)
                                 .coerceIn(0.0, remaining)
                             remaining = (remaining - amount).coerceAtLeast(0.0)
                             (confirmedAfa?.cutoffDate?.let { LocalDate.parse(it).year + 1 } ?: (start.year + index)) + (if (confirmedAfa == null) 0 else index) to amount
@@ -393,7 +393,9 @@ private fun ConfirmedAfaValuesDialog(
     var bookValue by remember(current) { mutableStateOf(current?.remainingBookValue?.toString().orEmpty()) }
     var source by remember(current) { mutableStateOf(current?.source.orEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
-    fun amount(raw: String): Double? = raw.trim().replace(".", "").replace(",", ".")
+    fun amount(raw: String): Double? = raw.trim().let { text ->
+        if (text.contains(',')) text.replace(".", "").replace(",", ".") else text
+    }
         .toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
     AlertDialog(
         onDismissRequest = onDismiss,
