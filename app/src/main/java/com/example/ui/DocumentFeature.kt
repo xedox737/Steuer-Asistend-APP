@@ -357,6 +357,10 @@ fun DocumentManagementScreen(
 @Composable
 private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val property = properties.firstOrNull { it.propertyId == document.propertyId }
+    val unit = property?.let { viewModel.getWohneinheitenForProperty(it) }
+        ?.firstOrNull { PropertyUnitScopedData.stableUnitId(document.propertyId, it) == document.unitId }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = Ui2.shape,
@@ -364,8 +368,8 @@ private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptVi
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 DetailRow("Dokumenttyp", document.documentType); DetailRow("Datum", document.documentDate)
-                DetailRow("Immobilien-ID", document.propertyId); DetailRow("Wohneinheit-ID", document.unitId ?: "–")
-                DetailRow("Speicherort", document.driveFolderId ?: "Nur lokal")
+                DetailRow("Immobilie", property?.let { it.name.ifBlank { it.adresse } } ?: "Nicht zugeordnet"); DetailRow("Wohneinheit", unit?.let { "${it.name} · ${it.label}" } ?: "Keine")
+                DetailRow("Speicherort", if (document.driveFolderId.isNullOrBlank()) "Nur lokal" else "Google Drive")
                 DetailRow("OCR", document.ocrStatus); DetailRow("KI-Analyse", document.aiAnalysisStatus)
                 DetailRow("Confidence", "${(document.aiConfidence * 100).toInt()} %"); DetailRow("Prüfstatus", document.reviewStatus)
                 if (document.extractedFieldsJson.isNotBlank()) { HorizontalDivider(); Text("Extrahierte Daten", fontWeight = FontWeight.Bold); Text(document.extractedFieldsJson, fontSize = 10.sp) }
