@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -75,7 +76,13 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf(false) }
     var showBreakdown by remember { mutableStateOf(false) }
+    var editConfirmedAfa by remember { mutableStateOf(false) }
+    var confirmedRevision by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
     val property = properties.firstOrNull { it.propertyId == propertyId }
+    val confirmedAfa = remember(propertyId, confirmedRevision) {
+        propertyId?.let { ConfirmedAfaValuesStore.read(context, it) }
+    }
     val back: () -> Unit = { if (propertyId != null) { propertyId = null; tab = 0 } else onBack() }
     BackHandler(onBack = back)
     val summary = property?.let {
@@ -85,6 +92,18 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
     if (property != null && editing) {
         AfaDurationDialog(property, documents.filter { it.propertyId == property.propertyId },
             onDismiss = { editing = false }, onSave = { viewModel.updatePropertyMetadata(it); editing = false })
+    }
+    if (property != null && editConfirmedAfa) {
+        ConfirmedAfaValuesDialog(
+            current = confirmedAfa,
+            onDismiss = { editConfirmedAfa = false },
+            onSave = { verified ->
+                if (ConfirmedAfaValuesStore.write(context, property.propertyId, verified)) {
+                    confirmedRevision++
+                    editConfirmedAfa = false
+                }
+            }
+        )
     }
     if (summary != null && showBreakdown) {
         AlertDialog(onDismissRequest = { showBreakdown = false }, title = { Text("Kaufpreisaufteilung") },
@@ -224,17 +243,25 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                 } }
                 else -> item { AfaCard {
                     Text("AfA planen", fontWeight = FontWeight.Bold, color = DarkNavy)
+                    TextButton(onClick = { editConfirmedAfa = true }) { Text(if (confirmedAfa == null) "Bestätigte Vorjahreswerte erfassen" else "Bestätigte Vorjahreswerte bearbeiten") }
+                    if (confirmedAfa != null) {
+                        Text("Bestätigt durch externe Quelle – getrennt von ImmoPilot-Planwerten", color = DarkNavy, fontWeight = FontWeight.SemiBold)
+                        AfaValueRow("Stichtag", confirmedAfa.cutoffDate)
+                        AfaValueRow("Bestätigte AfA kumuliert", NumberFormatter.format(confirmedAfa.cumulativeAfa))
+                        AfaValueRow("Bestätigter Restbuchwert", NumberFormatter.format(confirmedAfa.remainingBookValue), true)
+                        AfaValueRow("Quelle", confirmedAfa.source)
+                    }
                     Text("Prognose für 10 Jahre · keine verbuchten Steuerwerte", fontSize = 11.sp, color = SlateGray)
                     val start = runCatching { LocalDate.parse(property.uebergangNutzenLasten.ifBlank { property.notariellesKaufdatum }) }.getOrNull()
                     if (start == null || summary.buildingAcquisitionCosts <= 0.0 || summary.annualAfa <= 0.0) {
                         Text("Für die Prognose fehlen AfA-Beginn oder Bemessungsgrundlage.", color = SlateGray)
                     } else {
-                        var remaining = summary.buildingAcquisitionCosts
+                        var remaining = confirmedAfa?.remainingBookValue ?: summary.buildingAcquisitionCosts
                         val forecast = (0 until 10).map { index ->
                             val amount = (if (index == 0) summary.firstYearAfa else summary.annualAfa)
                                 .coerceIn(0.0, remaining)
                             remaining = (remaining - amount).coerceAtLeast(0.0)
-                            start.year + index to amount
+                            (confirmedAfa?.cutoffDate?.let { LocalDate.parse(it).year + 1 } ?: (start.year + index)) + (if (confirmedAfa == null) 0 else index) to amount
                         }
                         val chartMax = forecast.maxOf { it.second }.coerceAtLeast(1.0)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -257,7 +284,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                         }
                     }
                     HorizontalDivider()
-                    Text("Bisherige AfA und tatsächlicher Restbuchwert werden erst nach Erfassung bestätigter Jahreswerte angezeigt.", fontSize = 11.sp, color = SlateGray)
+                    if (confirmedAfa == null) Text("Bestätigte Vorjahreswerte können separat erfasst werden.", fontSize = 11.sp, color = SlateGray)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Info, null, tint = AccentBlue, modifier = Modifier.size(18.dp))
                         Text("Unverbindliche Vorschau; steuerliche Angaben prüfen.", fontSize = 11.sp, color = SlateGray)
@@ -353,4 +380,46 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     afaShorterConfirmed = confirmed && valid))
             }, enabled = years.isBlank() || (enteredYears in 1..100 && (regularRate == 0.0 || enteredYears < 100.0 / regularRate))) { Text("Speichern") }
         }, dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } })
+}
+
+@Composable
+private fun ConfirmedAfaValuesDialog(
+    current: ConfirmedAfaValues?,
+    onDismiss: () -> Unit,
+    onSave: (ConfirmedAfaValues) -> Unit
+) {
+    var cutoff by remember(current) { mutableStateOf(current?.cutoffDate.orEmpty()) }
+    var depreciation by remember(current) { mutableStateOf(current?.cumulativeAfa?.toString().orEmpty()) }
+    var bookValue by remember(current) { mutableStateOf(current?.remainingBookValue?.toString().orEmpty()) }
+    var source by remember(current) { mutableStateOf(current?.source.orEmpty()) }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun amount(raw: String): Double? = raw.trim().replace(".", "").replace(",", ".")
+        .toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Bestätigte AfA-Vorjahreswerte") },
+        text = {
+            Column(Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Nur nach Steuerberaterunterlagen oder Steuerbescheid übernehmen. ImmoPilot-Planwerte bleiben unverändert.")
+                OutlinedTextField(cutoff, { cutoff = it }, label = { Text("Stichtag (JJJJ-MM-TT)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(depreciation, { depreciation = it }, label = { Text("Bisherige AfA kumuliert (€)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(bookValue, { bookValue = it }, label = { Text("Bestätigter Restbuchwert (€)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(source, { source = it }, label = { Text("Quelle / Notiz") }, modifier = Modifier.fillMaxWidth())
+                error?.let { Text(it, color = CrimsonRed) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                val date = runCatching { LocalDate.parse(cutoff.trim()) }.getOrNull()
+                val cumulated = amount(depreciation)
+                val remaining = amount(bookValue)
+                if (date == null || cumulated == null || remaining == null || source.isBlank()) {
+                    error = "Bitte Stichtag, beide nicht negativen Beträge und Quelle prüfen."
+                } else {
+                    onSave(ConfirmedAfaValues(date.toString(), cumulated, remaining, source.trim()))
+                }
+            }) { Text("Bestätigte Werte speichern") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+    )
 }
