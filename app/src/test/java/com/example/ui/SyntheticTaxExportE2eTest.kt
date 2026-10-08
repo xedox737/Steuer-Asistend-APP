@@ -70,8 +70,19 @@ class SyntheticTaxExportE2eTest {
     }
 
     @Test fun `same synthetic receipts pass real DATEV and Advisor package end to end`() {
-        val profile = DatevProfile.createDefaultSkr03().copy(profileName = "Synthetic Property 2026")
-        val config = DatevConfig(wirtschaftsjahr = 2026, propertyName = profile.profileName)
+        val profile = DatevProfile.createDefaultSkr03().copy(
+            profileName = "Synthetic Property 2026",
+            beraterNummer = "1111111",
+            mandantenNummer = "11111",
+            mandantenName = "Testmandant"
+        )
+        val config = DatevConfig(
+            beraterNummer = profile.beraterNummer,
+            mandantenNummer = profile.mandantenNummer,
+            mandantenName = profile.mandantenName,
+            wirtschaftsjahr = 2026,
+            propertyName = profile.profileName
+        )
 
         val datevCsv = DatevExporter.generateBuchungsstapelCsv(data.approvedReceipts, config)
         assertTrue(DatevFormatValidator.validate(datevCsv).isValid)
@@ -175,7 +186,12 @@ class SyntheticTaxExportE2eTest {
         )
         assertTrue(AdvisorPackageReadinessEvaluator.evaluate(approved).ready)
 
-        val profile = DatevProfile.createDefaultSkr03().copy(profileName = "Synthetic Property 2026")
+        val profile = DatevProfile.createDefaultSkr03().copy(
+            profileName = "Synthetic Property 2026",
+            beraterNummer = "1111111",
+            mandantenNummer = "11111",
+            mandantenName = "Testmandant"
+        )
         val records = data.approvedReceipts.flatMap { DatevMappingService.buildConfirmedDatevBookingRows(it, profile) }
         val repeatedRecords = records + records.first().copy(bookingId = records.first().bookingId + "_SECOND_ALLOCATION")
         val repeatedValidation = BookingValidationService.validateRecords(repeatedRecords, profile)
