@@ -905,7 +905,7 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     // large Android font scale, normal German labels otherwise break into
     // fragments inside standard phone-sized cards.
     val parentDensity = LocalDensity.current
-    val dashboardDensity = remember(parentDensity.density) {
+    val dashboardDensity = remember(parentDensity.density, parentDensity.fontScale) {
         Density(density = parentDensity.density, fontScale = parentDensity.fontScale)
     }
     CompositionLocalProvider(LocalDensity provides dashboardDensity) {
@@ -10711,7 +10711,7 @@ fun DatevExportScreen(
         if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
     })
     val datevParentDensity = LocalDensity.current
-    val datevDensity = remember(datevParentDensity.density) {
+    val datevDensity = remember(datevParentDensity.density, datevParentDensity.fontScale) {
         Density(density = datevParentDensity.density, fontScale = datevParentDensity.fontScale)
     }
     CompositionLocalProvider(LocalDensity provides datevDensity) {
