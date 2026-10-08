@@ -17,9 +17,9 @@ internal object ConfirmedAfaValuesStore {
 
     fun read(context: Context, propertyId: String): ConfirmedAfaValues? {
         if (propertyId.isBlank()) return null
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(propertyId, null) ?: return null
         return runCatching {
+            val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(propertyId, null) ?: return null
             val value = JSONObject(raw)
             ConfirmedAfaValues(
                 value.getString("cutoffDate"),
