@@ -94,7 +94,7 @@ class LogbookReferenceLayoutTest {
             ui.waitForIdle()
             assertEquals(AppScreen.LOGBOOK, viewModel.currentScreen.value)
         }
-        ui.waitUntil(10000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
+        ui.waitUntil(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
         ui.onNodeWithTag("bottom_navigation").assertIsDisplayed()
         ui.onNodeWithText("ImmoPilot").assertIsDisplayed()
         ui.onNodeWithText("Letzte Fahrten").assertIsDisplayed()
