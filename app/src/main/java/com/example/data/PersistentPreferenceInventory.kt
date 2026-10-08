@@ -16,6 +16,7 @@ internal object PersistentPreferenceInventory {
         Store("tenant_history_prefs", Kind.BACKUP, "tenantHistoryPrefs"),
         Store("loan_interest_assignments", Kind.BACKUP, "loanInterestAssignments"),
         Store("annual_tax_approval_prefs", Kind.BACKUP, "annualTaxApprovalPrefs"),
+        Store("afa_confirmed_values_prefs", Kind.BACKUP, "confirmedAfaValuesPrefs"),
         Store("wohneinheiten_prefs", Kind.BACKUP, "propertyUnitPrefs"),
         Store("datev_kanzleiprofil_prefs", Kind.BACKUP, "datevProfilePrefs", setOf("active_profile_json")),
         Store("property_tasks_prefs", Kind.BACKUP, "propertyTaskPrefs"),
