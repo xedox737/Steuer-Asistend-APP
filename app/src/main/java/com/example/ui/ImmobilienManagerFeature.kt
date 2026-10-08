@@ -1263,7 +1263,8 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                             "Leerstand",
                             "",
                             0.0,
-                            PropertyWizardInput.unitArea(unitAreas[index]) ?: 0.0
+                            PropertyWizardInput.unitArea(unitAreas[index]) ?: 0.0,
+                            unitId = java.util.UUID.randomUUID().toString()
                         )
                     }
                     val loan = values.loanAmount?.takeIf { it > 0.0 }?.let {
