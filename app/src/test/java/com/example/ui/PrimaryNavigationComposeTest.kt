@@ -90,7 +90,7 @@ class PrimaryNavigationComposeTest {
     private fun assertRoot(destination: AppScreen) {
         assertEquals(destination, vm.currentScreen.value)
         when (destination) {
-            AppScreen.DASHBOARD -> ui.onNodeWithText("Hallo Sergej!").assertIsDisplayed()
+            AppScreen.DASHBOARD -> ui.onNodeWithText("Willkommen bei ImmoPilot").assertIsDisplayed()
             AppScreen.RECEIPTS_LIST -> {
                 ui.onNode(hasTestTag("receipts_list") or hasTestTag("receipts_grid")).assertIsDisplayed()
                 ui.onNodeWithTag("receipt_item_980").assertTextContains("Primär-Beleg")
