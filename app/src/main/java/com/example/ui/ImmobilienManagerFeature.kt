@@ -1173,6 +1173,22 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                             field(unitNames[index], "Name") { unitNames[index] = it }
                             field(unitLocations[index], "Lage / Bezeichnung") { unitLocations[index] = it }
                             field(unitAreas[index], "Wohnfläche m²") { unitAreas[index] = it }
+                            if ((unitCount.toIntOrNull() ?: 1) > 1) {
+                                TextButton(onClick = {
+                                    unitNames.removeAt(index)
+                                    unitLocations.removeAt(index)
+                                    unitAreas.removeAt(index)
+                                    unitCount = unitNames.size.toString()
+                                }) { Text("Einheit entfernen") }
+                            }
+                        }
+                        item {
+                            TextButton(onClick = {
+                                unitNames.add("WE ${(unitNames.size + 1).toString().padStart(2, '0')}")
+                                unitLocations.add("")
+                                unitAreas.add("")
+                                unitCount = unitNames.size.toString()
+                            }) { Text("+ Einheit hinzufügen") }
                         }
                     }
                     else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und 15-%-Prüfung verwenden danach unverändert die bestehende Steuerlogik.", fontSize = 10.sp, color = SlateGray) }
