@@ -105,6 +105,8 @@ internal object PersistentPreferenceInventory {
 
             values.keys().forEach entryLoop@ { key ->
                 if (!permits(store, key)) return@entryLoop
+                // Verified tax history has no conflict timestamp: local values take precedence during MERGE.
+                if (mode == RestoreMode.MERGE && store.name == "afa_confirmed_values_prefs" && prefs.contains(key)) return@entryLoop
                 val value = values.optJSONObject(key) ?: return@entryLoop
 
                 if (mode == RestoreMode.MERGE &&
