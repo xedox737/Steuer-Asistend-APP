@@ -6659,6 +6659,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     val metadataCleanupResult by viewModel.metadataCleanupResult.collectAsStateWithLifecycle()
     val isCleaningMetadataDuplicates by viewModel.isCleaningMetadataDuplicates.collectAsStateWithLifecycle()
 
+    var showAdvancedDriveLogin by remember { mutableStateOf(false) }
     var showManualInput by remember { mutableStateOf(false) }
     var manualEmail by remember { mutableStateOf("") }
     var manualTokenInput by remember { mutableStateOf("") }
@@ -6821,6 +6822,10 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                TextButton(onClick = { showAdvancedDriveLogin = !showAdvancedDriveLogin }) {
+                    Text(if (showAdvancedDriveLogin) "Erweiterte Anmeldung schließen" else "Alternative Anmeldung / Erweitert")
+                }
+                if (showAdvancedDriveLogin) {
                 OutlinedButton(
                     onClick = {
                         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
@@ -6894,6 +6899,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                         color = Color.Gray,
                         lineHeight = 14.sp
                     )
+                }
                 }
             } else {
                 // Connected state
