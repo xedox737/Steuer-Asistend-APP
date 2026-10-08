@@ -213,6 +213,13 @@ class RentOverviewComposeTest {
     @Test fun monthlyCheckTenantHistoryAndUnassignedReviewRemainReachable() {
         seed(); ui.onNodeWithTag("rent_monthly_check").performClick()
         ui.onNodeWithText("Miet-Monatscheck").assertExists()
+        repeat(5) { ui.onNodeWithText("‹").performClick() }
+        ui.onNodeWithText("Offen (1)").assertExists()
+        ui.onNodeWithText("TEILZAHLUNG").assertExists()
+        ui.onNodeWithText("BEZAHLT").assertDoesNotExist()
+        ui.onNodeWithText("Alle (3)").performClick()
+        ui.onNodeWithTag("rent_monthly_list").performScrollToNode(hasText("BEZAHLT"))
+        ui.onAllNodesWithText("BEZAHLT").assertCountEquals(2)
         ui.onNodeWithText("Schließen").performClick()
         scroll("rent_unit_${key("OG links")}")
         ui.onNodeWithTag("rent_history_${key("OG links")}", useUnmergedTree = true).performClick()

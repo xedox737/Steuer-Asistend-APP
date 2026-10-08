@@ -16,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,12 +134,22 @@ private fun MonthlyRentCheckDialog(
         receiptMonth(it) == month && isConfirmedRentalIncomeReceipt(it) &&
             (it.wohneinheit.isBlank() || groups.none { group -> group.property.propertyId == it.propertyId && group.units.any { unit -> unit.name == it.wohneinheit } })
     }.sumOf { it.bruttobetrag }
+    var showOnlyOpen by remember(month) { mutableStateOf(true) }
+    val prioritizedRows = rows.sortedByDescending { it.second.missing }
+    val visibleRows = if (showOnlyOpen) {
+        prioritizedRows.filter { it.second.expected > 0.01 && it.second.missing > 0.01 }
+    } else {
+        prioritizedRows
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Miet-Monatscheck", fontWeight = FontWeight.Bold) },
         text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            LazyColumn(
+                modifier = Modifier.testTag("rent_monthly_list"),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -171,7 +183,34 @@ private fun MonthlyRentCheckDialog(
                         }
                     }
                 }
-                items(rows, key = { it.first.propertyId + ":" + PropertyUnitScopedData.stableUnitId(it.first.propertyId, it.second.unit) }) { (property, row) ->
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = showOnlyOpen,
+                            onClick = { showOnlyOpen = true },
+                            label = { Text("Offen ($missingCount)", fontSize = 10.sp) }
+                        )
+                        FilterChip(
+                            selected = !showOnlyOpen,
+                            onClick = { showOnlyOpen = false },
+                            label = { Text("Alle (${rows.size})", fontSize = 10.sp) }
+                        )
+                    }
+                }
+                if (showOnlyOpen && visibleRows.isEmpty()) {
+                    item {
+                        Text(
+                            "Keine offenen Rückstände in diesem Monat.",
+                            fontSize = 10.sp,
+                            color = EmeraldGreen,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                items(visibleRows, key = { it.first.propertyId + ":" + PropertyUnitScopedData.stableUnitId(it.first.propertyId, it.second.unit) }) { (property, row) ->
                     val statusLabel = when (row.status) {
                         RentPaymentStatus.PAID -> "BEZAHLT"
                         RentPaymentStatus.MISSING -> "FEHLT"
