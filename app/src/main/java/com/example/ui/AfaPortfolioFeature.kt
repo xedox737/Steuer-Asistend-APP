@@ -253,7 +253,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     }
                     Text("Prognose für 10 Jahre · keine verbuchten Steuerwerte", fontSize = 11.sp, color = SlateGray)
                     val start = runCatching { LocalDate.parse(property.uebergangNutzenLasten.ifBlank { property.notariellesKaufdatum }) }.getOrNull()
-                    if (start == null || summary.buildingAcquisitionCosts <= 0.0 || summary.annualAfa <= 0.0) {
+                    if ((start == null && confirmedAfa == null) || summary.buildingAcquisitionCosts <= 0.0 || summary.annualAfa <= 0.0) {
                         Text("Für die Prognose fehlen AfA-Beginn oder Bemessungsgrundlage.", color = SlateGray)
                     } else {
                         var remaining = confirmedAfa?.remainingBookValue ?: summary.buildingAcquisitionCosts
@@ -261,7 +261,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                             val amount = (if (confirmedAfa == null && index == 0) summary.firstYearAfa else summary.annualAfa)
                                 .coerceIn(0.0, remaining)
                             remaining = (remaining - amount).coerceAtLeast(0.0)
-                            (confirmedAfa?.cutoffDate?.let { LocalDate.parse(it).year + 1 } ?: (start.year + index)) + (if (confirmedAfa == null) 0 else index) to amount
+                            ((confirmedAfa?.cutoffDate?.let { LocalDate.parse(it).year + 1 } ?: start!!.year) + index) to amount
                         }
                         val chartMax = forecast.maxOf { it.second }.coerceAtLeast(1.0)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp),
