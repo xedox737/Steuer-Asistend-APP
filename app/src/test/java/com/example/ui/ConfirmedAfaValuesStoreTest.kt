@@ -44,6 +44,9 @@ class ConfirmedAfaValuesStoreTest {
                 """{"cutoffDate":"2025-12-31","cumulativeAfa":-10,"remainingBookValue":400,"source":"Berater"}""",
                 """{"cutoffDate":"2025-12-31","cumulativeAfa":100,"remainingBookValue":400,"source":""}"""
             )
+            prefs.edit().putInt("phase4-broken", 42).commit()
+            assertNull(ConfirmedAfaValuesStore.read(context, "phase4-broken"))
+            assertEquals(good, ConfirmedAfaValuesStore.read(context, "phase4-valid"))
             badPayloads.forEach { raw ->
                 prefs.edit().putString("phase4-broken", raw).commit()
                 assertNull(ConfirmedAfaValuesStore.read(context, "phase4-broken"))
