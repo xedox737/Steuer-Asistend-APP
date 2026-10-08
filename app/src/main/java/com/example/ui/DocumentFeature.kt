@@ -410,7 +410,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
     var unitMenu by remember { mutableStateOf(false) }
     val validUnitIds = units.map { PropertyUnitScopedData.stableUnitId(document.propertyId, it) }
     val selectedUnit = units.firstOrNull { PropertyUnitScopedData.stableUnitId(document.propertyId, it) == selectedUnitId }
-    val displayedUnit = selectedUnit?.let { "${it.name} · ${it.lage}" } ?: "Keine Wohneinheit"
+    val displayedUnit = selectedUnit?.let { "${it.name} · ${it.label}" } ?: "Keine Wohneinheit"
     AlertDialog(
         onDismissRequest = { viewModel.dismissDocumentAiReview(document.documentId) },
         shape = Ui2.shape,
@@ -426,7 +426,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                 DropdownMenu(unitMenu, { unitMenu = false }) {
                     DropdownMenuItem({ Text("Keine Wohneinheit") }, { selectedUnitId = ""; unitMenu = false })
                     units.forEach { unit ->
-                        DropdownMenuItem({ Text("${unit.name} · ${unit.lage}") }, {
+                        DropdownMenuItem({ Text("${unit.name} · ${unit.label}") }, {
                             selectedUnitId = PropertyUnitScopedData.stableUnitId(document.propertyId, unit)
                             unitMenu = false
                         })
