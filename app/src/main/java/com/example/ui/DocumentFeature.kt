@@ -406,6 +406,27 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
     var selectedType by remember(document.documentId, review.revision) { mutableStateOf(runCatching { ManagedDocumentType.valueOf(result.documentType) }.getOrDefault(ManagedDocumentType.SONSTIGES)) }
     var selectedDate by remember(document.documentId, review.revision) { mutableStateOf(result.documentDate.ifBlank { document.documentDate }) }
     var selectedUnitId by remember(document.documentId, review.revision) { mutableStateOf(result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }) }
+    fun typeLabel(type: ManagedDocumentType): String = when (type) {
+        ManagedDocumentType.KAUFVERTRAG -> "Kaufvertrag"
+        ManagedDocumentType.NOTARUNTERLAGE -> "Notarunterlage"
+        ManagedDocumentType.GRUNDBUCHAUSZUG -> "Grundbuchauszug"
+        ManagedDocumentType.ENERGIEAUSWEIS -> "Energieausweis"
+        ManagedDocumentType.MIETVERTRAG -> "Mietvertrag"
+        ManagedDocumentType.UEBERGABEPROTOKOLL -> "Übergabeprotokoll"
+        ManagedDocumentType.DARLEHENSVERTRAG -> "Darlehensvertrag"
+        ManagedDocumentType.ZINSBESCHEINIGUNG -> "Zinsbescheinigung"
+        ManagedDocumentType.VERSICHERUNGSPOLICE -> "Versicherungspolice"
+        ManagedDocumentType.GRUNDSTEUERDOKUMENT -> "Grundsteuerbescheid / -unterlage"
+        ManagedDocumentType.KAUFPREISAUFTEILUNG -> "Kaufpreisaufteilung"
+        ManagedDocumentType.RECHNUNG -> "Rechnung"
+        ManagedDocumentType.KASSENBON -> "Kassenbon"
+        ManagedDocumentType.SANIERUNGSUNTERLAGE -> "Sanierungsunterlage"
+        ManagedDocumentType.BAUUNTERLAGE -> "Bauunterlage"
+        ManagedDocumentType.GRUNDRISS -> "Grundriss"
+        ManagedDocumentType.WOHNFLAECHENBERECHNUNG -> "Wohnflächenberechnung"
+        ManagedDocumentType.PV_UNTERLAGE -> "Photovoltaik-Unterlage"
+        ManagedDocumentType.SONSTIGES -> "Sonstiges"
+    }
     var typeMenu by remember { mutableStateOf(false) }
     var unitMenu by remember { mutableStateOf(false) }
     val validUnitIds = units.map { PropertyUnitScopedData.stableUnitId(document.propertyId, it) }
@@ -419,8 +440,8 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 reviewState.messages[document.documentId]?.let { Text(it, color = SlateGray, fontSize = 11.sp, modifier = Modifier.testTag("document_review_message")) }
                 Text("KI-Vorschlag ${(result.confidence * 100).toInt()} %. Nichts wird ohne Auswahl übernommen.", fontSize = 11.sp, color = SlateGray)
-                OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${selectedType.name}") }
-                DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(type.name) }, { selectedType = type; typeMenu = false }) } }
+                OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${typeLabel(selectedType)}") }
+                DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(typeLabel(type)) }, { selectedType = type; typeMenu = false }) } }
                 OutlinedTextField(selectedDate, { selectedDate = it }, label = { Text("Dokumentdatum") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
                 OutlinedButton(onClick = { unitMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Wohneinheit: $displayedUnit") }
                 DropdownMenu(unitMenu, { unitMenu = false }) {
