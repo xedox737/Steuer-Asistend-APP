@@ -16,13 +16,13 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 data class DatevConfig(
-    val beraterNummer: String = "1111111",
-    val mandantenNummer: String = "11111",
-    val mandantenName: String = "Sergej Gerweck",
-    val wirtschaftsjahr: Int = 2025,
+    val beraterNummer: String = "",
+    val mandantenNummer: String = "",
+    val mandantenName: String = "",
+    val wirtschaftsjahr: Int = java.time.LocalDate.now().year,
     val chartType: String = "SKR03", // "SKR03" or "SKR04"
-    val propertyName: String = "MFH Sulzerstraße",
-    val propertyShort: String = "MFH Sulz"
+    val propertyName: String = "",
+    val propertyShort: String = ""
 )
 
 object DatevExporter {

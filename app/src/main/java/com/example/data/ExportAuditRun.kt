@@ -10,7 +10,7 @@ import androidx.room.PrimaryKey
 data class ExportAuditRun(
     @PrimaryKey val exportlaufId: String,  // Unique ID (z.B. EXPORT_20260727_120000_A1B2)
     val timestamp: Long = System.currentTimeMillis(),
-    val user: String = "Sergej Gerweck",
+    val user: String = "",
     val propertyName: String = "",
     val periodStart: String = "",
     val periodEnd: String = "",

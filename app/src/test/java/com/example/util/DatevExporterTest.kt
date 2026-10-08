@@ -18,7 +18,11 @@ class DatevExporterTest {
 
     @Test
     fun testExtfHeaderGeneration() {
-        val profile = DatevProfile.createDefaultSkr03()
+        val profile = DatevProfile.createDefaultSkr03().copy(
+            beraterNummer = "1111111",
+            mandantenNummer = "11111",
+            mandantenName = "Testmandant"
+        )
         val header1 = DatevCsvSerializer.generateExtfHeader(profile, "2026")
 
         assertTrue(header1.startsWith("\"EXTF\";700;21;\"Buchungsstapel\";13;"))
@@ -54,7 +58,13 @@ class DatevExporterTest {
     fun legacyEntryPointProducesStrictDatevFormatForApprovedReceipt() {
         val csv = DatevExporter.generateBuchungsstapelCsv(
             receipts = listOf(approvedReceipt()),
-            config = DatevConfig(wirtschaftsjahr = 2026, chartType = "SKR03")
+            config = DatevConfig(
+                beraterNummer = "1111111",
+                mandantenNummer = "11111",
+                mandantenName = "Testmandant",
+                wirtschaftsjahr = 2026,
+                chartType = "SKR03"
+            )
         )
 
         val validation = DatevFormatValidator.validate(csv)
