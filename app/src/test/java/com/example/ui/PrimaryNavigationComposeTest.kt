@@ -82,6 +82,33 @@ class PrimaryNavigationComposeTest {
         preferenceSnapshot = prefs.associateWith { fixtureContext.getSharedPreferences(it, 0).all.toMap() }
     }
 
+    @Test fun createTwentyFiveUnitsThroughViewModelKeepsAllIdsAndAreas() {
+        val newId = "bulk-25-property"
+        val units = (1..25).map { number ->
+            WohneinheitStatus(
+                name = "WE ${number.toString().padStart(2, '0')}",
+                label = "Lage $number",
+                status = "Leerstand",
+                mieter = "",
+                kaltmiete = 0.0,
+                wohnflaeche = number + 50.5,
+                unitId = java.util.UUID.randomUUID().toString()
+            )
+        }
+        val property = PropertyMetadata(propertyId = newId, name = "Testhaus 25 Einheiten",
+            wohneinheiten = units.joinToString(", ") { it.name })
+        ui.runOnIdle { vm.createProperty(property, units) }
+        ui.waitUntil(15000) { vm.properties.value.any { it.propertyId == newId } }
+        ui.waitForIdle()
+        val stored = vm.properties.value.single { it.propertyId == newId }
+        val loaded = vm.getWohneinheitenForProperty(stored)
+        assertEquals(25, loaded.size)
+        assertEquals(25, loaded.map { it.unitId }.toSet().size)
+        assertEquals(units.map { it.unitId }, loaded.map { it.unitId })
+        assertEquals(units.map { it.wohnflaeche }, loaded.map { it.wohnflaeche })
+        assertEquals(units.map { it.label }, loaded.map { it.label })
+    }
+
     private fun clickTab(destination: AppScreen) {
         ui.onNodeWithTag("nav_item_${destination.name.lowercase()}").performClick()
         ui.waitForIdle()
