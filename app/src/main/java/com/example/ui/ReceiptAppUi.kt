@@ -5587,7 +5587,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp)
+                            .heightIn(min = 130.dp)
                             .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
                             .drawBehind {
                                 drawRoundRect(
