@@ -36,6 +36,27 @@ class Phase5ABankImportTest {
         }
     }
 
+    @Test fun bothLegacyAndV8CamtRejectInvalidBookingValueDatesAndNonFiniteAmounts() {
+        fun xml(date: String = "2026-01-31", valueDate: String = "2026-01-31", amount: String = "100.00") =
+            """<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+                <Acct><Id><IBAN>$iban</IBAN></Id><Ccy>EUR</Ccy></Acct><Ntry><Sts><Cd>BOOK</Cd></Sts>
+                <Amt Ccy="EUR">$amount</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>$date</Dt></BookgDt>
+                <ValDt><Dt>$valueDate</Dt></ValDt><AcctSvcrRef>REF-1</AcctSvcrRef></Ntry>
+                </Stmt></BkToCstmrStmt></Document>"""
+        val parsers: List<(String) -> BankImportBatch> = listOf({ BankImportParser.parseCamt053(it) }, { BankImportParser.parseCamtV8(it) })
+        parsers.forEach { parse ->
+            assertEquals("2026-01-31", parse(xml()).transactions.single().bookingDate)
+            assertEquals("2024-02-29", parse(xml("2024-02-29", "2024-02-29")).transactions.single().bookingDate)
+            listOf("2026-02-30", "2025-02-29", "2026-04-31").forEach { date ->
+                assertThrows(IllegalArgumentException::class.java) { parse(xml(date = date)) }
+                assertThrows(IllegalArgumentException::class.java) { parse(xml(valueDate = date)) }
+            }
+            listOf("NaN", "Infinity", "-Infinity", "").forEach { amount ->
+                assertThrows(IllegalArgumentException::class.java) { parse(xml(amount = amount)) }
+            }
+        }
+    }
+
     @Test fun csvErrorsContainPhysicalLineFieldAndOriginalValueWithoutNormalizing() {
         val input = "Buchungstag;Wertstellung;Betrag\n31.01.2026;31.01.2026;1,00\n\n30.02.2026;;NaN\n31.01.2026;31.04.2026;2,00\n31.01.2026;;\n"
         val batch = BankImportParser.parseCsv(input)

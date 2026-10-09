@@ -68,12 +68,13 @@ class ReceiptOriginalPersistenceTest {
     }
     private fun bytes(extension: String): ByteArray = ByteArrayOutputStream().use { output ->
         if (extension == "pdf") {
-            PdfDocument().use { pdf ->
+            val pdf = PdfDocument()
+            try {
                 val page = pdf.startPage(PdfDocument.PageInfo.Builder(120, 120, 1).create())
                 page.canvas.drawColor(Color.WHITE)
                 pdf.finishPage(page)
                 pdf.writeTo(output)
-            }
+            } finally { pdf.close() }
         } else {
             val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
             bitmap.eraseColor(Color.RED)

@@ -109,9 +109,8 @@ data class BankCamtV8Decision(
 
 /**
  * CAMT.052/053 V8 parser that writes the existing BankTransaction/BankAccount SSOT.
- * Legacy compatibility: CAMT account ids deliberately keep the historical CAMT053 identity salt,
- * so a CAMT.053 reimport keeps exactly the same account/transaction ids and a CAMT.052 file for
- * the same own IBAN resolves to the same account instead of creating a parallel CAMT account.
+ * CSV and CAMT share normalized own-account identity. The import resolver reuses existing
+ * legacy account IDs before persistence, preserving all transaction IDs and relationships.
  */
 fun BankImportParser.parseCamtV8(
     xml: String,
