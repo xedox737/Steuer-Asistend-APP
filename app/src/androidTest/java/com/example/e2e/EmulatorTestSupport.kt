@@ -124,8 +124,14 @@ abstract class EmulatorTestSupport {
 
     private fun copyDiagnostic(file: File) {
         // Shared shell-owned output survives AGP uninstalling the APK after tests.
-        val result = shell("cp '${file.absolutePath}' '$DEVICE_ARTIFACTS/${file.name}' && echo copied")
-        check(result == "copied") { "Diagnoseartefakt konnte nicht gesichert werden: ${file.name}" }
+        // UiAutomation executes argv directly, without shell quotes or &&.
+        // These generated package/file paths have no whitespace.
+        val destination = "$DEVICE_ARTIFACTS/${file.name}"
+        shell("cp ${file.absolutePath} $destination")
+        val copiedBytes = shell("stat -c %s $destination").toLongOrNull()
+        check(copiedBytes == file.length()) {
+            "Diagnoseartefakt konnte nicht gesichert werden: ${file.name}; bytes=$copiedBytes/${file.length()}"
+        }
     }
 
     protected fun clickTab(screen: AppScreen) {
