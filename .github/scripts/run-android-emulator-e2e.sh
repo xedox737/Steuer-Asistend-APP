@@ -52,8 +52,10 @@ adb shell settings put system user_rotation 0
   echo "window_animation_scale=$(adb shell settings get global window_animation_scale | tr -d '\r')"
   echo "transition_animation_scale=$(adb shell settings get global transition_animation_scale | tr -d '\r')"
   echo "animator_duration_scale=$(adb shell settings get global animator_duration_scale | tr -d '\r')"
-  "${e2e_sdk_root:?Android SDK path is missing}/emulator/emulator" -version
-  "$e2e_sdk_root/emulator/emulator" -accel-check
+  # Diagnostics must select the headless binary too; the GUI binary needs
+  # desktop/audio libraries that ubuntu-latest does not provide.
+  "${e2e_sdk_root:?Android SDK path is missing}/emulator/emulator" -no-window -noaudio -version
+  "$e2e_sdk_root/emulator/emulator" -no-window -noaudio -accel-check
 } > "$artifact_dir/device-environment.txt" 2>&1
 
 gradle connectedDebugAndroidTest \

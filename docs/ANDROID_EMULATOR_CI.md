@@ -107,6 +107,8 @@ und 440 dpi. Vor der Instrumentation scheiterte zunächst die Versionsdiagnose:
 Die Action startet den Emulator über den absoluten SDK-Pfad, fügt ihn aber nicht
 zum Script-PATH hinzu. Deshalb verwendet das Script jetzt explizit
 `$ANDROID_HOME/emulator/emulator` (alternativ `$ANDROID_SDK_ROOT`).
+Auch die Diagnose erhält `-no-window -noaudio`, damit sie wie der laufende
+Emulator die Headless-Binärdatei ohne Desktop-/PulseAudio-Abhängigkeit verwendet.
 Dieser erste Lauf gilt nicht als bestandener E2E-Test.
 
 Vollständige CI-Ergebnisse und Laufzeiten stehen im PR. Ein grün behaupteter
