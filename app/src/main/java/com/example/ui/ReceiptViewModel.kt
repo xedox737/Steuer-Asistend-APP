@@ -867,12 +867,16 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }?.unitId.orEmpty()
     }
 
-    fun updateWohneinheit(updated: WohneinheitStatus) {
+    fun updateWohneinheit(updated: WohneinheitStatus, correctCurrentContract: Boolean = false) {
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
             properties.value.firstOrNull { property ->
                 getWohneinheitenForProperty(property).any { it.unitId == stableId }
             }
         } ?: propertyMetadata.value ?: PropertyMetadata()
+        if (correctCurrentContract) {
+            val unitId = PropertyUnitScopedData.stableUnitId(targetProperty.propertyId, updated)
+            TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)
+        }
         updateWohneinheitForProperty(updated, targetProperty)
     }
 

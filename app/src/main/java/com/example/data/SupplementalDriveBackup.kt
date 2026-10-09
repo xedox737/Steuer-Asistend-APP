@@ -515,19 +515,20 @@ object SupplementalDriveBackup {
         backup: ManagedDocument,
         restoreMode: RestoreMode
     ): ManagedDocument {
+        val base = if (local != null && restoreMode == RestoreMode.MERGE &&
+            !RestoreConflictPolicy.backupIsNewer(local.updatedAt, backup.updatedAt)) local else backup
+        val other = if (base === local) backup else local
+        val expectedHash = base.sha256.ifBlank { other?.sha256.orEmpty() }
         val preservedLocalUri = when {
-            local != null && isUsableLocalUri(context, local.localUri) -> local.localUri
-            backup.sha256.isNotBlank() -> findManagedFileByHash(context, backup.sha256).orEmpty()
+            local != null && isUsableLocalUri(context, local.localUri, expectedHash) -> local.localUri
+            expectedHash.isNotBlank() -> findManagedFileByHash(context, expectedHash).orEmpty()
             else -> ""
         }
         if (local == null) return backup.copy(localUri = preservedLocalUri)
-
-        val backupNewer = backupIsNewer(local.updatedAt, backup.updatedAt)
-        val base = if (restoreMode == RestoreMode.MERGE && !backupNewer) local else backup
-        val other = if (base === local) backup else local
+        val alternative = requireNotNull(other)
         val originalFields = if (!base.receiptInternalId.isNullOrBlank()) {
             val fields = runCatching { JSONObject(base.extractedFieldsJson) }.getOrElse { JSONObject() }
-            val fallback = runCatching { JSONObject(other.extractedFieldsJson) }.getOrElse { JSONObject() }
+            val fallback = runCatching { JSONObject(alternative.extractedFieldsJson) }.getOrElse { JSONObject() }
             if (!fields.has("_receiptOriginalOrder") && fallback.has("_receiptOriginalOrder")) {
                 fields.put("_receiptOriginalOrder", fallback.getInt("_receiptOriginalOrder")).toString()
             } else base.extractedFieldsJson
@@ -535,34 +536,39 @@ object SupplementalDriveBackup {
 
         return base.copy(
             localUri = preservedLocalUri,
-            driveFileId = base.driveFileId ?: other.driveFileId,
-            driveFolderId = base.driveFolderId ?: other.driveFolderId,
-            sha256 = base.sha256.ifBlank { other.sha256 },
-            fileSizeBytes = if (base.fileSizeBytes > 0L) base.fileSizeBytes else other.fileSizeBytes,
-            originalFilename = base.originalFilename.ifBlank { other.originalFilename },
-            storedFilename = base.storedFilename.ifBlank { other.storedFilename },
+            driveFileId = base.driveFileId ?: alternative.driveFileId,
+            driveFolderId = base.driveFolderId ?: alternative.driveFolderId,
+            sha256 = expectedHash,
+            fileSizeBytes = if (base.fileSizeBytes > 0L) base.fileSizeBytes else alternative.fileSizeBytes,
+            originalFilename = base.originalFilename.ifBlank { alternative.originalFilename },
+            storedFilename = base.storedFilename.ifBlank { alternative.storedFilename },
             mimeType = base.mimeType.takeUnless { it.isBlank() || it == "application/octet-stream" }
-                ?: other.mimeType,
+                ?: alternative.mimeType,
             extractedFieldsJson = originalFields,
             ocrText = local.ocrText.takeIf(String::isNotBlank) ?: base.ocrText,
             ocrStatus = if (local.ocrText.isNotBlank()) local.ocrStatus else base.ocrStatus
         )
     }
 
-    private fun backupIsNewer(localUpdatedAt: String, backupUpdatedAt: String): Boolean {
-        val localTime = runCatching { Instant.parse(localUpdatedAt) }.getOrNull() ?: return false
-        val backupTime = runCatching { Instant.parse(backupUpdatedAt) }.getOrNull() ?: return false
-        return backupTime.isAfter(localTime)
-    }
-
-    private fun isUsableLocalUri(context: Context, value: String): Boolean {
+    private fun isUsableLocalUri(context: Context, value: String, expectedHash: String): Boolean {
         if (value.isBlank()) return false
         return runCatching {
-            when {
-                value.startsWith("content://") -> context.contentResolver.openInputStream(android.net.Uri.parse(value))?.use { true } ?: false
-                value.startsWith("file://") -> File(requireNotNull(android.net.Uri.parse(value).path)).isFile
-                else -> File(value).isFile
+            val input = when {
+                value.startsWith("content://") -> context.contentResolver.openInputStream(android.net.Uri.parse(value))
+                value.startsWith("file://") -> File(requireNotNull(android.net.Uri.parse(value).path)).inputStream()
+                else -> File(value).inputStream()
             }
+            input?.use { stream ->
+                if (expectedHash.isBlank()) return@use true
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(8192)
+                var size = stream.read(buffer)
+                while (size >= 0) {
+                    digest.update(buffer, 0, size)
+                    size = stream.read(buffer)
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }.equals(expectedHash, ignoreCase = true)
+            } ?: false
         }.getOrDefault(false)
     }
 

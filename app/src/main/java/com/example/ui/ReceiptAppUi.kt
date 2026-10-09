@@ -870,7 +870,8 @@ fun WohneinheitenStatusSection(
                                 mieter = editMieter,
                                 kaltmiete = rent!!,
                                 wohnflaeche = area!!
-                            )
+                            ),
+                            correctCurrentContract = true
                         )
                         selectedUnitForEdit = null
                     },
@@ -10610,7 +10611,9 @@ fun TenantManagementDialog(
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(units) { unit ->
-                    TenantItem(unit = unit, onUpdate = { updatedUnit -> viewModel.updateWohneinheit(updatedUnit) })
+                    TenantItem(unit = unit, onUpdate = { updatedUnit ->
+                        viewModel.updateWohneinheit(updatedUnit, correctCurrentContract = true)
+                    })
                 }
             }
         },

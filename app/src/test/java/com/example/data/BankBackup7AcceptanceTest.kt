@@ -36,6 +36,13 @@ class BankBackup7AcceptanceTest {
         database.bankDao().upsertTransaction(database.bankDao().getTransaction("t")!!.copy(reconciliationStatus = BankReconciliationStatus.OPEN, noReceiptReason = "", updatedAt = "other"))
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
+        // Unversioned local corrections are protected by MERGE; explicit Full restores the snapshot.
+        val merged = database.bankDao().getTransaction("t")!!
+        assertEquals(BankReconciliationStatus.OPEN, merged.reconciliationStatus)
+        assertEquals("", merged.noReceiptReason)
+        assertEquals("other", merged.updatedAt)
+        SupplementalDriveBackup.restorePayload(context, database, payload, restoreMode = RestoreMode.REPLACE_FULL)
+        SupplementalDriveBackup.restorePayload(context, database, payload, restoreMode = RestoreMode.REPLACE_FULL)
         val restored = database.bankDao().getTransaction("t")!!
         assertEquals(BankReconciliationStatus.NO_RECEIPT_REQUIRED, restored.reconciliationStatus)
         assertEquals("Bankgebühr", restored.noReceiptReason)

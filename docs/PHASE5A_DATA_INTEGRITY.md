@@ -24,6 +24,9 @@ ungeachtet vorhandener anderer Daten auf REPLACE_EMPTY um.
 Unit-State (`wohneinheiten_prefs`), NK (`rent_plan_prefs`), Statusmetadaten und TenantHistory
 sind separate Quellen. Ein MERGE kann den Namen/die Kaltmiete auf Alt/760 zurücksetzen, obwohl
 TenantHistory Neu/850 behält. Die zentrale Unit-Lesung berücksichtigt den Verlauf bisher nicht.
+Der einfache Einheiten-/Mietereditor schreibt ausschließlich den Unit-State. Seine ausdrücklichen
+Korrekturen müssen deshalb bei bestehendem Vertrag auch dessen identische Periode bzw. aktuell
+wirksame Mietänderung korrigieren; zukünftige Änderungen und Nebenbeträge bleiben erhalten.
 Receipt, PropertyMetadata und Loan haben lokal kein updatedAt/Versionsfeld.
 
 ### F02/F03
@@ -117,9 +120,13 @@ Echte Kamera, externe Dateiöffner, angemeldetes Drive und Kanzleiimport bleiben
 - `Phase5ABankImportWorkflowTest`: realer ViewModel-Import ohne Kennung bleibt bis Kontowahl schreibfrei; Doppelbestätigung, umbenannte Datei, detaillierte Fehlermeldungen und Abbruch.
 - `Phase5ADatevValidationTest`: unmögliche Kalenderdaten und nicht endliche numerische Werte blockieren die vorhandene Vorprüfung.
 
-Zwei bisherige Property-Tests erwarteten ausdrücklich das fehlerhafte Überschreiben bei MERGE.
-Sie verlangen jetzt den lokalen Namen und prüfen zusätzlich REPLACE_FULL auf den Backupnamen;
-keine Tests werden deaktiviert oder Kontrollen entfernt.
+Zwei bisherige Property-Tests und ein Banktest erwarteten ausdrücklich das fehlerhafte Überschreiben
+bei MERGE. Sie prüfen jetzt zusätzlich den erhaltenen lokalen Zustand und verlangen bei REPLACE_FULL
+weiterhin sämtliche ursprünglichen Snapshotwerte. Ein Bank-Roundtrip-Test verwendet gültige
+Änderungszeitpunkte, damit der nachweisbar neuere Backupstand importiert werden darf.
+Keine Tests werden deaktiviert oder Kontrollen entfernt. Der PDF-Test verwendet eine vollständige
+PDF-Datei mit korrektem xref, weil Robolectric keinen nativen PdfDocument-Schreiber bereitstellt;
+Import, Room-Neustart und PdfRenderer werden weiterhin über die Produktiv-APIs geprüft.
 
 Room bleibt Version 34, Supplemental-JSON Version 14. Keine Schemaänderung, Migration oder
 destructive Migration. Neue Anhänge verwenden die vorhandene ManagedDocument-ID und

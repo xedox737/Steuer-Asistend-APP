@@ -27,7 +27,7 @@ class Phase5AUnitStateTest {
     private var previous: AppDatabase? = null
     private val property = "phase5a-property"
     private val unit = "phase5a-unit"
-    private val prefix = "property_${property}_unit_id_${unit}_"
+    private val prefix = "property_${property}_unitid_${unit}_"
     private fun prefs(name: String) = app.getSharedPreferences(name, 0)
 
     @Before fun setUp() {
@@ -103,5 +103,26 @@ class Phase5AUnitStateTest {
         val future = ended.copy(id = 2, startDate = "2030-01-01", endDate = "", tenantName = "Neu")
         assertNull(TenantHistoryStore.currentAt(listOf(ended, future), java.time.LocalDate.of(2026, 10, 8)))
         assertEquals(future, TenantHistoryStore.currentAt(listOf(ended, future), java.time.LocalDate.of(2030, 1, 1)))
+    }
+
+    @Test fun explicitUnitCorrectionKeepsExistingContractIdentityAndRentChangesAcrossMerge() = runTest {
+        val old = TenantPeriod(1, "WE 1", "Testmieter Alt", "2000-01-01", "", 700.0, 160.0, 0.0,
+            listOf(RentAmountChange("2001-01-01", 760.0, 180.0, 20.0),
+                RentAmountChange("2099-01-01", 900.0, 200.0, 30.0)))
+        TenantHistoryStore.save(app, property, unit, "WE 1", listOf(old))
+        writeUnit("Testmieter Alt", 760f)
+        val backup = SupplementalDriveBackup.createPayload(app, db)
+        val corrected = readUnit().copy(mieter = "Testmieter Neu", kaltmiete = 850.0)
+        TenantHistoryStore.correctCurrentRentalDetails(app, property, unit, corrected)
+        writeUnit(corrected.mieter, corrected.kaltmiete.toFloat())
+        repeat(2) { SupplementalDriveBackup.restorePayload(app, db, backup) }
+        assertEquals("Testmieter Neu", readUnit().mieter)
+        assertEquals(850.0, readUnit().kaltmiete, 0.0)
+        val period = TenantHistoryStore.load(app, property, unit, "WE 1").single()
+        assertEquals(old.id, period.id)
+        assertEquals(700.0, period.kaltmiete, 0.0)
+        assertEquals(RentAmountChange("2001-01-01", 850.0, 180.0, 20.0), period.rentChanges.first())
+        assertEquals(old.rentChanges.last(), period.rentChanges.last())
+        assertEquals(180.0, PropertyUnitScopedData.rentValue(app, property, readUnit(), "nk"), 0.0)
     }
 }

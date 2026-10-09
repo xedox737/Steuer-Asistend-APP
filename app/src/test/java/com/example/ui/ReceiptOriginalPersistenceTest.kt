@@ -4,7 +4,6 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -68,13 +67,25 @@ class ReceiptOriginalPersistenceTest {
     }
     private fun bytes(extension: String): ByteArray = ByteArrayOutputStream().use { output ->
         if (extension == "pdf") {
-            val pdf = PdfDocument()
-            try {
-                val page = pdf.startPage(PdfDocument.PageInfo.Builder(120, 120, 1).create())
-                page.canvas.drawColor(Color.WHITE)
-                pdf.finishPage(page)
-                pdf.writeTo(output)
-            } finally { pdf.close() }
+            // Robolectric has no native PdfDocument writer. Use a complete real one-page PDF,
+            // with calculated xref offsets; import, Room reload and PdfRenderer remain production APIs.
+            val objects = listOf(
+                "<< /Type /Catalog /Pages 2 0 R >>",
+                "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 120 120] /Resources << >> /Contents 4 0 R >>",
+                "<< /Length 0 >>\nstream\n\nendstream"
+            )
+            output.write("%PDF-1.4\n".toByteArray(Charsets.US_ASCII))
+            val offsets = objects.mapIndexed { index, value ->
+                output.size().also { output.write("${index + 1} 0 obj\n$value\nendobj\n".toByteArray(Charsets.US_ASCII)) }
+            }
+            val xref = output.size()
+            val trailer = buildString {
+                append("xref\n0 5\n0000000000 65535 f \n")
+                offsets.forEach { append(it.toString().padStart(10, '0') + " 00000 n \n") }
+                append("trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n")
+            }
+            output.write(trailer.toByteArray(Charsets.US_ASCII))
         } else {
             val bitmap = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
             bitmap.eraseColor(Color.RED)
