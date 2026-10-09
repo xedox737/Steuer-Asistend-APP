@@ -72,6 +72,7 @@ object ReceiptManifestService {
         timestampIso: String,
         profile: DatevProfile,
         fileItems: List<ManifestFileItem>,
+        totalRecords: Int,
         totalAmountEur: Double
     ): String {
         val manifest = ManifestData(
@@ -81,7 +82,7 @@ object ReceiptManifestService {
             kanzleiprofilVersion = profile.version,
             beraterNummer = profile.beraterNummer,
             mandantenNummer = profile.mandantenNummer,
-            totalRecords = fileItems.size,
+            totalRecords = totalRecords,
             totalAmountEur = totalAmountEur,
             files = fileItems
         )

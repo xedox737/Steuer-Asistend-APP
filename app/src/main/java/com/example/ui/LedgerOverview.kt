@@ -47,9 +47,20 @@ import kotlin.math.abs
 @Composable
 internal fun LedgerOverview(
     receipts: List<Receipt>, properties: List<PropertyMetadata>,
+    bankAssignments: List<com.example.data.BankRentAssignment> = emptyList(),
+    bankLinks: List<com.example.data.BankReceiptLink> = emptyList(),
+    bankTransactions: List<com.example.data.BankTransaction> = emptyList(),
+    onBank: (com.example.data.BankTransaction) -> Unit = {},
     onReceipt: (Receipt) -> Unit
 ) {
-    val years = remember(receipts) { LedgerPresentation.years(receipts) }
+    var view by rememberSaveable { mutableStateOf(LedgerView.PAYMENTS) }
+    val entries = remember(receipts, bankAssignments, bankLinks, bankTransactions, view) {
+        LedgerPaymentPresentation.entries(receipts, bankAssignments, bankLinks, bankTransactions, view)
+    }
+    val years = remember(entries) {
+        entries.mapNotNull { CalendarInput.parseIsoDate(it.date)?.year }.distinct().sortedDescending()
+            .ifEmpty { listOf(java.time.LocalDate.now().year) }
+    }
     var selectedYear by rememberSaveable { mutableIntStateOf(years.first()) }
     // Receipts arrive asynchronously; start with the newest available year unless the user chose one.
     var yearChosen by rememberSaveable { mutableStateOf(false) }
@@ -59,19 +70,21 @@ internal fun LedgerOverview(
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var period by rememberSaveable { mutableStateOf(LedgerPeriod.YEAR) }
     var query by rememberSaveable { mutableStateOf("") }
-    val yearReceipts = remember(receipts, selectedYear) { LedgerPresentation.forYear(receipts, selectedYear) }
-    val totals = remember(yearReceipts) { LedgerPresentation.totals(yearReceipts) }
-    val previous = remember(receipts, selectedYear) {
-        LedgerPresentation.totals(LedgerPresentation.forYear(receipts, selectedYear - 1))
+    val filters = LedgerFilters(selectedYear, kind, propertyId, category, period, query)
+    val knownPropertyIds = properties.map { it.propertyId }.toSet()
+    val yearEntries = remember(entries, selectedYear) { entries.filter { CalendarInput.parseIsoDate(it.date)?.year == selectedYear } }
+    val filtered = remember(entries, filters, knownPropertyIds) {
+        LedgerPaymentPresentation.filter(entries, filters, knownPropertyIds = knownPropertyIds)
     }
-    val filtered = remember(receipts, properties, selectedYear, kind, propertyId, category, period, query) {
-        LedgerPresentation.filter(receipts, LedgerFilters(selectedYear, kind, propertyId, category, period, query),
-            knownPropertyIds = properties.map { it.propertyId }.toSet())
+    val totals = remember(filtered) { LedgerPaymentPresentation.totals(filtered) }
+    val previous = remember(entries, filters, knownPropertyIds) {
+        LedgerPaymentPresentation.totals(LedgerPaymentPresentation.filter(entries, filters.copy(year = selectedYear - 1),
+            today = java.time.LocalDate.now().minusYears(1), knownPropertyIds = knownPropertyIds))
     }
     val propertyOptions = remember(properties) {
         properties.map { it.propertyId to it.name.ifBlank { it.adresse.ifBlank { "Immobilie" } } }
     }
-    val categories = remember(receipts) { receipts.map(LedgerPresentation::category).distinct().sorted() }
+    val categories = remember(entries) { entries.map { it.category }.distinct().sorted() }
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("ledger_overview"),
@@ -89,6 +102,11 @@ internal fun LedgerOverview(
             }
         }
         ledgerSection {
+            LedgerDropdown(view.label, "ledger_view", LedgerView.entries.map { it to it.label }) { view = it }
+            Text(if (view == LedgerView.PAYMENTS) "Erfasste Belege und bestätigte Bankmieten · steuerliche Freigabe separat"
+                else "Ausdrücklich freigegebene Belegbuchungen", fontSize = 11.sp, color = SlateGray)
+        }
+        ledgerSection {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     LedgerMetric("Einnahmen", LedgerPresentation.money(totals.income), Icons.Default.NorthEast,
@@ -100,12 +118,12 @@ internal fun LedgerOverview(
                     LedgerMetric("Ergebnis", LedgerPresentation.money(totals.result), Icons.Default.BarChart,
                         if (totals.result >= 0) EmeraldGreen else CrimsonRed, "Einnahmen − Ausgaben", Modifier.weight(1f), AccentBlue)
                     LedgerMetric("Buchungen", totals.count.toString(), Icons.AutoMirrored.Filled.ReceiptLong,
-                        DarkNavy, "Im ausgewählten Jahr", Modifier.weight(1f), AccentBlue)
+                        DarkNavy, "Mit den gewählten Filtern", Modifier.weight(1f), AccentBlue)
                 }
             }
         }
-        ledgerSection { LedgerYearChart(yearReceipts, selectedYear) }
-        ledgerSection { LedgerCategorySummary(yearReceipts) }
+        ledgerSection { LedgerYearChart(filtered, selectedYear) }
+        ledgerSection { LedgerCategorySummary(filtered) }
         ledgerSection {
             Surface(Modifier.fillMaxWidth(), shape = Ui2.shape, color = Color.White, border = BorderStroke(0.5.dp, BorderColor)) {
                 Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -160,19 +178,21 @@ internal fun LedgerOverview(
                     Text("Buchungen", fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                     if (filtered.isEmpty()) {
                         LedgerIcon(Icons.AutoMirrored.Filled.ReceiptLong, SlateGray)
-                        Text(if (yearReceipts.isEmpty()) "Noch keine Einnahmen oder Ausgaben vorhanden" else "Keine passenden Buchungen",
+                        Text(if (yearEntries.isEmpty()) "Noch keine Einnahmen oder Ausgaben vorhanden" else "Keine passenden Buchungen",
                             fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                        Text(if (yearReceipts.isEmpty()) "Erfasse einen Beleg oder importiere Buchungen, um deine Finanzübersicht aufzubauen."
+                        Text(if (yearEntries.isEmpty()) "Erfasse einen Beleg oder importiere Buchungen, um deine Finanzübersicht aufzubauen."
                             else "Passe die Filter oder den Suchbegriff an.", fontSize = 12.sp, lineHeight = 16.sp, color = SlateGray)
                     }
                 }
             }
         }
         // Contiguous white rows form one visual list card while retaining lazy composition for large datasets.
-        itemsIndexed(filtered, key = { _, receipt -> receipt.id }) { index, receipt ->
+        itemsIndexed(filtered, key = { _, row -> row.key }) { index, receipt ->
             Column(Modifier.fillMaxWidth().background(Color.White).padding(horizontal = 12.dp)) {
                 LedgerBooking(receipt, propertyOptions.firstOrNull { it.first == receipt.propertyId }?.second
-                    ?: "Nicht zugeordnet") { onReceipt(receipt) }
+                    ?: "Nicht zugeordnet") {
+                    receipt.receipt?.let(onReceipt) ?: receipt.transaction?.let(onBank)
+                }
                 if (index < filtered.lastIndex) HorizontalDivider(color = BorderColor.copy(alpha = .5f))
             }
         }
@@ -240,10 +260,10 @@ private fun <T> LedgerDropdown(label: String, tag: String, options: List<Pair<T,
 }
 
 @Composable
-private fun LedgerBooking(receipt: Receipt, property: String, onClick: () -> Unit) {
-    val income = LedgerPresentation.isIncome(receipt)
+private fun LedgerBooking(receipt: LedgerEntry, property: String, onClick: () -> Unit) {
+    val income = receipt.income
     val color = if (income) EmeraldGreen else CrimsonRed
-    val category = LedgerPresentation.category(receipt)
+    val category = receipt.category
     val icon = when {
         income -> Icons.Outlined.Home
         category.contains("fahrt", true) -> Icons.Outlined.DirectionsCar
@@ -251,24 +271,26 @@ private fun LedgerBooking(receipt: Receipt, property: String, onClick: () -> Uni
         category.contains("instand", true) || category.contains("sanier", true) -> Icons.Outlined.Build
         else -> Icons.AutoMirrored.Filled.ReceiptLong
     }
-    Row(Modifier.fillMaxWidth().testTag("ledger_receipt_${receipt.id}").clickable(onClick = onClick)
+    Row(Modifier.fillMaxWidth().testTag(receipt.tag).clickable(onClick = onClick)
         .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         LedgerIcon(icon, if (income) EmeraldGreen else SlateGray)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(receipt.aussteller.ifBlank { receipt.beschreibung.ifBlank { "Beleg" } },
+                Text(receipt.partner.ifBlank { receipt.description.ifBlank { "Beleg" } },
                     fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text(LedgerPresentation.signedMoney(receipt), fontSize = 13.sp, lineHeight = 16.sp,
+                val signed = if (receipt.income) receipt.amount else -receipt.amount
+                Text((if (signed >= 0) "+" else "−") + LedgerPresentation.money(abs(signed)), fontSize = 13.sp, lineHeight = 16.sp,
                     fontWeight = FontWeight.Bold, color = color)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(LedgerPresentation.displayDate(receipt), fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
+                Text(CalendarInput.parseIsoDate(receipt.date)?.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")) ?: receipt.date, fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
                 Text(category, fontSize = 9.sp, lineHeight = 12.sp, color = color, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                         .background(color.copy(alpha = .08f), Ui2.shape).padding(horizontal = 5.dp, vertical = 2.dp))
             }
+            if (receipt.transaction != null) Text("Bankzahlung bestätigt · Buchungsfreigabe separat", fontSize = 9.sp, color = SlateGray)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 Icon(Icons.Default.Apartment, null, tint = SlateGray, modifier = Modifier.size(10.dp))
                 Text(property, fontSize = 9.sp, lineHeight = 11.sp, color = SlateGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -280,9 +302,9 @@ private fun LedgerBooking(receipt: Receipt, property: String, onClick: () -> Uni
 
 /** Ledger-only version: leave the existing shared chart and other screens unchanged. */
 @Composable
-private fun LedgerYearChart(receipts: List<Receipt>, year: Int) {
+private fun LedgerYearChart(receipts: List<LedgerEntry>, year: Int) {
     val monthly = remember(receipts) {
-        (1..12).map { month -> LedgerPresentation.totals(receipts.filter { LedgerPresentation.date(it)?.monthValue == month }) }
+        (1..12).map { month -> LedgerPaymentPresentation.totals(receipts.filter { CalendarInput.parseIsoDate(it.date)?.monthValue == month }) }
     }
     val upper = monthly.maxOf { maxOf(0.0, it.income, it.expense) }.coerceAtLeast(1.0)
     val lower = monthly.minOf { minOf(0.0, it.income, it.expense) }
@@ -346,10 +368,10 @@ private fun LedgerYearChart(receipts: List<Receipt>, year: Int) {
 
 /** Read-only category aggregation of the selected year's existing expense receipts. */
 @Composable
-private fun LedgerCategorySummary(receipts: List<Receipt>) {
+private fun LedgerCategorySummary(receipts: List<LedgerEntry>) {
     val expenses = remember(receipts) {
-        receipts.filterNot(LedgerPresentation::isIncome).groupBy(LedgerPresentation::category)
-            .mapValues { (_, rows) -> rows.sumOf { it.bruttobetrag } }.entries.sortedByDescending { it.value }
+        receipts.filterNot { it.income }.groupBy { it.category }
+            .mapValues { (_, rows) -> rows.sumOf { it.amount } }.entries.sortedByDescending { it.value }
     }
     val total = expenses.sumOf { it.value }
     LedgerCard(Modifier.testTag("ledger_categories")) {

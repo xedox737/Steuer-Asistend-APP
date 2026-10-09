@@ -227,8 +227,14 @@ class RentOverviewComposeTest {
         ui.onNodeWithText("Mieterwechsel erfassen", substring = true).assertExists()
         ui.onNodeWithText("Schließen").performClick()
         scroll("rent_unassigned"); ui.onNodeWithTag("rent_review_payments").performClick()
-        assertEquals(AppScreen.RECEIPTS_LIST, vm.currentScreen.value); shell()
+        assertEquals(AppScreen.RENT_OVERVIEW, vm.currentScreen.value)
+        ui.onNodeWithTag("rent_review_list").assertExists()
+        ui.onNodeWithTag("rent_review_receipt-1030").assertIsDisplayed().performClick()
+        assertEquals(AppScreen.RECEIPT_DETAIL, vm.currentScreen.value); shell()
         back(); assertEquals(AppScreen.RENT_OVERVIEW, vm.currentScreen.value)
+        ui.onNodeWithTag("rent_unassigned").assertExists()
+        ui.onNodeWithTag("nav_item_receipts_list").performClick()
+        assertEquals(AppScreen.RECEIPTS_LIST, vm.currentScreen.value); shell()
     }
     @Test
     @Config(sdk = [35], qualifiers = "w360dp-h800dp-420dpi")

@@ -212,7 +212,10 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         }
     }
 
-    BackHandler(enabled = selectedTransaction != null) { selectedTransactionId = null }
+    fun closeDetails() {
+        if (!viewModel.closeBankTransactionDetailsEntry()) selectedTransactionId = null
+    }
+    BackHandler(enabled = selectedTransaction != null) { closeDetails() }
 
     if (selectedTransaction != null) {
         BankTransactionDetailsScreen(
@@ -229,7 +232,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             receiptById = receiptById,
             rentSuggestion = rentSuggestions[selectedTransaction.transactionId].orEmpty().firstOrNull(),
             units = units,
-            onBack = { selectedTransactionId = null },
+            onBack = { closeDetails() },
             onPickReceipt = { receiptPickerFor = selectedTransaction },
             onNoReceipt = { noReceiptFor = selectedTransaction },
             onReceiptDetails = { receipt ->

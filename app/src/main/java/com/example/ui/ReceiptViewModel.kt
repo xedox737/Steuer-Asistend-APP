@@ -867,6 +867,39 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }?.unitId.orEmpty()
     }
 
+    internal suspend fun saveInitialRentBatch(propertyId: String, rows: List<InitialRentRow>): String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        if (rows.isEmpty() || rows.map { it.unitId }.distinct().size != rows.size) return@withContext "Bitte eindeutige Einheiten für die Erstbefüllung auswählen."
+        val property = database.propertyDao().getPropertyByPropertyId(propertyId)
+            ?: return@withContext "Die Immobilie ist nicht mehr verfügbar."
+        val units = getWohneinheitenForProperty(property).associateBy { PropertyUnitScopedData.stableUnitId(propertyId, it) }
+        rows.forEach { row ->
+            InitialRentInput.error(row)?.let { return@withContext it }
+            val unit = units[row.unitId] ?: return@withContext "Eine ausgewählte Einheit ist nicht mehr vorhanden."
+            val history = TenantHistoryStore.load(getApplication(), propertyId, row.unitId, unit.name)
+            if (TenantHistoryStore.hasStoredPeriods(getApplication(), propertyId, row.unitId, unit.name) ||
+                !InitialRentInput.eligible(unit, history)) return@withContext "${unit.name}: vorhandene Mietdaten werden nicht überschrieben. Bitte den Mietverlauf verwenden."
+        }
+        val periods = rows.filter { it.status == "Vermietet" }.map { row ->
+            val unit = units.getValue(row.unitId)
+            unit to TenantPeriod(java.util.UUID.randomUUID().mostSignificantBits, unit.name, row.tenant.trim(), row.start.trim(), "",
+                RentPlanInput.amount(row.cold)!!, RentPlanInput.amount(row.utilities)!!, RentPlanInput.amount(row.other)!!)
+        }
+        if (!TenantHistoryStore.saveInitialPeriods(getApplication(), propertyId, periods)) return@withContext "Die Mietdaten konnten nicht vollständig gespeichert werden oder wurden inzwischen geändert. Bitte erneut prüfen."
+        rows.forEach { row ->
+            val unit = units.getValue(row.unitId)
+            PropertyUnitScopedData.setRentValues(getApplication(), propertyId, unit, RentPlanInput.amount(row.utilities)!!, RentPlanInput.amount(row.other)!!)
+            updateWohneinheitForProperty(unit.copy(status = row.status, mieter = row.tenant.trim(), mietvertragsstart = row.start.trim(),
+                kaltmiete = RentPlanInput.amount(row.cold)!!), property)
+        }
+        refreshPropertyUnits(propertyId)
+        null
+    }
+
+    fun refreshPropertyUnits(propertyId: String) {
+        val property = properties.value.firstOrNull { it.propertyId == propertyId } ?: return
+        if (propertyMetadata.value?.propertyId == propertyId) _wohneinheitenStatus.value = getWohneinheitenForProperty(property)
+    }
+
     fun updateWohneinheit(updated: WohneinheitStatus, correctCurrentContract: Boolean = false) {
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
             properties.value.firstOrNull { property ->
@@ -2683,9 +2716,9 @@ data class AiSearchUiState(
                 val ids = matches.map { it.id.toLong() }
                 val formattedSum = String.format(java.util.Locale.GERMANY, "%.2f €", totalSum)
                 val fallbackAnswer = if (matches.isNotEmpty()) {
-                    "Auswertung aus Room-Datenbank für '$trimmed': Insgesamt $formattedSum verteilt auf ${matches.size} Belege."
+                    "Auswertung für '$trimmed': Insgesamt $formattedSum verteilt auf ${matches.size} Belege."
                 } else {
-                    "Keine passenden Belege für '$trimmed' in der Room-Datenbank gefunden."
+                    "Keine passenden Belege für '$trimmed' gefunden."
                 }
                 result = com.example.api.AiSearchResult(
                     answer = fallbackAnswer,
@@ -2700,7 +2733,7 @@ data class AiSearchUiState(
                 _aiSearchState.value = AiSearchUiState(
                     isLoading = false,
                     query = trimmed,
-                    error = "Keine Belege in der Room-Datenbank vorhanden."
+                    error = "Noch keine Belege vorhanden."
                 )
             }
         }
@@ -2934,12 +2967,14 @@ data class AiSearchUiState(
         val excluded = _wizardExcludedReceipts.value
         val profile = _activeDatevProfile.value
         val report = _wizardValidationReport.value ?: return null
+        val outputFormat = _wizardTargetFormat.value
+        val outputPeriod = _wizardYearFilter.value
         if (!report.isValidForExport || records.isEmpty()) {
             DiagnosticLog.w("ReceiptViewModel", "DATEV export blocked by validation policy")
             return null
         }
-        val selectedYear = _wizardYearFilter.value.toIntOrNull()
-        if (_wizardTargetFormat.value == "FULL_ZIP" && selectedYear == null) {
+        val selectedYear = outputPeriod.toIntOrNull()
+        if (outputFormat == "FULL_ZIP" && selectedYear == null) {
             DiagnosticLog.w("ReceiptViewModel", "Steuerberaterpaket benötigt ein eindeutig ausgewähltes Steuerjahr")
             return null
         }
@@ -2950,15 +2985,19 @@ data class AiSearchUiState(
             property.propertyId to getWohneinheitenForProperty(property)
         }
         val exportReceipts = _wizardIncludedReceipts.value
-        val packageResult = com.example.util.AdvisorPackageBuilder.buildPackage(
+        val packageResult = if (outputFormat == "EXTF_CSV") {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                com.example.util.DatevCsvOutput.create(context, records, profile, report, outputPeriod)
+            }
+        } else com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
             records = records,
             includedReceipts = exportReceipts,
             excludedReceipts = excluded,
-            includeOriginals = _wizardTargetFormat.value == "FULL_ZIP",
+            includeOriginals = outputFormat == "FULL_ZIP",
             profile = profile,
             validationReport = report,
-            periodSummary = _wizardYearFilter.value,
+            periodSummary = outputPeriod,
             originalDocuments = repository.getAllManagedDocuments(),
             annualSummary = selectedYear?.let { year ->
                 buildAdvisorPortfolioAnnualSummary(
@@ -2981,8 +3020,8 @@ data class AiSearchUiState(
                 timestamp = System.currentTimeMillis(),
                 user = profile.mandantenName,
                 propertyName = if (records.map { it.objektId }.filter(String::isNotBlank).distinct().size > 1) "Portfolio" else records.firstOrNull()?.objektId.orEmpty(),
-                periodStart = "${_wizardYearFilter.value}-01-01",
-                periodEnd = "${_wizardYearFilter.value}-12-31",
+                periodStart = "$outputPeriod-01-01",
+                periodEnd = "$outputPeriod-12-31",
                 filterSummary = "Objekte: ${records.map { it.objektId }.filter(String::isNotBlank).distinct().joinToString()}, Wohneinheit-ID: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
                 exportierteReceiptIdsJson = org.json.JSONArray(
                     records.map { it.receiptId }
@@ -2994,14 +3033,14 @@ data class AiSearchUiState(
                         }
                 ).toString(),
                 kanzleiprofilNameVersion = "${profile.profileName} v${profile.version}",
-                zipFileName = packageResult.zipFile.name,
-                zipFileSizeBytes = packageResult.zipFile.length(),
+                zipFileName = packageResult.outputFile.name,
+                zipFileSizeBytes = packageResult.outputFile.length(),
                 zipSha256 = packageResult.sha256Checksum,
-                status = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER") "SUCCESS" else "CREATED_NOT_READY",
+                status = if (outputFormat != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER") "SUCCESS" else "CREATED_NOT_READY",
                 totalAmount = packageResult.totalAmountEur,
                 bookingCount = packageResult.totalRecords,
                 warningsCount = packageResult.warningsCount,
-                logMessage = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER")
+                logMessage = if (outputFormat != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER")
                     "Erfolgreich exportiert mit ${packageResult.totalRecords} Buchungssätzen."
                 else "Paket technisch erstellt, fachlich aber noch nicht bereit: ${packageResult.advisorStatus}."
             )
@@ -3009,7 +3048,7 @@ data class AiSearchUiState(
             repository.insertAuditRun(auditRun)
 
             // A technically generated advisor ZIP is not automatically a fachlich freigegebener export.
-            val exportIsFinal = _wizardTargetFormat.value != "FULL_ZIP" ||
+            val exportIsFinal = outputFormat != "FULL_ZIP" ||
                 packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER"
             if (exportIsFinal) {
                 val distinctReceiptIds = records.map { it.receiptId }.distinct()
@@ -3311,6 +3350,7 @@ data class AiSearchUiState(
         _bankTransactionDetailsReturnId.value = null
         _selectedReceiptDetailId.value = null
         receiptDetailReturnScreen = AppScreen.RECEIPTS_LIST
+        bankDetailEntryReturnScreen = null
         datevReturnScreen = AppScreen.MORE
         setScreen(destination)
         _primaryNavigationReset.value = PrimaryNavigationReset(
@@ -3320,6 +3360,9 @@ data class AiSearchUiState(
     }
 
     fun setScreen(screen: AppScreen) {
+        if (screen !in setOf(AppScreen.BANK, AppScreen.RECEIPT_DETAIL, AppScreen.ADD_RECEIPT)) {
+            bankDetailEntryReturnScreen = null
+        }
         if (screen != AppScreen.ADD_RECEIPT) {
             _pendingBankTransactionId.value = null
         }
@@ -3377,6 +3420,22 @@ data class AiSearchUiState(
             _bankTransactionDetailsReturnId.value = transactionId
             _currentScreen.value = AppScreen.BANK
         }
+    }
+
+    private var bankDetailEntryReturnScreen: AppScreen? = null
+
+    fun openBankTransactionDetails(transactionId: String) {
+        val origin = _currentScreen.value
+        setScreen(AppScreen.BANK)
+        bankDetailEntryReturnScreen = origin.takeIf { it != AppScreen.BANK }
+        _bankTransactionDetailsReturnId.value = transactionId
+    }
+
+    fun closeBankTransactionDetailsEntry(): Boolean {
+        val origin = bankDetailEntryReturnScreen ?: return false
+        bankDetailEntryReturnScreen = null
+        setScreen(origin)
+        return true
     }
 
     fun consumeBankTransactionDetailsReturn() {

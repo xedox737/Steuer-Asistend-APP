@@ -20,8 +20,12 @@ data class AdvisorPackageResult(
     val sha256Checksum: String,
     val warningsCount: Int,
     val advisorStatus: String,
-    val packageStructureVerified: Boolean
-)
+    val packageStructureVerified: Boolean,
+    val mimeType: String = "application/zip"
+) {
+    // Legacy field remains compatible with callers and persisted audit column names.
+    val outputFile: File get() = zipFile
+}
 
 object AdvisorPackageBuilder {
 
@@ -237,6 +241,7 @@ object AdvisorPackageBuilder {
                 timestampIso = timestampIso,
                 profile = profile,
                 fileItems = fileItems,
+                totalRecords = records.size,
                 totalAmountEur = validationReport.totalAmount
             )
             zos.putNextEntry(ZipEntry("08_Pruefprotokoll/manifest.json"))

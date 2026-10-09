@@ -7,6 +7,7 @@ import com.example.data.BankSplitPaymentType
 import com.example.data.BankTransaction
 import com.example.data.PropertyMetadata
 import com.example.data.Receipt
+import com.example.data.BankRentSuggestion
 import java.time.LocalDate
 
 /** Read-only view of the existing scoped rent plans and tenant-history projection. */
@@ -27,7 +28,7 @@ internal data class RentOverviewUnit(
     val missing get() = (expected - actual).coerceAtLeast(0.0)
     val monthly get() = if (unit.status == "Vermietet") unit.kaltmiete + nebenkosten + sonstige else 0.0
 }
-internal data class RentOverviewYear(val year: Int, val rows: List<RentOverviewUnit>, val unassigned: List<Receipt>, val utilities: Double) {
+internal data class RentOverviewYear(val year: Int, val rows: List<RentOverviewUnit>, val unassigned: List<Receipt>, val utilities: Double, val reviews: List<RentReviewPayment> = emptyList()) {
     val actual get() = rows.sumOf { it.actual }
     val expected get() = rows.sumOf { it.expected }
     val missing get() = rows.sumOf { it.missing }
@@ -78,7 +79,8 @@ internal object RentOverviewPresentation {
         year: Int,
         bankAssignments: List<BankRentAssignment> = emptyList(),
         bankLinks: List<BankReceiptLink> = emptyList(),
-        bankTransactions: List<BankTransaction> = emptyList()
+        bankTransactions: List<BankTransaction> = emptyList(),
+        bankSuggestions: Map<String, List<BankRentSuggestion>> = emptyMap()
     ): RentOverviewYear {
         val rental = receipts.filter { date(it.datum)?.year == year && isConfirmedRentalIncomeReceipt(it) }
         val rows = groups.flatMap { group ->
@@ -101,7 +103,9 @@ internal object RentOverviewPresentation {
         val utilities = rental.filter { receipt -> receipt !in unassigned &&
             (receipt.unterkategorie.contains("Nebenkosten", true) || receipt.unterkategorie.contains("Betriebskosten", true))
         }.sumOf { it.bruttobetrag }
-        return RentOverviewYear(year, rows, unassigned, utilities)
+        val reviews = RentPaymentReview.build(groups, receipts, bankTransactions, bankAssignments, bankLinks, bankSuggestions)
+            .filter { date(it.date)?.year == year }
+        return RentOverviewYear(year, rows, unassigned, utilities, reviews)
     }
 }
 
