@@ -83,6 +83,7 @@ class Phase5BComposeWorkflowTest {
         ui.waitForIdle()
     }
     private fun capture(name: String) {
+        var dialogVisible = false
         ui.runOnIdle {
             fun redraw(view: android.view.View) {
                 if (view.javaClass.name == "androidx.compose.ui.platform.AndroidComposeView") {
@@ -91,11 +92,14 @@ class Phase5BComposeWorkflowTest {
                 view.requestLayout(); view.invalidate()
                 if (view is android.view.ViewGroup) for (index in 0 until view.childCount) redraw(view.getChildAt(index))
             }
-            redraw(ui.activity.window.decorView)
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()?.takeIf { it.isShowing }
+            dialogVisible = dialog != null
+            redraw(dialog?.window?.decorView ?: ui.activity.window.decorView)
         }
         ui.mainClock.advanceTimeBy(300); ui.waitForIdle()
-        androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
-            .captureRoboImage("build/reports/phase5b-workflows/$name.png")
+        val path = "build/reports/phase5b-workflows/$name.png"
+        if (dialogVisible) ui.onNode(isDialog()).captureRoboImage(path)
+        else androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot()).captureRoboImage(path)
     }
     private fun ledgerScroll(tag: String) = ui.onNodeWithTag("ledger_overview").performScrollToNode(hasTestTag(tag))
     private fun unitsScroll(tag: String) = ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag(tag))
@@ -168,6 +172,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("edit_property_kaufpreis").performScrollTo().performTextReplacement("1.050.000,25")
         ui.onNodeWithTag("edit_property_type").performScrollTo().performTextReplacement("Mehrfamilienhaus")
         ui.onNodeWithTag("edit_property_notes").performScrollTo().performTextReplacement("Notiz am Objekt")
+        capture("object-metadata-393")
         ui.onNodeWithTag("save_property_metadata_button").performClick()
         ui.waitUntil(10000) { vm.properties.value.any { it.notizen == "Notiz am Objekt" } }
         val saved = vm.properties.value.single { it.propertyId == property.propertyId }
@@ -193,7 +198,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("tenant_change_new_start").performScrollTo().performTextReplacement("2020-04-01")
         ui.onNodeWithText("Wechsel speichern").performClick()
         ui.onNodeWithText("Das Vertragsende darf nicht vor dem Mietbeginn liegen.").assertExists()
-        ui.onNodeWithTag("tenant_change_old_end").performScrollTo()
+        ui.onNodeWithText("Das Vertragsende darf nicht vor dem Mietbeginn liegen.").performScrollTo().assertIsDisplayed()
         capture("tenant-chronology-error-393")
         val history = TenantHistoryStore.load(ui.activity, property.propertyId, "u-1", "WE 01")
         assertEquals(1, history.size)
