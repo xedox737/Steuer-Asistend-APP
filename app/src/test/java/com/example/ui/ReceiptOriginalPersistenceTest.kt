@@ -4,9 +4,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.pdf.PdfRenderer
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
@@ -68,7 +66,7 @@ class ReceiptOriginalPersistenceTest {
     private fun bytes(extension: String): ByteArray = ByteArrayOutputStream().use { output ->
         if (extension == "pdf") {
             // Robolectric has no native PdfDocument writer. Use a complete real one-page PDF,
-            // with calculated xref offsets; import, Room reload and PdfRenderer remain production APIs.
+            // with calculated xref offsets; import and Room reload remain production APIs.
             val objects = listOf(
                 "<< /Type /Catalog /Pages 2 0 R >>",
                 "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -127,8 +125,12 @@ class ReceiptOriginalPersistenceTest {
         assertEquals(bytes.size.toLong(), document.fileSizeBytes)
         assertArrayEquals(bytes, File(reloaded.imageUrl).readBytes())
         if (extension == "pdf") {
-            ParcelFileDescriptor.open(File(reloaded.imageUrl), ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
-                PdfRenderer(fd).use { renderer -> assertEquals(1, renderer.pageCount) }
+            // SDK 35 PdfRenderer calls Android-only FileDescriptor.getOwnerId$ on this JVM.
+            // A real parser verifies the restored file opens; no mocked page count or skipped check.
+            org.apache.pdfbox.pdmodel.PDDocument.load(File(reloaded.imageUrl)).use { pdf ->
+                assertEquals(1, pdf.numberOfPages)
+                assertFalse(pdf.isEncrypted)
+                assertEquals(120f, pdf.getPage(0).mediaBox.width, 0f)
             }
         } else {
             val bitmap = requireNotNull(BitmapFactory.decodeFile(reloaded.imageUrl))

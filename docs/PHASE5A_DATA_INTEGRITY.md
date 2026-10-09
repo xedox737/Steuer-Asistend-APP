@@ -125,8 +125,11 @@ bei MERGE. Sie prüfen jetzt zusätzlich den erhaltenen lokalen Zustand und verl
 weiterhin sämtliche ursprünglichen Snapshotwerte. Ein Bank-Roundtrip-Test verwendet gültige
 Änderungszeitpunkte, damit der nachweisbar neuere Backupstand importiert werden darf.
 Keine Tests werden deaktiviert oder Kontrollen entfernt. Der PDF-Test verwendet eine vollständige
-PDF-Datei mit korrektem xref, weil Robolectric keinen nativen PdfDocument-Schreiber bereitstellt;
-Import, Room-Neustart und PdfRenderer werden weiterhin über die Produktiv-APIs geprüft.
+PDF-Datei mit korrektem xref, weil Robolectric keinen nativen PdfDocument-Schreiber bereitstellt.
+Import und Room-Neustart werden über Produktiv-APIs geprüft; PDFBox (nur testImplementation)
+öffnet die gespeicherte Datei und prüft ihre Seite/Abmessung ohne Mock. SDK-35-PdfRenderer ruft
+in dieser JVM ein nicht verfügbares Android-FileDescriptor.getOwnerId$ auf; sein echter Geräteeinsatz
+bleibt eine ausdrücklich dokumentierte Prüfgrenze. Die APK erhält keine PDFBox-Abhängigkeit.
 
 Room bleibt Version 34, Supplemental-JSON Version 14. Keine Schemaänderung, Migration oder
 destructive Migration. Neue Anhänge verwenden die vorhandene ManagedDocument-ID und
