@@ -105,8 +105,6 @@ internal object PersistentPreferenceInventory {
 
             values.keys().forEach entryLoop@ { key ->
                 if (!permits(store, key)) return@entryLoop
-                // Verified tax history has no conflict timestamp: local values take precedence during MERGE.
-                if (mode == RestoreMode.MERGE && store.name == "afa_confirmed_values_prefs" && prefs.contains(key)) return@entryLoop
                 val value = values.optJSONObject(key) ?: return@entryLoop
 
                 if (mode == RestoreMode.MERGE &&
@@ -115,6 +113,17 @@ internal object PersistentPreferenceInventory {
                 ) {
                     val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
                     if (merged != null) editor.putString(key, merged)
+                    return@entryLoop
+                }
+
+                // No per-field version exists in the remaining stores. A snapshot must not
+                // roll back unit values, rent, assignments, notes, drafts or settings.
+                if (mode == RestoreMode.MERGE && prefs.contains(key)) {
+                    if (value.optString("type") == "stringSet" && prefs.all[key] is Set<*>) {
+                        val array = value.getJSONArray("value")
+                        editor.putStringSet(key, prefs.getStringSet(key, emptySet()).orEmpty() +
+                            (0 until array.length()).map { array.getString(it) })
+                    }
                     return@entryLoop
                 }
 
@@ -156,19 +165,20 @@ internal object PersistentPreferenceInventory {
         val backup = JSONArray(backupRaw)
         val merged = linkedMapOf<String, JSONObject>()
 
-        fun tenantKey(item: JSONObject): String {
+        fun tenantKey(item: JSONObject): String? {
             val id = item.optLong("id", Long.MIN_VALUE)
             if (id != Long.MIN_VALUE && id != 0L) return "id:$id"
-            return "legacy:${item.optString("startDate")}|${item.optString("endDate")}|${item.optString("tenantName")}"
+            return null
         }
 
         for (i in 0 until local.length()) {
             val item = local.getJSONObject(i)
-            merged[tenantKey(item)] = JSONObject(item.toString())
+            merged[tenantKey(item) ?: "unidentified-local:$i"] = JSONObject(item.toString())
         }
         for (i in 0 until backup.length()) {
             val incoming = backup.getJSONObject(i)
-            val key = tenantKey(incoming)
+            // Without a stable ID there is no safe way to match an old period to local work.
+            val key = tenantKey(incoming) ?: continue
             val current = merged[key]
             merged[key] = if (current == null) JSONObject(incoming.toString()) else mergeTenantPeriod(current, incoming)
         }
@@ -205,17 +215,16 @@ internal object PersistentPreferenceInventory {
         val backup = JSONArray(backupRaw)
         val merged = linkedMapOf<String, JSONObject>()
 
-        fun taskKey(item: JSONObject): String =
+        fun taskKey(item: JSONObject): String? =
             item.optString("id", "").takeIf(String::isNotBlank)
-                ?: "legacy:${item.optString("propertyId")}|${item.optString("unitId")}|${item.optString("createdAt")}"
 
         for (i in 0 until local.length()) {
             val item = local.getJSONObject(i)
-            merged[taskKey(item)] = JSONObject(item.toString())
+            merged[taskKey(item) ?: "unidentified-local:$i"] = JSONObject(item.toString())
         }
         for (i in 0 until backup.length()) {
             val incoming = backup.getJSONObject(i)
-            val key = taskKey(incoming)
+            val key = taskKey(incoming) ?: continue
             val current = merged[key]
             merged[key] = when {
                 current == null -> JSONObject(incoming.toString())

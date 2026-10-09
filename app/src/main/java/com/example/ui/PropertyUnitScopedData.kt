@@ -41,6 +41,11 @@ internal object PropertyUnitScopedData {
     }
 
     fun rentValue(context: Context, propertyId: String, unit: WohneinheitStatus, field: String): Double {
+        val history = TenantHistoryStore.load(context, propertyId, stableUnitId(propertyId, unit), unit.name)
+        if (history.isNotEmpty() && field in setOf("nk", "other")) {
+            val amounts = TenantHistoryStore.currentAt(history)?.amountsAt(LocalDate.now()) ?: return 0.0
+            return if (field == "nk") amounts.nebenkosten else amounts.sonstige
+        }
         val prefs = context.getSharedPreferences(RENT_PREFS, Context.MODE_PRIVATE)
         val unitId = stableUnitId(propertyId, unit)
         val scoped = scopedRentKey(propertyId, unitId, field)

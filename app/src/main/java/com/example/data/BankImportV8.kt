@@ -165,7 +165,7 @@ fun BankImportParser.parseCamtV8(
             }
             val entryRaw = entryAmountElement.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull()
             val bookingDate = firstDate(entry, "BookgDt")
-            if (entryRaw == null || bookingDate.isBlank()) {
+            if (entryRaw == null || !entryRaw.isFinite() || bookingDate.isBlank()) {
                 errorRows++
                 continue
             }
@@ -176,8 +176,20 @@ fun BankImportParser.parseCamtV8(
             }
             val entrySigned = signed(entryRaw, entryDirection)
             val valueDate = firstDate(entry, "ValDt")
+            if (rawDate(entry, "ValDt").isNotBlank() && valueDate.isBlank()) {
+                errorRows++
+                continue
+            }
             val entryCurrency = entryAmountElement.getAttribute("Ccy").ifBlank { currency }
             val txDetails = directTxDetails(entry)
+            if (txDetails.any { detail ->
+                directOrFirstElement(detail, "Amt")?.textContent?.let { raw ->
+                    raw.trim().replace(',', '.').toDoubleOrNull()?.isFinite() != true
+                } ?: false
+            }) {
+                errorRows++
+                continue
+            }
             val splitDecision = multiTxDetailsDecision(entrySigned, txDetails, entryDirection)
             if (splitDecision.splitMultiTxDetails) {
                 txDetails.forEach { detail ->
@@ -250,6 +262,7 @@ internal fun multiTxDetailsDecision(entrySignedAmount: Double, details: List<Ele
     val detailAmounts = details.map { detail ->
         val amount = directOrFirstElement(detail, "Amt")?.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull()
             ?: return BankCamtV8Decision(false, "Mehrere TxDtls, aber nicht jeder Einzelbetrag ist eindeutig vorhanden.")
+        if (!amount.isFinite()) return BankCamtV8Decision(false, "Ungültiger Einzelbetrag.")
         val direction = firstText(detail, "CdtDbtInd").uppercase(Locale.ROOT).ifBlank { fallbackDirection }
         if (direction != "DBIT" && direction != "CRDT") return BankCamtV8Decision(false, "Mehrere TxDtls mit uneindeutiger Zahlungsrichtung.")
         signed(amount, direction)
@@ -353,7 +366,9 @@ private fun counterpartyIban(element: Element, outgoing: Boolean): String {
     return firstText(partyAccount, "IBAN")
 }
 
-private fun firstDate(entry: Element, parentLocalName: String): String {
+private fun firstDate(entry: Element, parentLocalName: String): String = BankImportParser.normalizeDate(rawDate(entry, parentLocalName))
+
+private fun rawDate(entry: Element, parentLocalName: String): String {
     val parent = firstElement(entry, parentLocalName) ?: return ""
     return firstNonBlank(firstText(parent, "Dt"), firstText(parent, "DtTm").take(10))
 }

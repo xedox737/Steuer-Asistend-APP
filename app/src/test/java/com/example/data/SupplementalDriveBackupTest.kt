@@ -105,10 +105,12 @@ class SupplementalDriveBackupTest {
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
 
-        assertEquals("Zweites Objekt", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
+        assertEquals("Zwischenstand", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
         assertEquals("property-2", database.loanDao().getAllLoans().single { it.id == 22 }.propertyId)
         assertEquals("OG links", context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
             .getString("property_property-2_unit_WE 01_label", null))
+        SupplementalDriveBackup.restorePayload(context, database, payload, restoreMode = RestoreMode.REPLACE_FULL)
+        assertEquals("Zweites Objekt", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
     }
 
     @Test fun managedDocumentsRestoreCompletelyWithoutOcrPayloadAndRemainIdempotent() = runTest {

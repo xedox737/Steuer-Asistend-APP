@@ -4,6 +4,7 @@ import com.example.util.DiagnosticLog
 
 import com.example.data.parseCamtV8
 import android.app.Application
+import androidx.room.withTransaction
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -40,6 +41,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.example.data.FirestoreService
@@ -273,6 +275,50 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val bankStatementResetVersion = _bankStatementResetVersion.asStateFlow()
     private val _bankImportStatus = MutableStateFlow<String?>(null)
     val bankImportStatus: StateFlow<String?> = _bankImportStatus.asStateFlow()
+    private val _pendingBankAccountImports = MutableStateFlow<List<com.example.data.BankImportBatch>>(emptyList())
+    val pendingBankAccountImports = _pendingBankAccountImports.asStateFlow()
+
+    fun cancelBankAccountImport() {
+        _pendingBankAccountImports.value = emptyList()
+        _bankImportStatus.value = "Import abgebrochen. Es wurden keine Buchungen übernommen."
+    }
+
+    fun confirmBankAccountImport(accountId: String? = null, newAccountName: String = "") {
+        val batches = _pendingBankAccountImports.getAndUpdate { emptyList() }
+        if (batches.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val selected = accountId?.let { database.bankDao().getAccount(it) }
+                    ?: newAccountName.trim().takeIf(String::isNotBlank)?.let {
+                        com.example.data.BankAccount("bank-${java.util.UUID.randomUUID()}", it)
+                    } ?: throw IllegalArgumentException("Bitte ein vorhandenes Konto wählen oder einen Kontonamen eingeben.")
+                val (inserted, duplicates) = persistBankImportBatches(batches, selected)
+                _bankImportStatus.value = "$inserted neue Buchungen • $duplicates Dubletten." +
+                    batches.flatMap { it.errors }.joinToString("\n", prefix = if (batches.any { it.errors.isNotEmpty() }) "\n" else "") { it.message }
+            } catch (e: Exception) {
+                _pendingBankAccountImports.compareAndSet(emptyList(), batches)
+                _bankImportStatus.value = "Import fehlgeschlagen: ${e.message}"
+            }
+        }
+    }
+
+    private suspend fun persistBankImportBatches(
+        batches: List<com.example.data.BankImportBatch>,
+        selected: com.example.data.BankAccount? = null
+    ): Pair<Int, Int> = database.withTransaction {
+        var inserted = 0
+        var duplicates = 0
+        for (batch in batches) {
+            val dao = database.bankDao()
+            val resolved = com.example.data.BankImportAccountResolver.resolve(batch, dao.getAllAccounts(), selected)
+            dao.upsertAccount(resolved.account)
+            val results = dao.insertTransactions(resolved.transactions)
+            val added = results.count { it != -1L }
+            inserted += added
+            duplicates += resolved.transactions.size - added
+        }
+        inserted to duplicates
+    }
     private val _bankUndoNotice = MutableStateFlow(BankUndoNotice())
     val bankUndoNotice: StateFlow<BankUndoNotice> = _bankUndoNotice.asStateFlow()
     private var bankUndoSnapshot: List<com.example.data.BankTransaction> = emptyList()
@@ -770,7 +816,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return 0.0
         }
 
-        return WohneinheitStatus(
+        val stored = WohneinheitStatus(
             name = name,
             label = string("label", "unit_label_$name", name),
             status = string("status", "unit_status_$name", "Leerstand"),
@@ -779,6 +825,17 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             wohnflaeche = number("area", "unit_area_$name"),
             mietvertragsstart = string("start", "unit_start_$name", ""),
             unitId = unitId
+        )
+        val periods = TenantHistoryStore.load(getApplication(), propertyId, unitId, name)
+        if (periods.isEmpty()) return stored
+        val period = TenantHistoryStore.currentAt(periods)
+        return if (period != null) stored.copy(
+            status = "Vermietet", mieter = period.tenantName,
+            kaltmiete = period.amountsAt(java.time.LocalDate.now()).kaltmiete,
+            mietvertragsstart = period.startDate
+        ) else stored.copy(
+            status = stored.status.takeUnless { it == "Vermietet" } ?: "Leerstand",
+            mieter = "", kaltmiete = 0.0, mietvertragsstart = ""
         )
     }
 
@@ -1593,6 +1650,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun importBankFile(uri: android.net.Uri) {
         viewModelScope.launch(Dispatchers.IO) {
+            _pendingBankAccountImports.value = emptyList()
             _bankImportStatus.value = "Kontoauszug wird eingelesen …"
             try {
                 val resolver = getApplication<Application>().contentResolver
@@ -1616,22 +1674,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     output.toByteArray()
                 } ?: throw IllegalArgumentException("Datei konnte nicht gelesen werden.")
                 val now = java.time.Instant.now().toString()
-                val dao = database.bankDao()
-
-                suspend fun persistBatch(batch: com.example.data.BankImportBatch): Pair<Int, Int> {
-                    val existingAccount = dao.getAccount(batch.account.accountId)
-                    dao.upsertAccount(
-                        batch.account.copy(
-                            displayName = existingAccount?.displayName?.takeIf { it.isNotBlank() } ?: batch.account.displayName,
-                            bankName = existingAccount?.bankName.orEmpty().ifBlank { batch.account.bankName },
-                            accountHolder = existingAccount?.accountHolder.orEmpty().ifBlank { batch.account.accountHolder },
-                            createdAt = existingAccount?.createdAt?.takeIf { it.isNotBlank() } ?: batch.account.createdAt,
-                            updatedAt = now
-                        )
-                    )
-                    val results = dao.insertTransactions(batch.transactions)
-                    val inserted = results.count { it != -1L }
-                    return inserted to (batch.transactions.size - inserted)
+                suspend fun needsAccountSelection(batches: List<com.example.data.BankImportBatch>): Boolean {
+                    val accounts = database.bankDao().getAllAccounts()
+                    return batches.any { batch ->
+                        batch.account.accountId.isBlank() || accounts.count {
+                            com.example.data.BankTransactionIdentity.normalizeAccountIdentifier(it.iban) ==
+                                com.example.data.BankTransactionIdentity.normalizeAccountIdentifier(batch.account.iban)
+                        } > 1
+                    }
                 }
 
                 if (com.example.data.BankZipImportParser.looksLikeZip(bytes)) {
@@ -1641,13 +1691,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         zipFileName = displayName,
                         importedAt = now
                     )
-                    var inserted = 0
-                    var duplicates = 0
-                    parsed.batches.forEach { batch ->
-                        val result = persistBatch(batch)
-                        inserted += result.first
-                        duplicates += result.second
+                    if (needsAccountSelection(parsed.batches)) {
+                        _pendingBankAccountImports.value = parsed.batches
+                        _bankImportStatus.value = "Bitte das Zielkonto für den Import auswählen."
+                        return@launch
                     }
+                    val (inserted, duplicates) = persistBankImportBatches(parsed.batches)
                     val read = parsed.batches.sumOf { it.transactions.size }
                     val rowErrors = parsed.batches.sumOf { it.errorRows }
                     _bankImportStatus.value = buildString {
@@ -1687,12 +1736,18 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                             importRunId = com.example.data.BankTransactionIdentity.importRunId("CSV", displayName, now)
                         )
                     }
-                    val (inserted, duplicates) = persistBatch(batch)
+                    if (needsAccountSelection(listOf(batch))) {
+                        _pendingBankAccountImports.value = listOf(batch)
+                        _bankImportStatus.value = "Bitte das Zielkonto für den Import auswählen."
+                        return@launch
+                    }
+                    val (inserted, duplicates) = persistBankImportBatches(listOf(batch))
                     val skippedOrInvalid = batch.skippedRows + batch.errorRows
                     _bankImportStatus.value = buildString {
                         append("${batch.format}: ${batch.transactions.size} gültige Buchungen erkannt • $inserted neu • $duplicates Dubletten")
                         if (skippedOrInvalid > 0) append(" • $skippedOrInvalid übersprungen/fehlerhaft")
                         append(".")
+                        batch.errors.forEach { append("\n${it.message}") }
                     }
                 }
             } catch (e: Exception) {
@@ -2900,6 +2955,7 @@ data class AiSearchUiState(
             profile = profile,
             validationReport = report,
             periodSummary = _wizardYearFilter.value,
+            originalDocuments = repository.getAllManagedDocuments(),
             annualSummary = selectedYear?.let { year ->
                 buildAdvisorPortfolioAnnualSummary(
                     context = context.applicationContext,
@@ -3455,6 +3511,13 @@ data class AiSearchUiState(
                 val file = java.io.File(getApplication<Application>().filesDir, "managed_documents/${document.documentId}.$extension")
                 file.parentFile?.mkdirs(); file.outputStream().use { it.write(bytes) }
                 repository.upsertManagedDocument(document.copy(localUri = file.absolutePath, fileSizeBytes = bytes.size.toLong(), updatedAt = java.time.Instant.now().toString()))
+                document.receiptInternalId?.let { receiptId ->
+                    repository.getReceiptByInternalId(receiptId)?.let { receipt ->
+                        val paths = com.example.data.ReceiptOriginalChain.localPaths(receipt,
+                            repository.getAllManagedDocuments().filter { it.receiptInternalId == receiptId })
+                        if (paths != receipt.imageUrl) repository.insert(receipt.copy(imageUrl = paths))
+                    }
+                }
                 _documentOperationStatus.value = "Original lokal verfügbar."
             } catch (e: Exception) {
                 _documentOperationStatus.value = "Original konnte nicht geladen werden: ${e.message}"
@@ -4201,13 +4264,20 @@ data class AiSearchUiState(
         wohneinheit: String = "",
         mieter: String = "",
         zahlungsart: String = "Unbekannt",
-        positionenJson: String = ""
+        positionenJson: String = "",
+        originals: List<com.example.data.ManagedDocument> = emptyList()
     ) {
         val navigationGeneration = _primaryNavigationReset.value.generation
         // A primary click may close the editor while its committed save finishes.
         // Keep that save's origin; only its eventual UI navigation becomes stale.
         val originatingBankTransactionId = _pendingBankTransactionId.value
         viewModelScope.launch {
+            try {
+                kotlinx.coroutines.withContext(Dispatchers.IO) { com.example.data.ReceiptOriginalStorage.validate(originals) }
+            } catch (e: Exception) {
+                _scanState.value = ScanUiState.Error(e.message ?: "Das Belegoriginal konnte nicht gesichert werden. Bitte erneut auswählen.")
+                return@launch
+            }
             // Learn rule automatically for KI adaptive memory
             learnVendorRule(aussteller, hauptkategorie, unterkategorie, kontoNr, wohneinheit)
 
@@ -4215,6 +4285,7 @@ data class AiSearchUiState(
                 ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
             val stableUnitId = resolveReceiptUnitId(targetPropertyId, wohneinheit)
             val newReceipt = Receipt(
+                internalId = java.util.UUID.randomUUID().toString(),
                 aussteller = aussteller,
                 datum = datum,
                 uhrzeit = uhrzeit,
@@ -4224,7 +4295,10 @@ data class AiSearchUiState(
                 kontoNr = kontoNr,
                 beschreibung = beschreibung,
                 isEigenleistungSanierung = isEigenleistung,
-                imageUrl = imageUrl,
+                imageUrl = if (originals.isNotEmpty()) originals.joinToString(",") { it.localUri } else imageUrl,
+                originalMimeType = originals.firstOrNull()?.mimeType,
+                fileSizeBytes = originals.firstOrNull()?.fileSizeBytes,
+                storedFilename = originals.firstOrNull()?.storedFilename,
                 wohneinheit = wohneinheit,
                 propertyId = targetPropertyId,
                 unitId = stableUnitId,
@@ -4234,8 +4308,22 @@ data class AiSearchUiState(
                 zahlungsartConfidence = if (normalizePaymentMethod(zahlungsart) == "Unbekannt") 0.0 else 1.0,
                 positionenJson = positionenJson
             )
-            val newId = repository.insert(newReceipt)
-            val savedReceipt = newReceipt.copy(id = newId.toInt())
+            val savedReceipt = try { database.withTransaction {
+                originals.forEachIndexed { index, original ->
+                    repository.upsertManagedDocument(original.copy(
+                        documentId = if (index == 0) com.example.data.StableDocumentIdentity.receiptDocumentId(newReceipt.internalId) else original.documentId,
+                        receiptInternalId = newReceipt.internalId, propertyId = targetPropertyId,
+                        unitId = stableUnitId.takeIf(String::isNotBlank), documentDate = datum, title = aussteller,
+                        documentCategory = "02_Belege/${datum.take(4)}",
+                        extractedFieldsJson = org.json.JSONObject().put("_receiptOriginalOrder", index).toString()
+                    ), newReceipt)
+                }
+                val newId = repository.insert(newReceipt)
+                requireNotNull(repository.getReceiptById(newId.toInt()))
+            } } catch (e: Exception) {
+                _scanState.value = ScanUiState.Error("Der Beleg konnte nicht gespeichert werden. Die Originale bleiben lokal erhalten. Bitte erneut versuchen. ${e.message.orEmpty()}")
+                return@launch
+            }
 
             originatingBankTransactionId?.let { pendingTransactionId ->
                 database.bankDao().getTransaction(pendingTransactionId)?.let { transaction ->

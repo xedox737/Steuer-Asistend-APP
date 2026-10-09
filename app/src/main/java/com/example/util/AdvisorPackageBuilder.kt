@@ -36,7 +36,8 @@ object AdvisorPackageBuilder {
         profile: DatevProfile,
         validationReport: ValidationReport,
         periodSummary: String = "2026",
-        annualSummary: AdvisorAnnualSummary? = null
+        annualSummary: AdvisorAnnualSummary? = null,
+        originalDocuments: List<com.example.data.ManagedDocument> = emptyList()
     ): AdvisorPackageResult {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.GERMANY).format(Date())
         val timestampIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.GERMANY).format(Date())
@@ -72,7 +73,7 @@ object AdvisorPackageBuilder {
             zos.write(extfBytes)
             zos.closeEntry()
 
-            // 2. 02_Originalbelege/ (exactly one verified original per stable receipt identity)
+            // 2. Every verified original/page of each stable receipt, once per booking reference.
             val includedByRoomId = includedReceipts.associateBy { it.id }
             val processedReceiptReferences = mutableSetOf<String>()
             if (includeOriginals) records.forEach { record ->
@@ -81,33 +82,45 @@ object AdvisorPackageBuilder {
                         ?: throw IllegalStateException(
                             "Exportierter Buchungssatz hat keinen zugehörigen Beleg."
                         )
-                    val attachment = DatevOriginalAttachmentPolicy.resolve(receipt)
-                        ?: throw IllegalStateException(
+                    val attachments = DatevOriginalAttachmentPolicy.resolveAll(receipt, originalDocuments)
+                    if (attachments.isEmpty()) throw IllegalStateException(
                             "Originalbeleg für " + receipt.getEffectiveDisplayId() +
                                 " ist nicht lokal verfügbar oder nicht lesbar."
                         )
-                    val belegFileName =
-                        record.belegdatum + "_" + record.belegfeld1 + "_Original." +
-                            attachment.extension
-                    val entryName = "02_Originalbelege/" + belegFileName
-                    val originalBytes = attachment.file.readBytes()
+                    attachments.forEach { attachment ->
+                        val belegFileName =
+                            record.belegdatum + "_" + record.belegfeld1 + "_Original." +
+                                attachment.extension
+                        val completeFileName = if (attachments.size == 1) belegFileName else
+                            record.belegdatum + "_" + record.belegfeld1 + "_Original_" +
+                                (attachment.order + 1).toString().padStart(3, '0') + "." + attachment.extension
+                        val entryName = "02_Originalbelege/" + completeFileName
+                        val originalBytes = attachment.file.readBytes()
+                        check(ReceiptManifestService.calculateSha256Bytes(originalBytes) == attachment.sha256) {
+                            "Das Original wurde während des Exports verändert. Bitte erneut prüfen."
+                        }
 
-                    zos.putNextEntry(ZipEntry(entryName))
-                    zos.write(originalBytes)
-                    zos.closeEntry()
+                        zos.putNextEntry(ZipEntry(entryName))
+                        zos.write(originalBytes)
+                        zos.closeEntry()
 
-                    fileItems.add(
-                        ManifestFileItem(
-                            filename = entryName,
-                            receiptId = receipt.id,
-                            mimeType = attachment.mimeType,
-                            fileSizeBytes = originalBytes.size.toLong(),
-                            sha256Hash = ReceiptManifestService.calculateSha256Bytes(originalBytes),
-                            belegnummer = record.belegfeld1,
-                            belegdatum = record.belegdatum,
-                            betragEur = receipt.bruttobetrag
+                        fileItems.add(
+                            ManifestFileItem(
+                                filename = entryName,
+                                receiptId = receipt.id,
+                                mimeType = attachment.mimeType,
+                                fileSizeBytes = originalBytes.size.toLong(),
+                                sha256Hash = ReceiptManifestService.calculateSha256Bytes(originalBytes),
+                                belegnummer = record.belegfeld1,
+                                belegdatum = record.belegdatum,
+                                betragEur = receipt.bruttobetrag,
+                                receiptInternalId = receipt.internalId,
+                                attachmentId = attachment.attachmentId,
+                                originalFilename = attachment.originalFilename,
+                                order = attachment.order
+                            )
                         )
-                    )
+                    }
                 }
             }
 
@@ -190,7 +203,7 @@ object AdvisorPackageBuilder {
                 Ordnerstruktur:
                 - 00_Start/                 Start-PDF, Übersicht und Nutzungshinweise.
                 - 01_DATEV/                 Geprüfter EXTF-Buchungsstapel und Kanzleiprofil.
-                - 02_Originalbelege/        Je stabiler Belegidentität höchstens ein verifiziertes Original.
+                - 02_Originalbelege/        Sämtliche Originaldateien/Seiten je stabiler Belegidentität.
                 - 03_Anlage_V/              Anlage-V-Vorschau mit Werteherkunft und Prüfstatus.
                 - 04_Mieten/                Jahres-Mietprüfung und Soll-/Ist-Abgleich.
                 - 05_Finanzierung/          Finanzierung und Schuldzinsen.

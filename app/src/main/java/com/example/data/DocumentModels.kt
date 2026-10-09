@@ -107,6 +107,9 @@ interface ManagedDocumentDao {
     @Query("SELECT * FROM managed_documents WHERE receiptInternalId = :receiptId LIMIT 1")
     suspend fun getByReceiptId(receiptId: String): ManagedDocument?
 
+    @Query("SELECT * FROM managed_documents WHERE receiptInternalId = :receiptId")
+    suspend fun getAllByReceiptId(receiptId: String): List<ManagedDocument>
+
     @Query("SELECT * FROM managed_documents WHERE driveFileId = :driveFileId LIMIT 1")
     suspend fun getByDriveFileId(driveFileId: String): ManagedDocument?
 

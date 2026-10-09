@@ -183,8 +183,13 @@ data class BankImportBatch(
     val transactions: List<BankTransaction>,
     val format: String,
     val skippedRows: Int = 0,
-    val errorRows: Int = 0
+    val errorRows: Int = 0,
+    val errors: List<BankImportIssue> = emptyList()
 )
+
+data class BankImportIssue(val rowNumber: Int, val field: String, val originalValue: String, val cause: String) {
+    val message: String get() = "Zeile $rowNumber: $cause $field ‚$originalValue‘."
+}
 
 data class BankMatchSuggestion(
     val transactionId: String,
@@ -199,8 +204,14 @@ object BankTransactionIdentity {
         .digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it) }
 
-    fun accountId(source: String, iban: String, fallbackName: String): String =
-        "bank-" + sha256("${source.trim().uppercase()}|${normalize(iban)}|${normalize(fallbackName)}").take(24)
+    fun normalizeAccountIdentifier(value: String): String = value.filterNot(Char::isWhitespace).uppercase(java.util.Locale.ROOT)
+
+    fun accountId(source: String, iban: String, fallbackName: String): String {
+        val identifier = normalizeAccountIdentifier(iban)
+        // Empty identity is an explicit request for account selection, never a filename-based account.
+        if (identifier.isBlank()) return ""
+        return "bank-" + sha256("account|$identifier").take(24)
+    }
 
     fun importRunId(source: String, fileName: String, importedAt: String): String =
         "import-" + sha256("${source.trim().uppercase()}|${normalize(fileName)}|${importedAt.trim()}").take(24)
@@ -265,10 +276,10 @@ object BankImportParser {
         propertyId: String = "",
         unitId: String = ""
     ): BankImportBatch {
-        val lines = text.replace("\r\n", "\n").replace('\r', '\n').lines().filter { it.isNotBlank() }
+        val lines = text.replace("\r\n", "\n").replace('\r', '\n').lines().withIndex().filter { it.value.isNotBlank() }
         require(lines.size >= 2) { "CSV enthält keine Buchungen." }
-        val delimiter = detectDelimiter(lines.first())
-        val rows = lines.map { splitCsvLine(it, delimiter) }
+        val delimiter = detectDelimiter(lines.first().value)
+        val rows = lines.map { splitCsvLine(it.value, delimiter) }
         val headers = rows.first().map(::normalizeHeader)
         fun indexOf(aliases: List<String>): Int = aliases.asSequence()
             .map(::normalizeHeader)
@@ -289,23 +300,36 @@ object BankImportParser {
         require(bookingIdx >= 0) { "CSV-Spalte für Buchungsdatum wurde nicht erkannt." }
         require(amountIdx >= 0 || debitIdx >= 0 || creditIdx >= 0) { "CSV-Spalte für Betrag bzw. Soll/Haben wurde nicht erkannt." }
 
-        val ownIban = rows.drop(1).firstNotNullOfOrNull { row ->
-            row.getOrNull(ownIbanIdx).orEmpty().trim().takeIf { ownIbanIdx >= 0 && it.isNotBlank() }
-        }.orEmpty()
+        val ownIdentifiers = rows.drop(1).map { row ->
+            BankTransactionIdentity.normalizeAccountIdentifier(row.getOrNull(ownIbanIdx).orEmpty())
+        }.filter(String::isNotBlank).distinct()
+        require(ownIdentifiers.size <= 1) { "Die CSV enthält mehrere eigene Kontokennungen. Bitte je Konto getrennt importieren." }
+        val ownIban = ownIdentifiers.firstOrNull().orEmpty()
         val accountId = BankTransactionIdentity.accountId("CSV", ownIban, fallbackAccountName)
         val seenCanonical = mutableMapOf<String, Int>()
         var errorRows = 0
+        val errors = mutableListOf<BankImportIssue>()
         val effectiveRunId = importRunId.ifBlank {
             BankTransactionIdentity.importRunId("CSV", importFileName.ifBlank { fallbackAccountName }, importedAt)
         }
-        val transactions = rows.drop(1).mapNotNull { row ->
+        val transactions = rows.drop(1).mapIndexedNotNull { index, row ->
+            val rowNumber = lines[index + 1].index + 1
             val amount = parseCsvAmount(row, amountIdx, debitIdx, creditIdx)
-            val bookingDate = normalizeDate(row.getOrNull(bookingIdx).orEmpty())
-            if (amount == null || bookingDate.isBlank()) {
-                errorRows++
-                return@mapNotNull null
+            val rawBookingDate = row.getOrNull(bookingIdx).orEmpty()
+            val bookingDate = normalizeDate(rawBookingDate)
+            val rawValueDate = row.getOrNull(valueIdx).orEmpty()
+            val valueDate = normalizeDate(rawValueDate)
+            if (amount == null) {
+                val raw = if (amountIdx >= 0 && row.getOrNull(amountIdx).orEmpty().isNotBlank()) row.getOrNull(amountIdx).orEmpty()
+                    else listOf(debitIdx, creditIdx).filter { it >= 0 }.joinToString(" / ") { row.getOrNull(it).orEmpty() }
+                errors += BankImportIssue(rowNumber, "Betrag", raw, "Ungültiger oder fehlender")
             }
-            val valueDate = normalizeDate(row.getOrNull(valueIdx).orEmpty())
+            if (bookingDate.isBlank()) errors += BankImportIssue(rowNumber, "Buchungsdatum", rawBookingDate, "Ungültiges")
+            if (rawValueDate.isNotBlank() && valueDate.isBlank()) errors += BankImportIssue(rowNumber, "Wertstellungsdatum", rawValueDate, "Ungültiges")
+            if (amount == null || bookingDate.isBlank() || (rawValueDate.isNotBlank() && valueDate.isBlank())) {
+                errorRows++
+                return@mapIndexedNotNull null
+            }
             val counterparty = row.getOrNull(counterpartyIdx).orEmpty().trim()
             val purpose = row.getOrNull(purposeIdx).orEmpty().trim()
             val currency = row.getOrNull(currencyIdx).orEmpty().trim().ifBlank { "EUR" }
@@ -336,7 +360,7 @@ object BankImportParser {
                 updatedAt = importedAt
             )
         }
-        require(transactions.isNotEmpty()) { "Keine gültigen CSV-Buchungen erkannt." }
+        require(transactions.isNotEmpty()) { errors.joinToString("\n") { it.message }.ifBlank { "Keine gültigen CSV-Buchungen erkannt." } }
         return BankImportBatch(
             account = BankAccount(
                 accountId = accountId,
@@ -350,7 +374,8 @@ object BankImportParser {
             transactions = transactions,
             format = "CSV",
             skippedRows = 0,
-            errorRows = errorRows
+            errorRows = errorRows,
+            errors = errors
         )
     }
 
@@ -383,7 +408,7 @@ object BankImportParser {
                 }
                 val amountElement = entry.getElementsByTagNameNS("*", "Amt").item(0) as? Element
                 val rawAmount = amountElement?.textContent?.trim()?.replace(',', '.')?.toDoubleOrNull()
-                if (amountElement == null || rawAmount == null) {
+                if (amountElement == null || rawAmount == null || !rawAmount.isFinite()) {
                     errorRows++
                     continue
                 }
@@ -395,6 +420,10 @@ object BankImportParser {
                     continue
                 }
                 val valueDate = firstDate(entry, "ValDt")
+                if (rawDate(entry, "ValDt").isNotBlank() && valueDate.isBlank()) {
+                    errorRows++
+                    continue
+                }
                 val reference = firstNonBlank(
                     firstText(entry, "AcctSvcrRef"),
                     firstText(entry, "NtryRef"),
@@ -463,6 +492,8 @@ object BankImportParser {
         }
         val debit = if (debitIdx >= 0) parseAmount(row.getOrNull(debitIdx).orEmpty()) else null
         val credit = if (creditIdx >= 0) parseAmount(row.getOrNull(creditIdx).orEmpty()) else null
+        if ((debitIdx >= 0 && row.getOrNull(debitIdx).orEmpty().isNotBlank() && debit == null) ||
+            (creditIdx >= 0 && row.getOrNull(creditIdx).orEmpty().isNotBlank() && credit == null)) return null
         return when {
             debit != null && credit == null -> -kotlin.math.abs(debit)
             credit != null && debit == null -> kotlin.math.abs(credit)
@@ -494,10 +525,18 @@ object BankImportParser {
     }
 
     internal fun parseAmount(raw: String): Double? {
-        var value = raw.trim().replace("\u00A0", "").replace(" ", "").replace("€", "")
+        var value = raw.trim().removePrefix("€").removeSuffix("€").trim()
         if (value.isBlank()) return null
         val negativeParentheses = value.startsWith("(") && value.endsWith(")")
-        value = value.removePrefix("(").removeSuffix(")")
+        if (negativeParentheses) value = value.removePrefix("(").removeSuffix(")")
+        if (value.any { it == ' ' || it == '\u00A0' }) {
+            if (!Regex("[+-]?\\d{1,3}(?:[ \\u00A0]\\d{3})+(?:[.,]\\d+)?").matches(value)) return null
+            value = value.replace("\u00A0", "").replace(" ", "")
+        }
+        val decimal = Regex("[+-]?\\d+(?:[.,]\\d+)?")
+        val germanGrouped = Regex("[+-]?\\d{1,3}(?:\\.\\d{3})+(?:,\\d+)?")
+        val englishGrouped = Regex("[+-]?\\d{1,3}(?:,\\d{3})+\\.\\d+")
+        if (!decimal.matches(value) && !germanGrouped.matches(value) && !englishGrouped.matches(value)) return null
         val lastComma = value.lastIndexOf(',')
         val lastDot = value.lastIndexOf('.')
         value = when {
@@ -506,15 +545,20 @@ object BankImportParser {
             lastDot >= 0 && lastComma < 0 && value.substringAfterLast('.').length == 3 -> value.replace(".", "")
             else -> value.replace(",", "")
         }
-        return value.toDoubleOrNull()?.let { if (negativeParentheses) -kotlin.math.abs(it) else it }
+        return value.toDoubleOrNull()?.takeIf { it.isFinite() }?.let { if (negativeParentheses) -kotlin.math.abs(it) else it }
     }
 
     internal fun normalizeDate(raw: String): String {
         val value = raw.trim()
-        if (Regex("\\d{4}-\\d{2}-\\d{2}").matches(value)) return value
-        val formats = listOf("dd.MM.yyyy", "d.M.yyyy", "dd/MM/yyyy", "d/M/yyyy")
+        if (Regex("\\d{4}-\\d{2}-\\d{2}").matches(value)) {
+            return runCatching { LocalDate.parse(value).takeIf { it.year > 0 }?.toString().orEmpty() }.getOrDefault("")
+        }
+        val formats = listOf("dd.MM.uuuu", "d.M.uuuu", "dd/MM/uuuu", "d/M/uuuu")
         return formats.asSequence().mapNotNull { pattern ->
-            runCatching { java.time.format.DateTimeFormatter.ofPattern(pattern).let { LocalDate.parse(value, it).toString() } }.getOrNull()
+            runCatching {
+                java.time.format.DateTimeFormatter.ofPattern(pattern).withResolverStyle(java.time.format.ResolverStyle.STRICT)
+                    .let { LocalDate.parse(value, it).takeIf { date -> date.year > 0 }?.toString() }
+            }.getOrNull()
         }.firstOrNull().orEmpty()
     }
 
@@ -535,7 +579,9 @@ object BankImportParser {
         }
     }
 
-    private fun firstDate(entry: Element, parentLocalName: String): String {
+    private fun firstDate(entry: Element, parentLocalName: String): String = normalizeDate(rawDate(entry, parentLocalName))
+
+    private fun rawDate(entry: Element, parentLocalName: String): String {
         val parents = entry.getElementsByTagNameNS("*", parentLocalName)
         if (parents.length == 0) return ""
         val parent = parents.item(0) as? Element ?: return ""

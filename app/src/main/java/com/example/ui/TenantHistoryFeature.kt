@@ -208,6 +208,14 @@ internal object TenantHistoryStore {
             if (period.active) period.copy(endDate = exitDate) else period
         } + newPeriod
 
+    /** One contractual source for today's tenant and rent; future/invalid periods do not win. */
+    fun currentAt(periods: List<TenantPeriod>, date: LocalDate = LocalDate.now()): TenantPeriod? =
+        periods.filter { period ->
+            val start = if (period.startDate.isBlank()) LocalDate.MIN else CalendarInput.parseIsoDate(period.startDate)
+            val end = if (period.endDate.isBlank()) LocalDate.MAX else CalendarInput.parseIsoDate(period.endDate)
+            start != null && end != null && !end.isBefore(start) && !date.isBefore(start) && !date.isAfter(end)
+        }.maxByOrNull { CalendarInput.parseIsoDate(it.startDate) ?: LocalDate.MIN }
+
     fun ensureCurrentPeriod(
         context: Context,
         unit: WohneinheitStatus,

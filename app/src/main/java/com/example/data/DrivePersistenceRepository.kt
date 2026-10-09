@@ -467,19 +467,25 @@ class DrivePersistenceRepository(
         }
     }
 
-    fun saveWohneinheitenToPrefs(units: List<WohneinheitStatus>) {
+    fun saveWohneinheitenToPrefs(units: List<WohneinheitStatus>, mode: RestoreMode = RestoreMode.MERGE) {
         val unitPrefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val editor = unitPrefs.edit()
+        fun putString(key: String, value: String) {
+            if (mode != RestoreMode.MERGE || !unitPrefs.contains(key)) editor.putString(key, value)
+        }
+        fun putFloat(key: String, value: Float) {
+            if (mode != RestoreMode.MERGE || !unitPrefs.contains(key)) editor.putFloat(key, value)
+        }
         for ((index, u) in units.withIndex()) {
-            editor.putString("unit_status_${u.name}", u.status)
-            editor.putString("unit_label_${u.name}", u.label)
-            editor.putString("unit_mieter_${u.name}", u.mieter)
-            editor.putFloat("unit_rent_${u.name}", u.kaltmiete.toFloat())
-            editor.putFloat("unit_area_${u.name}", u.wohnflaeche.toFloat())
-            editor.putString("unit_start_${u.name}", u.mietvertragsstart)
+            putString("unit_status_${u.name}", u.status)
+            putString("unit_label_${u.name}", u.label)
+            putString("unit_mieter_${u.name}", u.mieter)
+            putFloat("unit_rent_${u.name}", u.kaltmiete.toFloat())
+            putFloat("unit_area_${u.name}", u.wohnflaeche.toFloat())
+            putString("unit_start_${u.name}", u.mietvertragsstart)
             val stableId = u.unitId.ifBlank { StableDocumentIdentity.legacyUnitId(StableDocumentIdentity.LEGACY_PROPERTY_ID, u.name) }
-            editor.putString("unit_id_${u.name}", stableId)
-            editor.putString("unit_id_index_$index", stableId)
+            putString("unit_id_${u.name}", stableId)
+            putString("unit_id_index_$index", stableId)
         }
         editor.apply()
     }
@@ -508,17 +514,17 @@ class DrivePersistenceRepository(
         return rulesList
     }
 
-    fun saveLearnedRulesToPrefs(rules: List<LearnedVendorRule>) {
+    fun saveLearnedRulesToPrefs(rules: List<LearnedVendorRule>, mode: RestoreMode = RestoreMode.MERGE) {
         val learnedRulesPrefs = context.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
         val editor = learnedRulesPrefs.edit()
         learnedRulesPrefs.all.keys.forEach { k ->
-            if (k.startsWith("rule_")) editor.remove(k)
+            if (mode != RestoreMode.MERGE && k.startsWith("rule_")) editor.remove(k)
         }
         for (rule in rules) {
             val cleanVendor = rule.aussteller.trim()
             val normalizedKey = "rule_" + cleanVendor.lowercase().replace(Regex("[^a-z0-9]"), "_")
             val serialized = "${rule.aussteller}|||${rule.hauptkategorie}|||${rule.unterkategorie}|||${rule.kontoNr}|||${rule.wohneinheit}|||${rule.count}"
-            editor.putString(normalizedKey, serialized)
+            if (mode != RestoreMode.MERGE || !learnedRulesPrefs.contains(normalizedKey)) editor.putString(normalizedKey, serialized)
         }
         editor.apply()
     }
@@ -711,7 +717,9 @@ class DrivePersistenceRepository(
         }
     }
 
-    private suspend fun restorePropertyMetadata(metadata: PropertyMetadata) {
+    private suspend fun restorePropertyMetadata(metadata: PropertyMetadata, mode: RestoreMode = RestoreMode.MERGE) {
+        val local = localRepository.getPropertyByPropertyId(metadata.propertyId)
+        if (mode == RestoreMode.MERGE && local != null) return
         val existingImage = localRepository.getPropertyByPropertyId(metadata.propertyId)?.bildPfad
             ?.takeIf { it.isNotBlank() && File(it).isFile }
         val legacyImage = metadata.bildPfad.takeIf { it.isNotBlank() && File(it).isFile }
@@ -745,7 +753,7 @@ class DrivePersistenceRepository(
             if (datevFile != null) {
                 val json = GoogleDriveClient.downloadJson(accessToken, datevFile.id)
                 val profile = deserializeDatevProfile(json)
-                if (profile != null) {
+                if (profile != null && !context.getSharedPreferences("datev_kanzleiprofil_prefs", Context.MODE_PRIVATE).contains("active_profile_json")) {
                     DatevProfileService.saveActiveProfile(context, profile)
                     DiagnosticLog.d(TAG, "Restored DATEV Profile successfully.")
                 }
@@ -1433,6 +1441,23 @@ class DrivePersistenceRepository(
         return isPdf || isPng || isJpg || isWebp
     }
 
+    internal suspend fun syncReceiptOriginalAttachments(accessToken: String, config: DriveAppConfig, receipt: Receipt): Boolean {
+        val documents = ReceiptOriginalChain.ordered(localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId })
+        val primaryId = StableDocumentIdentity.receiptDocumentId(receipt.internalId)
+        for (document in documents.filter { it.documentId != primaryId }) {
+            if (!syncManagedDocumentToDrive(accessToken, config, document.documentId)) return false
+            val synced = localRepository.getManagedDocument(document.documentId) ?: return false
+            val fileId = synced.driveFileId ?: return false
+            localRepository.insertDocument(ReceiptDocumentReference(
+                id = synced.documentId, receiptInternalId = receipt.internalId, driveFileId = fileId,
+                driveFolderId = synced.driveFolderId, filename = synced.storedFilename,
+                mimeType = synced.mimeType, sizeBytes = synced.fileSizeBytes,
+                role = ReceiptDocumentRole.ATTACHMENT.name, createdAt = synced.createdAt
+            ))
+        }
+        return documents.size >= receipt.imageUrl.split(',').filter { it.isNotBlank() }.distinct().size
+    }
+
     suspend fun syncReceiptToDrive(
         accessToken: String,
         config: DriveAppConfig,
@@ -1808,6 +1833,7 @@ class DrivePersistenceRepository(
             )
             localRepository.insertDocument(docRef)
             val now = java.time.Instant.now().toString()
+            val existingManaged = localRepository.getManagedDocument(StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId))
             val receiptManagedDocument = ManagedDocument(
                 documentId = StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId),
                 propertyId = currentReceipt.propertyId,
@@ -1816,7 +1842,8 @@ class DrivePersistenceRepository(
                 documentCategory = if ((actualDriveFolderId ?: targetFolderId) == targetFolderId) "02_Belege/${currentReceipt.datum.take(4)}" else "LEGACY_BELEGABLAGE",
                 documentDate = currentReceipt.datum,
                 title = currentReceipt.aussteller,
-                originalFilename = currentReceipt.imageUrl.substringAfterLast('/').ifBlank { filename ?: "Beleg" },
+                originalFilename = existingManaged?.originalFilename?.takeIf(String::isNotBlank)
+                    ?: currentReceipt.imageUrl.substringBefore(',').substringAfterLast('/').ifBlank { filename ?: "Beleg" },
                 storedFilename = filename ?: "Beleg",
                 mimeType = mimeType ?: "application/octet-stream",
                 localUri = currentReceipt.imageUrl.substringBefore(','),
@@ -1824,8 +1851,9 @@ class DrivePersistenceRepository(
                 driveFolderId = actualDriveFolderId ?: targetFolderId,
                 sha256 = contentSha256,
                 fileSizeBytes = sizeBytes ?: 0L,
-                createdAt = now,
+                createdAt = existingManaged?.createdAt ?: now,
                 updatedAt = now,
+                extractedFieldsJson = existingManaged?.extractedFieldsJson.orEmpty(),
                 ocrStatus = DocumentProcessingStatus.AUSSTEHEND.name,
                 aiAnalysisStatus = DocumentProcessingStatus.NICHT_ERFORDERLICH.name,
                 reviewStatus = DocumentReviewStatus.GEPRUEFT.name,
@@ -1833,6 +1861,10 @@ class DrivePersistenceRepository(
                 legacyDriveFolderId = actualDriveFolderId?.takeIf { it != targetFolderId }
             )
             localRepository.upsertManagedDocument(receiptManagedDocument)
+            if (!syncReceiptOriginalAttachments(accessToken, config, currentReceipt)) {
+                localRepository.insert(currentReceipt.copy(syncStatus = "ERROR", syncError = "Nicht alle Originalseiten konnten gesichert werden."))
+                return@run false
+            }
             val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
 
             val persistedReceipt = PersistedReceipt(
@@ -2737,8 +2769,8 @@ class DrivePersistenceRepository(
         requestedMode: RestoreMode = RestoreMode.REPLACE_FULL
     ): DriveRestoreReport {
         val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-        val localReceiptsBefore = localRepository.getAllReceiptsList()
-        val mode = if (localReceiptsBefore.isEmpty()) RestoreMode.REPLACE_EMPTY else requestedMode
+        // Empty receipts do not mean empty properties, bank assignments, trips or preferences.
+        val mode = requestedMode
 
         if (mode == RestoreMode.CANCEL) {
             return DriveRestoreReport(
@@ -2794,7 +2826,7 @@ class DrivePersistenceRepository(
                 }
 
                 snapshot.propertyMetadata?.let {
-                    restorePropertyMetadata(it)
+                    restorePropertyMetadata(it, mode)
                 }
 
                 for (persisted in snapshot.receipts) {
@@ -2803,7 +2835,7 @@ class DrivePersistenceRepository(
                         lastSyncedAt = nowStr,
                         isArchivedToDrive = true
                     )
-                    localRepository.upsertRestoredReceipt(restoredReceipt)
+                    localRepository.upsertRestoredReceipt(restoredReceipt, mode)
                     receiptsRestored++
 
                     if (!restoredReceipt.driveFileId.isNullOrBlank()) {
@@ -2811,7 +2843,8 @@ class DrivePersistenceRepository(
                     }
 
                     for (doc in persisted.documents) {
-                        localRepository.insertDocument(doc)
+                        val current = localRepository.getDocumentsForReceipt(doc.receiptInternalId).firstOrNull { it.id == doc.id }
+                        if (mode != RestoreMode.MERGE || current == null) localRepository.insertDocument(doc)
                     }
 
                     itemsRestored += persisted.positionen.size
@@ -2847,13 +2880,14 @@ class DrivePersistenceRepository(
 
         try {
             if (snapshot.units.isNotEmpty()) {
-                saveWohneinheitenToPrefs(snapshot.units)
+                saveWohneinheitenToPrefs(snapshot.units, mode)
             }
-            if (snapshot.datevProfiles.isNotEmpty()) {
+            if (snapshot.datevProfiles.isNotEmpty() && (mode != RestoreMode.MERGE ||
+                !context.getSharedPreferences("datev_kanzleiprofil_prefs", Context.MODE_PRIVATE).contains("active_profile_json"))) {
                 DatevProfileService.saveActiveProfile(context, snapshot.datevProfiles.first())
             }
             if (snapshot.aiLearnedRules.isNotEmpty()) {
-                saveLearnedRulesToPrefs(snapshot.aiLearnedRules)
+                saveLearnedRulesToPrefs(snapshot.aiLearnedRules, mode)
             }
         } catch (e: Exception) {
             DiagnosticLog.w(TAG, "Warnung beim Schreiben der SharedPreferences nach Restore")
@@ -3135,6 +3169,9 @@ class DrivePersistenceRepository(
     }
 
     suspend fun downloadDocumentOnDemand(accessToken: String, receipt: Receipt): String {
+        val documents = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
+        val references = localRepository.getDocumentsForReceipt(receipt.internalId)
+        if (documents.isNotEmpty() || references.size > 1) return downloadReceiptOriginals(accessToken, receipt, documents, references)
         val fileId = receipt.driveFileId ?: throw Exception("Keine Drive-ID für diesen Beleg vorhanden.")
         try {
             val fileBytes = GoogleDriveClient.downloadFileBytes(accessToken, fileId) 
@@ -3205,6 +3242,60 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Error downloading document on demand for fileId")
             throw e
         }
+    }
+
+    internal suspend fun downloadReceiptOriginals(
+        accessToken: String,
+        receipt: Receipt,
+        knownDocuments: List<ManagedDocument>? = null,
+        references: List<ReceiptDocumentReference>? = null
+    ): String {
+        val candidates = (knownDocuments ?: localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }).toMutableList()
+        (references ?: localRepository.getDocumentsForReceipt(receipt.internalId)).forEachIndexed { index, reference ->
+            if (candidates.none { it.driveFileId == reference.driveFileId }) {
+                candidates += ManagedDocument(
+                    documentId = if (reference.role == ReceiptDocumentRole.MAIN_RECEIPT.name)
+                        StableDocumentIdentity.receiptDocumentId(receipt.internalId) else reference.id,
+                    receiptInternalId = receipt.internalId, propertyId = receipt.propertyId,
+                    originalFilename = reference.filename, storedFilename = reference.filename,
+                    mimeType = reference.mimeType, driveFileId = reference.driveFileId,
+                    driveFolderId = reference.driveFolderId, fileSizeBytes = reference.sizeBytes ?: 0L,
+                    createdAt = reference.createdAt, documentDate = receipt.datum,
+                    source = DocumentSource.RECEIPT.name,
+                    extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", if (reference.role == "MAIN_RECEIPT") 0 else index + 1).toString()
+                )
+            }
+        }
+        check(candidates.isNotEmpty()) { "Keine Originalreferenzen für diesen Beleg vorhanden." }
+        val downloaded = ReceiptOriginalChain.ordered(candidates).map { document ->
+            val local = File(document.localUri)
+            val bytes = if (local.isFile) local.readBytes() else {
+                val fileId = document.driveFileId ?: error("Eine Originalseite besitzt keine gesicherte Dateireferenz.")
+                managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
+                    ?: error("Eine Originalseite konnte nicht aus Google Drive geladen werden.")
+            }
+            check(bytes.isNotEmpty()) { "Eine Originalseite ist leer." }
+            val sha = getSha256(bytes)
+            check(document.sha256.isBlank() || document.sha256 == sha) { "Prüfsumme einer Originalseite stimmt nicht überein." }
+            val directory = File(context.filesDir, "managed_documents").apply { mkdirs() }
+            val extension = document.storedFilename.substringAfterLast('.', "bin").lowercase().takeIf { it in setOf("pdf", "jpg", "jpeg", "png", "webp") } ?: "bin"
+            val owner = UUID.nameUUIDFromBytes(document.documentId.toByteArray(Charsets.UTF_8))
+            val target = if (local.isFile) local else File(directory, "$owner-$sha.$extension")
+            if (!target.isFile) {
+                val staging = File.createTempFile("restore-original-", ".tmp", directory)
+                try {
+                    staging.writeBytes(bytes)
+                    check(staging.renameTo(target)) { "Eine Originalseite konnte nicht lokal gesichert werden." }
+                } finally { staging.delete() }
+            }
+            document.copy(localUri = target.absolutePath, sha256 = sha, fileSizeBytes = bytes.size.toLong())
+        }
+        // All pages have passed validation before any receipt reference is changed.
+        downloaded.forEach { localRepository.upsertManagedDocument(it) }
+        val current = localRepository.getReceiptByInternalId(receipt.internalId) ?: receipt
+        val paths = downloaded.joinToString(",") { it.localUri }
+        if (current.imageUrl != paths) localRepository.insert(current.copy(imageUrl = paths))
+        return downloaded.first().localUri
     }
 
     suspend fun runFullRestoreEndToEndTest(accessToken: String, config: DriveAppConfig): DriveRestoreReport {

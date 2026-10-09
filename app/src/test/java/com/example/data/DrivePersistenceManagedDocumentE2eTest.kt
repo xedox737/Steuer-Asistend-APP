@@ -61,6 +61,51 @@ class DrivePersistenceManagedDocumentE2eTest {
         database.close()
     }
 
+    @Test fun receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata() = runTest {
+        val fixtures = SyntheticDocumentFixtureFactory.create().filter { it.number in setOf(1, 5) }
+        val originals = fixtures.mapIndexed { index, fixture ->
+            val source = java.io.File(context.cacheDir, fixture.filename).apply { writeBytes(fixture.bytes) }
+            val original = ReceiptOriginalStorage(context).importOriginal(android.net.Uri.fromFile(source), fixture.filename)
+            source.delete()
+            original.copy(documentId = if (index == 0) "receipt:multi" else "multi-page-2", receiptInternalId = "multi",
+                propertyId = "property-test", documentDate = "2026-10-08",
+                extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", index).toString())
+        }
+        val receipt = Receipt(internalId = "multi", aussteller = "Manuell", datum = "2026-10-08", uhrzeit = "", bruttobetrag = 100.0,
+            hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800", beschreibung = "",
+            propertyId = "property-test", imageUrl = originals.joinToString(",") { it.localUri }, driveFileId = "main-original")
+        originals.forEach { localRepository.upsertManagedDocument(it, receipt) }
+        val id = localRepository.insert(receipt).toInt()
+        val saved = localRepository.getReceiptById(id)!!
+        fakeDrive.put("main-original", "receipts", fixtures.first().filename, fixtures.first().bytes)
+        assertTrue(driveRepository.syncReceiptOriginalAttachments("test-token", config, saved))
+        assertEquals(1, fakeDrive.uploadCalls)
+        assertTrue(driveRepository.syncReceiptOriginalAttachments("test-token", config, saved))
+        assertEquals(1, fakeDrive.uploadCalls)
+        assertEquals(1, localRepository.getDocumentsForReceipt("multi").size)
+        val backup = SupplementalDriveBackup.createPayload(context, database)
+        originals.forEach { java.io.File(it.localUri).delete() }
+        localRepository.clearAllData()
+        localRepository.insert(saved.copy(id = 0, imageUrl = ""))
+        repeat(2) { SupplementalDriveBackup.restorePayload(context, database, backup) }
+        val restored = localRepository.getReceiptByInternalId("multi")!!
+        driveRepository.downloadReceiptOriginals("test-token", restored)
+        val downloaded = ReceiptOriginalChain.ordered(localRepository.getAllManagedDocuments().filter { it.receiptInternalId == "multi" })
+        assertEquals(2, downloaded.size)
+        downloaded.forEachIndexed { index, document ->
+            assertEquals(originals[index].documentId, document.documentId)
+            assertEquals(fixtures[index].filename, document.originalFilename)
+            assertEquals(fixtures[index].sha256, document.sha256)
+            assertEquals(originals[index].mimeType, document.mimeType)
+            assertArrayEquals(fixtures[index].bytes, java.io.File(document.localUri).readBytes())
+        }
+        val updatedReceipt = localRepository.getReceiptByInternalId("multi")!!
+        assertEquals(downloaded.map { it.localUri }, updatedReceipt.imageUrl.split(','))
+        driveRepository.downloadReceiptOriginals("test-token", updatedReceipt)
+        assertEquals(downloaded, ReceiptOriginalChain.ordered(localRepository.getAllManagedDocuments().filter { it.receiptInternalId == "multi" }))
+        downloaded.forEach { java.io.File(it.localUri).delete() }
+    }
+
     @Test fun `fixture 9 purchase contract uses production repository sync and updates real index json`() = runTest {
         assertSuccessfulReclassification(9, ManagedDocumentType.KAUFVERTRAG, null, "00_Stammdaten/01_Kauf_Eigentum")
     }

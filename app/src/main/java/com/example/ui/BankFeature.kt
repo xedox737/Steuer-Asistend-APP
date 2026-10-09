@@ -112,6 +112,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
     val rentSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
     val importStatus by viewModel.bankImportStatus.collectAsStateWithLifecycle()
+    val pendingAccountImports by viewModel.pendingBankAccountImports.collectAsStateWithLifecycle()
     val learningRules by viewModel.bankLearningRules.collectAsStateWithLifecycle()
     val undoNotice by viewModel.bankUndoNotice.collectAsStateWithLifecycle()
     val returnToTransactionId by viewModel.bankTransactionDetailsReturnId.collectAsStateWithLifecycle()
@@ -135,6 +136,33 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.importBankFile(uri)
+    }
+
+    if (pendingAccountImports.isNotEmpty()) {
+        var newAccountName by remember(pendingAccountImports) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = viewModel::cancelBankAccountImport,
+            title = { Text("Konto für den Import wählen") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Die Datei enthält keine eindeutige Kontozuordnung. Wähle das zugehörige Konto.")
+                    accounts.forEach { account ->
+                        TextButton(onClick = { viewModel.confirmBankAccountImport(account.accountId) }) {
+                            Text(account.displayName)
+                        }
+                    }
+                    OutlinedTextField(value = newAccountName, onValueChange = { newAccountName = it },
+                        label = { Text("Name für ein neues Konto") }, singleLine = true)
+                    importStatus?.takeIf { it.startsWith("Import fehlgeschlagen") }?.let { Text(it) }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = newAccountName.isNotBlank(), onClick = {
+                    viewModel.confirmBankAccountImport(newAccountName = newAccountName)
+                }) { Text("Neues Konto anlegen und importieren") }
+            },
+            dismissButton = { TextButton(onClick = viewModel::cancelBankAccountImport) { Text("Abbrechen") } }
+        )
     }
 
     val accountTransactions = remember(transactions, selectedAccountId) {
