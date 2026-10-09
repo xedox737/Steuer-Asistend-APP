@@ -984,7 +984,8 @@ class ReceiptRepository(
     private suspend fun indexReceiptDocument(receipt: Receipt) {
         val dao = managedDocumentDao ?: return
         if (receipt.internalId.isBlank()) return
-        val existing = dao.getByReceiptId(receipt.internalId)
+        val existing = dao.getById(StableDocumentIdentity.receiptDocumentId(receipt.internalId))
+            ?: dao.getByReceiptId(receipt.internalId)
         val now = java.time.Instant.now().toString()
         val propertyId = receipt.propertyId
         val localPath = receipt.imageUrl.substringBefore(',').removePrefix("file://")
@@ -1019,6 +1020,28 @@ class ReceiptRepository(
         dao.upsert(document)
         dao.deleteSearchEntry(document.documentId)
         dao.insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, receipt)))
+        val attached = dao.getAllByReceiptId(receipt.internalId)
+        receipt.imageUrl.split(',').map(String::trim).filter(String::isNotBlank).distinct().drop(1).forEachIndexed { index, path ->
+            val file = java.io.File(path.removePrefix("file://"))
+            val current = attached.firstOrNull { it.localUri == path }
+            if (current == null && !file.isFile) return@forEachIndexed
+            val sha = current?.sha256?.takeIf(String::isNotBlank)
+                ?: com.example.util.ReceiptManifestService.calculateSha256(file)
+            val format = if (file.isFile) com.example.util.DatevOriginalAttachmentPolicy.detect(file) else null
+            val fields = runCatching { org.json.JSONObject(current?.extractedFieldsJson.orEmpty()) }
+                .getOrElse { org.json.JSONObject() }.put("_receiptOriginalOrder", index + 1).toString()
+            val page = (current ?: document.copy(
+                documentId = "${receipt.internalId}:original:$sha", createdAt = now,
+                driveFileId = null, driveFolderId = null,
+                originalFilename = file.name, storedFilename = file.name, sha256 = sha,
+                fileSizeBytes = file.length(), mimeType = format?.first ?: "application/octet-stream"
+            )).copy(propertyId = propertyId, unitId = receipt.unitId.takeIf(String::isNotBlank),
+                documentDate = receipt.datum, title = receipt.aussteller, localUri = path,
+                extractedFieldsJson = fields, updatedAt = now)
+            dao.upsert(page)
+            dao.deleteSearchEntry(page.documentId)
+            dao.insertSearchEntry(DocumentSearchFts(page.documentId, DocumentSearchTextBuilder.build(page, receipt)))
+        }
     }
 
     suspend fun deleteById(id: Int) {

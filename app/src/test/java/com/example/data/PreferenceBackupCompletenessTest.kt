@@ -115,8 +115,10 @@ class PreferenceBackupCompletenessTest {
         assertEquals(1, properties.getValue("local-C").id)
         assertEquals("Lokales Objekt", properties.getValue("local-C").name)
         assertEquals(7, properties.getValue("remote-B").id)
-        assertEquals("Objekt B", properties.getValue("remote-B").name)
+        assertEquals("Alter Name B", properties.getValue("remote-B").name)
         assertNotEquals(1, properties.getValue("remote-A").id)
+        SupplementalDriveBackup.restorePayload(context, database, payload, restoreMode = RestoreMode.REPLACE_FULL)
+        assertEquals("Objekt B", database.propertyDao().getPropertyByPropertyId("remote-B")!!.name)
     }
 
     @Test fun credentialsNeverLeaveAnyStoreAndCannotBeInjectedOnRestore() = runTest {

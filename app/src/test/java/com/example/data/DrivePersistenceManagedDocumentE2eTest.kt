@@ -61,6 +61,114 @@ class DrivePersistenceManagedDocumentE2eTest {
         database.close()
     }
 
+    @Test fun receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata() = runTest {
+        val fixtures = SyntheticDocumentFixtureFactory.create().filter { it.number in setOf(1, 5) }
+        val originals = fixtures.mapIndexed { index, fixture ->
+            val source = java.io.File(context.cacheDir, fixture.filename).apply { writeBytes(fixture.bytes) }
+            val original = ReceiptOriginalStorage(context).importOriginal(android.net.Uri.fromFile(source), fixture.filename)
+            source.delete()
+            original.copy(documentId = if (index == 0) "receipt:multi" else "multi-page-2", receiptInternalId = "multi",
+                propertyId = "property-test", documentDate = "2026-10-08",
+                extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", index).toString())
+        }
+        val receipt = Receipt(internalId = "multi", aussteller = "Manuell", datum = "2026-10-08", uhrzeit = "", bruttobetrag = 100.0,
+            hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800", beschreibung = "",
+            propertyId = "property-test", imageUrl = originals.joinToString(",") { it.localUri }, driveFileId = "main-original")
+        originals.forEach { localRepository.upsertManagedDocument(it, receipt) }
+        val id = localRepository.insert(receipt).toInt()
+        val saved = localRepository.getReceiptById(id)!!
+        fakeDrive.put("main-original", "receipts", fixtures.first().filename, fixtures.first().bytes)
+        assertTrue(driveRepository.syncReceiptOriginalAttachments("test-token", config, saved))
+        assertEquals(1, fakeDrive.uploadCalls)
+        assertTrue(driveRepository.syncReceiptOriginalAttachments("test-token", config, saved))
+        assertEquals(1, fakeDrive.uploadCalls)
+        assertEquals(1, localRepository.getDocumentsForReceipt("multi").size)
+        val backup = SupplementalDriveBackup.createPayload(context, database)
+        originals.forEach { java.io.File(it.localUri).delete() }
+        localRepository.clearAllData()
+        localRepository.insert(saved.copy(id = 0, imageUrl = ""))
+        repeat(2) { SupplementalDriveBackup.restorePayload(context, database, backup) }
+        val restored = localRepository.getReceiptByInternalId("multi")!!
+        driveRepository.downloadReceiptOriginals("test-token", restored)
+        val downloaded = ReceiptOriginalChain.ordered(localRepository.getAllManagedDocuments().filter { it.receiptInternalId == "multi" })
+        assertEquals(2, downloaded.size)
+        downloaded.forEachIndexed { index, document ->
+            assertEquals(originals[index].documentId, document.documentId)
+            assertEquals(fixtures[index].filename, document.originalFilename)
+            assertEquals(fixtures[index].sha256, document.sha256)
+            assertEquals(originals[index].mimeType, document.mimeType)
+            assertArrayEquals(fixtures[index].bytes, java.io.File(document.localUri).readBytes())
+        }
+        val updatedReceipt = localRepository.getReceiptByInternalId("multi")!!
+        assertEquals(downloaded.map { it.localUri }, updatedReceipt.imageUrl.split(','))
+        driveRepository.downloadReceiptOriginals("test-token", updatedReceipt)
+        assertEquals(downloaded, ReceiptOriginalChain.ordered(localRepository.getAllManagedDocuments().filter { it.receiptInternalId == "multi" }))
+        downloaded.forEach { java.io.File(it.localUri).delete() }
+    }
+
+    @Test fun automaticReceiptMetadataRoundTripCarriesEveryOriginalWithoutLocalPathsOrOcrAndReadsOldBackups() {
+        val originals = (0..1).map { order -> ManagedDocument(
+            documentId = if (order == 0) "receipt:metadata" else "metadata-page-2", receiptInternalId = "metadata",
+            propertyId = "property-test", originalFilename = "Seite ${order + 1}.${if (order == 0) "pdf" else "png"}",
+            storedFilename = "managed-$order.${if (order == 0) "pdf" else "png"}",
+            mimeType = if (order == 0) "application/pdf" else "image/png", sha256 = "$order".repeat(64), unitId = "stable-unit-id",
+            fileSizeBytes = 100L + order, driveFileId = "remote-$order", driveFolderId = "folder",
+            localUri = "/private/local/original-$order", ocrText = "LOCAL_OCR_SENTINEL",
+            createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z",
+            extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", order).toString()) }
+        val persisted = PersistedReceipt(internalId = "metadata", displayId = "BELEG-1", originalDocuments = originals,
+            aussteller = "Manuell", rechnungsnummer = "", datum = "2026-10-08", nettobetragCent = 10000,
+            steuerbetragCent = 0, bruttobetragCent = 10000, hauptkategorie = "Renovierung", unterkategorie = "Material",
+            wohneinheit = "", propertyId = "property-test", massnahme = "", positionen = emptyList(),
+            zahlungsstatus = "BEZAHLT", zahlungsdatum = "2026-10-08", pruefstatus = "GEPRUEFT", exportstatus = "EXPORTBEREIT",
+            createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z", lastSyncedAt = null)
+        val json = with(driveRepository) { persisted.toJson() }
+        assertFalse(json.contains("/private/local"))
+        assertFalse(json.contains("LOCAL_OCR_SENTINEL"))
+        val parsed = driveRepository.parsePersistedReceipt(json)
+        assertEquals(2, parsed.originalDocuments.size)
+        parsed.originalDocuments.forEachIndexed { order, document ->
+            assertEquals(originals[order].documentId, document.documentId)
+            assertEquals(originals[order].sha256, document.sha256)
+            assertEquals("stable-unit-id", document.unitId)
+            assertEquals(originals[order].originalFilename, document.originalFilename)
+            assertEquals(originals[order].mimeType, document.mimeType)
+            assertEquals(originals[order].fileSizeBytes, document.fileSizeBytes)
+            assertEquals(order, JSONObject(document.extractedFieldsJson).getInt("_receiptOriginalOrder"))
+            assertTrue(document.localUri.isEmpty())
+        }
+        assertEquals(json, with(driveRepository) { parsed.toJson() })
+        val legacy = JSONObject(json).apply { remove("originalDocuments") }
+        assertTrue(driveRepository.parsePersistedReceipt(legacy.toString()).originalDocuments.isEmpty())
+    }
+
+    @Test fun newReceiptIndexCannotOverrideBackupOriginalMetadataAndExistingUnitCorrectionStillWins() = runTest {
+        val receipt = Receipt(internalId = "core-original", aussteller = "Manuell", datum = "2026-10-08", uhrzeit = "",
+            bruttobetrag = 100.0, hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800",
+            beschreibung = "", propertyId = "property-test")
+        val original = ManagedDocument(documentId = "receipt:core-original", propertyId = receipt.propertyId,
+            receiptInternalId = receipt.internalId, unitId = "stable-unit-id", originalFilename = "Original.pdf",
+            storedFilename = "Original.pdf", mimeType = "application/pdf", sha256 = "1".repeat(64),
+            driveFileId = "remote-original", createdAt = "2026-01-01T00:00:00Z", updatedAt = "2026-01-01T00:00:00Z",
+            extractedFieldsJson = "{\"_receiptOriginalOrder\":0}")
+        val before = localRepository.getAllManagedDocuments().associateBy { it.documentId }
+        val resolution = localRepository.upsertRestoredReceipt(receipt)
+        assertNotEquals(original.updatedAt, localRepository.getManagedDocument(original.documentId)!!.updatedAt)
+        driveRepository.restoreReceiptOriginalMetadata(receipt.internalId, resolution.receipt, listOf(original), RestoreMode.MERGE, before)
+        assertEquals(original, localRepository.getManagedDocument(original.documentId))
+        repeat(2) {
+            val existing = localRepository.getAllManagedDocuments().associateBy { it.documentId }
+            val repeated = localRepository.upsertRestoredReceipt(receipt)
+            driveRepository.restoreReceiptOriginalMetadata(receipt.internalId, repeated.receipt, listOf(original), RestoreMode.MERGE, existing)
+            assertEquals(original, localRepository.getManagedDocument(original.documentId))
+        }
+        val corrected = original.copy(unitId = null, updatedAt = "2026-10-08T00:00:00Z")
+        localRepository.upsertManagedDocument(corrected)
+        driveRepository.restoreReceiptOriginalMetadata(receipt.internalId, resolution.receipt, listOf(original), RestoreMode.MERGE,
+            localRepository.getAllManagedDocuments().associateBy { it.documentId })
+        assertEquals(corrected, localRepository.getManagedDocument(original.documentId))
+    }
+
     @Test fun `fixture 9 purchase contract uses production repository sync and updates real index json`() = runTest {
         assertSuccessfulReclassification(9, ManagedDocumentType.KAUFVERTRAG, null, "00_Stammdaten/01_Kauf_Eigentum")
     }

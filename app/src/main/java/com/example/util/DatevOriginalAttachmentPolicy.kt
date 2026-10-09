@@ -1,43 +1,54 @@
 package com.example.util
 
 import com.example.data.Receipt
+import com.example.data.ManagedDocument
 import java.io.File
 
 data class DatevOriginalAttachment(
     val receiptInternalId: String,
     val file: File,
     val mimeType: String,
-    val extension: String
+    val extension: String,
+    val attachmentId: String = "",
+    val originalFilename: String = "",
+    val sha256: String = "",
+    val order: Int = 0
 )
 
 object DatevOriginalAttachmentPolicy {
-    fun resolve(receipt: Receipt): DatevOriginalAttachment? {
-        if (receipt.internalId.isBlank()) return null
-        val file = receipt.imageUrl
-            .split(",")
-            .asSequence()
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .map(::File)
-            .firstOrNull { it.isFile && it.canRead() && it.length() > 0L }
-            ?: return null
+    fun resolve(receipt: Receipt): DatevOriginalAttachment? = resolveAll(receipt).firstOrNull()
 
-        val detected = detect(file) ?: return null
-        return DatevOriginalAttachment(
-            receiptInternalId = receipt.internalId,
-            file = file,
-            mimeType = detected.first,
-            extension = detected.second
-        )
+    /** Fail closed if any selected page is missing; a readable first page is not a complete receipt. */
+    fun resolveAll(receipt: Receipt, documents: List<ManagedDocument> = emptyList()): List<DatevOriginalAttachment> {
+        if (receipt.internalId.isBlank()) return emptyList()
+        val originals = documents.filter { it.receiptInternalId == receipt.internalId }
+        if (originals.any { it.localUri.isBlank() }) return emptyList()
+        val paths = (receipt.imageUrl.split(",").map(String::trim).filter(String::isNotBlank) +
+            com.example.data.ReceiptOriginalChain.ordered(originals).map { it.localUri }).distinct()
+        if (paths.isEmpty()) return emptyList()
+        return try {
+            paths.mapIndexed { index, path ->
+                val file = File(path.removePrefix("file://"))
+                if (!file.isFile || !file.canRead() || file.length() == 0L) return emptyList()
+                val detected = detect(file) ?: return emptyList()
+                val sha = ReceiptManifestService.calculateSha256(file)
+                val document = originals.firstOrNull { it.localUri == path }
+                if (document != null && (document.sha256.isNotBlank() && document.sha256 != sha ||
+                    document.fileSizeBytes > 0 && document.fileSizeBytes != file.length())) return emptyList()
+                DatevOriginalAttachment(receipt.internalId, file, detected.first, detected.second,
+                    document?.documentId ?: "${receipt.internalId}:original:$sha",
+                    document?.originalFilename?.takeIf(String::isNotBlank) ?: file.name, sha, index)
+            }
+        } catch (_: java.io.IOException) { emptyList() }
     }
 
     fun unique(receipts: List<Receipt>): List<DatevOriginalAttachment> =
         receipts.asSequence()
             .distinctBy { it.internalId }
-            .mapNotNull(::resolve)
+            .flatMap { resolveAll(it).asSequence() }
             .toList()
 
-    private fun detect(file: File): Pair<String, String>? {
+    internal fun detect(file: File): Pair<String, String>? {
         val header = file.inputStream().use { input ->
             val bytes = ByteArray(12)
             val count = input.read(bytes)

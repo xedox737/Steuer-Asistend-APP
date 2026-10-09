@@ -870,7 +870,8 @@ fun WohneinheitenStatusSection(
                                 mieter = editMieter,
                                 kaltmiete = rent!!,
                                 wohnflaeche = area!!
-                            )
+                            ),
+                            correctCurrentContract = true
                         )
                         selectedUnitForEdit = null
                     },
@@ -4613,7 +4614,8 @@ data class SelectedFile(
     val uri: Uri,
     val name: String,
     val isPdf: Boolean,
-    val bitmaps: List<Bitmap>
+    val bitmaps: List<Bitmap>,
+    val original: com.example.data.ManagedDocument? = null
 )
 
 private fun getFileName(context: Context, uri: Uri): String {
@@ -4965,9 +4967,42 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var selectedFiles by remember { mutableStateOf<List<SelectedFile>>(emptyList()) }
     var previewingFile by remember { mutableStateOf<SelectedFile?>(null) }
     var croppingFile by remember { mutableStateOf<SelectedFile?>(null) }
+    var originalImportInProgress by remember { mutableStateOf(false) }
+    var originalImportError by remember { mutableStateOf<String?>(null) }
+    val originalImportScope = rememberCoroutineScope()
 
     val context = LocalContext.current
     val activity = context as? Activity
+
+    fun importOriginals(uris: List<Uri>, analyzeAfterCopy: Boolean = false) {
+        if (originalImportInProgress) return
+        originalImportInProgress = true
+        originalImportError = null
+        originalImportScope.launch {
+            val failures = mutableListOf<String>()
+            val imported = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    try {
+                        val original = com.example.data.ReceiptOriginalStorage(context).importOriginal(uri)
+                        val localUri = Uri.fromFile(File(original.localUri))
+                        SelectedFile(uri = localUri, name = original.originalFilename,
+                            isPdf = original.mimeType == "application/pdf",
+                            bitmaps = loadBitmapsFromUri(context, localUri), original = original)
+                    } catch (e: Exception) {
+                        failures += e.message ?: "Das ausgewählte Original konnte nicht gesichert werden."
+                        null
+                    }
+                }
+            }
+            selectedFiles = selectedFiles + imported
+            originalImportInProgress = false
+            originalImportError = failures.takeIf { it.isNotEmpty() }?.joinToString("\n")
+            if (analyzeAfterCopy && failures.isEmpty()) {
+                val bitmaps = imported.flatMap { it.bitmaps }
+                if (bitmaps.isNotEmpty()) viewModel.analyzeReceipt(text = "", bitmaps = bitmaps)
+            }
+        }
+    }
 
     // Google ML Kit Document Scanner Launcher
     val mlKitScannerLauncher = rememberLauncherForActivityResult(
@@ -4978,22 +5013,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             if (scanningResult != null) {
                 val pages = scanningResult.pages
                 if (!pages.isNullOrEmpty()) {
-                    val bitmaps = pages.flatMap { page ->
-                        loadBitmapsFromUri(context, page.imageUri)
-                    }
-                    if (bitmaps.isNotEmpty()) {
-                        // Trigger Gemini analysis with auto-cropped pages
-                        viewModel.analyzeReceipt(text = "", bitmaps = bitmaps)
-
-                        val virtualUri = Uri.parse("mlkit-scan://${System.currentTimeMillis()}")
-                        val name = "MLKit_Document_Scan_${System.currentTimeMillis() / 1000}.jpg"
-                        selectedFiles = selectedFiles + SelectedFile(
-                            uri = virtualUri,
-                            name = name,
-                            isPdf = false,
-                            bitmaps = bitmaps
-                        )
-                    }
+                    importOriginals(pages.map { it.imageUri }, analyzeAfterCopy = true)
                 }
             }
         }
@@ -5003,23 +5023,21 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
-            val newSelectedFiles = uris.mapNotNull { uri ->
-                try {
-                    val name = getFileName(context, uri)
-                    val isPdf = name.endsWith(".pdf", ignoreCase = true) || context.contentResolver.getType(uri) == "application/pdf"
-                    val bitmaps = loadBitmapsFromUri(context, uri)
-                    if (bitmaps.isNotEmpty()) {
-                        SelectedFile(uri = uri, name = name, isPdf = isPdf, bitmaps = bitmaps)
-                    } else {
-                        null
-                    }
-                } catch (e: Exception) {
-                    DiagnosticLog.e("AddReceiptScreen", "Error loading uri")
-                    null
-                }
-            }
-            selectedFiles = selectedFiles + newSelectedFiles
+            importOriginals(uris)
         }
+    }
+
+    originalImportError?.let { message ->
+        AlertDialog(
+            onDismissRequest = {}, title = { Text("Original nicht gesichert") },
+            text = { Text(message + "\nDer Beleg wird erst nach deiner Entscheidung gespeichert.") },
+            confirmButton = { TextButton(onClick = {
+                filePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
+            }) { Text("Erneut auswählen") } },
+            dismissButton = { TextButton(onClick = { originalImportError = null }) {
+                Text("Ohne die fehlenden Dateien fortfahren")
+            } }
+        )
     }
 
     val triggerMlKitScanner: () -> Unit = {
@@ -5202,7 +5220,6 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var editZahlungsart by remember { mutableStateOf("Unbekannt") }
     var editPositionen by remember { mutableStateOf<List<com.example.data.ReceiptItem>>(emptyList()) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
-    var localImagePaths by remember { mutableStateOf("") }
     var receiptAmountError by remember { mutableStateOf(false) }
     var receiptDateError by remember { mutableStateOf(false) }
 
@@ -5317,7 +5334,6 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 editWohneinheit = extracted.wohneinheit
             }
             editPositionen = extracted.positionen
-            localImagePaths = state.localImagePaths
         }
     }
 
@@ -5429,7 +5445,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { triggerMlKitScanner() }
+                            .clickable(enabled = !originalImportInProgress) { triggerMlKitScanner() }
                             .testTag("scan_camera_button"),
                         color = Color.Unspecified,
                         shape = RoundedCornerShape(12.dp),
@@ -5526,7 +5542,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { filePickerLauncher.launch(arrayOf("image/*", "application/pdf")) }
+                            .clickable(enabled = !originalImportInProgress) { filePickerLauncher.launch(arrayOf("image/*", "application/pdf")) }
                             .testTag("scan_upload_button"),
                         color = Color.White,
                         shape = RoundedCornerShape(12.dp),
@@ -5599,7 +5615,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx())
                                 )
                             }
-                            .clickable { triggerMlKitScanner() }
+                            .clickable(enabled = !originalImportInProgress) { triggerMlKitScanner() }
                             .padding(16.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -6198,7 +6214,8 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             kontoNr = editKontoNr,
                             beschreibung = editBeschreibung,
                             isEigenleistung = editIsEigenleistung,
-                            imageUrl = localImagePaths,
+                            imageUrl = selectedFiles.mapNotNull { it.original }.joinToString(",") { it.localUri },
+                            originals = selectedFiles.mapNotNull { it.original },
                             wohneinheit = editWohneinheit,
                             mieter = editMieter,
                             zahlungsart = editZahlungsart,
@@ -6206,6 +6223,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         )
                     },
                     modifier = Modifier.weight(1f).height(48.dp).testTag("save_extracted_receipt_button"),
+                    enabled = !originalImportInProgress && originalImportError == null && scanState !is ScanUiState.Loading,
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                 ) {
                     Text("Einbuchen", fontWeight = FontWeight.Bold)
@@ -10593,7 +10611,9 @@ fun TenantManagementDialog(
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(units) { unit ->
-                    TenantItem(unit = unit, onUpdate = { updatedUnit -> viewModel.updateWohneinheit(updatedUnit) })
+                    TenantItem(unit = unit, onUpdate = { updatedUnit ->
+                        viewModel.updateWohneinheit(updatedUnit, correctCurrentContract = true)
+                    })
                 }
             }
         },

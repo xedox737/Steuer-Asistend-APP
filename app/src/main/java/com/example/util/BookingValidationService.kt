@@ -34,7 +34,7 @@ object BookingValidationService {
         var totalAmount = 0.0
 
         records.forEach { record ->
-            totalAmount += record.bruttobetrag
+            if (record.bruttobetrag.isFinite()) totalAmount += record.bruttobetrag
 
             // 1. Account length & presence check
             if (record.sachkonto.isBlank()) {
@@ -125,16 +125,21 @@ object BookingValidationService {
             }
 
             // 4. Amount check
-            if (record.bruttobetrag <= 0.0) {
+            if (!record.bruttobetrag.isFinite() || record.bruttobetrag <= 0.0) {
                 errors.add(
                     ValidationIssue(
                         isError = true,
                         bookingId = record.bookingId,
                         receiptId = record.receiptId,
                         field = "bruttobetrag",
-                        message = "Buchungsbetrag ist Null oder negativ (Betrag muss > 0 sein)"
+                        message = "Buchungsbetrag muss eine endliche Zahl größer als 0 sein"
                     )
                 )
+            }
+            mapOf("nettobetrag" to record.nettobetrag, "ustBetrag" to record.ustBetrag,
+                "ustSatz" to record.ustSatz, "anteilProzent" to record.anteilProzent).forEach { (field, value) ->
+                if (!value.isFinite()) errors.add(ValidationIssue(true, record.bookingId, record.receiptId,
+                    field, "Ungültiger Wert in $field: Es ist eine endliche Zahl erforderlich."))
             }
 
             // 5. Belegnummer check
@@ -151,14 +156,15 @@ object BookingValidationService {
             }
 
             // 6. Date check
-            if (!record.belegdatum.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+            if (!record.belegdatum.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) ||
+                runCatching { java.time.LocalDate.parse(record.belegdatum).year > 0 }.getOrDefault(false).not()) {
                 errors.add(
                     ValidationIssue(
                         isError = true,
                         bookingId = record.bookingId,
                         receiptId = record.receiptId,
                         field = "belegdatum",
-                        message = "Ungültiges Datumsformat '${record.belegdatum}' (erwartet: YYYY-MM-DD)"
+                        message = "Ungültiges Belegdatum '${record.belegdatum}' (erwartet: gültiges Kalenderdatum YYYY-MM-DD)"
                     )
                 )
             }

@@ -105,10 +105,12 @@ class SupplementalDriveBackupTest {
         SupplementalDriveBackup.restorePayload(context, database, payload)
         SupplementalDriveBackup.restorePayload(context, database, payload)
 
-        assertEquals("Zweites Objekt", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
+        assertEquals("Zwischenstand", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
         assertEquals("property-2", database.loanDao().getAllLoans().single { it.id == 22 }.propertyId)
         assertEquals("OG links", context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
             .getString("property_property-2_unit_WE 01_label", null))
+        SupplementalDriveBackup.restorePayload(context, database, payload, restoreMode = RestoreMode.REPLACE_FULL)
+        assertEquals("Zweites Objekt", database.propertyDao().getPropertyByPropertyId("property-2")?.name)
     }
 
     @Test fun managedDocumentsRestoreCompletelyWithoutOcrPayloadAndRemainIdempotent() = runTest {
@@ -196,7 +198,8 @@ class SupplementalDriveBackupTest {
         val account = BankAccount("bank-1", "Hauskonto", bankName = "Sparkasse", accountHolder = "Sergej", iban = "DE123")
         val transaction = BankTransaction(
             "tx-1", "bank-1", "2026-09-04", amount = -247.38,
-            propertyId = "property-1", unitId = "unit-1", importFileName = "konto.csv", importRunId = "import-1"
+            propertyId = "property-1", unitId = "unit-1", importFileName = "konto.csv", importRunId = "import-1",
+            updatedAt = "2026-09-04T10:00:00Z"
         )
         val link = BankReceiptLink(
             "link-1", "tx-1", receiptId, "receipt-bank-test", 247.38,
@@ -208,7 +211,8 @@ class SupplementalDriveBackupTest {
             classification = BankTransactionClassification.TRANSFER,
             transferCounterAccountId = "bank-2",
             linkedTransferTransactionId = "tx-counterpart",
-            reviewState = BankReviewState.DONE
+            reviewState = BankReviewState.DONE,
+            updatedAt = "2026-09-04T11:00:00Z"
         ))
         database.bankDao().upsertLink(link)
 

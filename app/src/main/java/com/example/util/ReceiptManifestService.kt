@@ -15,7 +15,11 @@ data class ManifestFileItem(
     val sha256Hash: String,
     val belegnummer: String,
     val belegdatum: String,
-    val betragEur: Double
+    val betragEur: Double,
+    val receiptInternalId: String = "",
+    val attachmentId: String = "",
+    val originalFilename: String = "",
+    val order: Int = 0
 )
 
 data class ManifestData(

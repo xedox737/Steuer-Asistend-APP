@@ -275,4 +275,28 @@ class RestoreMergeDataIntegrityTest {
         )
         assertEquals(listOf("task-A"), PropertyTaskStore.load(context, propertyId).map { it.id })
     }
+
+    @Test fun fullRestoreNeverPairsBackupHashWithDifferentNewerLocalOriginalBytes() = runTest {
+        val folder = File(context.filesDir, "managed_documents").apply { mkdirs() }
+        val oldFile = File(folder, "original-old.pdf").apply { writeText("%PDF-old original") }
+        val newFile = File(folder, "original-new.pdf").apply { writeText("%PDF-new original") }
+        val old = ManagedDocument("original-version", "property-A", localUri = oldFile.absolutePath,
+            sha256 = StableDocumentIdentity.sha256(oldFile.readBytes()), fileSizeBytes = oldFile.length(),
+            driveFileId = "remote-old", updatedAt = "2026-01-01T00:00:00Z")
+        database.managedDocumentDao().upsert(old)
+        val backup = SupplementalDriveBackup.createPayload(context, database)
+        val local = old.copy(localUri = newFile.absolutePath, sha256 = StableDocumentIdentity.sha256(newFile.readBytes()),
+            fileSizeBytes = newFile.length(), driveFileId = "remote-new", updatedAt = "2026-10-08T00:00:00Z")
+        database.managedDocumentDao().upsert(local)
+        SupplementalDriveBackup.restorePayload(context, database, backup)
+        assertEquals(local, database.managedDocumentDao().getById(old.documentId))
+        repeat(2) {
+            SupplementalDriveBackup.restorePayload(context, database, backup, replaceManagedDocuments = true)
+            val restored = database.managedDocumentDao().getById(old.documentId)!!
+            assertEquals(old.sha256, restored.sha256)
+            assertEquals(oldFile.absolutePath, restored.localUri)
+            assertEquals(old.sha256, StableDocumentIdentity.sha256(File(restored.localUri).readBytes()))
+            assertTrue(newFile.isFile)
+        }
+    }
 }

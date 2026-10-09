@@ -208,6 +208,35 @@ internal object TenantHistoryStore {
             if (period.active) period.copy(endDate = exitDate) else period
         } + newPeriod
 
+    /** One contractual source for today's tenant and rent; future/invalid periods do not win. */
+    fun currentAt(periods: List<TenantPeriod>, date: LocalDate = LocalDate.now()): TenantPeriod? =
+        periods.filter { period ->
+            val start = if (period.startDate.isBlank()) LocalDate.MIN else CalendarInput.parseIsoDate(period.startDate)
+            val end = if (period.endDate.isBlank()) LocalDate.MAX else CalendarInput.parseIsoDate(period.endDate)
+            start != null && end != null && !end.isBefore(start) && !date.isBefore(start) && !date.isAfter(end)
+        }.maxByOrNull { CalendarInput.parseIsoDate(it.startDate) ?: LocalDate.MIN }
+
+    /** Explicit corrections from the simple editor must update the same contractual source. */
+    fun correctCurrentRentalDetails(context: Context, propertyId: String, unitId: String, unit: WohneinheitStatus) {
+        val periods = load(context, propertyId, unitId, unit.name)
+        val today = LocalDate.now()
+        val current = currentAt(periods, today) ?: return
+        if (unit.status != "Vermietet") return
+        val latestChange = current.rentChanges.filter {
+            CalendarInput.parseIsoDate(it.effectiveDate)?.let { date -> !date.isAfter(today) } == true
+        }.maxByOrNull { it.effectiveDate }
+        val corrected = current.copy(
+            tenantName = unit.mieter,
+            startDate = unit.mietvertragsstart,
+            kaltmiete = if (latestChange == null) unit.kaltmiete else current.kaltmiete,
+            rentChanges = current.rentChanges.map { change ->
+                if (change === latestChange) change.copy(kaltmiete = unit.kaltmiete) else change
+            }
+        )
+        if (corrected != current) save(context, propertyId, unitId, unit.name,
+            periods.map { if (it.id == current.id) corrected else it })
+    }
+
     fun ensureCurrentPeriod(
         context: Context,
         unit: WohneinheitStatus,
