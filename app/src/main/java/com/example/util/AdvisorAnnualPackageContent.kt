@@ -83,6 +83,9 @@ object AdvisorPackageStructure {
         "07_Sanierungen",
         "08_Pruefprotokoll"
     )
+
+    val formatDescription: String get() = "Enthält " + requiredFolders.joinToString(", ") { "$it/" } +
+        ". Originaldateien liegen in 02_Originalbelege; Manifest und Prüfsummen in 08_Pruefprotokoll."
 }
 
 data class AdvisorPackageStructureValidation(

@@ -51,6 +51,7 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
     val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val bankSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
     var showMonthlyCheck by remember { mutableStateOf(false) }
     var selectedUnit by remember { mutableStateOf<Pair<String, WohneinheitStatus>?>(null) }
     var originalProperty by remember { mutableStateOf<String?>(null) }
@@ -85,7 +86,8 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
     if (showMonthlyCheck) MonthlyRentCheckDialog(
         groups, scopedReceipts, historyVersion,
         bankAssignments, bankLinks, bankTransactions,
-        onDismiss = { showMonthlyCheck = false }
+        onDismiss = { showMonthlyCheck = false },
+        viewModel = viewModel, bankSuggestions = bankSuggestions
     )
     selectedUnit?.let { (propertyId, unit) ->
         TenantHistoryDialog(unit, PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk"),
@@ -97,7 +99,7 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
                 originalProperty = null
             },
             onCurrentTenantChanged = { pendingTenant = it },
-            onHistoryChanged = { historyVersion++ }, propertyId = propertyId)
+            onHistoryChanged = { historyVersion++; viewModel.refreshPropertyUnits(propertyId) }, propertyId = propertyId)
     }
 }
 
@@ -109,7 +111,9 @@ private fun MonthlyRentCheckDialog(
     bankAssignments: List<com.example.data.BankRentAssignment>,
     bankLinks: List<com.example.data.BankReceiptLink>,
     bankTransactions: List<com.example.data.BankTransaction>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    viewModel: ReceiptViewModel,
+    bankSuggestions: Map<String, List<com.example.data.BankRentSuggestion>>
 ) {
     val context = LocalContext.current
     var month by remember { mutableStateOf(YearMonth.now()) }
@@ -130,10 +134,10 @@ private fun MonthlyRentCheckDialog(
     val totalActual = rows.sumOf { it.second.actual }
     val totalMissing = rows.sumOf { it.second.missing }
     val missingCount = rows.count { it.second.expected > 0.01 && it.second.missing > 0.01 }
-    val unassigned = receipts.filter {
-        receiptMonth(it) == month && isConfirmedRentalIncomeReceipt(it) &&
-            (it.wohneinheit.isBlank() || groups.none { group -> group.property.propertyId == it.propertyId && group.units.any { unit -> unit.name == it.wohneinheit } })
-    }.sumOf { it.bruttobetrag }
+    val reviews = RentPaymentReview.build(groups, receipts, bankTransactions, bankAssignments, bankLinks, bankSuggestions)
+        .filter { receiptMonthValue -> runCatching { YearMonth.from(LocalDate.parse(receiptMonthValue.date)) }.getOrNull() == month }
+    val unassigned = reviews.sumOf { it.amount }
+    var showReview by remember { mutableStateOf(false) }
     var showOnlyOpen by remember(month) { mutableStateOf(true) }
     val prioritizedRows = rows.sortedByDescending { it.second.missing }
     val visibleRows = if (showOnlyOpen) {
@@ -178,7 +182,8 @@ private fun MonthlyRentCheckDialog(
                                 Text("✓ Alle erwarteten Mietzahlungen vollständig erfasst", fontSize = 10.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
                             }
                             if (unassigned > 0.01) {
-                                Text("⚠ ${NumberFormatter.format(unassigned)} Mietzahlung(en) ohne Wohneinheiten-Zuordnung", fontSize = 9.sp, color = WarmOrange)
+                                Text("⚠ ${NumberFormatter.format(unassigned)} in ${reviews.size} ungeklärten Zahlungen", fontSize = 9.sp, color = WarmOrange)
+                                TextButton(onClick = { showReview = true }) { Text("Zahlungen prüfen") }
                             }
                         }
                     }
@@ -267,6 +272,7 @@ private fun MonthlyRentCheckDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
     )
+    if (showReview) RentPaymentReviewDialog(reviews, viewModel) { showReview = false }
 }
 
 @Composable

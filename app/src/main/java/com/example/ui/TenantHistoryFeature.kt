@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -173,7 +174,7 @@ internal object TenantHistoryStore {
         return emptyList()
     }
 
-    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>) {
+    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>) = synchronized(this) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
         val raw = encode(periods)
@@ -183,6 +184,18 @@ internal object TenantHistoryStore {
         if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
             prefs.edit().putString(legacyKey(unitName), raw).apply()
         }
+    }
+
+    /** Commit the initial contractual truth of all rented rows as one preference write. */
+    fun saveInitialPeriods(context: Context, propertyId: String, entries: List<Pair<WohneinheitStatus, TenantPeriod>>): Boolean = synchronized(this) {
+        if (entries.any { (unit, _) -> load(context, propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit), unit.name).isNotEmpty() }) return@synchronized false
+        val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        entries.forEach { (unit, period) ->
+            val raw = encode(listOf(period))
+            editor.putString(scopedKey(propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit)), raw)
+            if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) editor.putString(legacyKey(unit.name), raw)
+        }
+        editor.commit()
     }
 
     /** Compatibility API for existing non-property-aware callers. */
@@ -200,13 +213,16 @@ internal object TenantHistoryStore {
     }
 
     fun changeTenant(
-        periods: List<TenantPeriod>,
-        exitDate: String,
-        newPeriod: TenantPeriod
-    ): List<TenantPeriod> =
-        periods.map { period ->
-            if (period.active) period.copy(endDate = exitDate) else period
-        } + newPeriod
+        periods: List<TenantPeriod>, exitDate: String, newPeriod: TenantPeriod,
+        currentId: Long? = (currentAt(periods) ?: periods.lastOrNull { it.active })?.id
+    ): List<TenantPeriod> {
+        val error = TenantChronology.changeError(periods, currentId, exitDate, newPeriod.startDate)
+        require(error == null) { error?.message.orEmpty() }
+        require(periods.none { it.id == newPeriod.id }) { "Der neue Vertrag benötigt eine eindeutige Identität." }
+        val updated = periods.map { if (it.id == currentId) it.copy(endDate = exitDate.trim()) else it } + newPeriod
+        require(TenantChronology.periodsError(updated) == null) { "Ungültige Vertragschronologie." }
+        return updated
+    }
 
     /** One contractual source for today's tenant and rent; future/invalid periods do not win. */
     fun currentAt(periods: List<TenantPeriod>, date: LocalDate = LocalDate.now()): TenantPeriod? =
@@ -292,7 +308,8 @@ internal fun TenantHistoryDialog(
     onDismiss: () -> Unit,
     onCurrentTenantChanged: (TenantPeriod) -> Unit,
     onHistoryChanged: () -> Unit,
-    propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID
+    propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID,
+    initiallyShowChange: Boolean = false
 ) {
     val context = LocalContext.current
     val unitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
@@ -300,8 +317,9 @@ internal fun TenantHistoryDialog(
     var periods by remember(propertyId, unitId, version) {
         mutableStateOf(TenantHistoryStore.ensureCurrentPeriod(context, unit, nebenkostenCurrent, sonstigeCurrent, propertyId))
     }
-    var showChange by remember { mutableStateOf(false) }
+    var showChange by remember { mutableStateOf(initiallyShowChange) }
 
+    if (!initiallyShowChange || !showChange) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Mieterwechsel · ${unit.name}", fontWeight = FontWeight.Bold) },
@@ -330,9 +348,9 @@ internal fun TenantHistoryDialog(
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text(p.tenantName.ifBlank { "Mieter ohne Namen" }, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkNavy)
-                                        Text(if (p.active) "AKTUELL" else "BEENDET", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (p.active) EmeraldGreen else SlateGray)
+                                        Text(TenantChronology.status(p), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (TenantChronology.status(p) == "AKTUELL") EmeraldGreen else SlateGray)
                                     }
-                                    Text("${p.startDate.ifBlank { "Start unbekannt" }} bis ${p.endDate.ifBlank { "heute" }}", fontSize = 10.sp, color = SlateGray)
+                                    Text("${p.startDate.ifBlank { "Start unbekannt" }} bis ${p.endDate.ifBlank { "unbefristet" }}", fontSize = 10.sp, color = SlateGray)
                                     HorizontalDivider(color = BorderColor)
                                     Text("Kalt ${NumberFormatter.format(p.kaltmiete)} · NK ${NumberFormatter.format(p.nebenkosten)} · Sonst. ${NumberFormatter.format(p.sonstige)}", fontSize = 9.sp, color = SlateGray)
                                     Text("Ausgangs-Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -354,25 +372,32 @@ internal fun TenantHistoryDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Schließen") } }
     )
 
+    }
+
     if (showChange) {
-        val activePeriod = periods.lastOrNull { it.active }
+        val activePeriod = TenantHistoryStore.currentAt(periods) ?: periods.lastOrNull { it.active }
         val currentAmounts = activePeriod?.amountsAt(LocalDate.now())
             ?: RentAmounts(unit.kaltmiete, nebenkostenCurrent, sonstigeCurrent)
         TenantChangeDialog(
             unit = unit,
             current = activePeriod,
+            periods = periods,
             defaultCold = currentAmounts.kaltmiete,
             defaultNk = currentAmounts.nebenkosten,
             defaultOther = currentAmounts.sonstige,
-            onDismiss = { showChange = false },
+            onDismiss = { showChange = false; if (initiallyShowChange) onDismiss() },
             onSave = { exitDate, newPeriod ->
-                val updated = TenantHistoryStore.changeTenant(periods, exitDate, newPeriod)
+                val updated = TenantHistoryStore.changeTenant(periods, exitDate, newPeriod, activePeriod?.id)
                 TenantHistoryStore.save(context, propertyId, unitId, unit.name, updated)
                 periods = updated
                 version++
-                onCurrentTenantChanged(newPeriod)
+                TenantHistoryStore.currentAt(updated)?.let { current ->
+                    val amounts = current.amountsAt(LocalDate.now())
+                    onCurrentTenantChanged(current.copy(kaltmiete = amounts.kaltmiete, nebenkosten = amounts.nebenkosten, sonstige = amounts.sonstige))
+                }
                 onHistoryChanged()
                 showChange = false
+                if (initiallyShowChange) onDismiss()
             }
         )
     }
@@ -382,6 +407,7 @@ internal fun TenantHistoryDialog(
 private fun TenantChangeDialog(
     unit: WohneinheitStatus,
     current: TenantPeriod?,
+    periods: List<TenantPeriod>,
     defaultCold: Double,
     defaultNk: Double,
     defaultOther: Double,
@@ -395,6 +421,7 @@ private fun TenantChangeDialog(
     var nk by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultNk)) }
     var other by remember { mutableStateOf(GermanNumberInput.formatForInput(defaultOther)) }
     var error by remember { mutableStateOf<String?>(null) }
+    var chronologyError by remember { mutableStateOf<TenantChronologyError?>(null) }
     val keyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal)
 
     AlertDialog(
@@ -404,10 +431,10 @@ private fun TenantChangeDialog(
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 if (current != null) {
                     item { Text("Bisher: ${current.tenantName}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
-                    item { OutlinedTextField(oldEnd, { oldEnd = it }, label = { Text("Auszug bisheriger Mieter YYYY-MM-DD*") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(oldEnd, { oldEnd = it; chronologyError = null }, label = { Text("Auszug bisheriger Mieter YYYY-MM-DD*") }, isError = chronologyError?.field == TenantChronology.OLD_END, supportingText = { if (chronologyError?.field == TenantChronology.OLD_END) Text(chronologyError!!.message) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("tenant_change_old_end")) }
                 }
-                item { OutlinedTextField(newName, { newName = it }, label = { Text("Neuer Mieter / Mietpartei*") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(newStart, { newStart = it }, label = { Text("Einzug / Mietbeginn YYYY-MM-DD*") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(newName, { newName = it }, label = { Text("Neuer Mieter / Mietpartei*") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("tenant_change_name")) }
+                item { OutlinedTextField(newStart, { newStart = it; chronologyError = null }, label = { Text("Einzug / Mietbeginn YYYY-MM-DD*") }, isError = chronologyError?.field == TenantChronology.NEW_START, supportingText = { if (chronologyError?.field == TenantChronology.NEW_START) Text(chronologyError!!.message) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("tenant_change_new_start")) }
                 item { OutlinedTextField(cold, { cold = it }, label = { Text("Neue Kaltmiete / Monat €*") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(nk, { nk = it }, label = { Text("Neue NK-Vorauszahlung / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(other, { other = it }, label = { Text("Sonstige Mietbestandteile / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth()) }
@@ -422,7 +449,9 @@ private fun TenantChangeDialog(
                     val c = parseTenantNumber(cold)
                     val n = if (nk.isBlank()) 0.0 else parseTenantNumber(nk)
                     val o = if (other.isBlank()) 0.0 else parseTenantNumber(other)
+                    chronologyError = TenantChronology.changeError(periods, current?.id, oldEnd, newStart)
                     when {
+                        chronologyError != null -> error = null
                         current != null && endDate == null -> error = "Bitte ein gültiges Auszugsdatum eingeben."
                         startDate == null -> error = "Bitte ein gültiges Einzugsdatum eingeben."
                         current != null && endDate != null && startDate.isBefore(endDate.plusDays(1)) -> error = "Der neue Mietbeginn muss nach dem Auszug des bisherigen Mieters liegen."

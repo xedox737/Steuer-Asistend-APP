@@ -84,6 +84,8 @@ fun RentIncomeOverviewScreen(
     val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    val bankSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
+    var showReview by rememberSaveable { mutableStateOf(false) }
     var prefsVersion by remember { mutableIntStateOf(0) }
     val groups = remember(properties, units, metadata, propertyScoped, historyVersion, prefsVersion) {
         val visible = if (propertyScoped) listOfNotNull(metadata) else properties
@@ -100,11 +102,11 @@ fun RentIncomeOverviewScreen(
     var yearsOpen by remember { mutableStateOf(false) }
     val overview = remember(
         groups, scopedReceipts, selectedYear, prefsVersion, historyVersion,
-        bankAssignments, bankLinks, bankTransactions
+        bankAssignments, bankLinks, bankTransactions, bankSuggestions
     ) {
         RentOverviewPresentation.year(
             context, groups, scopedReceipts, selectedYear,
-            bankAssignments, bankLinks, bankTransactions
+            bankAssignments, bankLinks, bankTransactions, bankSuggestions
         )
     }
     var editing by remember { mutableStateOf<RentOverviewUnit?>(null) }
@@ -214,31 +216,26 @@ fun RentIncomeOverviewScreen(
             }
         }
         item { RentYearChart(overview, onMonthlyCheck) }
-        if (overview.unassigned.isNotEmpty()) item {
+        if (overview.reviews.isNotEmpty()) item {
             RentCard(Modifier.testTag("rent_unassigned")) {
                 Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, null, tint = WarmOrange, modifier = Modifier.size(24.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        val count = overview.unassigned.size
+                        val count = overview.reviews.size
                         Text("$count Mietzahlung${if (count == 1) "" else "en"} nicht zugeordnet", fontSize = 13.sp, lineHeight = 17.sp,
                             fontWeight = FontWeight.Bold, color = DarkNavy)
-                        Text("${NumberFormatter.format(overview.unassigned.sumOf { it.bruttobetrag })} müssen geprüft werden",
+                        Text("${NumberFormatter.format(overview.reviews.sumOf { it.amount })} müssen geprüft werden",
                             fontSize = 11.sp, lineHeight = 15.sp, color = SlateGray)
                     }
                 }
-                TextButton(onClick = {
-                    viewModel.setCategoryFilter(null)
-                    viewModel.setSearchQuery("")
-                    viewModel.setDateRangeFilter("$selectedYear-01-01", "$selectedYear-12-31")
-                    viewModel.setScreen(AppScreen.RECEIPTS_LIST)
-                }, modifier = Modifier.testTag("rent_review_payments"), contentPadding = PaddingValues(0.dp)) {
+                TextButton(onClick = { showReview = true }, modifier = Modifier.testTag("rent_review_payments"), contentPadding = PaddingValues(0.dp)) {
                     Text("Zahlungen prüfen", color = AccentBlue, fontSize = 12.sp)
                     Icon(Icons.Default.ChevronRight, null, Modifier.size(16.dp))
                 }
             }
         }
         item { Text("Wohneinheiten", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
-        if (overview.rows.isEmpty() || (overview.actual == 0.0 && overview.expected == 0.0 && overview.unassigned.isEmpty())) item {
+        if (overview.rows.isEmpty() || (overview.actual == 0.0 && overview.expected == 0.0 && overview.reviews.isEmpty())) item {
             RentCard(Modifier.testTag("rent_empty")) {
                 Icon(Icons.Default.HomeWork, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
                 Text("Noch keine Mieteingänge vorhanden", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -253,6 +250,7 @@ fun RentIncomeOverviewScreen(
             }, onHistory = { onTenantHistory(row.property.propertyId, row.unit) })
         }
     }
+    if (showReview) RentPaymentReviewDialog(overview.reviews, viewModel) { showReview = false }
     editing?.let { row ->
         RentPlanEditDialog(row.unit, row.nebenkosten, row.sonstige, onDismiss = { dismissEditor() },
             onSave = { plan -> pendingPlan = plan },

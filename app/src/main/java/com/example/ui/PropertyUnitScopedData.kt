@@ -169,75 +169,15 @@ internal object RentTrackingLogic {
         bankLinks: List<BankReceiptLink>,
         bankTransactions: List<BankTransaction>
     ): Double {
-        val transactions = bankTransactions.filter {
-            it.amount.isFinite() && it.isIncome && it.classification == BankTransactionClassification.NORMAL &&
-                it.reconciliationStatus in setOf(BankReconciliationStatus.MATCHED, BankReconciliationStatus.PARTIAL)
-        }.associateBy { it.transactionId }
-        val confirmed = bankAssignments.filter {
-            it.status == BankRentAssignmentStatus.CONFIRMED && it.allocatedAmount.isFinite() && it.allocatedAmount > 0.0 &&
-                it.source in setOf(com.example.data.BankRentAssignmentSource.USER_CONFIRMED, com.example.data.BankRentAssignmentSource.MANUAL)
-        }.distinctBy { it.assignmentId }
-        val allocatedByTransaction = confirmed.groupBy { it.transactionId }.mapValues { (_, assignments) -> assignments.sumOf { it.allocatedAmount } }
-        val validTransactions = transactions.filter { (id, transaction) ->
-            // Conflicting allocations must not turn more money than the bank received into rent.
-            (allocatedByTransaction[id] ?: 0.0) <= transaction.amount + 0.01
-        }
-        val paymentTypes = setOf(BankSplitPaymentType.RENT, BankSplitPaymentType.UTILITIES_PREPAYMENT,
-            BankSplitPaymentType.UTILITIES_SETTLEMENT, RentPaymentType.NEBENKOSTEN)
-        val assignments = confirmed.filter {
-            it.propertyId.isNotBlank() && it.unitId.isNotBlank() && it.transactionId.isNotBlank() &&
-                it.propertyId == propertyId && it.unitId == stableUnitId && it.paymentType in paymentTypes &&
-                it.transactionId in validTransactions && runCatching { YearMonth.parse(it.rentMonth) }.isSuccess
-        }
-        val bankActual = assignments.filter { it.rentMonth == month.toString() }.sumOf { it.allocatedAmount }
-        val remainingCoverage = assignments.associate { it.assignmentId to it.allocatedAmount }.toMutableMap()
-        val receiptCapacity = validTransactions.mapValues { (id, transaction) ->
-            (transaction.amount - (allocatedByTransaction[id] ?: 0.0)).coerceAtLeast(0.0)
-        }.toMutableMap()
-        val confirmedLinks = bankLinks.filter { it.status == BankLinkStatus.CONFIRMED }
-        val linksByInternalId = confirmedLinks.filter { it.receiptInternalId.isNotBlank() }.groupBy { it.receiptInternalId }
-        val linksByLocalId = confirmedLinks.filter { it.receiptInternalId.isBlank() }.groupBy { it.receiptId }
-        val assignmentTransactions = assignments.map { it.transactionId }.toSet()
-        val scopedReceipts = receipts.filter { receipt ->
-            receipt.propertyId == propertyId && isConfirmedRentalIncomeReceipt(receipt) &&
+        val sources = RentPaymentProjection.project(
+            receipts, bankAssignments, bankLinks, bankTransactions,
+            assignmentScope = { it.propertyId == propertyId && it.unitId == stableUnitId },
+            receiptScope = { receipt -> receipt.propertyId == propertyId &&
                 (receipt.unitId == stableUnitId || (receipt.unitId.isBlank() &&
-                    (receipt.wohneinheit.equals(unit.name, true) || receipt.wohneinheit.equals(unit.label, true))))
-        }.sortedBy { it.internalId.ifBlank { it.id.toString() } }
-        var receiptActual = 0.0
-        // Resolve linked source overlap before month/year filtering. Confirmed bank
-        // allocations keep their explicit rentMonth; only uncovered receipts keep datum.
-        for (receipt in scopedReceipts) {
-            val linkedTransactions = (linksByInternalId[receipt.internalId].orEmpty() + linksByLocalId[receipt.id].orEmpty())
-                .map { it.transactionId }.toSet()
-            val direct = assignments.filter { receipt.id > 0 && it.receiptId == receipt.id }
-            val mirrored = linkedTransactions.intersect(assignmentTransactions) + direct.map { it.transactionId }
-            var residual = receipt.bruttobetrag
-            if (residual > 0.0 && mirrored.isNotEmpty()) {
-                val component = rentPaymentComponent(receipt)
-                val matching = assignments.filter { assignment ->
-                    (receipt.id > 0 && assignment.receiptId == receipt.id) ||
-                        (assignment.receiptId == null && assignment.transactionId in linkedTransactions &&
-                            (component == RentPaymentComponent.COMBINED || rentPaymentComponent(assignment.paymentType) == component))
-                }
-                for (assignment in matching) {
-                    val remaining = remainingCoverage.getValue(assignment.assignmentId)
-                    val covered = minOf(residual, remaining)
-                    residual -= covered
-                    remainingCoverage[assignment.assignmentId] = remaining - covered
-                }
-                var uncovered = 0.0
-                for (transactionId in (linkedTransactions + mirrored).sorted()) {
-                    val available = receiptCapacity[transactionId] ?: continue
-                    val amount = minOf(residual, available)
-                    uncovered += amount
-                    residual -= amount
-                    receiptCapacity[transactionId] = available - amount
-                }
-                residual = uncovered
-            }
-            if (receiptMonth(receipt) == month) receiptActual += residual
-        }
-        return receiptActual + bankActual
+                    (receipt.wohneinheit.equals(unit.name, true) || receipt.wohneinheit.equals(unit.label, true)))) }
+        )
+        return sources.bankPayments.filter { it.rentMonth == month.toString() }.sumOf { it.allocatedAmount } +
+            sources.receiptPayments.filter { receiptMonth(it.receipt) == month }.sumOf { it.amount }
     }
 
     fun year(

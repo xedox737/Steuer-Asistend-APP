@@ -386,6 +386,8 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
             // Recreate only screen-local navigation/dialog state on a primary click.
             // Ordinary local navigation and ViewModel-owned saves keep their lifecycle.
             androidx.compose.runtime.key(primaryNavigationReset.generation) {
+            val screenState = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+            screenState.SaveableStateProvider(currentScreen.name) {
             when (currentScreen) {
                 AppScreen.DASHBOARD -> DashboardScreen(viewModel)
                 AppScreen.RECEIPTS_LIST -> ReceiptsListScreen(viewModel)
@@ -407,6 +409,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                     }
                 }
                 AppScreen.MORE -> MoreScreen(viewModel)
+            }
             }
             }
             }
@@ -895,7 +898,12 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val learnedRulesCount by viewModel.learnedRulesCount.collectAsStateWithLifecycle()
     val bankStatementResult by viewModel.bankStatementResult.collectAsStateWithLifecycle()
-    val missingReceiptsCount = bankStatementResult?.missingReceiptsCount ?: 0
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val reviewCounts = remember(receipts, bankTransactions, bankLinks, bankAssignments) {
+        DashboardReviewPresentation.counts(receipts, bankTransactions, bankLinks, bankAssignments)
+    }
+    val missingReceiptsCount = reviewCounts.missingBankReceipts
     val rentArrearsCount = bankStatementResult?.rentArrearsCount ?: 0
     val totalBankAlerts = missingReceiptsCount + rentArrearsCount
     val openBankTransactions = remember(bankTransactions) { BankCompactUiPolicy.counts(bankTransactions).open }
@@ -945,7 +953,10 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
         Ui2Section("Aktueller Stand") {
             Ui2Grid(listOf(
                 Triple("Offene Buchungen", openBankTransactions.toString(), AccentBlue),
-                Triple("Offene Belege", missingReceiptsCount.toString(), EmeraldGreen),
+                Triple("Belege prüfen", reviewCounts.receiptsToReview.toString(), WarmOrange),
+                Triple("Fehlende Bankbelege", if (reviewCounts.uncheckedBankEntries > 0) {
+                    if (missingReceiptsCount == 0) "Noch nicht geprüft" else "$missingReceiptsCount · weitere ungeprüft"
+                } else missingReceiptsCount.toString(), WarmOrange),
                 Triple("Belege gesamt", receipts.size.toString(), Color(0xFF7C3AED)),
                 Triple("Regeln aktiv", learnedRulesCount.toString(), WarmOrange)
             )) { metric, modifier -> Ui2Metric(metric.first, metric.second, modifier, metric.third, showIcon = false) }
@@ -1447,13 +1458,13 @@ fun AiSearchCard(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Gemini KI-Suche in Room-Belegen",
+                        "Belege mit KI durchsuchen",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF1E293B)
                     )
                     Text(
-                        "Fragen in natürlicher Sprache an deine Belegsdatenbank",
+                        "Fragen in natürlicher Sprache zu deinen Belegen",
                         fontSize = 11.sp,
                         color = Color(0xFF64748B)
                     )
@@ -6241,7 +6252,13 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
 fun LedgerScreen(viewModel: ReceiptViewModel) {
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val properties by viewModel.properties.collectAsStateWithLifecycle()
-    LedgerOverview(receipts, properties) { viewModel.openReceiptDetail(it.id, AppScreen.LEDGER) }
+    val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
+    val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+    LedgerOverview(receipts, properties, assignments, links, transactions,
+        onBank = { viewModel.openBankTransactionDetails(it.transactionId) }) {
+        viewModel.openReceiptDetail(it.id, AppScreen.LEDGER)
+    }
 }
 
 /** Existing accounting actions live in the DATEV landing area, outside the financial overview. */
@@ -8882,15 +8899,19 @@ fun CameraActiveView(
 @Composable
 fun PropertyMetadataFormDialog(
     viewModel: ReceiptViewModel,
+    property: PropertyMetadata? = null,
     onDismiss: () -> Unit
 ) {
     val currentMetadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
-    val metadata = currentMetadata ?: PropertyMetadata()
+    val metadata = property ?: currentMetadata ?: PropertyMetadata()
 
     var editName by remember(metadata) { mutableStateOf(metadata.name) }
     var editAdresse by remember(metadata) { mutableStateOf(metadata.adresse) }
+    var editType by remember(metadata) { mutableStateOf(metadata.objektart) }
+    var editNotes by remember(metadata) { mutableStateOf(metadata.notizen) }
+    var requiredErrors by remember(metadata) { mutableStateOf<Map<String, String>>(emptyMap()) }
     var editWohnort by remember(metadata) { mutableStateOf(metadata.wohnort) }
-    var editBaujahr by remember(metadata) { mutableStateOf(metadata.baujahr.toString()) }
+    var editBaujahr by remember(metadata) { mutableStateOf(metadata.baujahr.takeIf { it > 0 }?.toString().orEmpty()) }
     var editWohnflaeche by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.wohnflaeche)) }
     var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundstuecksgroesse)) }
     var editNotariellesKaufdatum by remember(metadata) { mutableStateOf(metadata.notariellesKaufdatum) }
@@ -9043,7 +9064,9 @@ fun PropertyMetadataFormDialog(
                 OutlinedTextField(
                     value = editName,
                     onValueChange = { editName = it },
-                    label = { Text("Objekt-Bezeichnung") },
+                    label = { Text("Name *") },
+                    isError = requiredErrors["name"] != null,
+                    supportingText = { requiredErrors["name"]?.let { Text(it) } },
                     placeholder = { Text("z.B. Mehrfamilienhaus") },
                     modifier = Modifier.fillMaxWidth().testTag("edit_property_name"),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -9055,13 +9078,22 @@ fun PropertyMetadataFormDialog(
                 OutlinedTextField(
                     value = editAdresse,
                     onValueChange = { editAdresse = it },
-                    label = { Text("Anschrift / Adresse (Objekt)") },
+                    label = { Text("Adresse *") },
+                    isError = requiredErrors["address"] != null,
+                    supportingText = { requiredErrors["address"]?.let { Text(it) } },
                     modifier = Modifier.fillMaxWidth().testTag("edit_property_adresse"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White
                     )
                 )
+
+                OutlinedTextField(editType, { editType = it }, label = { Text("Objektart *") },
+                    isError = requiredErrors["type"] != null,
+                    supportingText = { requiredErrors["type"]?.let { Text(it) } },
+                    singleLine = true, modifier = Modifier.fillMaxWidth().testTag("edit_property_type"))
+                OutlinedTextField(editNotes, { editNotes = it }, label = { Text("Notizen") },
+                    modifier = Modifier.fillMaxWidth().testTag("edit_property_notes"))
 
                 OutlinedTextField(
                     value = editWohnort,
@@ -9217,7 +9249,7 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                 onClick = {
                     fun nonNegativeOrExisting(input: String, existing: Double): Double? =
                         if (input.isBlank()) existing else GermanNumberInput.parseNonNegative(input)
-                    val finalBaujahr = if (editBaujahr.isBlank()) metadata.baujahr else editBaujahr.trim().toIntOrNull()?.takeIf { it >= 0 }
+                    val finalBaujahr = PropertyFormInput.year(editBaujahr)
                     val finalWohnflaeche = nonNegativeOrExisting(editWohnflaeche, metadata.wohnflaeche)
                     val finalGrundstuecksgroesse = nonNegativeOrExisting(editGrundstuecksgroesse, metadata.grundstuecksgroesse)
                     val finalGesamtKaufpreis = nonNegativeOrExisting(editGesamtKaufpreis, metadata.gesamtKaufpreis)
@@ -9226,8 +9258,10 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                     val purchaseDateValid = editNotariellesKaufdatum.isBlank() || CalendarInput.isValidIsoDate(editNotariellesKaufdatum)
                     val transferDateValid = editUebergangNutzenLasten.isBlank() || CalendarInput.isValidIsoDate(editUebergangNutzenLasten)
 
+                    requiredErrors = PropertyFormInput.requiredErrors(editName, editAdresse, editType)
                     metadataInputError = when {
-                        finalBaujahr == null -> "Bitte ein gültiges Baujahr eingeben."
+                        requiredErrors.isNotEmpty() -> "Bitte die markierten Pflichtfelder ausfüllen."
+                        finalBaujahr == null -> "Bitte ein plausibles Baujahr (1000 bis ${java.time.LocalDate.now().year + 1}) eingeben oder das Feld leer lassen."
                         finalWohnflaeche == null || finalGrundstuecksgroesse == null -> "Bitte gültige, nicht negative Flächen eingeben."
                         finalGesamtKaufpreis == null || finalGebaeudewert == null || finalGrundUndBodenWert == null -> "Bitte gültige Beträge eingeben."
                         !purchaseDateValid || !transferDateValid -> "Bitte ein gültiges Datum im Format JJJJ-MM-TT eingeben."
@@ -9236,8 +9270,10 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                     if (metadataInputError != null) return@Button
 
                     val updated = metadata.copy(
-                        name = editName,
-                        adresse = editAdresse,
+                        name = editName.trim(),
+                        adresse = editAdresse.trim(),
+                        objektart = editType.trim(),
+                        notizen = editNotes,
                         wohnort = editWohnort,
                         baujahr = finalBaujahr!!,
                         wohnflaeche = finalWohnflaeche!!,
@@ -11261,7 +11297,7 @@ fun DatevExportScreen(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Column {
                                                 Text("Vollständiges Steuerberater-Übergabepaket (.zip)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                                Text("Enthält 01_DATEV/, 02_Belege/, 03_Kontrolle/, 04_Dokumentation/ und manifest.json mit SHA-256 Hashes.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text(com.example.util.AdvisorPackageStructure.formatDescription, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                     }
@@ -11298,7 +11334,7 @@ fun DatevExportScreen(
                                 ) {
                                     Icon(Icons.Default.Check, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("DATEV-Exportpaket jetzt erzeugen", fontWeight = FontWeight.Bold)
+                                    Text(if (targetFormat == "EXTF_CSV") "Buchungsstapel jetzt erzeugen" else "DATEV-Exportpaket jetzt erzeugen", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -11313,7 +11349,7 @@ fun DatevExportScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 if (res != null) {
-                                    val advisorReady = targetFormat != "FULL_ZIP" || res.advisorStatus == "BEREIT FÜR STEUERBERATER"
+                                    val advisorReady = res.mimeType == "text/csv" || res.advisorStatus == "BEREIT FÜR STEUERBERATER"
                                     val resultBg = if (advisorReady) Color(0xFFDCFCE7) else Color(0xFFFFF7ED)
                                     val resultFg = if (advisorReady) Color(0xFF166534) else Color(0xFF9A3412)
                                     Card(
@@ -11325,7 +11361,7 @@ fun DatevExportScreen(
                                                 Icon(if (advisorReady) Icons.Default.CheckCircle else Icons.Default.Warning, contentDescription = null, tint = resultFg)
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
-                                                    if (advisorReady) "Exportpaket erfolgreich erstellt!" else "Paket technisch erstellt – fachlich noch nicht bereit",
+                                                    if (res.mimeType == "text/csv") "Buchungsstapel erfolgreich erstellt!" else if (advisorReady) "Exportpaket erfolgreich erstellt!" else "Paket technisch erstellt – fachlich noch nicht bereit",
                                                     fontWeight = FontWeight.Bold, color = resultFg, fontSize = 15.sp
                                                 )
                                             }
@@ -11334,7 +11370,7 @@ fun DatevExportScreen(
                                             }
                                             Spacer(modifier = Modifier.height(8.dp))
                                             Text("Exportlauf-ID: ${res.exportId}", fontSize = 12.sp, color = resultFg, fontWeight = FontWeight.SemiBold)
-                                            Text("Dateiname: ${res.zipFile.name}", fontSize = 12.sp, color = resultFg)
+                                            Text("Dateiname: ${res.outputFile.name}", fontSize = 12.sp, color = resultFg)
                                             Text("SHA-256: ${res.sha256Checksum.take(24)}...", fontSize = 11.sp, color = resultFg)
                                             Text("Gesamtsumme: ${String.format(Locale.GERMANY, "%.2f", res.totalAmountEur)} EUR (${res.totalRecords} Sätze)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = resultFg)
                                         }
@@ -11346,20 +11382,20 @@ fun DatevExportScreen(
                                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                                 context,
                                                 context.packageName + ".provider",
-                                                res.zipFile
+                                                res.outputFile
                                             )
                                             val intent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "application/zip"
+                                                type = res.mimeType
                                                 putExtra(Intent.EXTRA_STREAM, uri)
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
-                                            context.startActivity(Intent.createChooser(intent, "DATEV Exportpaket teilen"))
+                                            context.startActivity(Intent.createChooser(intent, if (res.mimeType == "text/csv") "DATEV Buchungsstapel teilen" else "DATEV Exportpaket teilen"))
                                         },
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier.fillMaxWidth().testTag("datev_share_output")
                                     ) {
                                         Icon(Icons.Default.Share, contentDescription = null)
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("DATEV Paket Teilen / Speichern", fontWeight = FontWeight.Bold)
+                                        Text(if (res.mimeType == "text/csv") "CSV Teilen / Speichern" else "DATEV Paket Teilen / Speichern", fontWeight = FontWeight.Bold)
                                     }
                                 }
 

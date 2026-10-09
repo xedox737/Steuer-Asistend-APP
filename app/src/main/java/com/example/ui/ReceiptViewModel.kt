@@ -867,6 +867,38 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }?.unitId.orEmpty()
     }
 
+    internal suspend fun saveInitialRentBatch(propertyId: String, rows: List<InitialRentRow>): String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        if (rows.isEmpty() || rows.map { it.unitId }.distinct().size != rows.size) return@withContext "Bitte eindeutige Einheiten für die Erstbefüllung auswählen."
+        val property = database.propertyDao().getPropertyByPropertyId(propertyId)
+            ?: return@withContext "Die Immobilie ist nicht mehr verfügbar."
+        val units = getWohneinheitenForProperty(property).associateBy { PropertyUnitScopedData.stableUnitId(propertyId, it) }
+        rows.forEach { row ->
+            InitialRentInput.error(row)?.let { return@withContext it }
+            val unit = units[row.unitId] ?: return@withContext "Eine ausgewählte Einheit ist nicht mehr vorhanden."
+            val history = TenantHistoryStore.load(getApplication(), propertyId, row.unitId, unit.name)
+            if (!InitialRentInput.eligible(unit, history)) return@withContext "${unit.name}: vorhandene Mietdaten werden nicht überschrieben. Bitte den Mietverlauf verwenden."
+        }
+        val periods = rows.filter { it.status == "Vermietet" }.map { row ->
+            val unit = units.getValue(row.unitId)
+            unit to TenantPeriod(java.util.UUID.randomUUID().mostSignificantBits, unit.name, row.tenant.trim(), row.start.trim(), "",
+                RentPlanInput.amount(row.cold)!!, RentPlanInput.amount(row.utilities)!!, RentPlanInput.amount(row.other)!!)
+        }
+        if (!TenantHistoryStore.saveInitialPeriods(getApplication(), propertyId, periods)) return@withContext "Die Mietdaten konnten nicht vollständig gespeichert werden oder wurden inzwischen geändert. Bitte erneut prüfen."
+        rows.forEach { row ->
+            val unit = units.getValue(row.unitId)
+            PropertyUnitScopedData.setRentValues(getApplication(), propertyId, unit, RentPlanInput.amount(row.utilities)!!, RentPlanInput.amount(row.other)!!)
+            updateWohneinheitForProperty(unit.copy(status = row.status, mieter = row.tenant.trim(), mietvertragsstart = row.start.trim(),
+                kaltmiete = RentPlanInput.amount(row.cold)!!), property)
+        }
+        refreshPropertyUnits(propertyId)
+        null
+    }
+
+    fun refreshPropertyUnits(propertyId: String) {
+        val property = properties.value.firstOrNull { it.propertyId == propertyId } ?: return
+        if (propertyMetadata.value?.propertyId == propertyId) _wohneinheitenStatus.value = getWohneinheitenForProperty(property)
+    }
+
     fun updateWohneinheit(updated: WohneinheitStatus, correctCurrentContract: Boolean = false) {
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
             properties.value.firstOrNull { property ->
@@ -2950,7 +2982,9 @@ data class AiSearchUiState(
             property.propertyId to getWohneinheitenForProperty(property)
         }
         val exportReceipts = _wizardIncludedReceipts.value
-        val packageResult = com.example.util.AdvisorPackageBuilder.buildPackage(
+        val packageResult = if (_wizardTargetFormat.value == "EXTF_CSV") {
+            com.example.util.DatevCsvOutput.create(context, records, profile, report, _wizardYearFilter.value)
+        } else com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
             records = records,
             includedReceipts = exportReceipts,
@@ -2994,8 +3028,8 @@ data class AiSearchUiState(
                         }
                 ).toString(),
                 kanzleiprofilNameVersion = "${profile.profileName} v${profile.version}",
-                zipFileName = packageResult.zipFile.name,
-                zipFileSizeBytes = packageResult.zipFile.length(),
+                zipFileName = packageResult.outputFile.name,
+                zipFileSizeBytes = packageResult.outputFile.length(),
                 zipSha256 = packageResult.sha256Checksum,
                 status = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER") "SUCCESS" else "CREATED_NOT_READY",
                 totalAmount = packageResult.totalAmountEur,
@@ -3311,6 +3345,7 @@ data class AiSearchUiState(
         _bankTransactionDetailsReturnId.value = null
         _selectedReceiptDetailId.value = null
         receiptDetailReturnScreen = AppScreen.RECEIPTS_LIST
+        bankDetailEntryReturnScreen = null
         datevReturnScreen = AppScreen.MORE
         setScreen(destination)
         _primaryNavigationReset.value = PrimaryNavigationReset(
@@ -3320,6 +3355,9 @@ data class AiSearchUiState(
     }
 
     fun setScreen(screen: AppScreen) {
+        if (screen !in setOf(AppScreen.BANK, AppScreen.RECEIPT_DETAIL, AppScreen.ADD_RECEIPT)) {
+            bankDetailEntryReturnScreen = null
+        }
         if (screen != AppScreen.ADD_RECEIPT) {
             _pendingBankTransactionId.value = null
         }
@@ -3377,6 +3415,22 @@ data class AiSearchUiState(
             _bankTransactionDetailsReturnId.value = transactionId
             _currentScreen.value = AppScreen.BANK
         }
+    }
+
+    private var bankDetailEntryReturnScreen: AppScreen? = null
+
+    fun openBankTransactionDetails(transactionId: String) {
+        val origin = _currentScreen.value
+        setScreen(AppScreen.BANK)
+        bankDetailEntryReturnScreen = origin.takeIf { it != AppScreen.BANK }
+        _bankTransactionDetailsReturnId.value = transactionId
+    }
+
+    fun closeBankTransactionDetailsEntry(): Boolean {
+        val origin = bankDetailEntryReturnScreen ?: return false
+        bankDetailEntryReturnScreen = null
+        setScreen(origin)
+        return true
     }
 
     fun consumeBankTransactionDetailsReturn() {

@@ -180,8 +180,8 @@ fun ImmobilienManagerScreen(viewModel: ReceiptViewModel) {
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val visibleProperties = remember(properties) { properties.filterNot { it.status == "Archiviert" } }
-    var openedPropertyId by remember { mutableStateOf<String?>(null) }
-    var section by remember { mutableStateOf(PropertySection.DASHBOARD) }
+    var openedPropertyId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    var section by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(PropertySection.DASHBOARD) }
     var showWizard by remember { mutableStateOf(false) }
     val opened = properties.firstOrNull { it.propertyId == openedPropertyId }
 
@@ -334,7 +334,7 @@ private fun PropertyDetailHost(
         }
         when (section) {
             PropertySection.DASHBOARD -> PropertyReferenceDetail(property, currentRentSummary, viewModel, onSection)
-            PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
+            PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onAnnualDetails = { onSection(PropertySection.RENT) }, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
@@ -423,72 +423,6 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
         runCatching { context.contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } } }.onSuccess { viewModel.updatePropertyMetadata(property.copy(bildPfad = target.absolutePath)) }
     } }
     IconButton(onClick = { picker.launch("image/*") }, modifier = modifier.background(Color.White, androidx.compose.foundation.shape.CircleShape)) { Icon(Icons.Default.CameraAlt, "Objektbild hinzufügen", tint = AccentBlue) }
-}
-
-@Composable private fun PropertyEditScreen(property: PropertyMetadata, viewModel: ReceiptViewModel, onBack: () -> Unit) {
-    var name by remember(property) { mutableStateOf(property.name) }; var address by remember(property) { mutableStateOf(property.adresse) }; var type by remember(property) { mutableStateOf(property.objektart) }
-    var year by remember(property) { mutableStateOf(property.baujahr.toString()) }
-    var area by remember(property) { mutableStateOf(GermanNumberInput.formatForInput(property.wohnflaeche)) }
-    var land by remember(property) { mutableStateOf(GermanNumberInput.formatForInput(property.grundstuecksgroesse)) }
-    var notes by remember(property) { mutableStateOf(property.notizen) }
-    var areaError by remember(property) { mutableStateOf<String?>(null) }
-    var landError by remember(property) { mutableStateOf<String?>(null) }
-    var yearError by remember(property) { mutableStateOf<String?>(null) }
-    BackHandler(onBack = onBack)
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }; Text("Immobilie bearbeiten", Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-            TextButton(onClick = {
-                val parsedYear = if (year.isBlank()) property.baujahr else year.toIntOrNull()?.takeIf { it >= 0 }
-                val parsedArea = if (area.isBlank()) property.wohnflaeche else GermanNumberInput.parseNonNegative(area)
-                val parsedLand = if (land.isBlank()) property.grundstuecksgroesse else GermanNumberInput.parseNonNegative(land)
-                yearError = if (parsedYear == null) "Bitte ein gültiges Baujahr eingeben." else null
-                areaError = if (parsedArea == null) "Die Fläche darf nicht negativ oder ungültig sein." else null
-                landError = if (parsedLand == null) "Die Fläche darf nicht negativ oder ungültig sein." else null
-                if (yearError != null || areaError != null || landError != null) return@TextButton
-                viewModel.updatePropertyMetadata(
-                    property.copy(
-                        name = name,
-                        adresse = address,
-                        objektart = type,
-                        baujahr = parsedYear!!,
-                        wohnflaeche = parsedArea!!,
-                        grundstuecksgroesse = parsedLand!!,
-                        notizen = notes
-                    )
-                )
-                onBack()
-            }) { Text("Speichern", fontSize = 14.sp, color = AccentBlue) }
-        }
-        LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { Box { PropertyCoverImage(property, Modifier.fillMaxWidth().height(150.dp)); PropertyImagePicker(property, viewModel, Modifier.align(Alignment.BottomEnd).padding(8.dp)) } }
-            item { PropertyEditField(name, "Name *") { name = it } }
-            item { PropertyEditField(address, "Adresse *") { address = it } }
-            item { PropertyEditField(type, "Objektart *") { type = it } }
-            item { PropertyEditField(year, "Baujahr", error = yearError) { yearError = null; year = it.filter(Char::isDigit) } }
-            item { PropertyEditField(area, "Wohnfläche (m²)", error = areaError) { areaError = null; area = it } }
-            item { PropertyEditField(land, "Grundstücksfläche (m²)", error = landError) { landError = null; land = it } }
-            item { PropertyEditField(notes, "Beschreibung / Notizen", false) { notes = it } }
-        }
-    }
-}
-
-@Composable private fun PropertyEditField(
-    value: String,
-    label: String,
-    singleLine: Boolean = true,
-    error: String? = null,
-    onChange: (String) -> Unit
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label) },
-        isError = error != null,
-        supportingText = { error?.let { Text(it) } },
-        modifier = Modifier.fillMaxWidth(),
-        singleLine = singleLine
-    )
 }
 
 @Composable
@@ -889,7 +823,7 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 
 @Composable private fun PropertyData(viewModel: ReceiptViewModel, property: PropertyMetadata) {
     var edit by remember { mutableStateOf(false) }
-    if (edit) PropertyMetadataFormDialog(viewModel = viewModel, onDismiss = { edit = false })
+    if (edit) PropertyMetadataFormDialog(viewModel = viewModel, property = property, onDismiss = { edit = false })
     val unitCount = property.wohneinheiten
         .split(',')
         .map { it.trim() }
@@ -1101,6 +1035,8 @@ private fun MoreMenuItem(
 @Composable
 private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetadata, List<WohneinheitStatus>, Loan?) -> Unit) {
     var step by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    var preparingUnits by remember { mutableStateOf(false) }
     val generatedPropertyId = remember { java.util.UUID.randomUUID().toString() }
     var name by remember { mutableStateOf("") }; var street by remember { mutableStateOf("") }; var zip by remember { mutableStateOf("") }; var city by remember { mutableStateOf("") }
     var objectType by remember { mutableStateOf("Mehrfamilienhaus") }
@@ -1126,6 +1062,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
             isError = message != null,
             supportingText = { message?.let { Text(it) } },
             modifier = Modifier.fillMaxWidth(),
+            enabled = !preparingUnits,
             singleLine = true
         )
     }
@@ -1156,21 +1093,10 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                         field(purchaseDate, "Kaufdatum YYYY-MM-DD") { purchaseDate = it }
                         field(purchasePrice, "Kaufpreis €") { purchasePrice = it }
                     }
-                    1 -> { field(yearBuilt, "Baujahr") { yearBuilt = it }; field(livingArea, "Wohnfläche m²") { livingArea = it }; field(landArea, "Grundstücksfläche m²") { landArea = it }; field(unitCount, "Anzahl Einheiten") { raw ->
-                            val digits = raw.filter(Char::isDigit).take(4)
-                            unitCount = digits
-                            val requested = digits.toIntOrNull() ?: 0
-                            while (unitNames.size < requested) {
-                                unitNames.add(generateSequence(1) { it + 1 }
-                                    .map { "WE ${it.toString().padStart(2, '0')}" }
-                                    .first { it !in unitNames })
-                                unitLocations.add("")
-                                unitAreas.add("")
-                            }
-                        } }
+                    1 -> { field(yearBuilt, "Baujahr") { yearBuilt = it }; field(livingArea, "Wohnfläche m²") { livingArea = it }; field(landArea, "Grundstücksfläche m²") { landArea = it }; field(unitCount, "Anzahl Einheiten") { unitCount = it } }
                     2 -> { Text("Finanzierung (optional)", fontWeight = FontWeight.Bold); field(loanName, "Darlehensbezeichnung") { loanName = it }; field(loanBank, "Bank") { loanBank = it }; field(loanAmount, "Darlehensbetrag €") { loanAmount = it } }
                     3 -> LazyColumn(Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items((0 until (unitCount.toIntOrNull() ?: 1).coerceAtLeast(1)).toList()) { index ->
+                        items(PropertyFormInput.unitCount(unitCount) ?: 1) { index ->
                             Text("Einheit ${index + 1}", fontWeight = FontWeight.Bold)
                             field(unitNames[index], "Name") { unitNames[index] = it }
                             field(unitLocations[index], "Lage / Bezeichnung") { unitLocations[index] = it }
@@ -1220,9 +1146,14 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                     else -> emptySet()
                 }
                 val currentErrors = validation.errors.filterKeys { it in relevantFields }
-                val count = unitCount.toIntOrNull() ?: 0
-                if (count < 1) {
-                    wizardMessage = "Bitte mindestens eine Wohneinheit angeben."
+                val count = PropertyFormInput.unitCount(unitCount)
+                if (count == null) {
+                    fieldErrors = currentErrors + ("Anzahl Einheiten" to "Bitte eine positive Ganzzahl bis ${PropertyFormInput.MAX_CREATION_UNITS} eingeben.")
+                    wizardMessage = "Bitte eine positive Ganzzahl für die Einheitenzahl eingeben; Dezimalzahlen und Minuszeichen sind nicht erlaubt."
+                    return@Button
+                }
+                if (step == 0 && PropertyFormInput.requiredErrors(name, street, objectType).isNotEmpty()) {
+                    wizardMessage = "Bitte Objektname, Adresse und Objektart angeben."
                     return@Button
                 }
                 val invalidUnitName = if (step == 3 || step == 4) {
@@ -1252,7 +1183,26 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                 if (step < 4) {
                     fieldErrors = emptyMap()
                     wizardMessage = null
-                    step++
+                    if (step == 1) {
+                        preparingUnits = true
+                        val existingNames = unitNames.toList()
+                        val existingLocations = unitLocations.toList()
+                        val existingAreas = unitAreas.toList()
+                        scope.launch {
+                            val prepared = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                                Triple(
+                                    (0 until maxOf(count, existingNames.size)).map { index -> existingNames.getOrNull(index) ?: "WE ${(index + 1).toString().padStart(2, '0')}" },
+                                    (0 until maxOf(count, existingNames.size)).map { existingLocations.getOrNull(it).orEmpty() },
+                                    (0 until maxOf(count, existingNames.size)).map { existingAreas.getOrNull(it).orEmpty() }
+                                )
+                            }
+                            unitNames.clear(); unitNames.addAll(prepared.first)
+                            unitLocations.clear(); unitLocations.addAll(prepared.second)
+                            unitAreas.clear(); unitAreas.addAll(prepared.third)
+                            preparingUnits = false
+                            step++
+                        }
+                    } else step++
                 } else {
                     val values = validation.values ?: run {
                         fieldErrors = validation.errors
@@ -1297,11 +1247,11 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                     }
                     onSave(metadata, units, loan)
                 }
-            }, enabled = step > 0 || name.isNotBlank(), modifier = Modifier.testTag("property_wizard_next")) {
-                Text(if (step == 4) "Immobilie anlegen" else "Weiter")
+            }, enabled = !preparingUnits && (step > 0 || name.isNotBlank()), modifier = Modifier.testTag("property_wizard_next")) {
+                Text(if (preparingUnits) "Einheiten vorbereiten …" else if (step == 4) "Immobilie anlegen" else "Weiter")
             }
         },
-        dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }) { Text("Zurück") }; TextButton(onClick = onDismiss) { Text("Abbrechen") } } }
+        dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }, enabled = !preparingUnits) { Text("Zurück") }; TextButton(onClick = onDismiss) { Text("Abbrechen") } } }
     )
 }
 

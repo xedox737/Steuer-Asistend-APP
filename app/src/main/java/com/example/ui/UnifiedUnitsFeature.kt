@@ -49,11 +49,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,14 +76,34 @@ internal fun UnifiedPropertyUnitsScreen(
     units: List<WohneinheitStatus>,
     receipts: List<Receipt>,
     documents: List<ManagedDocument>,
+    onAnnualDetails: () -> Unit = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) },
     onBackToProperty: () -> Unit
 ) {
     val context = LocalContext.current
     val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
-    var selectedUnitId by remember { mutableStateOf<String?>(null) }
+    var selectedUnitId by rememberSaveable(property.propertyId) { mutableStateOf<String?>(null) }
     var year by remember { mutableIntStateOf(LocalDate.now().year) }
+    var quickMonthId by remember { mutableStateOf<String?>(null) }
+    var quickTenantId by remember { mutableStateOf<String?>(null) }
+    var showInitialBatch by remember { mutableStateOf(false) }
+    var historyVersion by remember { mutableIntStateOf(0) }
+    if (showInitialBatch) InitialRentBatchDialog(property, units, viewModel,
+        onSaved = { historyVersion++ }, onDismiss = { showInitialBatch = false })
+    units.firstOrNull { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == quickMonthId }?.let { unit ->
+        val month = RentTrackingLogic.month(context, property.propertyId, unit, receipts, YearMonth.now(), bankAssignments, bankLinks, bankTransactions)
+        UnifiedMonthlyCheckDialog(unit.label.ifBlank { unit.name }, month.expected, month.actual, month.missing,
+            onDismiss = { quickMonthId = null })
+    }
+    units.firstOrNull { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == quickTenantId }?.let { unit ->
+        TenantHistoryDialog(unit, PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "nk"),
+            PropertyUnitScopedData.rentValue(context, property.propertyId, unit, "other"),
+            onDismiss = { quickTenantId = null },
+            onCurrentTenantChanged = {},
+            onHistoryChanged = { historyVersion++; viewModel.refreshPropertyUnits(property.propertyId) },
+            propertyId = property.propertyId, initiallyShowChange = true)
+    }
 
     val selected = units.firstOrNull {
         PropertyUnitScopedData.stableUnitId(property.propertyId, it) == selectedUnitId
@@ -102,7 +124,7 @@ internal fun UnifiedPropertyUnitsScreen(
     }
 
     val yearRows = remember(
-        property.propertyId, units, receipts, year,
+        property.propertyId, units, receipts, year, historyVersion,
         bankAssignments, bankLinks, bankTransactions
     ) {
         RentTrackingLogic.year(
@@ -115,7 +137,7 @@ internal fun UnifiedPropertyUnitsScreen(
     val totalMissing = (totalExpected - totalActual).coerceAtLeast(0.0)
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().testTag("property_units_overview"),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -138,6 +160,7 @@ internal fun UnifiedPropertyUnitsScreen(
         item {
             Text("Einheiten", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
             Text("Mietverhältnisse, Zahlungen und Nebenkosten im Überblick", fontSize = 12.sp, color = SlateGray)
+            TextButton(onClick = { showInitialBatch = true }, modifier = Modifier.testTag("rent_batch_open")) { Text("Mietdaten gesammelt erfassen") }
         }
 
         item {
@@ -191,15 +214,17 @@ internal fun UnifiedPropertyUnitsScreen(
                             fontWeight = FontWeight.Bold,
                             color = DarkNavy
                         )
-                        Text("Details anzeigen", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = AccentBlue, modifier = Modifier.size(17.dp))
+                        TextButton(onClick = onAnnualDetails, modifier = Modifier.testTag("unit_annual_details")) {
+                            Text("Details anzeigen", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = AccentBlue)
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = AccentBlue, modifier = Modifier.size(17.dp))
+                        }
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         UnifiedAnnualMetric(
                             "Ist-Einnahmen",
                             unifiedMoney(totalActual),
-                            "aus Belegen",
+                            "aus bestätigten Zahlungen",
                             Icons.Default.Assessment,
                             EmeraldGreen,
                             Color(0xFFF0FAF5),
@@ -274,7 +299,9 @@ internal fun UnifiedPropertyUnitsScreen(
                 nk = if (unit.status == "Vermietet") nk else 0.0,
                 other = if (unit.status == "Vermietet") other else 0.0,
                 missing = if (unit.status == "Vermietet") month.missing else 0.0,
-                onOpen = { selectedUnitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) }
+                onOpen = { selectedUnitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) },
+                onMonthlyCheck = { quickMonthId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) },
+                onTenantChange = { quickTenantId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit) }
             )
         }
     }
@@ -317,6 +344,8 @@ private fun UnifiedUnitOverviewCard(
     nk: Double,
     other: Double,
     missing: Double,
+    onMonthlyCheck: () -> Unit,
+    onTenantChange: () -> Unit,
     onOpen: () -> Unit
 ) {
     val rented = unit.status == "Vermietet"
@@ -372,8 +401,8 @@ private fun UnifiedUnitOverviewCard(
             if (rented) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
-                        onClick = onOpen,
-                        modifier = Modifier.weight(1f),
+                        onClick = onMonthlyCheck,
+                        modifier = Modifier.weight(1f).testTag("unit_monthly_${unit.unitId}"),
                         shape = Ui2.controlShape,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 7.dp)
                     ) {
@@ -381,8 +410,8 @@ private fun UnifiedUnitOverviewCard(
                         Text(" Monatscheck", fontSize = 11.sp, maxLines = 1)
                     }
                     OutlinedButton(
-                        onClick = onOpen,
-                        modifier = Modifier.weight(1f),
+                        onClick = onTenantChange,
+                        modifier = Modifier.weight(1f).testTag("unit_tenant_change_${unit.unitId}"),
                         shape = Ui2.controlShape,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 7.dp)
                     ) {
@@ -394,7 +423,7 @@ private fun UnifiedUnitOverviewCard(
                     Text("${currentMonthLabel()}: ${unifiedMoney(missing)} offen", fontSize = 9.sp, color = CrimsonRed)
                 }
             } else {
-                OutlinedButton(onClick = onOpen, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
+                OutlinedButton(onClick = onTenantChange, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
                     Text("+  Neu vermieten / Mietverhältnis anlegen", fontSize = 11.sp)
                 }
             }
@@ -480,7 +509,7 @@ private fun UnifiedUnitDetailScreen(
             propertyId = property.propertyId
         )
     }
-    val activePeriod = periods.lastOrNull { it.active }
+    val activePeriod = TenantHistoryStore.currentAt(periods)
     val latestPeriod = periods.maxByOrNull { it.startDate }
     val extraDetails = remember(unitId, detailsVersion) {
         UnitRentalDetailStore.load(context, property.propertyId, unitId)
@@ -558,7 +587,7 @@ private fun UnifiedUnitDetailScreen(
                     )
                 )
             },
-            onHistoryChanged = {},
+            onHistoryChanged = { detailsVersion++; viewModel.refreshPropertyUnits(property.propertyId) },
             propertyId = property.propertyId
         )
     }
@@ -623,6 +652,7 @@ private fun UnifiedUnitDetailScreen(
     if (showStatusDialog) {
         UnifiedUnitStatusDialog(
             unit = unit,
+            periods = periods,
             onDismiss = { showStatusDialog = false },
             onSave = { status, effectiveDate ->
                 UnitStatusMetaStore.save(context, property.propertyId, unitId, status, effectiveDate)
@@ -634,7 +664,7 @@ private fun UnifiedUnitDetailScreen(
                 )
                 if (endsCurrentLease) {
                     val updatedPeriods = periods.map { period ->
-                        if (period.active) period.copy(endDate = effectiveDate) else period
+                        if (period.id == activePeriod?.id) period.copy(endDate = effectiveDate) else period
                     }
                     TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)
                     viewModel.updateWohneinheit(
@@ -1044,6 +1074,7 @@ private fun unifiedDocumentLabel(document: ManagedDocument): String {
 @Composable
 private fun UnifiedUnitStatusDialog(
     unit: WohneinheitStatus,
+    periods: List<TenantPeriod>,
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit
 ) {
@@ -1185,18 +1216,20 @@ private fun UnifiedUnitStatusDialog(
                         val parsed = runCatching {
                             LocalDate.parse(
                                 effectiveDateText.trim(),
-                                DateTimeFormatter.ofPattern("dd.MM.yyyy")
+                                DateTimeFormatter.ofPattern("dd.MM.uuuu").withResolverStyle(java.time.format.ResolverStyle.STRICT)
                             )
                         }.getOrNull()
                         val activeStart = unit.mietvertragsstart
                             .takeIf { it.isNotBlank() }
                             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        val chronologyError = TenantChronology.endError(periods, TenantHistoryStore.currentAt(periods)?.id, parsed?.toString().orEmpty())
                         val futureAllowed = status == "Kündigung / Auszug geplant"
                         when {
                             parsed == null ->
                                 dateError = "Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben."
                             !futureAllowed && parsed.isAfter(LocalDate.now()) ->
                                 dateError = "Für diesen Status darf das Datum nicht in der Zukunft liegen."
+                            status in destructiveStatuses && chronologyError != null -> dateError = chronologyError
                             status in destructiveStatuses && activeStart != null && parsed.isBefore(activeStart) ->
                                 dateError = "Das Mietende darf nicht vor dem Mietbeginn liegen."
                             else -> onSave(status, parsed.toString())

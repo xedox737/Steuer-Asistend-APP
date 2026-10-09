@@ -128,7 +128,7 @@ internal object PropertyWizardInput {
         val year = if (yearBuilt.isBlank()) {
             0
         } else {
-            yearBuilt.trim().toIntOrNull()?.takeIf { it >= 0 } ?: run {
+            PropertyFormInput.year(yearBuilt) ?: run {
                 errors[YEAR_BUILT] = "Bitte ein gültiges Baujahr eingeben."
                 0
             }
@@ -151,5 +151,26 @@ internal object PropertyWizardInput {
     fun unitArea(value: String): Double? {
         if (value.isBlank()) return 0.0
         return GermanNumberInput.parse(value)?.takeIf { it >= 0.0 }
+    }
+}
+
+internal object PropertyFormInput {
+    // The previous four-digit control allowed 9,999. Keep that range while bounding
+    // allocation of per-unit preference keys and backup snapshots at a creation batch.
+    const val MAX_CREATION_UNITS = 10_000
+
+    fun unitCount(raw: String): Int? = raw.trim().takeIf { Regex("[0-9]+").matches(it) }
+        ?.toIntOrNull()?.takeIf { it in 1..MAX_CREATION_UNITS }
+
+    fun year(raw: String, currentYear: Int = LocalDate.now().year): Int? {
+        if (raw.isBlank() || raw.trim() == "0") return 0
+        return raw.trim().takeIf { Regex("[0-9]{4}").matches(it) }?.toIntOrNull()
+            ?.takeIf { it in 1000..(currentYear + 1) }
+    }
+
+    fun requiredErrors(name: String, address: String, type: String): Map<String, String> = buildMap {
+        if (name.isBlank()) put("name", "Bitte einen Objektnamen eingeben.")
+        if (address.isBlank()) put("address", "Bitte die Objektadresse eingeben.")
+        if (type.isBlank()) put("type", "Bitte eine Objektart eingeben.")
     }
 }
