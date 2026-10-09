@@ -61,6 +61,9 @@ separat unverändert über den Produktions-Wizard.
 Der vorhandene Paketnamen-Instrumentationtest bleibt bestehen. Breite Logiktests
 bleiben in `src/test`. Kein Retry, kein pauschales Sleep; Compose/Espresso-Idling
 und begrenztes `waitUntil(10_000)` für asynchrone Speicherung.
+Der DATEV-Test synchronisiert Exportdaten/Auditeintrag und die Erfolgstext-Semantik
+im selben Zehn-Sekunden-Fenster. Backenddaten können vor dem UI-Wechsel bereit
+sein; Schritt 6 und der in Sicht gescrollte Erfolgstext werden separat geprüft.
 
 ## Lokal
 
