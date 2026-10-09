@@ -47,7 +47,7 @@ und SharedPreferences sowie Compose-Semantik; kein zusätzlicher App-/NavHost.
 | PropertyPersistenceEmulatorTest | Fünfstufige Objekt-/Einheitenanlage, deutsche Beträge/Flächen; Screenwechsel, Activity.recreate, Schließen/Neustart mit neuem VM, zweite Room-Verbindung und stabile IDs |
 | TenantChronologyEmulatorTest | Ende vor Beginn abgewiesen, danach gültiger Wechsel mit deutschem Mietbetrag dauerhaft gespeichert |
 | FinancialFilterEmulatorTest | Zwei Objekte, zwei Belege und bestätigte Bankmiete; Objekt-A-Liste und Einnahmen/Ausgaben/Ergebnis/Buchungszahl konsistent |
-| DatevCsvEmulatorTest | Synthetisch freigegebener Beleg, Wizard über UI, CSV-Auswahl, echte lesbare .csv/EXTF, Exportprotokoll; keine neue ZIP |
+| DatevCsvEmulatorTest | Synthetisch freigegebener PDF-Beleg, Wizard über UI, CSV-Auswahl, echte lesbare .csv/EXTF, Exportprotokoll; keine neue ZIP |
 | FontScaleEmulatorTest | Echte Systemeinstellung 1,5 vor Activitystart; Dashboard/DATEV-Texte sichtbar ohne Textlayout-Overflow, Export-Einstieg/Pfeil und fünf Tabs bedienbar |
 
 Der vorhandene Paketnamen-Instrumentationtest bleibt bestehen. Breite Logiktests
@@ -101,6 +101,14 @@ APIs/Geräte erst nach belegter Stabilität ergänzen.
 
 ## Abnahme dieses PR
 
-CI-Ergebnisse und tatsächliche Laufzeiten werden nach dem ersten vollständigen
-Lauf im PR dokumentiert. Ein grün behaupteter Gerätelauf benötigt erfolgreiche
-Instrumentation-XML und die zugehörigen Artefakte. Der PR wird nicht gemergt.
+Die erste CI-Vorprüfung (Lauf `37945138876`) bestätigte 799 Unit-Tests,
+Lint und Debug-Build. API 35 bootete mit KVM in etwa 35 s bei 1080 × 2340 px
+und 440 dpi. Vor der Instrumentation scheiterte zunächst die Versionsdiagnose:
+Die Action startet den Emulator über den absoluten SDK-Pfad, fügt ihn aber nicht
+zum Script-PATH hinzu. Deshalb verwendet das Script jetzt explizit
+`$ANDROID_HOME/emulator/emulator` (alternativ `$ANDROID_SDK_ROOT`).
+Dieser erste Lauf gilt nicht als bestandener E2E-Test.
+
+Vollständige CI-Ergebnisse und Laufzeiten stehen im PR. Ein grün behaupteter
+Gerätelauf benötigt erfolgreiche Instrumentation-XML und die zugehörigen
+Artefakte. Der PR wird nicht gemergt.

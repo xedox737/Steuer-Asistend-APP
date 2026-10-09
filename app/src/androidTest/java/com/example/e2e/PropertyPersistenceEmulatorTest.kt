@@ -39,9 +39,9 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
             originalModel.wohneinheitenStatus.value.singleOrNull()?.wohnflaeche == 41.25 }
         val saved = originalModel.properties.value.single()
         val unit = originalModel.wohneinheitenStatus.value.single()
-        assertEquals(1050000.25, saved.gesamtKaufpreis!!, .001)
-        assertEquals(620.50, saved.wohnflaeche!!, .001)
-        assertEquals(950.25, saved.grundstuecksgroesse!!, .001)
+        assertEquals(1050000.25, saved.gesamtKaufpreis, .001)
+        assertEquals(620.50, saved.wohnflaeche, .001)
+        assertEquals(950.25, saved.grundstuecksgroesse, .001)
         assertTrue(saved.propertyId.isNotBlank())
         assertTrue(unit.unitId.isNotBlank())
 
@@ -79,6 +79,9 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
 
     private fun nextWizardStep(step: String) {
         ui.onNodeWithTag("property_wizard_next").assertIsEnabled().performClick()
+        ui.waitUntil(10_000) {
+            ui.onAllNodesWithText("Immobilie anlegen · $step").fetchSemanticsNodes().isNotEmpty()
+        }
         ui.onNodeWithText("Immobilie anlegen · $step").assertIsDisplayed()
     }
 }

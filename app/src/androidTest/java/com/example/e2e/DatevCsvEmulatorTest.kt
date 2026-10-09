@@ -1,5 +1,7 @@
 package com.example.e2e
 
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.data.*
@@ -10,13 +12,22 @@ import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.LocalDate
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class DatevCsvEmulatorTest : EmulatorTestSupport() {
     @Test fun csvSelectedInRealWizardCreatesReadableCsvInsteadOfZip() {
         val property = seedProperty()
+        val original = File(context.filesDir, "e2e-datev-original.pdf")
+        PdfDocument().use { pdf ->
+            val page = pdf.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
+            page.canvas.drawText("Synthetischer freigegebener Testbeleg", 40f, 80f, Paint())
+            pdf.finishPage(page)
+            original.outputStream().use { pdf.writeTo(it) }
+        }
         runBlocking(Dispatchers.IO) {
             db.receiptDao().insertReceipt(expense(901, 100.0, property.propertyId, LocalDate.now().toString()).copy(
+                imageUrl = original.absolutePath, originalMimeType = "application/pdf",
                 freigabestatus = "FREIGEGEBEN",
                 allocationsJson = AccountingApprovalJson.encodeAllocations(listOf(PersistedAllocation("e2e-row", "Reparatur", 100.0, 10000))),
                 bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(listOf(PersistedBookingProposal("e2e-row", "4800", "1200", 10000, "")))

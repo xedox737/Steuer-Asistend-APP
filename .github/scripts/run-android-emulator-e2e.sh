@@ -4,6 +4,7 @@ set -euo pipefail
 
 artifact_dir="app/build/emulator-e2e"
 device_artifact_dir="/sdcard/Download/immopilot-emulator-e2e"
+e2e_sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 mkdir -p "$artifact_dir"
 started_at=$(date +%s)
 
@@ -44,14 +45,15 @@ adb shell settings put system user_rotation 0
   echo "api=$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
   echo "android=$(adb shell getprop ro.build.version.release | tr -d '\r')"
   echo "abi=$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+  echo "system_image=$(adb shell getprop ro.build.fingerprint | tr -d '\r')"
   adb shell wm size
   adb shell wm density
   echo "font_scale=$(adb shell settings get system font_scale | tr -d '\r')"
   echo "window_animation_scale=$(adb shell settings get global window_animation_scale | tr -d '\r')"
   echo "transition_animation_scale=$(adb shell settings get global transition_animation_scale | tr -d '\r')"
   echo "animator_duration_scale=$(adb shell settings get global animator_duration_scale | tr -d '\r')"
-  emulator -version
-  emulator -accel-check
+  "${e2e_sdk_root:?Android SDK path is missing}/emulator/emulator" -version
+  "$e2e_sdk_root/emulator/emulator" -accel-check
 } > "$artifact_dir/device-environment.txt" 2>&1
 
 gradle connectedDebugAndroidTest \
