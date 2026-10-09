@@ -27,6 +27,10 @@ Workflowänderungen nach einem Merge geprüft werden. Der Featurebranch läuft
   Tatsächliche Werte stehen in `device-environment.txt` und den Font-Berichten.
 - KVM zwingend aktiv, 2 Cores, 2048 MB RAM, 512 MB Heap, headless/SwiftShader;
   Kamera deaktiviert, alle drei Android-Animationen über die Action deaktiviert.
+  Der KVM-udev-Trigger wartet mit `--settle` gezielt auf seine eigenen Events
+  (maximal 15 s), bevor Geräteart und Lese-/Schreibrechte geprüft werden.
+  Runner-Gruppen und Rechte vor/nach der Regel stehen in `kvm-setup.txt`;
+  diese Diagnose wird auch bei einem KVM-Fehler vor dem Boot hochgeladen.
 - Ein Boot, keine Matrix/Snapshots. Bootgrenze 300 s; Jobgrenze 45 min.
   Test-APKs werden vor dem Boot kompiliert. Emulator-/Testschritt: maximal 20 min.
   Die Emulator-Binär-/Systemimage-Version wird protokolliert; SDK-Pakete folgen
@@ -125,4 +129,12 @@ Dieser erste Lauf gilt nicht als bestandener E2E-Test.
 
 Vollständige CI-Ergebnisse und Laufzeiten stehen im PR. Ein grün behaupteter
 Gerätelauf benötigt erfolgreiche Instrumentation-XML und die zugehörigen
-Artefakte. Der PR wird nicht gemergt.
+Artefakte.
+
+PR #118 wurde nach erfolgreicher Abnahme auf ausdrückliche Freigabe gemergt.
+Der erste main-Lauf `37983339312` bestand 799 Unit-Tests, Lint und Build,
+scheiterte aber vor dem Boot an der sofortigen KVM-Zugriffsprüfung nach
+`udevadm trigger`. Der Nachfix synchronisiert dieses Ereignis über
+[`--settle`](https://github.com/systemd/systemd/blob/main/man/udevadm.xml)
+und sichert KVM-Diagnose unabhängig vom Emulatorstart. Das ist kein
+App-/Instrumentationfehler und kein Anlass für einen Test-Retry.
