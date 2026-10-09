@@ -137,6 +137,8 @@ interface ManagedDocumentDao {
         val fields = org.json.JSONObject(reviewed.extractedFieldsJson.ifBlank { "{}" }).apply {
             val description = runCatching { org.json.JSONObject(current.extractedFieldsJson).optString("_displayDescription") }.getOrDefault("")
             if (description.isNotBlank()) put("_displayDescription", description)
+            val originalOrder = runCatching { org.json.JSONObject(current.extractedFieldsJson).optInt("_receiptOriginalOrder", -1) }.getOrDefault(-1)
+            if (originalOrder >= 0) put("_receiptOriginalOrder", originalOrder)
         }.toString()
         val targetChanged = current.documentType != reviewed.documentType || current.documentDate != reviewed.documentDate ||
             current.unitId != reviewed.unitId || current.storedFilename != reviewed.storedFilename
@@ -174,6 +176,8 @@ interface ManagedDocumentDao {
             org.json.JSONObject(json).apply {
                 val description = runCatching { org.json.JSONObject(current.extractedFieldsJson).optString("_displayDescription") }.getOrDefault("")
                 if (description.isNotBlank()) put("_displayDescription", description)
+                val originalOrder = runCatching { org.json.JSONObject(current.extractedFieldsJson).optInt("_receiptOriginalOrder", -1) }.getOrDefault(-1)
+                if (originalOrder >= 0) put("_receiptOriginalOrder", originalOrder)
             }.toString()
         }
         val updated = current.copy(

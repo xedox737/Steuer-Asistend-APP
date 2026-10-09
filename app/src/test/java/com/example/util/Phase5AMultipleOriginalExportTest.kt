@@ -68,5 +68,8 @@ class Phase5AMultipleOriginalExportTest {
         val document = ManagedDocument("first", "property", receiptInternalId = receipt.internalId,
             localUri = first.absolutePath, sha256 = "0".repeat(64), fileSizeBytes = first.length())
         assertTrue(DatevOriginalAttachmentPolicy.resolveAll(receipt(first.absolutePath), listOf(document)).isEmpty())
+        val validFirst = document.copy(sha256 = StableDocumentIdentity.sha256(first.readBytes()))
+        val remoteSecond = document.copy(documentId = "second", localUri = "", driveFileId = "second-remote")
+        assertTrue(DatevOriginalAttachmentPolicy.resolveAll(receipt(first.absolutePath), listOf(validFirst, remoteSecond)).isEmpty())
     }
 }

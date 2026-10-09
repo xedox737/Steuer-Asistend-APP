@@ -21,7 +21,10 @@ object DatevOriginalAttachmentPolicy {
     /** Fail closed if any selected page is missing; a readable first page is not a complete receipt. */
     fun resolveAll(receipt: Receipt, documents: List<ManagedDocument> = emptyList()): List<DatevOriginalAttachment> {
         if (receipt.internalId.isBlank()) return emptyList()
-        val paths = receipt.imageUrl.split(",").map(String::trim).filter(String::isNotBlank).distinct()
+        val originals = documents.filter { it.receiptInternalId == receipt.internalId }
+        if (originals.any { it.localUri.isBlank() }) return emptyList()
+        val paths = (receipt.imageUrl.split(",").map(String::trim).filter(String::isNotBlank) +
+            com.example.data.ReceiptOriginalChain.ordered(originals).map { it.localUri }).distinct()
         if (paths.isEmpty()) return emptyList()
         return try {
             paths.mapIndexed { index, path ->
@@ -29,7 +32,7 @@ object DatevOriginalAttachmentPolicy {
                 if (!file.isFile || !file.canRead() || file.length() == 0L) return emptyList()
                 val detected = detect(file) ?: return emptyList()
                 val sha = ReceiptManifestService.calculateSha256(file)
-                val document = documents.firstOrNull { it.receiptInternalId == receipt.internalId && it.localUri == path }
+                val document = originals.firstOrNull { it.localUri == path }
                 if (document != null && (document.sha256.isNotBlank() && document.sha256 != sha ||
                     document.fileSizeBytes > 0 && document.fileSizeBytes != file.length())) return emptyList()
                 DatevOriginalAttachment(receipt.internalId, file, detected.first, detected.second,

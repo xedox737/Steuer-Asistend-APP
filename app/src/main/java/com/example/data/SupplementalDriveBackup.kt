@@ -197,7 +197,8 @@ object SupplementalDriveBackup {
                 if (restoreMode != RestoreMode.MERGE) return true
                 val local = localTransactions[transactionId] ?: return true
                 val backup = incomingTransactions[transactionId] ?: return false
-                return local == backup || RestoreConflictPolicy.backupIsNewer(local.updatedAt, backup.updatedAt)
+                return RestoreConflictPolicy.backupIsNewer(local.updatedAt, backup.updatedAt) ||
+                    (local == backup && runCatching { Instant.parse(local.updatedAt) }.isSuccess)
             }
             val bankLinks = root.optJSONArray("bankReceiptLinks") ?: JSONArray()
             for (index in 0 until bankLinks.length()) {

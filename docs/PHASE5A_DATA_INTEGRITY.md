@@ -114,6 +114,7 @@ Echte Kamera, externe Dateiöffner, angemeldetes Drive und Kanzleiimport bleiben
 - `Phase5AMultipleOriginalExportTest`: tatsächliches Advisor-ZIP, zwei einzelne Manifestobjekte, IDs/Namen/MIME/Größe/Hashes/Reihenfolge; fehlende zweite Datei und falscher Hash blockieren.
 - `DrivePersistenceManagedDocumentE2eTest`: bestehender Fake-Drive-Gateway prüft Attachment-Upload, Reimport ohne neue Drive-Datei, Backup und vollständigen Download aller Seiten.
 - `Phase5ABankImportTest`: strenge Formate, Kalender-/Betragsfehler mit Originalzeilen, 60/60/60 → weiterhin 60, Folgemonat +60, Legacy-Konto-/Transaktions-IDs, explizite Auswahl ohne eigene Kennung.
+- `Phase5ABankImportWorkflowTest`: realer ViewModel-Import ohne Kennung bleibt bis Kontowahl schreibfrei; Doppelbestätigung, umbenannte Datei, detaillierte Fehlermeldungen und Abbruch.
 - `Phase5ADatevValidationTest`: unmögliche Kalenderdaten und nicht endliche numerische Werte blockieren die vorhandene Vorprüfung.
 
 Zwei bisherige Property-Tests erwarteten ausdrücklich das fehlerhafte Überschreiben bei MERGE.

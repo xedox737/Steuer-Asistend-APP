@@ -136,6 +136,13 @@ class ReceiptOriginalPersistenceTest {
         val documents = db.managedDocumentDao().getAllByReceiptId(receipt.internalId)
         assertEquals(2, documents.size)
         assertEquals(listOf(first.localUri, second.localUri), receipt.imageUrl.split(','))
+        documents.forEach { document ->
+            val processed = db.managedDocumentDao().updateProcessingIfPresent(document, fieldsJson = "{\"datum\":\"2026-10-08\"}")!!
+            val reviewed = db.managedDocumentDao().updateReviewIfPresent(processed,
+                processed.copy(extractedFieldsJson = "{\"confirmed\":true}"))!!
+            assertEquals(org.json.JSONObject(document.extractedFieldsJson).getInt("_receiptOriginalOrder"),
+                org.json.JSONObject(reviewed.extractedFieldsJson).getInt("_receiptOriginalOrder"))
+        }
         val backup = SupplementalDriveBackup.createPayload(app, db)
         assertFalse(backup.toString().contains(first.localUri))
         documents.forEach { db.managedDocumentDao().deleteById(it.documentId) }

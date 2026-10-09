@@ -78,6 +78,17 @@ class Phase5ARestoreConflictTest {
         assertTrue(db.bankRentAssignmentDao().getAll().isEmpty())
     }
 
+    @Test fun unversionedLocalBankStateDoesNotAuthorizeResurrectingMissingRelationship() = runTest {
+        val tx = BankTransaction("unversioned", "account", "2026-01-01", amount = 100.0)
+        val link = BankReceiptLink("removed", tx.transactionId, 8, allocatedAmount = 100.0)
+        db.bankDao().upsertTransaction(tx)
+        db.bankDao().upsertLink(link)
+        val backup = SupplementalDriveBackup.createPayload(context, db)
+        db.bankDao().deleteLink(link.linkId)
+        repeat(2) { SupplementalDriveBackup.restorePayload(context, db, backup) }
+        assertTrue(db.bankDao().getAllLinks().isEmpty())
+    }
+
     @Test fun missingAndStrictlyNewerBankRowsAreImportedButUnknownVersionKeepsLocal() = runTest {
         val remote = BankTransaction("same", "account", "2026-01-01", amount = 10.0, updatedAt = newer)
         db.bankDao().upsertTransaction(remote)
