@@ -26,6 +26,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,7 +54,7 @@ fun RentIncomeWithTenantHistoryScreen(viewModel: ReceiptViewModel, propertyScope
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val bankSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
-    var showMonthlyCheck by remember { mutableStateOf(false) }
+    var showMonthlyCheck by rememberSaveable { mutableStateOf(false) }
     var selectedUnit by remember { mutableStateOf<Pair<String, WohneinheitStatus>?>(null) }
     var originalProperty by remember { mutableStateOf<String?>(null) }
     var historyVersion by remember { mutableIntStateOf(0) }
@@ -116,7 +118,9 @@ private fun MonthlyRentCheckDialog(
     bankSuggestions: Map<String, List<com.example.data.BankRentSuggestion>>
 ) {
     val context = LocalContext.current
-    var month by remember { mutableStateOf(YearMonth.now()) }
+    var month by rememberSaveable(stateSaver = Saver<YearMonth, String>(save = { it.toString() }, restore = { YearMonth.parse(it) })) {
+        mutableStateOf(YearMonth.now())
+    }
 
     val rows = remember(
         groups, receipts, month, historyVersion,
@@ -183,7 +187,7 @@ private fun MonthlyRentCheckDialog(
                             }
                             if (reviews.isNotEmpty()) {
                                 Text("⚠ ${NumberFormatter.format(unassigned)} in ${reviews.size} ungeklärten Zahlungen", fontSize = 9.sp, color = WarmOrange)
-                                TextButton(onClick = { showReview = true }) { Text("Zahlungen prüfen") }
+                                TextButton(onClick = { showReview = true }, modifier = Modifier.testTag("monthly_rent_review_payments")) { Text("Zahlungen prüfen") }
                             }
                         }
                     }

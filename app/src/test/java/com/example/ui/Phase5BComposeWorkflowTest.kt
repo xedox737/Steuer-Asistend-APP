@@ -25,11 +25,12 @@ import org.robolectric.annotation.GraphicsMode
 class Phase5BComposeWorkflowTest {
     @get:Rule val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
-    private val db get() = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
+    private lateinit var db: AppDatabase
     private val property = PropertyMetadata(id = 74, propertyId = "phase5b-a", name = "Phase5B Haus A",
         adresse = "Teststraße 1", baujahr = 1968, wohneinheiten = "WE 01, WE 02")
 
     @Before fun clearData() {
+        db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
         runBlocking(Dispatchers.IO) { db.clearAllTables() }
         PersistentPreferenceInventory.stores.forEach { ui.activity.getSharedPreferences(it.name, 0).edit().clear().commit() }
         ui.waitUntil(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
@@ -117,6 +118,16 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithContentDescription("Zurück").performClick()
         assertEquals(AppScreen.RENT_OVERVIEW, vm.currentScreen.value)
         assertTrue(vm.bankRentAssignments.value.isEmpty())
+        ui.onNodeWithTag("rent_overview").performScrollToNode(hasTestTag("rent_monthly_check"))
+        ui.onNodeWithTag("rent_monthly_check").performClick()
+        ui.onNodeWithTag("rent_monthly_list").performScrollToNode(hasTestTag("monthly_rent_review_payments"))
+        ui.onNodeWithTag("monthly_rent_review_payments").performClick()
+        ui.onNodeWithTag("rent_review_bank-open").performClick()
+        ui.waitUntil(10000) { vm.currentScreen.value == AppScreen.BANK }
+        back()
+        ui.onNodeWithText("Miet-Monatscheck").assertExists()
+        back()
+        ui.onNodeWithTag("rent_overview").assertExists()
     }
 
     @Test fun objectEditorContainsAndPersistsPurchaseTypeAndNotesWithSameIds() {

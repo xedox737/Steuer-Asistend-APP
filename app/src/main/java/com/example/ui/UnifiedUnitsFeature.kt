@@ -530,9 +530,10 @@ private fun UnifiedUnitDetailScreen(
         bankAssignments, bankLinks, bankTransactions
     )
     val isCurrentlyRented = unit.status == "Vermietet" && activePeriod != null
-    val nk = if (isCurrentlyRented) activePeriod?.nebenkosten ?: 0.0 else 0.0
-    val other = if (isCurrentlyRented) activePeriod?.sonstige ?: 0.0 else 0.0
-    val coldRent = if (isCurrentlyRented) activePeriod?.kaltmiete ?: 0.0 else 0.0
+    val currentAmounts = activePeriod?.amountsAt(LocalDate.now())
+    val nk = if (isCurrentlyRented) currentAmounts?.nebenkosten ?: 0.0 else 0.0
+    val other = if (isCurrentlyRented) currentAmounts?.sonstige ?: 0.0 else 0.0
+    val coldRent = if (isCurrentlyRented) currentAmounts?.kaltmiete ?: 0.0 else 0.0
     val totalRent = coldRent + nk + other
     val currentExpected = if (isCurrentlyRented) month.expected else 0.0
     val currentActual = if (isCurrentlyRented) month.actual else 0.0

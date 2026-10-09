@@ -2967,12 +2967,14 @@ data class AiSearchUiState(
         val excluded = _wizardExcludedReceipts.value
         val profile = _activeDatevProfile.value
         val report = _wizardValidationReport.value ?: return null
+        val outputFormat = _wizardTargetFormat.value
+        val outputPeriod = _wizardYearFilter.value
         if (!report.isValidForExport || records.isEmpty()) {
             DiagnosticLog.w("ReceiptViewModel", "DATEV export blocked by validation policy")
             return null
         }
-        val selectedYear = _wizardYearFilter.value.toIntOrNull()
-        if (_wizardTargetFormat.value == "FULL_ZIP" && selectedYear == null) {
+        val selectedYear = outputPeriod.toIntOrNull()
+        if (outputFormat == "FULL_ZIP" && selectedYear == null) {
             DiagnosticLog.w("ReceiptViewModel", "Steuerberaterpaket benötigt ein eindeutig ausgewähltes Steuerjahr")
             return null
         }
@@ -2983,17 +2985,19 @@ data class AiSearchUiState(
             property.propertyId to getWohneinheitenForProperty(property)
         }
         val exportReceipts = _wizardIncludedReceipts.value
-        val packageResult = if (_wizardTargetFormat.value == "EXTF_CSV") {
-            com.example.util.DatevCsvOutput.create(context, records, profile, report, _wizardYearFilter.value)
+        val packageResult = if (outputFormat == "EXTF_CSV") {
+            kotlinx.coroutines.withContext(Dispatchers.IO) {
+                com.example.util.DatevCsvOutput.create(context, records, profile, report, outputPeriod)
+            }
         } else com.example.util.AdvisorPackageBuilder.buildPackage(
             context = context,
             records = records,
             includedReceipts = exportReceipts,
             excludedReceipts = excluded,
-            includeOriginals = _wizardTargetFormat.value == "FULL_ZIP",
+            includeOriginals = outputFormat == "FULL_ZIP",
             profile = profile,
             validationReport = report,
-            periodSummary = _wizardYearFilter.value,
+            periodSummary = outputPeriod,
             originalDocuments = repository.getAllManagedDocuments(),
             annualSummary = selectedYear?.let { year ->
                 buildAdvisorPortfolioAnnualSummary(
@@ -3016,8 +3020,8 @@ data class AiSearchUiState(
                 timestamp = System.currentTimeMillis(),
                 user = profile.mandantenName,
                 propertyName = if (records.map { it.objektId }.filter(String::isNotBlank).distinct().size > 1) "Portfolio" else records.firstOrNull()?.objektId.orEmpty(),
-                periodStart = "${_wizardYearFilter.value}-01-01",
-                periodEnd = "${_wizardYearFilter.value}-12-31",
+                periodStart = "$outputPeriod-01-01",
+                periodEnd = "$outputPeriod-12-31",
                 filterSummary = "Objekte: ${records.map { it.objektId }.filter(String::isNotBlank).distinct().joinToString()}, Wohneinheit-ID: ${_wizardUnitFilter.value}, Typ: ${_wizardCategoryTypeFilter.value}",
                 exportierteReceiptIdsJson = org.json.JSONArray(
                     records.map { it.receiptId }
@@ -3032,11 +3036,11 @@ data class AiSearchUiState(
                 zipFileName = packageResult.outputFile.name,
                 zipFileSizeBytes = packageResult.outputFile.length(),
                 zipSha256 = packageResult.sha256Checksum,
-                status = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER") "SUCCESS" else "CREATED_NOT_READY",
+                status = if (outputFormat != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER") "SUCCESS" else "CREATED_NOT_READY",
                 totalAmount = packageResult.totalAmountEur,
                 bookingCount = packageResult.totalRecords,
                 warningsCount = packageResult.warningsCount,
-                logMessage = if (_wizardTargetFormat.value != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER")
+                logMessage = if (outputFormat != "FULL_ZIP" || packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER")
                     "Erfolgreich exportiert mit ${packageResult.totalRecords} Buchungssätzen."
                 else "Paket technisch erstellt, fachlich aber noch nicht bereit: ${packageResult.advisorStatus}."
             )
@@ -3044,7 +3048,7 @@ data class AiSearchUiState(
             repository.insertAuditRun(auditRun)
 
             // A technically generated advisor ZIP is not automatically a fachlich freigegebener export.
-            val exportIsFinal = _wizardTargetFormat.value != "FULL_ZIP" ||
+            val exportIsFinal = outputFormat != "FULL_ZIP" ||
                 packageResult.advisorStatus == "BEREIT FÜR STEUERBERATER"
             if (exportIsFinal) {
                 val distinctReceiptIds = records.map { it.receiptId }.distinct()
