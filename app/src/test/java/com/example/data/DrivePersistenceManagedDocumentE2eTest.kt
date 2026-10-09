@@ -111,7 +111,7 @@ class DrivePersistenceManagedDocumentE2eTest {
             documentId = if (order == 0) "receipt:metadata" else "metadata-page-2", receiptInternalId = "metadata",
             propertyId = "property-test", originalFilename = "Seite ${order + 1}.${if (order == 0) "pdf" else "png"}",
             storedFilename = "managed-$order.${if (order == 0) "pdf" else "png"}",
-            mimeType = if (order == 0) "application/pdf" else "image/png", sha256 = "$order".repeat(64),
+            mimeType = if (order == 0) "application/pdf" else "image/png", sha256 = "$order".repeat(64), unitId = "stable-unit-id",
             fileSizeBytes = 100L + order, driveFileId = "remote-$order", driveFolderId = "folder",
             localUri = "/private/local/original-$order", ocrText = "LOCAL_OCR_SENTINEL",
             createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z",
@@ -130,6 +130,7 @@ class DrivePersistenceManagedDocumentE2eTest {
         parsed.originalDocuments.forEachIndexed { order, document ->
             assertEquals(originals[order].documentId, document.documentId)
             assertEquals(originals[order].sha256, document.sha256)
+            assertEquals("stable-unit-id", document.unitId)
             assertEquals(originals[order].originalFilename, document.originalFilename)
             assertEquals(originals[order].mimeType, document.mimeType)
             assertEquals(originals[order].fileSizeBytes, document.fileSizeBytes)
@@ -139,6 +140,33 @@ class DrivePersistenceManagedDocumentE2eTest {
         assertEquals(json, with(driveRepository) { parsed.toJson() })
         val legacy = JSONObject(json).apply { remove("originalDocuments") }
         assertTrue(driveRepository.parsePersistedReceipt(legacy.toString()).originalDocuments.isEmpty())
+    }
+
+    @Test fun newReceiptIndexCannotOverrideBackupOriginalMetadataAndExistingUnitCorrectionStillWins() = runTest {
+        val receipt = Receipt(internalId = "core-original", aussteller = "Manuell", datum = "2026-10-08", uhrzeit = "",
+            bruttobetrag = 100.0, hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800",
+            beschreibung = "", propertyId = "property-test")
+        val original = ManagedDocument(documentId = "receipt:core-original", propertyId = receipt.propertyId,
+            receiptInternalId = receipt.internalId, unitId = "stable-unit-id", originalFilename = "Original.pdf",
+            storedFilename = "Original.pdf", mimeType = "application/pdf", sha256 = "1".repeat(64),
+            driveFileId = "remote-original", createdAt = "2026-01-01T00:00:00Z", updatedAt = "2026-01-01T00:00:00Z",
+            extractedFieldsJson = "{\"_receiptOriginalOrder\":0}")
+        val before = localRepository.getAllManagedDocuments().associateBy { it.documentId }
+        val resolution = localRepository.upsertRestoredReceipt(receipt)
+        assertNotEquals(original.updatedAt, localRepository.getManagedDocument(original.documentId)!!.updatedAt)
+        driveRepository.restoreReceiptOriginalMetadata(receipt.internalId, resolution.receipt, listOf(original), RestoreMode.MERGE, before)
+        assertEquals(original, localRepository.getManagedDocument(original.documentId))
+        repeat(2) {
+            val existing = localRepository.getAllManagedDocuments().associateBy { it.documentId }
+            val repeated = localRepository.upsertRestoredReceipt(receipt)
+            driveRepository.restoreReceiptOriginalMetadata(receipt.internalId, repeated.receipt, listOf(original), RestoreMode.MERGE, existing)
+            assertEquals(original, localRepository.getManagedDocument(original.documentId))
+        }
+        val corrected = original.copy(unitId = null, updatedAt = "2026-10-08T00:00:00Z")
+        localRepository.upsertManagedDocument(corrected)
+        driveRepository.restoreReceiptOriginalMetadata(receipt.internalId, resolution.receipt, listOf(original), RestoreMode.MERGE,
+            localRepository.getAllManagedDocuments().associateBy { it.documentId })
+        assertEquals(corrected, localRepository.getManagedDocument(original.documentId))
     }
 
     @Test fun `fixture 9 purchase contract uses production repository sync and updates real index json`() = runTest {

@@ -8,6 +8,7 @@ internal object ReceiptOriginalChain {
     fun metadataJson(documents: List<ManagedDocument>): JSONArray = JSONArray().apply {
         ordered(documents).forEachIndexed { order, document -> put(JSONObject().apply {
             put("documentId", document.documentId); put("originalFilename", document.originalFilename)
+            put("unitId", document.unitId ?: JSONObject.NULL)
             put("storedFilename", document.storedFilename); put("mimeType", document.mimeType)
             put("sha256", document.sha256); put("fileSizeBytes", document.fileSizeBytes)
             put("driveFileId", document.driveFileId ?: JSONObject.NULL)
@@ -22,6 +23,7 @@ internal object ReceiptOriginalChain {
             val id = item.getString("documentId")
             require(id.isNotBlank()) { "Originalanhang ohne stabile Dokument-ID." }
             ManagedDocument(documentId = id, receiptInternalId = receiptId, propertyId = propertyId,
+                unitId = if (item.isNull("unitId")) null else item.optString("unitId").takeIf(String::isNotBlank),
                 originalFilename = item.optString("originalFilename"), storedFilename = item.optString("storedFilename"),
                 mimeType = item.optString("mimeType", "application/octet-stream"), sha256 = item.optString("sha256"),
                 fileSizeBytes = item.optLong("fileSizeBytes"),

@@ -2824,6 +2824,9 @@ class DrivePersistenceRepository(
 
         try {
             db.withTransaction {
+                // Receipt indexing may create/update document rows during import. Conflict
+                // evidence must refer to actual local metadata before this restore started.
+                val localOriginalsBefore = localRepository.getAllManagedDocuments().associateBy { it.documentId }
                 if (mode == RestoreMode.REPLACE_FULL) {
                     localRepository.clearCoreRestoreRelevantTables()
                 }
@@ -2850,14 +2853,8 @@ class DrivePersistenceRepository(
                         val current = localRepository.getDocumentsForReceipt(mapped.receiptInternalId).firstOrNull { it.id == mapped.id }
                         if (mode != RestoreMode.MERGE || current == null) localRepository.insertDocument(mapped)
                     }
-                    for (original in persisted.originalDocuments) {
-                        val mapped = original.copy(receiptInternalId = resolution.receipt.internalId,
-                            documentId = if (original.documentId == StableDocumentIdentity.receiptDocumentId(persisted.internalId))
-                                StableDocumentIdentity.receiptDocumentId(resolution.receipt.internalId) else original.documentId,
-                            propertyId = resolution.receipt.propertyId)
-                        val local = localRepository.getManagedDocument(mapped.documentId)
-                        localRepository.upsertManagedDocument(SupplementalDriveBackup.mergeManagedDocument(context, local, mapped, mode))
-                    }
+                    restoreReceiptOriginalMetadata(persisted.internalId, resolution.receipt,
+                        persisted.originalDocuments, mode, localOriginalsBefore)
 
                     itemsRestored += persisted.positionen.size
                     splitsRestored += persisted.allocations.size
@@ -2926,6 +2923,23 @@ class DrivePersistenceRepository(
             errors = reportErrors,
             isSuccess = true
         )
+    }
+
+    internal suspend fun restoreReceiptOriginalMetadata(
+        sourceReceiptId: String,
+        resolvedReceipt: Receipt,
+        originals: List<ManagedDocument>,
+        mode: RestoreMode,
+        localOriginalsBefore: Map<String, ManagedDocument>
+    ) {
+        originals.forEach { original ->
+            val mapped = original.copy(receiptInternalId = resolvedReceipt.internalId,
+                documentId = if (original.documentId == StableDocumentIdentity.receiptDocumentId(sourceReceiptId))
+                    StableDocumentIdentity.receiptDocumentId(resolvedReceipt.internalId) else original.documentId,
+                propertyId = resolvedReceipt.propertyId)
+            localRepository.upsertManagedDocument(SupplementalDriveBackup.mergeManagedDocument(
+                context, localOriginalsBefore[mapped.documentId], mapped, mode))
+        }
     }
 
     suspend fun auditOriginalReceipts(

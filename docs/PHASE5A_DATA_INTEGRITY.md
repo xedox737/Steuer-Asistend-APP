@@ -45,6 +45,9 @@ Automatische Einzelbelegsicherung benötigt dieselbe Kette direkt in Receipt-JSO
 Der bisherige documents-Eintrag enthält Drive-ID/MIME/Größe, aber keinen SHA,
 Originalnamen oder Reihenfolge. Ein vollständiger Supplemental-Snapshot darf keine
 Voraussetzung für vollständige neue Belegmetadaten sein.
+Die additive Originalmetadatenkette erhält auch die stabile Einheitenreferenz. Der Core-Import
+vergleicht mit Dokumentmetadaten vor Beginn seiner Transaktion, damit neu erzeugte Indexzeilen
+keine künstliche lokale Aktualität gegenüber dem Backup vortäuschen.
 
 ### F04/F05
 
