@@ -12,13 +12,13 @@ class NavigationBackstackEmulatorTest : EmulatorTestSupport() {
     @Test fun realSystemBackAndAppArrowReturnFromUnitDetailToUnitsBeforeProperty() {
         val property = seedProperty()
         openUnits(property.propertyId)
-        ui.onNodeWithText("Testwohnung").performScrollTo().performClick()
+        openUnitDetail()
         ui.onNodeWithText("Wohneinheit im Überblick").assertIsDisplayed()
         capture("unit-detail")
 
         systemBack()
         assertUnitsInsteadOfDashboard()
-        ui.onNodeWithText("Testwohnung").performScrollTo().performClick()
+        openUnitDetail()
         ui.onNodeWithText("Wohneinheit im Überblick").assertIsDisplayed()
         ui.onNodeWithContentDescription("Zurück").performClick()
         assertUnitsInsteadOfDashboard()
@@ -29,6 +29,11 @@ class NavigationBackstackEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithText("Notizen & Aufgaben").assertExists()
         assertEquals(AppScreen.PROPERTIES, vm.currentScreen.value)
         ui.onNodeWithText("Wohneinheit im Überblick").assertDoesNotExist()
+    }
+
+    private fun openUnitDetail() {
+        ui.onNodeWithTag("property_units_overview").performScrollToNode(hasText("Testwohnung"))
+        ui.onNodeWithText("Testwohnung").assertIsDisplayed().performClick()
     }
 
     private fun assertUnitsInsteadOfDashboard() {

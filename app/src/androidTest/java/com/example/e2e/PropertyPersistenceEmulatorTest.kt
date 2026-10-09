@@ -47,7 +47,7 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
 
         clickTab(AppScreen.DASHBOARD)
         openUnits(saved.propertyId)
-        ui.onNodeWithText("Testwohnung Persistenz").performScrollTo().assertIsDisplayed()
+        scrollToPersistedUnit()
         capture("property-persisted")
         scenario.recreate()
         ui.onNodeWithTag("property_units_overview").assertIsDisplayed()
@@ -72,9 +72,15 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
         }
         assertTrue(context.getSharedPreferences("wohneinheiten_prefs", 0).all.values.contains(unit.unitId))
         openUnits(saved.propertyId)
-        ui.onNodeWithText("Testwohnung Persistenz").performScrollTo().performClick()
+        scrollToPersistedUnit()
+        ui.onNodeWithText("Testwohnung Persistenz").performClick()
         ui.onNodeWithText("Wohneinheit im Überblick").assertIsDisplayed()
         capture("property-after-fresh-activity")
+    }
+
+    private fun scrollToPersistedUnit() {
+        ui.onNodeWithTag("property_units_overview").performScrollToNode(hasText("Testwohnung Persistenz"))
+        ui.onNodeWithText("Testwohnung Persistenz").assertIsDisplayed()
     }
 
     private fun nextWizardStep(step: String) {

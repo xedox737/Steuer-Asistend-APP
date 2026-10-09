@@ -48,7 +48,7 @@ und SharedPreferences sowie Compose-Semantik; kein zusätzlicher App-/NavHost.
 | TenantChronologyEmulatorTest | Ende vor Beginn abgewiesen, danach gültiger Wechsel mit deutschem Mietbetrag dauerhaft gespeichert |
 | FinancialFilterEmulatorTest | Zwei Objekte, zwei Belege und bestätigte Bankmiete; Objekt-A-Liste und Einnahmen/Ausgaben/Ergebnis/Buchungszahl konsistent |
 | DatevCsvEmulatorTest | Synthetisch freigegebener PDF-Beleg, Wizard über UI, CSV-Auswahl, echte lesbare .csv/EXTF, Exportprotokoll; keine neue ZIP |
-| FontScaleEmulatorTest | Echte Systemeinstellung 1,5 vor Activitystart; Dashboard/DATEV-Texte sichtbar ohne Textlayout-Overflow, Export-Einstieg/Pfeil und fünf Tabs bedienbar |
+| FontScaleEmulatorTest | Echte Systemeinstellung 1,5 vor Activitystart; Dashboard/DATEV-Texte sichtbar und vollständig, ohne Ellipse/Zeilenverlust und innerhalb der Layoutgrenzen (1 px Rundungstoleranz); Export-Einstieg/Pfeil und fünf Tabs bedienbar |
 
 Der vorhandene Paketnamen-Instrumentationtest bleibt bestehen. Breite Logiktests
 bleiben in `src/test`. Kein Retry, kein pauschales Sleep; Compose/Espresso-Idling

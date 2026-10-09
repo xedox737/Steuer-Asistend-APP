@@ -35,7 +35,7 @@ class FinancialFilterEmulatorTest : EmulatorTestSupport() {
         metric("Buchungen", "3")
         scroll("ledger_property")
         ui.onNodeWithTag("ledger_property").performClick()
-        ui.onNodeWithText("Testobjekt A").performClick()
+        ui.onNode(hasText("Testobjekt A") and hasAnyAncestor(isPopup())).performClick()
         metric("Ausgaben", "1.000,00 €")
         metric("Einnahmen", "980,00 €")
         metric("Ergebnis", "-20,00 €")

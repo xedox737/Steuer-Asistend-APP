@@ -36,6 +36,20 @@ class FontScaleEmulatorTest : EmulatorTestSupport() {
         val layouts = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(layouts)) }
         assertTrue("Kein Textlayout für $text", layouts.isNotEmpty())
-        assertFalse("Zentraler Text bei fontScale=1.5 abgeschnitten: $text", layouts.any { it.hasVisualOverflow })
+        layouts.forEach { layout ->
+            val lastLine = layout.lineCount - 1
+            val detail = "$text: size=${layout.size}, paragraphHeight=${layout.multiParagraph.height}, " +
+                "lastLineBottom=${layout.getLineBottom(lastLine)}, overflow=${layout.hasVisualOverflow}"
+            assertFalse("Maximale Zeilenzahl überschritten: $detail", layout.multiParagraph.didExceedMaxLines)
+            assertFalse("Text durch Ellipse gekürzt: $detail", (0..lastLine).any { layout.isLineEllipsized(it) })
+            assertEquals("Textende fehlt: $detail", text.length, layout.getLineEnd(lastLine, visibleEnd = true))
+            // Android font metrics may exceed rounded integer bounds by a
+            // fractional pixel. Check complete text and concrete bounds, not
+            // hasVisualOverflow alone (which also flags that rounding).
+            assertTrue("Texthöhe überschreitet Layout: $detail", layout.getLineBottom(lastLine) <= layout.size.height + 1f)
+            assertTrue("Textbreite überschreitet Layout: $detail", (0..lastLine).all {
+                layout.getLineLeft(it) >= -1f && layout.getLineRight(it) <= layout.size.width + 1f
+            })
+        }
     }
 }

@@ -161,7 +161,13 @@ abstract class EmulatorTestSupport {
             wohnflaeche = 41.25, mietvertragsstart = if (rented) "2021-04-01" else "", unitId = "$id-unit")
         ui.runOnIdle { model.createProperty(property, listOf(unit)) }
         ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == id } &&
-            model.propertyMetadata.value?.propertyId == id && model.wohneinheitenStatus.value.any { it.unitId == unit.unitId } }
+            model.propertyMetadata.value?.propertyId == id &&
+            context.getSharedPreferences("wohneinheiten_prefs", 0)
+                .getString("property_${id}_unit_${unit.name}_id", null) == unit.unitId }
+        // Room can emit the property before createProperty has written its unit
+        // preferences. Reload the prepared fixture only after both stores exist.
+        ui.runOnIdle { model.refreshPropertyUnits(id) }
+        ui.waitUntil(10_000) { model.wohneinheitenStatus.value.any { it.unitId == unit.unitId } }
         return model.properties.value.single { it.propertyId == id }
     }
 
