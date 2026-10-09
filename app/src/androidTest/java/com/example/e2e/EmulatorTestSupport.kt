@@ -173,15 +173,28 @@ abstract class EmulatorTestSupport {
         val unit = WohneinheitStatus(name = "WE 01", label = "Testwohnung", status = if (rented) "Vermietet" else "Leerstand",
             mieter = if (rented) "Testmieter Alt" else "", kaltmiete = if (rented) 600.0 else 0.0,
             wohnflaeche = 41.25, mietvertragsstart = if (rented) "2021-04-01" else "", unitId = "$id-unit")
-        ui.runOnIdle { model.createProperty(property, listOf(unit)) }
-        ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == id } &&
-            model.propertyMetadata.value?.propertyId == id &&
-            context.getSharedPreferences("wohneinheiten_prefs", 0)
-                .getString("property_${id}_unit_${unit.name}_id", null) == unit.unitId }
-        // Room can emit the property before createProperty has written its unit
-        // preferences. Reload the prepared fixture only after both stores exist.
-        ui.runOnIdle { model.refreshPropertyUnits(id) }
-        ui.waitUntil(10_000) { model.wohneinheitenStatus.value.any { it.unitId == unit.unitId } }
+        // Prepared navigation/accounting fixtures need fully persisted state.
+        // Publish the Room row only after its preferences exist, so reactive
+        // readers cannot generate and write a competing fallback unit identity.
+        // PropertyPersistenceEmulatorTest separately exercises the real UI wizard.
+        runBlocking(Dispatchers.IO) {
+            val prefix = "property_${id}_unit_${unit.name}_"
+            check(context.getSharedPreferences("wohneinheiten_prefs", 0).edit()
+                .putString(prefix + "id", unit.unitId)
+                .putString(prefix + "label", unit.label)
+                .putString(prefix + "status", unit.status)
+                .putString(prefix + "mieter", unit.mieter)
+                .putFloat(prefix + "rent", unit.kaltmiete.toFloat())
+                .putFloat(prefix + "area", unit.wohnflaeche.toFloat())
+                .putString(prefix + "start", unit.mietvertragsstart)
+                .putString("property_${id}_unit_id_index_0", unit.unitId)
+                .commit())
+            db.propertyDao().insertPropertyMetadata(property.copy(id = db.propertyDao().nextPropertyId()))
+        }
+        ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == id } }
+        ui.runOnIdle { model.selectProperty(id) }
+        ui.waitUntil(10_000) { model.propertyMetadata.value?.propertyId == id &&
+            model.wohneinheitenStatus.value.singleOrNull() == unit }
         return model.properties.value.single { it.propertyId == id }
     }
 

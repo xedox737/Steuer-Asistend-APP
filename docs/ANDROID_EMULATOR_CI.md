@@ -39,6 +39,10 @@ Offizielle Grundlage: [Action und Konfigurationsoptionen](https://github.com/Rea
 
 Alle neuen Tests starten die echte `MainActivity`, verwenden Produktions-Room
 und SharedPreferences sowie Compose-Semantik; kein zusätzlicher App-/NavHost.
+Vorbereitete Navigations-/Buchungsdaten werden synchron in den echten Stores
+angelegt: Einheiten-Preferences vor der Room-Zeile, damit reaktive Leser keine
+konkurrierende Ersatz-ID schreiben. Die eigentliche Immobilienanlage läuft
+separat unverändert über den Produktions-Wizard.
 
 | Klasse | Emulatorprüfung |
 | --- | --- |
