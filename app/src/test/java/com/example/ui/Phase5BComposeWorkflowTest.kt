@@ -160,7 +160,11 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("rent_overview").assertExists()
     }
 
-    @Test fun objectEditorContainsAndPersistsPurchaseTypeAndNotesWithSameIds() {
+    // This large existing editor loops in Robolectric's native StaticLayout renderer.
+    // Keep the complete Android/Compose interaction and persistence assertions.
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    fun objectEditorContainsAndPersistsPurchaseTypeAndNotesWithSameIds() {
         seed()
         ui.onNodeWithText("Stammdaten").performClick()
         // The preceding lazy item is a single card taller than the viewport. Target its
@@ -170,13 +174,14 @@ class Phase5BComposeWorkflowTest {
         settleEditorWindow()
         ui.onNodeWithTag("edit_property_notarielles_kaufdatum").performScrollTo().performTextReplacement("2021-03-15")
         ui.onNodeWithTag("edit_property_kaufpreis").performScrollTo().performTextReplacement("1.050.000,25")
-        ui.onNodeWithTag("edit_property_type").performScrollTo().performTextReplacement("Mehrfamilienhaus")
+        ui.onNodeWithTag("edit_property_type").performScrollTo().performTextReplacement("Eigentumswohnung")
         ui.onNodeWithTag("edit_property_notes").performScrollTo().performTextReplacement("Notiz am Objekt")
         capture("object-metadata-393")
         ui.onNodeWithTag("save_property_metadata_button").performClick()
         ui.waitUntil(10000) { vm.properties.value.any { it.notizen == "Notiz am Objekt" } }
         val saved = vm.properties.value.single { it.propertyId == property.propertyId }
         assertEquals(property.id, saved.id)
+        assertEquals("Eigentumswohnung", saved.objektart)
         assertEquals(1050000.25, saved.gesamtKaufpreis, .001)
         assertEquals("2021-03-15", saved.notariellesKaufdatum)
         assertEquals(listOf("u-1", "u-2"), vm.getWohneinheitenForProperty(saved).map { it.unitId })

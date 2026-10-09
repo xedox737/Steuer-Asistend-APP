@@ -94,6 +94,9 @@ Native Robolectric-Dialogtests verwenden die vorhandene Application-Isolation, e
 frischen FileProvider-Pfadcache und denselben
 device-sized Fensterrahmen wie die bestehenden Mietplan-Tests. Dies verändert keine Produktionsfenster,
 Timeouts oder Erwartungen. Roborazzi-Aufnahmen sind im CI-Artefakt `android-reports` enthalten.
+Sieben neue Workflow-Tests nutzen native Grafik. Der große vorhandene Stammdaten-Dialog wird
+wegen einer Robolectric-StaticLayout-Schleife mit Legacy-Grafik geprüft; seine vollständigen
+Compose-Bearbeitungs-, Speicher- und Identitätsprüfungen bleiben erhalten.
 
 ## Geänderte Dateien
 
