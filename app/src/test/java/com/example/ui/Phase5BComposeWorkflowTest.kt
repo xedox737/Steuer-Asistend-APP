@@ -23,13 +23,15 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class Phase5BComposeWorkflowTest {
-    @get:Rule val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
+    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
     private lateinit var db: AppDatabase
     private val property = PropertyMetadata(id = 74, propertyId = "phase5b-a", name = "Phase5B Haus A",
         adresse = "Teststraße 1", baujahr = 1968, wohneinheiten = "WE 01, WE 02")
 
     @Before fun clearData() {
+        assertSame(ui.activity.application, vm.getApplication<Application>())
         db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
         runBlocking(Dispatchers.IO) { db.clearAllTables() }
         PersistentPreferenceInventory.stores.forEach { ui.activity.getSharedPreferences(it.name, 0).edit().clear().commit() }
@@ -51,11 +53,31 @@ class Phase5BComposeWorkflowTest {
         runBlocking(Dispatchers.IO) { db.propertyDao().insertPropertyMetadata(property) }
         ui.waitUntil(10000) { vm.properties.value.any { it.propertyId == property.propertyId } }
         ui.runOnIdle { vm.selectProperty(property.propertyId); vm.setScreen(AppScreen.PROPERTIES) }
-        ui.waitUntil(10000) { vm.wohneinheitenStatus.value.size == 2 }
+        ui.waitUntil(10000) { vm.propertyMetadata.value?.propertyId == property.propertyId &&
+            vm.wohneinheitenStatus.value.map { it.unitId } == listOf("u-1", "u-2") }
         ui.onNodeWithText(property.name).performClick()
     }
 
-    private fun back() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
+    private fun back() {
+        ui.runOnIdle {
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            if (dialog is androidx.activity.ComponentDialog && dialog.isShowing) {
+                dialog.onBackPressedDispatcher.onBackPressed()
+            } else ui.activity.onBackPressedDispatcher.onBackPressed()
+        }
+        ui.waitForIdle()
+    }
+    private fun settleEditorWindow() {
+        // Same native Robolectric window bound used by the existing rent-plan UI tests.
+        ui.mainClock.advanceTimeByFrame()
+        ui.runOnUiThread {
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            assertTrue(dialog.isShowing)
+            val density = ui.activity.resources.displayMetrics.density
+            dialog.window!!.setLayout((360 * density).toInt(), (700 * density).toInt())
+        }
+        ui.waitForIdle()
+    }
     private fun capture(name: String) {
         ui.runOnIdle {
             fun redraw(view: android.view.View) {
@@ -133,7 +155,9 @@ class Phase5BComposeWorkflowTest {
     @Test fun objectEditorContainsAndPersistsPurchaseTypeAndNotesWithSameIds() {
         seed()
         ui.onNodeWithText("Stammdaten").performClick()
-        ui.onNodeWithText("Stammdaten bearbeiten").performScrollTo().performClick()
+        ui.onNodeWithTag("property_data").performScrollToNode(hasText("Stammdaten bearbeiten"))
+        ui.onNodeWithText("Stammdaten bearbeiten").performClick()
+        settleEditorWindow()
         ui.onNodeWithTag("edit_property_notarielles_kaufdatum").performScrollTo().performTextReplacement("2021-03-15")
         ui.onNodeWithTag("edit_property_kaufpreis").performScrollTo().performTextReplacement("1.050.000,25")
         ui.onNodeWithTag("edit_property_type").performScrollTo().performTextReplacement("Mehrfamilienhaus")
@@ -156,6 +180,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithText("Monatscheck · WE 01").assertExists()
         back()
         unitsScroll("unit_tenant_change_u-1"); ui.onNodeWithTag("unit_tenant_change_u-1").performClick()
+        settleEditorWindow()
         ui.onNodeWithText("Mieterwechsel erfassen").assertExists()
         ui.onNodeWithTag("tenant_change_old_end").performTextReplacement("2020-03-31")
         ui.onNodeWithTag("tenant_change_name").performTextReplacement("Neuer Mieter")
@@ -180,6 +205,7 @@ class Phase5BComposeWorkflowTest {
         seed()
         ui.onNode(hasText("Einheiten") and hasClickAction()).performClick()
         ui.onNodeWithTag("rent_batch_open").performClick()
+        settleEditorWindow()
         ui.onNodeWithTag("rent_batch_tenant_u-1").performScrollTo().performTextReplacement("Müller")
         ui.onNodeWithTag("rent_batch_start_u-1").performScrollTo().performTextReplacement("2024-01-01")
         ui.onNodeWithTag("rent_batch_cold_u-1").performScrollTo().performTextReplacement("760,50")
@@ -223,6 +249,7 @@ class Phase5BComposeWorkflowTest {
     @Test fun unitCountKeepsInvalidRawTextAndYear9999CannotAdvanceWizard() {
         ui.runOnIdle { vm.setScreen(AppScreen.PROPERTIES) }
         ui.onNodeWithTag("add_property_button").performClick()
+        settleEditorWindow()
         ui.onNode(hasText("Objektname") and hasSetTextAction()).performTextReplacement("Validiertes Haus")
         ui.onNode(hasText("Straße und Hausnummer") and hasSetTextAction()).performTextReplacement("Teststraße 1")
         ui.onNodeWithTag("property_wizard_next").performClick()

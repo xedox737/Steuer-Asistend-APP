@@ -840,7 +840,7 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
         "ABGELEITET" -> "Abgeleitet"
         else -> property.kaufpreisAufteilungQuelle.ifBlank { "Nicht hinterlegt" }
     }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(Modifier.fillMaxSize().testTag("property_data"), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Stammdaten", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
         item {
             Card(shape = Ui2.shape, colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {

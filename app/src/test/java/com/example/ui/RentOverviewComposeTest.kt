@@ -228,7 +228,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithText("Schließen").performClick()
         scroll("rent_unassigned"); ui.onNodeWithTag("rent_review_payments").performClick()
         assertEquals(AppScreen.RENT_OVERVIEW, vm.currentScreen.value)
-        ui.onNodeWithText("Zahlungen prüfen").assertExists()
+        ui.onNodeWithTag("rent_review_list").assertExists()
         ui.onNodeWithTag("rent_review_receipt-1030").assertIsDisplayed().performClick()
         assertEquals(AppScreen.RECEIPT_DETAIL, vm.currentScreen.value); shell()
         back(); assertEquals(AppScreen.RENT_OVERVIEW, vm.currentScreen.value)
