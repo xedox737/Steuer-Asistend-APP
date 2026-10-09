@@ -27,7 +27,7 @@ internal data class LedgerEntry(
 
 internal object LedgerPaymentPresentation {
     private fun entry(receipt: Receipt, amount: Double = receipt.bruttobetrag) = LedgerEntry(
-        "receipt-${receipt.internalId.ifBlank { receipt.id.toString() }}", receipt.datum, amount,
+        "receipt-${receipt.id}", receipt.datum, amount,
         LedgerPresentation.isIncome(receipt), receipt.propertyId, receipt.unitId,
         LedgerPresentation.category(receipt), receipt.aussteller, receipt.beschreibung, receipt = receipt
     )

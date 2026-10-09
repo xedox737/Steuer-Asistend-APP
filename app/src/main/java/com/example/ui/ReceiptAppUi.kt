@@ -1564,7 +1564,7 @@ fun AiSearchCard(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        "Gemini analysiert die Room-Datenbank...",
+                        "Die KI durchsucht deine Belege …",
                         fontSize = 13.sp,
                         color = Color(0xFF1E293B),
                         fontWeight = FontWeight.Medium
@@ -1620,7 +1620,7 @@ fun AiSearchCard(
 
                         if (res.matchingReceiptIds.isNotEmpty()) {
                             Text(
-                                text = "🎯 Room-Datenbank unten gefiltert auf ${res.matchingReceiptIds.size} Beleg(e).",
+                                text = "🎯 ${res.matchingReceiptIds.size} passende Belege werden unten angezeigt.",
                                 fontSize = 11.sp,
                                 color = Color(0xFF2563EB),
                                 fontWeight = FontWeight.SemiBold

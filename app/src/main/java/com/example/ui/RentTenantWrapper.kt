@@ -181,7 +181,7 @@ private fun MonthlyRentCheckDialog(
                             } else if (totalExpected > 0.01) {
                                 Text("✓ Alle erwarteten Mietzahlungen vollständig erfasst", fontSize = 10.sp, color = EmeraldGreen, fontWeight = FontWeight.Bold)
                             }
-                            if (unassigned > 0.01) {
+                            if (reviews.isNotEmpty()) {
                                 Text("⚠ ${NumberFormatter.format(unassigned)} in ${reviews.size} ungeklärten Zahlungen", fontSize = 9.sp, color = WarmOrange)
                                 TextButton(onClick = { showReview = true }) { Text("Zahlungen prüfen") }
                             }

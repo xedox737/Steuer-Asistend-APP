@@ -76,7 +76,18 @@ internal fun UnifiedPropertyUnitsScreen(
     units: List<WohneinheitStatus>,
     receipts: List<Receipt>,
     documents: List<ManagedDocument>,
-    onAnnualDetails: () -> Unit = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) },
+    onBackToProperty: () -> Unit
+) = UnifiedPropertyUnitsScreen(viewModel, property, units, receipts, documents,
+    onAnnualDetails = { viewModel.setScreen(AppScreen.RENT_OVERVIEW) }, onBackToProperty = onBackToProperty)
+
+@Composable
+internal fun UnifiedPropertyUnitsScreen(
+    viewModel: ReceiptViewModel,
+    property: PropertyMetadata,
+    units: List<WohneinheitStatus>,
+    receipts: List<Receipt>,
+    documents: List<ManagedDocument>,
+    onAnnualDetails: () -> Unit,
     onBackToProperty: () -> Unit
 ) {
     val context = LocalContext.current

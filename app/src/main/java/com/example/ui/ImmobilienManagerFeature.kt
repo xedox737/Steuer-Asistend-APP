@@ -317,11 +317,18 @@ private fun PropertyDetailHost(
         )
     }
     var deleteRequested by remember(property.propertyId) { mutableStateOf(false) }
-    BackHandler { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }
+    var annualDetailsFromUnits by androidx.compose.runtime.saveable.rememberSaveable(property.propertyId) { mutableStateOf(false) }
+    fun goBack() {
+        if (section == PropertySection.RENT && annualDetailsFromUnits) {
+            annualDetailsFromUnits = false
+            onSection(PropertySection.UNITS)
+        } else if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD)
+    }
+    BackHandler { goBack() }
     Column(Modifier.fillMaxSize()) {
         if (section != PropertySection.UNITS && section != PropertySection.DOCUMENTS) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { if (section == PropertySection.DASHBOARD) onBack() else onSection(PropertySection.DASHBOARD) }) {
+                IconButton(onClick = { goBack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
                 }
                 Text(if (section == PropertySection.DASHBOARD) "Immobilie" else property.name, Modifier.weight(1f), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -334,7 +341,7 @@ private fun PropertyDetailHost(
         }
         when (section) {
             PropertySection.DASHBOARD -> PropertyReferenceDetail(property, currentRentSummary, viewModel, onSection)
-            PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onAnnualDetails = { onSection(PropertySection.RENT) }, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
+            PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onAnnualDetails = { annualDetailsFromUnits = true; onSection(PropertySection.RENT) }, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)

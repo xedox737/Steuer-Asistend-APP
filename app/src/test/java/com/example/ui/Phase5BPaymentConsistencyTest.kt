@@ -72,6 +72,14 @@ class Phase5BPaymentConsistencyTest {
         assertTrue(LedgerPaymentPresentation.filter(entries, LedgerFilters(2026, period = LedgerPeriod.CURRENT_MONTH), java.time.LocalDate.of(2026, 9, 1)).isEmpty())
     }
 
+    @Test fun preservedReceiptsWithConflictingInternalIdsStillHaveUniqueListKeys() {
+        val expenses = listOf(receipt().copy(hauptkategorie = "Werbungskosten"),
+            receipt().copy(id = 2, hauptkategorie = "Werbungskosten"))
+        val entries = LedgerPaymentPresentation.entries(expenses, emptyList(), emptyList(), emptyList())
+        assertEquals(2, entries.map { it.key }.distinct().size)
+        assertEquals(2, entries.size)
+    }
+
     @Test fun unresolvedBankCandidateAppearsInReviewAndNeverCountsAsPaid() {
         val open = tx(1020.0).copy(reconciliationStatus = BankReconciliationStatus.OPEN)
         val reviews = RentPaymentReview.build(groups, emptyList(), listOf(open), emptyList(), emptyList())

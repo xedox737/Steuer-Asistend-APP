@@ -48,8 +48,9 @@ internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<Wohn
         InitialRentRow(PropertyUnitScopedData.stableUnitId(property.propertyId, it))
     }) }
     val eligibleIds = remember(property.propertyId, units) { units.filter { unit ->
-        InitialRentInput.eligible(unit, TenantHistoryStore.load(context, property.propertyId,
-            PropertyUnitScopedData.stableUnitId(property.propertyId, unit), unit.name))
+        val id = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
+        !TenantHistoryStore.hasStoredPeriods(context, property.propertyId, id, unit.name) &&
+            InitialRentInput.eligible(unit, TenantHistoryStore.load(context, property.propertyId, id, unit.name))
     }.map { PropertyUnitScopedData.stableUnitId(property.propertyId, it) }.toSet() }
     var errors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var preview by remember { mutableStateOf(false) }
@@ -69,11 +70,24 @@ internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<Wohn
                         val unit = units.first { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == row.unitId }
                         val enabled = row.unitId in eligibleIds && !saving
                         Column {
-                            Row {
+                            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                                 if (!preview) Checkbox(row.included, { included ->
                                     rows = rows.map { if (it.unitId == row.unitId) it.copy(included = included) else it }
                                 }, enabled = enabled, modifier = Modifier.testTag("rent_batch_select_${row.unitId}"))
                                 Text(unit.label.ifBlank { unit.name })
+                                if (!preview && enabled) {
+                                    Spacer(Modifier.weight(1f))
+                                    var expanded by remember(row.unitId) { mutableStateOf(false) }
+                                    Box {
+                                        OutlinedButton(onClick = { expanded = true }, enabled = !saving,
+                                            modifier = Modifier.testTag("rent_batch_status_${row.unitId}")) { Text(row.status) }
+                                        DropdownMenu(expanded, { expanded = false }) {
+                                            InitialRentInput.statuses.forEach { status -> DropdownMenuItem(text = { Text(status) }, onClick = {
+                                                change(row.copy(status = status)); expanded = false
+                                            }) }
+                                        }
+                                    }
+                                }
                             }
                             if (preview) Text("${row.status} · ${row.tenant.ifBlank { "leer" }} · ${row.start.ifBlank { "—" }} · Kalt ${row.cold} € · NK ${row.utilities} € · Sonstiges ${row.other} €")
                             else if (!enabled) Text("Vorhandene Mietdaten: Änderungen über Mietverlauf / Mieterwechsel.", color = SlateGray)
@@ -83,16 +97,6 @@ internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<Wohn
                                 BatchField(row.cold, "Kaltmiete €", "cold_${row.unitId}", 110, enabled, true) { change(row.copy(cold = it)) }
                                 BatchField(row.utilities, "NK €", "utilities_${row.unitId}", 100, enabled, true) { change(row.copy(utilities = it)) }
                                 BatchField(row.other, "Sonstiges €", "other_${row.unitId}", 110, enabled, true) { change(row.copy(other = it)) }
-                                var expanded by remember(row.unitId) { mutableStateOf(false) }
-                                Box {
-                                    OutlinedButton(onClick = { expanded = true }, enabled = enabled,
-                                        modifier = Modifier.testTag("rent_batch_status_${row.unitId}")) { Text(row.status) }
-                                    DropdownMenu(expanded, { expanded = false }) {
-                                        InitialRentInput.statuses.forEach { status -> DropdownMenuItem(text = { Text(status) }, onClick = {
-                                            change(row.copy(status = status)); expanded = false
-                                        }) }
-                                    }
-                                }
                             }
                             errors[row.unitId]?.let { Text(it, color = CrimsonRed) }
                         }

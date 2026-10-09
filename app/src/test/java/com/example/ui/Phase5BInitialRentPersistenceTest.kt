@@ -87,4 +87,27 @@ class Phase5BInitialRentPersistenceTest {
         assertNotNull(vm.saveInitialRentBatch(property.propertyId, listOf(InitialRentRow("another-object-unit", included = true))))
         assertTrue(vm.getWohneinheitenForProperty(property).all { it.status == "Leerstand" })
     }
+
+    @Test fun malformedSavedHistoryIsProtectedInsteadOfTreatedAsEmpty() = runTest {
+        db.propertyDao().insertPropertyMetadata(property)
+        val unit = vm.getWohneinheitenForProperty(property).first()
+        val key = "history_v2_${property.propertyId}_${unit.unitId}"
+        val raw = "[{incomplete-history"
+        app.getSharedPreferences("tenant_history_prefs", 0).edit().putString(key, raw).commit()
+        val row = InitialRentRow(unit.unitId, "Müller", "2024-01-01", "760", "220", "0", "Vermietet", true)
+        assertNotNull(vm.saveInitialRentBatch(property.propertyId, listOf(row)))
+        assertEquals(raw, app.getSharedPreferences("tenant_history_prefs", 0).getString(key, null))
+    }
+
+    @Test fun initialFutureContractIsSavedButNeverDisplayedAsCurrentTenant() = runTest {
+        db.propertyDao().insertPropertyMetadata(property)
+        val unit = vm.getWohneinheitenForProperty(property).first()
+        val future = java.time.LocalDate.now().plusYears(1).toString()
+        assertNull(vm.saveInitialRentBatch(property.propertyId, listOf(
+            InitialRentRow(unit.unitId, "Geplanter Mieter", future, "760", "220", "0", "Vermietet", true))))
+        val period = TenantHistoryStore.load(app, property.propertyId, unit.unitId, unit.name).single()
+        assertEquals("GEPLANT", TenantChronology.status(period))
+        assertTrue(vm.getWohneinheitenForProperty(property).first().mieter.isBlank())
+        assertEquals(unit.unitId, vm.getWohneinheitenForProperty(property).first().unitId)
+    }
 }

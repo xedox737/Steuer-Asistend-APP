@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import com.example.MainActivity
 import com.example.data.*
+import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -54,6 +55,21 @@ class Phase5BComposeWorkflowTest {
     }
 
     private fun back() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
+    private fun capture(name: String) {
+        ui.runOnIdle {
+            fun redraw(view: android.view.View) {
+                if (view.javaClass.name == "androidx.compose.ui.platform.AndroidComposeView") {
+                    view.javaClass.getMethod("invalidateDescendants").invoke(view)
+                }
+                view.requestLayout(); view.invalidate()
+                if (view is android.view.ViewGroup) for (index in 0 until view.childCount) redraw(view.getChildAt(index))
+            }
+            redraw(ui.activity.window.decorView)
+        }
+        ui.mainClock.advanceTimeBy(300); ui.waitForIdle()
+        androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+            .captureRoboImage("build/reports/phase5b-workflows/$name.png")
+    }
     private fun ledgerScroll(tag: String) = ui.onNodeWithTag("ledger_overview").performScrollToNode(hasTestTag(tag))
     private fun unitsScroll(tag: String) = ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag(tag))
     private fun expense(id: Int, amount: Double, propertyId: String) = Receipt(id, "Handwerk $id", "2026-10-03", "", amount,
@@ -77,6 +93,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithText("Phase5B Haus A").performClick()
         ledgerScroll("ledger_metric_Ausgaben")
         ui.onNode(hasText(LedgerPresentation.money(1000.0)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
+        capture("filtered-finances-393")
         ledgerScroll("ledger_bank_bank-a"); ui.onNodeWithTag("ledger_bank_bank-a").performClick()
         ui.waitUntil(10000) { vm.currentScreen.value == AppScreen.BANK }
         ui.onNodeWithText("Buchungsdetails").assertExists()
@@ -134,6 +151,8 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("tenant_change_new_start").performScrollTo().performTextReplacement("2020-04-01")
         ui.onNodeWithText("Wechsel speichern").performClick()
         ui.onNodeWithText("Das Vertragsende darf nicht vor dem Mietbeginn liegen.").assertExists()
+        ui.onNodeWithTag("tenant_change_old_end").performScrollTo()
+        capture("tenant-chronology-error-393")
         val history = TenantHistoryStore.load(ui.activity, property.propertyId, "u-1", "WE 01")
         assertEquals(1, history.size)
         assertEquals("", history.single().endDate)
@@ -141,7 +160,9 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("property_units_overview").assertExists()
         unitsScroll("unit_annual_details"); ui.onNodeWithTag("unit_annual_details").performClick()
         ui.onNodeWithTag("rent_overview").assertExists()
-        back(); assertEquals(AppScreen.PROPERTIES, vm.currentScreen.value)
+        back()
+        assertEquals(AppScreen.PROPERTIES, vm.currentScreen.value)
+        ui.onNodeWithTag("property_units_overview").assertExists()
     }
 
     @Test fun bulkPreviewNamesEveryChangedUnitBeforeSaving() {
@@ -155,10 +176,12 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("rent_batch_status_u-1").performScrollTo().performClick()
         ui.onNodeWithText("Vermietet").performClick()
         ui.onNodeWithTag("rent_batch_select_u-2").performClick()
+        capture("initial-rent-editor-393")
         ui.onNodeWithTag("rent_batch_confirm").performClick()
         ui.onNodeWithText("2 Einheiten speichern?").assertExists()
         ui.onNode(hasText("WE 01") and hasAnyAncestor(hasTestTag("rent_batch_rows"))).assertExists()
         ui.onNode(hasText("WE 02") and hasAnyAncestor(hasTestTag("rent_batch_rows"))).assertExists()
+        capture("initial-rent-preview-393")
         ui.onNodeWithTag("rent_batch_confirm").performClick()
         ui.waitUntil(10000) { vm.wohneinheitenStatus.value.any { it.mieter == "Müller" } }
         assertEquals("Leerstand", vm.wohneinheitenStatus.value.single { it.unitId == "u-2" }.status)
@@ -174,6 +197,39 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithText("Belege mit KI durchsuchen").assertExists()
         ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
         ui.onAllNodes(hasText("Belegsdatenbank", substring = true)).assertCountEquals(0)
+        @Suppress("UNCHECKED_CAST")
+        val state = ReceiptViewModel::class.java.getDeclaredField("_aiSearchState").apply { isAccessible = true }
+            .get(vm) as kotlinx.coroutines.flow.MutableStateFlow<ReceiptViewModel.AiSearchUiState>
+        ui.runOnIdle { state.value = ReceiptViewModel.AiSearchUiState(isLoading = true) }
+        ui.onNodeWithText("Die KI durchsucht deine Belege …").assertExists()
+        ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
+        ui.runOnIdle { state.value = ReceiptViewModel.AiSearchUiState(result = com.example.api.AiSearchResult(
+            answer = "Ein passender Beleg", matchingReceiptIds = listOf(901L))) }
+        ui.onNodeWithText("🎯 1 passende Belege werden unten angezeigt.").assertExists()
+        ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
+    }
+
+    @Test fun unitCountKeepsInvalidRawTextAndYear9999CannotAdvanceWizard() {
+        ui.runOnIdle { vm.setScreen(AppScreen.PROPERTIES) }
+        ui.onNodeWithTag("add_property_button").performClick()
+        ui.onNode(hasText("Objektname") and hasSetTextAction()).performTextReplacement("Validiertes Haus")
+        ui.onNode(hasText("Straße und Hausnummer") and hasSetTextAction()).performTextReplacement("Teststraße 1")
+        ui.onNodeWithTag("property_wizard_next").performClick()
+        listOf("-1", "2,5").forEach { input ->
+            ui.onNode(hasText("Anzahl Einheiten") and hasSetTextAction()).performTextReplacement(input)
+            ui.onNodeWithTag("property_wizard_next").performClick()
+            ui.onNodeWithText("Immobilie anlegen · 2/5").assertExists()
+            ui.onNode(hasText("Anzahl Einheiten") and hasSetTextAction()).assertTextContains(input)
+            ui.onNodeWithText("Bitte eine positive Ganzzahl für die Einheitenzahl eingeben; Dezimalzahlen und Minuszeichen sind nicht erlaubt.").assertExists()
+        }
+        ui.onNode(hasText("Anzahl Einheiten") and hasSetTextAction()).performTextReplacement("2")
+        ui.onNode(hasText("Baujahr") and hasSetTextAction()).performTextReplacement("9999")
+        ui.onNodeWithTag("property_wizard_next").performClick()
+        ui.onNodeWithText("Immobilie anlegen · 2/5").assertExists()
+        ui.onNode(hasText("Baujahr") and hasSetTextAction()).assertTextContains("9999")
+        ui.onNodeWithText("Bitte ein gültiges Baujahr eingeben.").assertExists()
+        assertTrue(vm.properties.value.isEmpty())
+        back(); ui.onNodeWithTag("properties_overview").assertExists()
     }
 
     @Test fun csvChoiceInWizardExportsAndSharesActualCsvAndAuditsBookingCount() {

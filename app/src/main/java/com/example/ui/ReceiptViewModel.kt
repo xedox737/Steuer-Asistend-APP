@@ -876,7 +876,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             InitialRentInput.error(row)?.let { return@withContext it }
             val unit = units[row.unitId] ?: return@withContext "Eine ausgewählte Einheit ist nicht mehr vorhanden."
             val history = TenantHistoryStore.load(getApplication(), propertyId, row.unitId, unit.name)
-            if (!InitialRentInput.eligible(unit, history)) return@withContext "${unit.name}: vorhandene Mietdaten werden nicht überschrieben. Bitte den Mietverlauf verwenden."
+            if (TenantHistoryStore.hasStoredPeriods(getApplication(), propertyId, row.unitId, unit.name) ||
+                !InitialRentInput.eligible(unit, history)) return@withContext "${unit.name}: vorhandene Mietdaten werden nicht überschrieben. Bitte den Mietverlauf verwenden."
         }
         val periods = rows.filter { it.status == "Vermietet" }.map { row ->
             val unit = units.getValue(row.unitId)

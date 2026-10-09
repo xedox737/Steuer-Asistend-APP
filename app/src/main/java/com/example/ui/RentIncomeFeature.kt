@@ -222,7 +222,9 @@ fun RentIncomeOverviewScreen(
                     Icon(Icons.Default.Warning, null, tint = WarmOrange, modifier = Modifier.size(24.dp))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         val count = overview.reviews.size
-                        Text("$count Mietzahlung${if (count == 1) "" else "en"} nicht zugeordnet", fontSize = 13.sp, lineHeight = 17.sp,
+                        val unassignedReceiptsOnly = overview.reviews.all { it.receipt?.let(::isConfirmedRentalIncomeReceipt) == true }
+                        Text(if (unassignedReceiptsOnly) "$count Mietzahlung${if (count == 1) "" else "en"} nicht zugeordnet"
+                            else "$count Zahlung${if (count == 1) "" else "en"} zu prüfen", fontSize = 13.sp, lineHeight = 17.sp,
                             fontWeight = FontWeight.Bold, color = DarkNavy)
                         Text("${NumberFormatter.format(overview.reviews.sumOf { it.amount })} müssen geprüft werden",
                             fontSize = 11.sp, lineHeight = 15.sp, color = SlateGray)

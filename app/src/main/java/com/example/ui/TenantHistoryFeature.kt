@@ -186,9 +186,18 @@ internal object TenantHistoryStore {
         }
     }
 
+    /** A malformed stored history is existing data, never an invitation to overwrite it. */
+    fun hasStoredPeriods(context: Context, propertyId: String, unitId: String, unitName: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(scopedKey(propertyId, unitId), null)
+            ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) prefs.getString(legacyKey(unitName), null) else null)
+            ?: return false
+        return runCatching { JSONArray(raw).length() > 0 }.getOrDefault(true)
+    }
+
     /** Commit the initial contractual truth of all rented rows as one preference write. */
     fun saveInitialPeriods(context: Context, propertyId: String, entries: List<Pair<WohneinheitStatus, TenantPeriod>>): Boolean = synchronized(this) {
-        if (entries.any { (unit, _) -> load(context, propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit), unit.name).isNotEmpty() }) return@synchronized false
+        if (entries.any { (unit, _) -> hasStoredPeriods(context, propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit), unit.name) }) return@synchronized false
         val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
         entries.forEach { (unit, period) ->
             val raw = encode(listOf(period))
