@@ -182,10 +182,20 @@ jobs:
 
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm && test -w /dev/kvm
+          set -euo pipefail
+          mkdir -p app/build/emulator-e2e
+          {
+            id
+            if [ -e /dev/kvm ]; then ls -l /dev/kvm; fi
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            # Wait for this device's udev event before checking its permissions.
+            sudo timeout 15s udevadm trigger --name-match=kvm --settle
+            ls -l /dev/kvm
+            test -c /dev/kvm
+            test -r /dev/kvm
+            test -w /dev/kvm
+          } 2>&1 | tee app/build/emulator-e2e/kvm-setup.txt
 
       - name: Run Android emulator end-to-end tests
         timeout-minutes: 20
