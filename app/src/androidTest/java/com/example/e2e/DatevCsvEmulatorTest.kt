@@ -19,11 +19,14 @@ class DatevCsvEmulatorTest : EmulatorTestSupport() {
     @Test fun csvSelectedInRealWizardCreatesReadableCsvInsteadOfZip() {
         val property = seedProperty()
         val original = File(context.filesDir, "e2e-datev-original.pdf")
-        PdfDocument().use { pdf ->
+        val pdf = PdfDocument()
+        try {
             val page = pdf.startPage(PdfDocument.PageInfo.Builder(595, 842, 1).create())
             page.canvas.drawText("Synthetischer freigegebener Testbeleg", 40f, 80f, Paint())
             pdf.finishPage(page)
             original.outputStream().use { pdf.writeTo(it) }
+        } finally {
+            pdf.close()
         }
         runBlocking(Dispatchers.IO) {
             db.receiptDao().insertReceipt(expense(901, 100.0, property.propertyId, LocalDate.now().toString()).copy(
