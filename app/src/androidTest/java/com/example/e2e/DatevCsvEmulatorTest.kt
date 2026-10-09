@@ -47,7 +47,13 @@ class DatevCsvEmulatorTest : EmulatorTestSupport() {
         repeat(3) { ui.onNodeWithText("Weiter").assertIsDisplayed().performClick() }
         ui.onNodeWithText("Reiner EXTF Buchungsstapel (.csv)").performScrollTo().performClick()
         ui.onNodeWithText("Buchungsstapel jetzt erzeugen").performScrollTo().assertIsEnabled().performClick()
-        ui.waitUntil(10_000) { model.lastExportResult.value != null && model.allAuditRuns.value.size == 1 }
+        val resultTitle = "Buchungsstapel erfolgreich erstellt!"
+        // Export data can be ready before the lifecycle-aware UI renders step 6.
+        ui.waitUntil(10_000) {
+            model.lastExportResult.value != null && model.allAuditRuns.value.size == 1 &&
+                ui.onAllNodesWithText(resultTitle).fetchSemanticsNodes().isNotEmpty()
+        }
+        ui.onNodeWithText("Schritt 6 von 6 · Ergebnis & Exporthistorie").assertIsDisplayed()
         val result = requireNotNull(model.lastExportResult.value)
         assertEquals("csv", result.outputFile.extension)
         assertEquals("text/csv", result.mimeType)
@@ -59,7 +65,7 @@ class DatevCsvEmulatorTest : EmulatorTestSupport() {
         assertTrue(DatevFormatValidator.validate(content).isValid)
         assertEquals(3, content.trimEnd().split("\r\n").size)
         assertEquals(previousZips, context.cacheDir.walkTopDown().filter { it.extension == "zip" }.map { it.absolutePath }.toSet())
-        ui.onNodeWithText("Buchungsstapel erfolgreich erstellt!").assertIsDisplayed()
+        ui.onNodeWithText(resultTitle).performScrollTo().assertIsDisplayed()
         ui.onNodeWithTag("datev_share_output").performScrollTo().assertIsDisplayed().assertIsEnabled()
         capture("datev-csv-result")
     }
