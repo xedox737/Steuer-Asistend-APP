@@ -3,6 +3,7 @@ package com.example.e2e
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
@@ -102,17 +103,30 @@ abstract class EmulatorTestSupport {
         override fun failed(error: Throwable, description: Description) {
             val name = "${description.testClass.simpleName}-${description.methodName}-failure"
             // Diagnostics must not replace the original assertion/exception.
-            runCatching { capture(name) }
+            runCatching { capture(name) }.onFailure {
+                // A failing popup/missing Compose root still gets a device image.
+                runCatching { saveBitmap(name, requireNotNull(
+                    InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+                )) }
+            }
             runCatching { saveText("$name.txt", ui.onRoot(useUnmergedTree = true).printToString()) }
         }
     }
 
     protected fun capture(name: String) {
         ui.waitForIdle()
-        val bitmap = requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+        // PixelCopy waits for a committed Android window frame. A device-wide
+        // screenshot can otherwise capture the frame before a recent UI change.
+        val target = if (ui.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) {
+            ui.onNode(isDialog())
+        } else ui.onRoot()
+        saveBitmap(name, target.captureToImage().asAndroidBitmap())
+    }
+
+    private fun saveBitmap(name: String, bitmap: Bitmap) {
         val file = File(requireNotNull(context.getExternalFilesDir(null)), "$name.png")
-        file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
-        bitmap.recycle()
+        try { file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
+        finally { bitmap.recycle() }
         copyDiagnostic(file)
     }
 

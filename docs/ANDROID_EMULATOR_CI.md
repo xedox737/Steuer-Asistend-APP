@@ -87,6 +87,10 @@ begrenztes Runtime/Activity/SQLite/Room/TestRunner-Log werden als Dateien gesich
 nicht in die Konsole kopiert. Die EXIT-Falle sammelt vor Emulatorabschaltung
 und erhält den ursprünglichen Fehlercode. Bei Boot-/SDK-/KVM-Fehlern helfen die
 Action-Logs; ohne laufendes Gerät können keine Gerätescreenshots entstehen.
+App-/Dialogbilder verwenden Compose `captureToImage`/Android-PixelCopy nach
+Frame-Synchronisation. Sie zeigen das App- bzw. Dialogfenster; Systemleisten und
+andere überlagernde Fenster sind kein Teil dieser Aufnahme. Bei Diagnosefehlern
+bleibt die vollständige Geräteaufnahme über UiAutomation/ADB als Rückfall erhalten.
 
 ## Grenzen und Erweiterung
 
@@ -94,6 +98,10 @@ Activity-Neustart mit neuem ViewModel ist kein vollständiger Prozesskill.
 Schriftprüfung ist eine gezielte Assertion und visuelle Diagnose, keine vollständige
 Pixelregression jedes Screens. Texteingabe nutzt Compose-Testaktionen; reale
 IME-/Touch-Eigenheiten werden dadurch nicht umfassend geprüft.
+Bei Schriftgröße 1,5 zeigen die Bilder weiterhin ungünstige Umbrüche langer
+Kartenlabels und eine gekürzte Branding-Unterzeile/Immobilien-Navbeschriftung.
+Die zentralen geprüften Texte, der DATEV-Einstieg und alle fünf Tabs bleiben bedienbar;
+dieser CI-PR ist keine vollständige typografische Überarbeitung.
 Kein Realgerätetest: Kamera, reale Performance, Drive-OAuth, externe Viewer,
 Live-KI/Routes und Kanzlei-DATEV-Import bleiben offen. Keine Kameraabnahme durch
 virtuelle Hardware behaupten. Zunächst ein stabiles Profil beibehalten; weitere
