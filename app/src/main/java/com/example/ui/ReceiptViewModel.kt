@@ -2716,9 +2716,9 @@ data class AiSearchUiState(
                 val ids = matches.map { it.id.toLong() }
                 val formattedSum = String.format(java.util.Locale.GERMANY, "%.2f €", totalSum)
                 val fallbackAnswer = if (matches.isNotEmpty()) {
-                    "Auswertung aus Room-Datenbank für '$trimmed': Insgesamt $formattedSum verteilt auf ${matches.size} Belege."
+                    "Auswertung für '$trimmed': Insgesamt $formattedSum verteilt auf ${matches.size} Belege."
                 } else {
-                    "Keine passenden Belege für '$trimmed' in der Room-Datenbank gefunden."
+                    "Keine passenden Belege für '$trimmed' gefunden."
                 }
                 result = com.example.api.AiSearchResult(
                     answer = fallbackAnswer,
@@ -2733,7 +2733,7 @@ data class AiSearchUiState(
                 _aiSearchState.value = AiSearchUiState(
                     isLoading = false,
                     query = trimmed,
-                    error = "Keine Belege in der Room-Datenbank vorhanden."
+                    error = "Noch keine Belege vorhanden."
                 )
             }
         }

@@ -32,6 +32,10 @@ class Phase5BComposeWorkflowTest {
 
     @Before fun clearData() {
         assertSame(ui.activity.application, vm.getApplication<Application>())
+        // FileProvider's process cache otherwise retains another Robolectric test's cache root.
+        val providerCache = androidx.core.content.FileProvider::class.java.getDeclaredField("sCache")
+            .apply { isAccessible = true }.get(null) as MutableMap<*, *>
+        providerCache.clear()
         db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
         runBlocking(Dispatchers.IO) { db.clearAllTables() }
         PersistentPreferenceInventory.stores.forEach { ui.activity.getSharedPreferences(it.name, 0).edit().clear().commit() }
@@ -155,7 +159,9 @@ class Phase5BComposeWorkflowTest {
     @Test fun objectEditorContainsAndPersistsPurchaseTypeAndNotesWithSameIds() {
         seed()
         ui.onNodeWithText("Stammdaten").performClick()
-        ui.onNodeWithTag("property_data").performScrollToNode(hasText("Stammdaten bearbeiten"))
+        // The preceding lazy item is a single card taller than the viewport. Target its
+        // existing footer directly instead of repeatedly scanning that oversized item.
+        ui.onNodeWithTag("property_data").performScrollToIndex(2)
         ui.onNodeWithText("Stammdaten bearbeiten").performClick()
         settleEditorWindow()
         ui.onNodeWithTag("edit_property_notarielles_kaufdatum").performScrollTo().performTextReplacement("2021-03-15")
@@ -243,6 +249,19 @@ class Phase5BComposeWorkflowTest {
         ui.runOnIdle { state.value = ReceiptViewModel.AiSearchUiState(result = com.example.api.AiSearchResult(
             answer = "Ein passender Beleg", matchingReceiptIds = listOf(901L))) }
         ui.onNodeWithText("🎯 1 passende Belege werden unten angezeigt.").assertExists()
+        ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
+        ui.runOnIdle { vm.clearAiSearch(); vm.deleteGeminiKey(); vm.performAiSearch("Reparatur") }
+        ui.waitUntil(10000) { vm.aiSearchState.value.result?.matchingReceiptIds == listOf(901L) }
+        ui.onNodeWithText("Auswertung für 'Reparatur': Insgesamt 100,00 € verteilt auf 1 Belege.").assertExists()
+        ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
+        ui.runOnIdle { vm.performAiSearch("Unpassender Suchbegriff") }
+        ui.waitUntil(10000) { vm.aiSearchState.value.query == "Unpassender Suchbegriff" && !vm.aiSearchState.value.isLoading }
+        ui.onNodeWithText("Keine passenden Belege für 'Unpassender Suchbegriff' gefunden.").assertExists()
+        runBlocking(Dispatchers.IO) { db.clearAllTables() }
+        ui.waitUntil(10000) { vm.receipts.value.isEmpty() }
+        ui.runOnIdle { vm.performAiSearch("Reparatur") }
+        ui.waitUntil(10000) { vm.aiSearchState.value.error != null }
+        ui.onNodeWithText("Noch keine Belege vorhanden.").assertExists()
         ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
     }
 
