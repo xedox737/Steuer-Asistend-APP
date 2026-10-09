@@ -188,7 +188,7 @@ data class BankImportBatch(
 )
 
 data class BankImportIssue(val rowNumber: Int, val field: String, val originalValue: String, val cause: String) {
-    val message: String get() = "Zeile $rowNumber: $cause $field ‚$originalValue‘."
+    val message: String get() = "Zeile $rowNumber: $cause ${this.field} ‚$originalValue‘."
 }
 
 data class BankMatchSuggestion(

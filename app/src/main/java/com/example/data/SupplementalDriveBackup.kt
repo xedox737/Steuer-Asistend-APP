@@ -508,7 +508,7 @@ object SupplementalDriveBackup {
 
     // OCR full text and local device paths are intentionally excluded. They are rebuilt locally;
     // document identity, Drive references and extraction/review metadata remain restorable.
-    private fun mergeManagedDocument(
+    internal fun mergeManagedDocument(
         context: Context,
         local: ManagedDocument?,
         backup: ManagedDocument,

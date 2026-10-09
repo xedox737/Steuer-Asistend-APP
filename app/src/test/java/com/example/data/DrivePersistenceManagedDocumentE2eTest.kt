@@ -106,6 +106,41 @@ class DrivePersistenceManagedDocumentE2eTest {
         downloaded.forEach { java.io.File(it.localUri).delete() }
     }
 
+    @Test fun automaticReceiptMetadataRoundTripCarriesEveryOriginalWithoutLocalPathsOrOcrAndReadsOldBackups() {
+        val originals = (0..1).map { order -> ManagedDocument(
+            documentId = if (order == 0) "receipt:metadata" else "metadata-page-2", receiptInternalId = "metadata",
+            propertyId = "property-test", originalFilename = "Seite ${order + 1}.${if (order == 0) "pdf" else "png"}",
+            storedFilename = "managed-$order.${if (order == 0) "pdf" else "png"}",
+            mimeType = if (order == 0) "application/pdf" else "image/png", sha256 = "$order".repeat(64),
+            fileSizeBytes = 100L + order, driveFileId = "remote-$order", driveFolderId = "folder",
+            localUri = "/private/local/original-$order", ocrText = "LOCAL_OCR_SENTINEL",
+            createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z",
+            extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", order).toString()) }
+        val persisted = PersistedReceipt(internalId = "metadata", displayId = "BELEG-1", originalDocuments = originals,
+            aussteller = "Manuell", rechnungsnummer = "", datum = "2026-10-08", nettobetragCent = 10000,
+            steuerbetragCent = 0, bruttobetragCent = 10000, hauptkategorie = "Renovierung", unterkategorie = "Material",
+            wohneinheit = "", propertyId = "property-test", massnahme = "", positionen = emptyList(),
+            zahlungsstatus = "BEZAHLT", zahlungsdatum = "2026-10-08", pruefstatus = "GEPRUEFT", exportstatus = "EXPORTBEREIT",
+            createdAt = "2026-10-08T00:00:00Z", updatedAt = "2026-10-08T00:00:00Z", lastSyncedAt = null)
+        val json = with(driveRepository) { persisted.toJson() }
+        assertFalse(json.contains("/private/local"))
+        assertFalse(json.contains("LOCAL_OCR_SENTINEL"))
+        val parsed = driveRepository.parsePersistedReceipt(json)
+        assertEquals(2, parsed.originalDocuments.size)
+        parsed.originalDocuments.forEachIndexed { order, document ->
+            assertEquals(originals[order].documentId, document.documentId)
+            assertEquals(originals[order].sha256, document.sha256)
+            assertEquals(originals[order].originalFilename, document.originalFilename)
+            assertEquals(originals[order].mimeType, document.mimeType)
+            assertEquals(originals[order].fileSizeBytes, document.fileSizeBytes)
+            assertEquals(order, JSONObject(document.extractedFieldsJson).getInt("_receiptOriginalOrder"))
+            assertTrue(document.localUri.isEmpty())
+        }
+        assertEquals(json, with(driveRepository) { parsed.toJson() })
+        val legacy = JSONObject(json).apply { remove("originalDocuments") }
+        assertTrue(driveRepository.parsePersistedReceipt(legacy.toString()).originalDocuments.isEmpty())
+    }
+
     @Test fun `fixture 9 purchase contract uses production repository sync and updates real index json`() = runTest {
         assertSuccessfulReclassification(9, ManagedDocumentType.KAUFVERTRAG, null, "00_Stammdaten/01_Kauf_Eigentum")
     }

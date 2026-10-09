@@ -38,6 +38,10 @@ verarbeiten genau diese. Auch `ReceiptRepository.indexReceiptDocument` und Recei
 indizieren/übertragen nur den ersten Pfad; Standalone-Drive-Sync schließt Belegdokumente aus.
 Vorhandene ManagedDocument-Felder tragen bereits ID, Receipt-ID, Originalname, MIME, SHA,
 Größe, lokalen/Drive-Pfad und Metadaten-JSON: keine neue Room-Tabelle erforderlich.
+Automatische Einzelbelegsicherung benötigt dieselbe Kette direkt in Receipt-JSON:
+Der bisherige documents-Eintrag enthält Drive-ID/MIME/Größe, aber keinen SHA,
+Originalnamen oder Reihenfolge. Ein vollständiger Supplemental-Snapshot darf keine
+Voraussetzung für vollständige neue Belegmetadaten sein.
 
 ### F04/F05
 
@@ -98,7 +102,7 @@ Backupreferenzen; strenge Datum-/Betragsfehler; 60-Zeilen-Reimport und umbenannt
 Legacy-Konto-ID und Monatsfortsetzung.
 
 Lokale Umgebung besitzt JDK 17, aber keinen Gradle/Android-SDK. Vollständige Android-Prüfung
-erfolgt über die unveränderte GitHub Android CI im PR-Kontext. Ergebnisse werden nachgetragen.
+erfolgt über die unveränderte GitHub Android CI im PR-Kontext. Ergebnisse werden im PR protokolliert.
 Echte Kamera, externe Dateiöffner, angemeldetes Drive und Kanzleiimport bleiben gesonderte Prüfgrenzen.
 
 ### Regressionen und Kompatibilität
@@ -119,7 +123,9 @@ keine Tests werden deaktiviert oder Kontrollen entfernt.
 Room bleibt Version 34, Supplemental-JSON Version 14. Keine Schemaänderung, Migration oder
 destructive Migration. Neue Anhänge verwenden die vorhandene ManagedDocument-ID und
 receiptInternalId; Reihenfolge wird additiv im vorhandenen Metadaten-JSON gespeichert.
-Altbackups ohne diese Reihenfolge oder Anhangsmetadaten bleiben lesbar. Vorhandene Konto-/
+Receipt-JSON sichert alle Originalmetadaten additiv auch bei automatischen Einzelbackups,
+ohne lokale Pfade oder OCR-Volltext zu exportieren. Altbackups ohne diese Reihenfolge oder
+Anhangsmetadaten bleiben lesbar. Vorhandene Konto-/
 Transaktions-IDs und ihre Beziehungen werden nicht umgeschrieben. Mehrere bereits vorhandene
 Konten mit gleicher Kennung werden bewusst nicht automatisch konsolidiert; Import verlangt Auswahl.
 Ohne eigene Kontokennung ist eine ausdrückliche Kontowahl/-anlage erforderlich. Bereits verlorene

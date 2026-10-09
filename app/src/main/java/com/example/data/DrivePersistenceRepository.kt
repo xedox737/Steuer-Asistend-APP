@@ -829,6 +829,7 @@ class DrivePersistenceRepository(
                 })
             }
             put("documents", docsArray)
+            put("originalDocuments", ReceiptOriginalChain.metadataJson(originalDocuments))
             
             put("aussteller", aussteller ?: JSONObject.NULL)
             put("rechnungsnummer", rechnungsnummer ?: JSONObject.NULL)
@@ -1082,6 +1083,8 @@ class DrivePersistenceRepository(
             internalId = json.getString("internalId"),
             displayId = if (json.isNull("displayId")) null else json.getString("displayId"),
             documents = docsList,
+            originalDocuments = ReceiptOriginalChain.parseMetadata(json.optJSONArray("originalDocuments") ?: JSONArray(),
+                json.getString("internalId"), json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID)),
             metadataFileId = json.optString("metadataFileId", ""),
             driveFileId = json.optString("driveFileId", ""),
             driveFolderId = if (json.isNull("driveFolderId")) null else json.optString("driveFolderId", null),
@@ -1770,7 +1773,7 @@ class DrivePersistenceRepository(
                     )
                     if (uploadedId != null) {
                         val checkBytes = GoogleDriveClient.downloadFileBytes(accessToken, uploadedId)
-                        if (checkBytes == null || checkBytes.isEmpty() || checkBytes.take(4) != fileBytes.take(4)) {
+                        if (checkBytes == null || checkBytes.isEmpty() || getSha256(checkBytes) != localSha256) {
                             DiagnosticLog.e(TAG, "Uploaded file check failed!")
                             val updatedReceipt = currentReceipt.copy(
                                 syncStatus = "ERROR",
@@ -2835,7 +2838,7 @@ class DrivePersistenceRepository(
                         lastSyncedAt = nowStr,
                         isArchivedToDrive = true
                     )
-                    localRepository.upsertRestoredReceipt(restoredReceipt, mode)
+                    val resolution = localRepository.upsertRestoredReceipt(restoredReceipt, mode)
                     receiptsRestored++
 
                     if (!restoredReceipt.driveFileId.isNullOrBlank()) {
@@ -2843,8 +2846,17 @@ class DrivePersistenceRepository(
                     }
 
                     for (doc in persisted.documents) {
-                        val current = localRepository.getDocumentsForReceipt(doc.receiptInternalId).firstOrNull { it.id == doc.id }
-                        if (mode != RestoreMode.MERGE || current == null) localRepository.insertDocument(doc)
+                        val mapped = doc.copy(receiptInternalId = resolution.receipt.internalId)
+                        val current = localRepository.getDocumentsForReceipt(mapped.receiptInternalId).firstOrNull { it.id == mapped.id }
+                        if (mode != RestoreMode.MERGE || current == null) localRepository.insertDocument(mapped)
+                    }
+                    for (original in persisted.originalDocuments) {
+                        val mapped = original.copy(receiptInternalId = resolution.receipt.internalId,
+                            documentId = if (original.documentId == StableDocumentIdentity.receiptDocumentId(persisted.internalId))
+                                StableDocumentIdentity.receiptDocumentId(resolution.receipt.internalId) else original.documentId,
+                            propertyId = resolution.receipt.propertyId)
+                        val local = localRepository.getManagedDocument(mapped.documentId)
+                        localRepository.upsertManagedDocument(SupplementalDriveBackup.mergeManagedDocument(context, local, mapped, mode))
                     }
 
                     itemsRestored += persisted.positionen.size
@@ -3510,12 +3522,14 @@ class DrivePersistenceRepository(
 
                 // 2. Prepare metadata content
                 val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
+                val originals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == currentReceipt.internalId }
                 val persistedReceipt = PersistedReceipt(
                     schemaVersion = 1,
                     revision = (currentReceipt.driveRevision ?: 0L) + 1L,
                     internalId = currentReceipt.internalId,
                     displayId = currentReceipt.displayId,
                     documents = allDocs,
+                    originalDocuments = originals,
                     driveFileId = currentReceipt.driveFileId ?: "",
                     driveFolderId = currentReceipt.driveFolderId,
                     filename = currentReceipt.storedFilename ?: "",
@@ -4384,6 +4398,7 @@ data class PersistedReceipt(
     val internalId: String,
     val displayId: String?,
     val documents: List<ReceiptDocumentReference> = emptyList(),
+    val originalDocuments: List<ManagedDocument> = emptyList(),
     val metadataFileId: String = "",
     val driveFileId: String = "",
     val driveFolderId: String? = null,

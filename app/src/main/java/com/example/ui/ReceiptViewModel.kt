@@ -4249,6 +4249,8 @@ data class AiSearchUiState(
         }
     }
 
+    private val receiptSaveGate = java.util.concurrent.atomic.AtomicBoolean(false)
+
     // Save extracted receipt to database
     fun saveReceipt(
         aussteller: String,
@@ -4267,10 +4269,14 @@ data class AiSearchUiState(
         positionenJson: String = "",
         originals: List<com.example.data.ManagedDocument> = emptyList()
     ) {
+        if (!receiptSaveGate.compareAndSet(false, true)) return
         val navigationGeneration = _primaryNavigationReset.value.generation
         // A primary click may close the editor while its committed save finishes.
         // Keep that save's origin; only its eventual UI navigation becomes stale.
         val originatingBankTransactionId = _pendingBankTransactionId.value
+        val targetPropertyId = propertyMetadata.value?.propertyId
+            ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val stableUnitId = resolveReceiptUnitId(targetPropertyId, wohneinheit)
         viewModelScope.launch {
             try {
                 kotlinx.coroutines.withContext(Dispatchers.IO) { com.example.data.ReceiptOriginalStorage.validate(originals) }
@@ -4281,9 +4287,6 @@ data class AiSearchUiState(
             // Learn rule automatically for KI adaptive memory
             learnVendorRule(aussteller, hauptkategorie, unterkategorie, kontoNr, wohneinheit)
 
-            val targetPropertyId = propertyMetadata.value?.propertyId
-                ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-            val stableUnitId = resolveReceiptUnitId(targetPropertyId, wohneinheit)
             val newReceipt = Receipt(
                 internalId = java.util.UUID.randomUUID().toString(),
                 aussteller = aussteller,
@@ -4351,7 +4354,7 @@ data class AiSearchUiState(
             } else {
                 _currentScreen.value = AppScreen.RECEIPTS_LIST
             }
-        }
+        }.invokeOnCompletion { receiptSaveGate.set(false) }
     }
 
     // Update an existing receipt in database
