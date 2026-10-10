@@ -1,10 +1,12 @@
 package com.example.e2e
 
+import android.accessibilityservice.AccessibilityService
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.espresso.Espresso
+import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.*
 import com.example.ui.AppScreen
 import kotlinx.coroutines.Dispatchers
@@ -89,7 +91,11 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.waitUntil(10_000) { model.renovationReview.value.relations.single().advisorMarked }
         capture("phase6b-receipt-renovation-assignment")
         ui.onNodeWithTag("renovation_assign").performScrollTo().performClick()
-        systemBack() // Cancel assignment, preserve current relation.
+        // Send real Android Back to the focused dialog window, rather than asking
+        // Espresso to select the activity root which intentionally has no focus.
+        ui.onNodeWithTag("renovation_assignment_save").assertIsDisplayed()
+        assertTrue(InstrumentationRegistry.getInstrumentation().uiAutomation.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK))
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_assignment_save").fetchSemanticsNodes().isEmpty() }
         assertEquals(1, model.renovationReview.value.relations.size)
         systemBack() // Receipt -> same measure, not dashboard.
         ui.onNodeWithTag("renovation_measure_detail").assertIsDisplayed()
