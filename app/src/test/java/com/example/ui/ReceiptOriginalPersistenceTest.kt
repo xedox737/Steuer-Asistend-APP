@@ -13,6 +13,7 @@ import com.example.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -52,7 +53,11 @@ class ReceiptOriginalPersistenceTest {
         previous = instance.get(null) as AppDatabase?
         db = newDatabase()
         instance.set(null, db)
+        // Capture now requires a real, explicit object; original-file assertions remain unchanged.
+        runBlocking { db.propertyDao().insertPropertyMetadata(PropertyMetadata(propertyId = "original-test", name = "Originaltest")) }
+        app.getSharedPreferences("google_drive_prefs", 0).edit().putString("selected_property_id", "original-test").commit()
         vm = ViewModelProvider(store, ViewModelProvider.AndroidViewModelFactory(app))[ReceiptViewModel::class.java]
+        runBlocking { vm.properties.first { it.any { property -> property.propertyId == "original-test" } } }
     }
     @After fun tearDown() {
         store.clear()
@@ -116,6 +121,9 @@ class ReceiptOriginalPersistenceTest {
         db.close()
         db = newDatabase()
         instance.set(null, db)
+        // Capture now requires a real, explicit object; original-file assertions remain unchanged.
+        runBlocking { db.propertyDao().insertPropertyMetadata(PropertyMetadata(propertyId = "original-test", name = "Originaltest")) }
+        app.getSharedPreferences("google_drive_prefs", 0).edit().putString("selected_property_id", "original-test").commit()
         val reloaded = db.receiptDao().getReceiptById(receipt.id)!!
         val document = db.managedDocumentDao().getAllByReceiptId(receipt.internalId).single()
         assertEquals(original.localUri, reloaded.imageUrl)

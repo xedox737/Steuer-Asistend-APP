@@ -20,6 +20,7 @@ internal object PersistentPreferenceInventory {
         Store("wohneinheiten_prefs", Kind.BACKUP, "propertyUnitPrefs"),
         Store("datev_kanzleiprofil_prefs", Kind.BACKUP, "datevProfilePrefs", setOf("active_profile_json")),
         Store("property_tasks_prefs", Kind.BACKUP, "propertyTaskPrefs"),
+        Store(RenovationReviewStore.PREFS, Kind.BACKUP, RenovationReviewStore.PAYLOAD_KEY),
         Store("unit_status_meta_prefs", Kind.BACKUP, "unitStatusMetaPrefs"),
         Store("unit_rental_detail_prefs", Kind.BACKUP, "unitRentalDetailPrefs"),
         Store("bank_transaction_notes", Kind.BACKUP, "bankTransactionNotes"),
@@ -74,7 +75,9 @@ internal object PersistentPreferenceInventory {
                 if (permits(store, key)) {
                     val value = values.getJSONObject(key)
                     when (value.getString("type")) {
-                        "string" -> value.getString("value")
+                        "string" -> value.getString("value").also { raw ->
+                            if (store.name == RenovationReviewStore.PREFS) RenovationReviewStore.validateEntry(key, raw)
+                        }
                         "int" -> value.getInt("value")
                         "long" -> value.getLong("value")
                         "float" -> require(value.getDouble("value").toFloat().isFinite())

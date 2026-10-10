@@ -99,6 +99,14 @@ data class LearnedVendorRule(
 
 class ReceiptViewModel(application: Application) : AndroidViewModel(application) {
     private val database = AppDatabase.getDatabase(application, viewModelScope)
+    private val renovationStore = com.example.data.RenovationReviewStore(application)
+    val renovationReview = renovationStore.snapshot
+    private val _renovationError = MutableStateFlow<String?>(null)
+    val renovationError = _renovationError.asStateFlow()
+    private val _receiptCreationPropertyId = MutableStateFlow<String?>(null)
+    val receiptCreationPropertyId = _receiptCreationPropertyId.asStateFlow()
+    init { viewModelScope.launch { renovationStore.refresh() } }
+
     internal fun bankPhase2DServiceForUi(): com.example.data.BankPhase2DService = com.example.data.BankPhase2DService(database)
     private val repository = ReceiptRepository(
         database.receiptDao(),
@@ -486,6 +494,71 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             started = SharingStarted.Eagerly,
             initialValue = emptyList()
         )
+
+    val renovationSummaries = combine(properties, receipts, renovationReview) { all, currentReceipts, review ->
+        all.associate { property -> property.propertyId to
+            com.example.data.RenovationReviewCalculator.calculate(property, currentReceipts, review) }
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    fun clearRenovationError() { _renovationError.value = null }
+
+    fun saveRenovationMeasure(measure: com.example.data.RenovationMeasure, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    val property = requireNotNull(database.propertyDao().getPropertyByPropertyId(measure.propertyId)) { "Bitte eine gültige Immobilie wählen." }
+                    require(measure.unitId.isBlank() || getWohneinheitenForProperty(property).any { it.unitId == measure.unitId }) { "Die Einheit gehört nicht zur gewählten Immobilie." }
+                    val documents = database.managedDocumentDao().getAll().associateBy { it.documentId }
+                    require(measure.evidence.all { documents[it.documentId]?.propertyId == property.propertyId }) { "Ein Nachweis fehlt oder gehört zu einem anderen Objekt." }
+                    renovationStore.saveMeasure(measure)
+                }
+                _renovationError.value = null
+                onSaved()
+            } catch (e: Exception) { _renovationError.value = e.message ?: "Die Maßnahme konnte nicht gespeichert werden." }
+        }
+    }
+
+    fun saveRenovationRelation(relation: com.example.data.RenovationReceiptRelation, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    val receipt = database.receiptDao().getAllReceiptsList().singleOrNull { it.internalId == relation.receiptInternalId }
+                    require(receipt?.propertyId == relation.propertyId) { "Beleg und Immobilie passen nicht zusammen. Bitte die Zuordnung erneut prüfen." }
+                    val measure = renovationReview.value.measures.firstOrNull { it.id == relation.renovationMeasureId }
+                    require(measure?.unitId.isNullOrBlank() || measure?.unitId == receipt?.unitId) { "Beleg und Maßnahme gehören zu unterschiedlichen Einheiten." }
+                    require(relation.confirmedNetAmount == null || relation.confirmedNetAmount <= kotlin.math.abs(receipt!!.bruttobetrag) + 0.01) { "Der Nettobetrag darf den Bruttobetrag nicht übersteigen." }
+                    renovationStore.saveRelation(relation)
+                }
+                _renovationError.value = null
+                onSaved()
+            } catch (e: Exception) { _renovationError.value = e.message ?: "Die Belegzuordnung konnte nicht gespeichert werden." }
+        }
+    }
+
+    fun exportRenovationReport(propertyId: String, onCreated: (File) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val file = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    renovationStore.refresh()
+                    val property = requireNotNull(database.propertyDao().getPropertyByPropertyId(propertyId)) { "Die Immobilie ist nicht verfügbar." }
+                    val summary = com.example.data.RenovationReviewCalculator.calculate(property,
+                        database.receiptDao().getAllReceiptsList(), renovationReview.value)
+                    val lines = com.example.util.RenovationAdvisorReport.lines(summary,
+                        getWohneinheitenForProperty(property).associate { it.unitId to it.name }, database.managedDocumentDao().getAll())
+                    val folder = File(getApplication<Application>().cacheDir, "reports").apply { mkdirs() }
+                    File(folder, "Sanierungspruefung-${java.util.UUID.randomUUID()}.pdf").apply {
+                        writeBytes(com.example.util.PdfExporter.createRenovationReviewPdf(lines))
+                    }
+                }
+                onCreated(file)
+            } catch (e: Exception) { _renovationError.value = e.message ?: "Der Bericht konnte nicht erstellt werden." }
+        }
+    }
+
+    fun startReceiptForProperty(propertyId: String) {
+        setScreen(AppScreen.ADD_RECEIPT)
+        _receiptCreationPropertyId.value = propertyId
+    }
 
     private val _selectedPropertyId = MutableStateFlow(sharedPrefs.getString("selected_property_id", "").orEmpty())
     val selectedPropertyId: StateFlow<String> = _selectedPropertyId.asStateFlow()
@@ -1190,6 +1263,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     internal suspend fun refreshPreferencesAfterRestore() {
         val application = getApplication<Application>()
+        renovationStore.refresh()
         _selectedPropertyId.value = sharedPrefs.getString("selected_property_id", "").orEmpty()
         val restoredProperties = database.propertyDao().getAllProperties()
         val selected = restoredProperties.firstOrNull { it.propertyId == _selectedPropertyId.value }
@@ -1999,6 +2073,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun startReceiptFromBankTransaction(transaction: com.example.data.BankTransaction) {
         _bankTransactionDetailsReturnId.value = null
         _pendingBankTransactionId.value = transaction.transactionId
+        _receiptCreationPropertyId.value = transaction.propertyId.takeIf(String::isNotBlank) ?: _selectedPropertyId.value
         _scanState.value = ScanUiState.Success(
             com.example.api.ExtractedReceipt(
                 aussteller = transaction.counterparty,
@@ -2035,6 +2110,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
         suggestion.suggestedPropertyId.takeIf(String::isNotBlank)?.let(::selectProperty)
         _pendingBankTransactionId.value = transaction.transactionId
+        _receiptCreationPropertyId.value = transaction.propertyId.takeIf(String::isNotBlank) ?: _selectedPropertyId.value
         _scanState.value = ScanUiState.Success(
             com.example.api.ExtractedReceipt(
                 aussteller = suggestion.suggestedVendor.ifBlank { transaction.counterparty },
@@ -2062,6 +2138,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         tenantName: String
     ) {
         _pendingBankTransactionId.value = transaction.transactionId
+        _receiptCreationPropertyId.value = transaction.propertyId.takeIf(String::isNotBlank) ?: _selectedPropertyId.value
         _scanState.value = ScanUiState.Success(
             com.example.api.ExtractedReceipt(
                 aussteller = transaction.counterparty.ifBlank { tenantName },
@@ -3367,6 +3444,7 @@ data class AiSearchUiState(
         bankDetailEntryReturnScreen = null
         datevReturnScreen = AppScreen.MORE
         setScreen(destination)
+        if (destination == AppScreen.ADD_RECEIPT) _receiptCreationPropertyId.value = null
         _primaryNavigationReset.value = PrimaryNavigationReset(
             generation = _primaryNavigationReset.value.generation + 1,
             destination = destination
@@ -3374,6 +3452,10 @@ data class AiSearchUiState(
     }
 
     fun setScreen(screen: AppScreen) {
+        if (screen == AppScreen.ADD_RECEIPT) {
+            _receiptCreationPropertyId.value = if (_currentScreen.value == AppScreen.PROPERTIES)
+                propertyMetadata.value?.propertyId else null
+        }
         if (screen !in setOf(AppScreen.BANK, AppScreen.RECEIPT_DETAIL, AppScreen.ADD_RECEIPT)) {
             bankDetailEntryReturnScreen = null
         }
@@ -4344,16 +4426,31 @@ data class AiSearchUiState(
         mieter: String = "",
         zahlungsart: String = "Unbekannt",
         positionenJson: String = "",
-        originals: List<com.example.data.ManagedDocument> = emptyList()
+        originals: List<com.example.data.ManagedDocument> = emptyList(),
+        propertyId: String? = null,
+        selectedUnitId: String? = null
     ) {
         if (!receiptSaveGate.compareAndSet(false, true)) return
         val navigationGeneration = _primaryNavigationReset.value.generation
         // A primary click may close the editor while its committed save finishes.
         // Keep that save's origin; only its eventual UI navigation becomes stale.
         val originatingBankTransactionId = _pendingBankTransactionId.value
-        val targetPropertyId = propertyMetadata.value?.propertyId
-            ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-        val stableUnitId = resolveReceiptUnitId(targetPropertyId, wohneinheit)
+        val targetPropertyId = propertyId ?: _receiptCreationPropertyId.value ?: _selectedPropertyId.value
+        val targetProperty = properties.value.firstOrNull { it.propertyId == targetPropertyId && it.status != "Archiviert" }
+        if (targetProperty == null) {
+            _scanState.value = ScanUiState.Error("Bitte vor dem Speichern eine Immobilie wählen.")
+            receiptSaveGate.set(false)
+            return
+        }
+        val units = getWohneinheitenForProperty(targetProperty)
+        val selection = ReceiptUnitResolver.resolve(wohneinheit, "", units, selectedUnitId)
+        if ((!selectedUnitId.isNullOrBlank() && selection.unitId.isBlank()) ||
+            (selectedUnitId == null && !ReceiptUnitResolver.isGeneral(wohneinheit) && selection.unitId.isBlank())) {
+            _scanState.value = ScanUiState.Error("Die Einheit gehört nicht zur gewählten Immobilie. Bitte erneut auswählen.")
+            receiptSaveGate.set(false)
+            return
+        }
+        val stableUnitId = selection.unitId
         viewModelScope.launch {
             try {
                 kotlinx.coroutines.withContext(Dispatchers.IO) { com.example.data.ReceiptOriginalStorage.validate(originals) }
@@ -4379,7 +4476,7 @@ data class AiSearchUiState(
                 originalMimeType = originals.firstOrNull()?.mimeType,
                 fileSizeBytes = originals.firstOrNull()?.fileSizeBytes,
                 storedFilename = originals.firstOrNull()?.storedFilename,
-                wohneinheit = wohneinheit,
+                wohneinheit = selection.name,
                 propertyId = targetPropertyId,
                 unitId = stableUnitId,
                 mieter = mieter,

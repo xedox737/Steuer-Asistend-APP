@@ -123,13 +123,16 @@ object DatevMappingService {
     /**
      * Erzeugt aus einem Receipt und seinen Positionen die buchhalterischen Einzelaufteilungen.
      */
+    /** Shared existing sign convention for the renovation preparation report. */
+    fun isCreditNote(receipt: Receipt): Boolean = receipt.bruttobetrag < 0 ||
+        receipt.beschreibung.contains("Gutschrift", ignoreCase = true) ||
+        receipt.beschreibung.contains("Storno", ignoreCase = true)
+
     fun buildAllocationsFromReceipt(receipt: Receipt, profile: DatevProfile): List<ReceiptAllocation> {
         val catMap = parseCategoryMap(profile.categoryKontoMapJson)
         val isIncome = receipt.hauptkategorie.contains("Einnahmen", ignoreCase = true) ||
                 receipt.hauptkategorie.contains("Miete", ignoreCase = true)
-        val isCreditNote = receipt.bruttobetrag < 0 ||
-                receipt.beschreibung.contains("Gutschrift", ignoreCase = true) ||
-                receipt.beschreibung.contains("Storno", ignoreCase = true)
+        val isCreditNote = isCreditNote(receipt)
 
         val totalCents = Math.round(Math.abs(receipt.bruttobetrag) * 100.0)
 
