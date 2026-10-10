@@ -1001,7 +1001,7 @@ class ReceiptRepository(
             reviewStatus = DocumentReviewStatus.GEPRUEFT.name
         )).copy(
             propertyId = propertyId,
-            unitId = receipt.unitId.takeIf(String::isNotBlank) ?: existing?.unitId,
+            unitId = receipt.unitId.takeIf(String::isNotBlank),
             documentType = ManagedDocumentType.RECHNUNG.name,
             documentCategory = existing?.documentCategory ?: "02_Belege/${receipt.datum.take(4)}",
             documentDate = receipt.datum,

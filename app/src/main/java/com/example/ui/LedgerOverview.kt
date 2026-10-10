@@ -50,12 +50,13 @@ internal fun LedgerOverview(
     bankAssignments: List<com.example.data.BankRentAssignment> = emptyList(),
     bankLinks: List<com.example.data.BankReceiptLink> = emptyList(),
     bankTransactions: List<com.example.data.BankTransaction> = emptyList(),
+    bankLoanAssignments: List<com.example.data.BankLoanAssignment> = emptyList(),
     onBank: (com.example.data.BankTransaction) -> Unit = {},
     onReceipt: (Receipt) -> Unit
 ) {
     var view by rememberSaveable { mutableStateOf(LedgerView.PAYMENTS) }
-    val entries = remember(receipts, bankAssignments, bankLinks, bankTransactions, view) {
-        LedgerPaymentPresentation.entries(receipts, bankAssignments, bankLinks, bankTransactions, view)
+    val entries = remember(receipts, bankAssignments, bankLinks, bankTransactions, bankLoanAssignments, view) {
+        LedgerPaymentPresentation.entries(receipts, bankAssignments, bankLinks, bankTransactions, view, bankLoanAssignments)
     }
     val years = remember(entries) {
         entries.mapNotNull { CalendarInput.parseIsoDate(it.date)?.year }.distinct().sortedDescending()
@@ -103,7 +104,7 @@ internal fun LedgerOverview(
         }
         ledgerSection {
             LedgerDropdown(view.label, "ledger_view", LedgerView.entries.map { it to it.label }) { view = it }
-            Text(if (view == LedgerView.PAYMENTS) "Erfasste Belege und bestätigte Bankmieten · steuerliche Freigabe separat"
+            Text(if (view == LedgerView.PAYMENTS) "Erfasste Belege und bestätigte Immobilienzahlungen · steuerliche Freigabe separat"
                 else "Ausdrücklich freigegebene Belegbuchungen", fontSize = 11.sp, color = SlateGray)
         }
         ledgerSection {

@@ -19,6 +19,14 @@ object BankReviewState {
     const val DONE = "DONE"
 }
 
+object BankNoReceiptReason {
+    const val TRANSFER = "Eigene Umbuchung"
+    const val RENT = "Mieteinnahme"
+    const val LOAN = "Darlehen / Tilgung"
+    const val PRIVATE = "Privat"
+    val all = listOf(TRANSFER, RENT, LOAN, PRIVATE, "Bankgebühr", "Sonstiges")
+}
+
 data class BankTransactionClassificationRecord(
     val transactionId: String,
     val classification: String = BankTransactionClassification.NORMAL,
@@ -33,6 +41,7 @@ data class BankClassificationDecision(
     val requiresReceiptReview: Boolean,
     val eligibleForReceiptMatching: Boolean,
     val eligibleForNormalDatevExport: Boolean,
+    val eligibleForPropertyPayments: Boolean,
     val reviewState: String
 )
 
@@ -53,6 +62,8 @@ object BankClassificationPolicy {
             ),
             eligibleForReceiptMatching = !special && transaction.reconciliationStatus != BankReconciliationStatus.NO_RECEIPT_REQUIRED,
             eligibleForNormalDatevExport = !special,
+            eligibleForPropertyPayments = !special && !(transaction.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED &&
+                transaction.noReceiptReason in setOf(BankNoReceiptReason.TRANSFER, BankNoReceiptReason.PRIVATE, BankNoReceiptReason.LOAN)),
             reviewState = if (special) {
                 BankReviewState.DONE
             } else {

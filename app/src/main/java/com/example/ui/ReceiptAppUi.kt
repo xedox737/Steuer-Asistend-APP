@@ -3181,13 +3181,14 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
 
     val availableProperties by viewModel.properties.collectAsStateWithLifecycle()
     var editPropertyId by remember(receipt) { mutableStateOf(receipt.propertyId) }
+    var editUnitId by remember(receipt) { mutableStateOf(receipt.unitId) }
     var propertyExpanded by remember { mutableStateOf(false) }
     var amountError by remember { mutableStateOf(false) }
     var dateError by remember { mutableStateOf(false) }
     val metadata = availableProperties.firstOrNull { it.propertyId == editPropertyId } ?: PropertyMetadata()
-    val unitsList = remember(metadata.wohneinheiten) {
-        metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
-    }
+    val unitsList = viewModel.getWohneinheitenForProperty(metadata)
+    val unitSelection = ReceiptUnitResolver.resolve(editWohneinheit, editUnitId, unitsList)
+    val unitAvailable = editUnitId.isBlank() || unitsList.any { it.unitId == editUnitId }
 
     Column(Modifier.fillMaxWidth().testTag("receipt_inline_editor"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Edit Form
@@ -3322,12 +3323,15 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                             value = availableProperties.firstOrNull { it.propertyId == editPropertyId }?.name ?: "Nicht zugeordnet",
                             onValueChange = {}, readOnly = true, label = { Text("Immobilie") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(propertyExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_property")
                         )
                         ExposedDropdownMenu(expanded = propertyExpanded, onDismissRequest = { propertyExpanded = false }) {
                             availableProperties.forEach { property ->
                                 DropdownMenuItem(text = { Text(property.name) }, onClick = {
-                                    if (editPropertyId != property.propertyId) editWohneinheit = "Gesamtobjekt / Allgemein"
+                                    if (editPropertyId != property.propertyId) {
+                                        editWohneinheit = "Gesamtobjekt / Allgemein"
+                                        editUnitId = ""
+                                    }
                                     editPropertyId = property.propertyId
                                     propertyExpanded = false
                                 })
@@ -3340,7 +3344,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                         onExpandedChange = { wohneinheitExpanded = !wohneinheitExpanded }
                     ) {
                         OutlinedTextField(
-                            value = editWohneinheit,
+                            value = unitSelection.name.ifBlank { "Gesamtobjekt / Allgemein" },
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Zugeordnete Wohneinheit") },
@@ -3353,13 +3357,19 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                         ) {
                             unitsList.forEach { unit ->
                                 DropdownMenuItem(
-                                    text = { Text(unit) },
+                                    text = { Text(unit.name) },
                                     onClick = {
-                                        editWohneinheit = unit
+                                        editWohneinheit = unit.name
+                                        editUnitId = unit.unitId
                                         wohneinheitExpanded = false
                                     }
                                 )
                             }
+                            DropdownMenuItem(text = { Text("Gesamtobjekt / Allgemein") }, onClick = {
+                                editWohneinheit = "Gesamtobjekt / Allgemein"
+                                editUnitId = ""
+                                wohneinheitExpanded = false
+                            })
                         }
                     }
 
@@ -3386,6 +3396,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                         positionen = editPositionen,
                         onPositionenChanged = { editPositionen = it }
                     )
+                if (!unitAvailable) Text("Die bisherige Einheit ist nicht verfügbar. Bitte eine Einheit oder Gesamtobjekt auswählen.", color = CrimsonRed, fontSize = 12.sp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3415,16 +3426,18 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                                 kontoNr = editKontoNr,
                                 beschreibung = editBeschreibung,
                                 isEigenleistungSanierung = editIsEigenleistung,
-                                wohneinheit = editWohneinheit,
+                                wohneinheit = unitSelection.name,
+                                unitId = unitSelection.unitId,
                                 mieter = editMieter,
                                 zahlungsart = editZahlungsart,
                                 zahlungsartQuelle = if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartQuelle else if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) "UNBEKANNT" else "MANUELL",
                                 zahlungsartConfidence = if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) 0.0 else if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartConfidence else 1.0,
                                 positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
                             )
-                            viewModel.updateReceipt(updatedReceipt)
+                            viewModel.updateReceipt(updatedReceipt, selectedUnitId = unitSelection.unitId)
                             onDone()
                         },
+                        enabled = unitAvailable,
                         colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                         modifier = Modifier.weight(1f).height(48.dp).testTag("save_edited_receipt_button")
                     ) {
@@ -3610,6 +3623,19 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
                         fontSize = 14.sp,
                         color = DarkNavy
                     )
+                    Text(
+                        if (receipt.freigabestatus == "FREIGEGEBEN") "DATEV-Freigabe: Freigegeben"
+                        else if (receipt.pruefstatus == "ZU_PRUEFEN") "DATEV-Freigabe: Erneut zu prüfen"
+                        else "DATEV-Freigabe: Offen",
+                        fontSize = 12.sp, color = DarkNavy, modifier = Modifier.testTag("receipt_approval_status")
+                    )
+                    val currentBankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+                    val currentTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
+                    val bankConflicts = com.example.data.BankLinkedReceiptDatevPolicy.exclusions(receipt, currentBankLinks, currentTransactions)
+                    bankConflicts.forEach { conflict ->
+                        Text("Bankzuordnung prüfen: ${conflict.message}", fontSize = 12.sp, color = CrimsonRed,
+                            modifier = Modifier.testTag("receipt_bank_classification_conflict"))
+                    }
 
                     // Pipeline Summary Badge Bar
                     Row(
@@ -6255,7 +6281,8 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
     val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
-    LedgerOverview(receipts, properties, assignments, links, transactions,
+    val loanAssignments by viewModel.bankLoanAssignments.collectAsStateWithLifecycle()
+    LedgerOverview(receipts, properties, assignments, links, transactions, loanAssignments,
         onBank = { viewModel.openBankTransactionDetails(it.transactionId) }) {
         viewModel.openReceiptDetail(it.id, AppScreen.LEDGER)
     }

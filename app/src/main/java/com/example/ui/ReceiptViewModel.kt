@@ -856,15 +856,24 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         loadUnits(metadata.wohneinheiten, metadata.propertyId)
 
     private fun resolveReceiptUnitId(propertyId: String, unitName: String, existingUnitId: String = ""): String {
-        if (unitName.isBlank()) return ""
         val property = properties.value.firstOrNull { it.propertyId == propertyId }
             ?: propertyMetadata.value?.takeIf { it.propertyId == propertyId }
-            ?: return existingUnitId
-        val units = getWohneinheitenForProperty(property)
-        if (existingUnitId.isNotBlank() && units.any { it.unitId == existingUnitId }) return existingUnitId
-        return units.firstOrNull {
-            it.name.equals(unitName, ignoreCase = true) || it.label.equals(unitName, ignoreCase = true)
-        }?.unitId.orEmpty()
+            ?: return ""
+        return ReceiptUnitResolver.resolve(unitName, existingUnitId, getWohneinheitenForProperty(property)).unitId
+    }
+
+    private fun receiptIdentityError(receipt: Receipt): String? {
+        if (receipt.unitId.isBlank()) return null
+        val property = properties.value.firstOrNull { it.propertyId == receipt.propertyId }
+            ?: return "Die Immobilie der Einheit ist nicht verfügbar. Bitte die Belegzuordnung prüfen."
+        return ReceiptUnitResolver.error(receipt, getWohneinheitenForProperty(property))
+    }
+
+    private fun withCurrentUnitName(receipt: Receipt): Receipt {
+        val property = properties.value.firstOrNull { it.propertyId == receipt.propertyId } ?: return receipt
+        if (receipt.unitId.isBlank()) return receipt
+        val unit = getWohneinheitenForProperty(property).singleOrNull { it.unitId == receipt.unitId } ?: return receipt
+        return receipt.copy(wohneinheit = unit.name)
     }
 
     internal suspend fun saveInitialRentBatch(propertyId: String, rows: List<InitialRentRow>): String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -2118,9 +2127,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             )
         )
         val propertyId = receipt.propertyId.takeIf { it.isNotBlank() }.orEmpty()
-        val unitId = _wohneinheitenStatus.value.firstOrNull { unit ->
-            receipt.wohneinheit.isNotBlank() && (unit.name.equals(receipt.wohneinheit, true) || unit.label.equals(receipt.wohneinheit, true))
-        }?.let { unit -> PropertyUnitScopedData.stableUnitId(propertyId.ifBlank { com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID }, unit) }.orEmpty()
+        val unitId = resolveReceiptUnitId(propertyId, receipt.wohneinheit, receipt.unitId)
         if ((transaction.propertyId.isBlank() && propertyId.isNotBlank()) || (transaction.unitId.isBlank() && unitId.isNotBlank())) {
             dao.upsertTransaction(
                 transaction.copy(
@@ -2854,6 +2861,7 @@ data class AiSearchUiState(
 
         allRecs.forEach { receipt ->
             val reasons = mutableListOf<String>()
+            receiptIdentityError(receipt)?.let { reasons += it }
 
             if (unitFilter != "ALLE") {
                 val property = properties.value.firstOrNull { it.propertyId == receipt.propertyId }
@@ -2900,7 +2908,7 @@ data class AiSearchUiState(
             }
 
             if (reasons.isEmpty()) {
-                included += receipt
+                included += withCurrentUnitName(receipt)
             } else {
                 excluded += receipt
                 exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)] =
@@ -3094,6 +3102,12 @@ data class AiSearchUiState(
         val propShort = metaName.take(15)
         val activeProfile = activeDatevProfile.value
 
+        if (receipts.any { receiptIdentityError(it) != null }) {
+            DiagnosticLog.w("ReceiptViewModel", "DATEV export blocked by inconsistent unit identity")
+            return null
+        }
+        val exportReceipts = receipts.map(::withCurrentUnitName)
+
         val bankDatevExclusions = receipts.flatMap { receipt ->
             com.example.data.BankLinkedReceiptDatevPolicy.exclusions(
                 receipt = receipt,
@@ -3119,13 +3133,13 @@ data class AiSearchUiState(
         return try {
             when (format) {
                 "ZIP" -> {
-                    com.example.util.DatevExporter.createDatevZipPackage(context, receipts, config)
+                    com.example.util.DatevExporter.createDatevZipPackage(context, exportReceipts, config)
                 }
                 "CSV" -> {
                     if (withAttachments) {
-                        com.example.util.DatevExporter.createDatevZipPackage(context, receipts, config)
+                        com.example.util.DatevExporter.createDatevZipPackage(context, exportReceipts, config)
                     } else {
-                        val csvContent = com.example.util.DatevExporter.generateBuchungsstapelCsv(receipts, config)
+                        val csvContent = com.example.util.DatevExporter.generateBuchungsstapelCsv(exportReceipts, config)
                         val csvFile = File(context.cacheDir, "EXTF_Buchungsstapel_${wirtschaftsjahr}.csv")
                         val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
                         java.io.FileOutputStream(csvFile).use { fos ->
@@ -4421,11 +4435,19 @@ data class AiSearchUiState(
     }
 
     // Update an existing receipt in database
-    fun updateReceipt(receipt: Receipt) {
+    fun updateReceipt(receipt: Receipt, selectedUnitId: String? = null) {
         viewModelScope.launch {
             val persistedReceipt = repository.getReceiptById(receipt.id)
+            val property = database.propertyDao().getPropertyByPropertyId(receipt.propertyId)
+            val textSelectionChanged = persistedReceipt != null && receipt.wohneinheit != persistedReceipt.wohneinheit
+            val selection = property?.let {
+                ReceiptUnitResolver.resolve(receipt.wohneinheit,
+                    if (textSelectionChanged) "" else receipt.unitId,
+                    getWohneinheitenForProperty(it), selectedUnitId)
+            } ?: if (selectedUnitId == null && persistedReceipt?.propertyId == receipt.propertyId && !textSelectionChanged)
+                ReceiptUnitSelection(receipt.unitId, receipt.wohneinheit) else ReceiptUnitSelection()
             val normalizedReceipt = receipt.copy(
-                unitId = resolveReceiptUnitId(receipt.propertyId, receipt.wohneinheit, receipt.unitId)
+                unitId = selection.unitId, wohneinheit = selection.name
             )
             val receiptToSave = com.example.data.DatevApprovalInvalidationPolicy.apply(
                 persistedReceipt,

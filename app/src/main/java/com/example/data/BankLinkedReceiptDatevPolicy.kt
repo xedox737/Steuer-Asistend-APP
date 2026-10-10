@@ -11,15 +11,18 @@ data class BankLinkedReceiptDatevExclusion(
  * This policy is intentionally independent of Compose/UI filters and can be reused by every DATEV path.
  */
 object BankLinkedReceiptDatevPolicy {
+    /** A stable internal ID wins over a possibly reassigned local Room ID. */
+    fun linksForReceipt(receipt: Receipt, links: List<BankReceiptLink>): List<BankReceiptLink> = links.filter { link ->
+        if (link.receiptInternalId.isNotBlank()) receipt.internalId.isNotBlank() && link.receiptInternalId == receipt.internalId
+        else receipt.id > 0 && link.receiptId == receipt.id
+    }
+
     fun exclusions(
         receipt: Receipt,
         links: List<BankReceiptLink>,
         transactions: List<BankTransaction>
     ): List<BankLinkedReceiptDatevExclusion> {
-        val relevantLinks = links.filter { link ->
-            link.receiptId == receipt.id ||
-                (receipt.internalId.isNotBlank() && link.receiptInternalId == receipt.internalId)
-        }
+        val relevantLinks = linksForReceipt(receipt, links)
         if (relevantLinks.isEmpty()) return emptyList()
 
         val txById = transactions.associateBy { it.transactionId }
