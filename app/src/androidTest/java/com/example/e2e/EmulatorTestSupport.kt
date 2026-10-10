@@ -136,6 +136,12 @@ abstract class EmulatorTestSupport {
         copyDiagnostic(file)
     }
 
+    protected fun saveArtifact(name: String, bytes: ByteArray) {
+        val file = File(requireNotNull(context.getExternalFilesDir(null)), name)
+        file.writeBytes(bytes)
+        copyDiagnostic(file)
+    }
+
     private fun copyDiagnostic(file: File) {
         // Shared shell-owned output survives AGP uninstalling the APK after tests.
         // UiAutomation executes argv directly, without shell quotes or &&.

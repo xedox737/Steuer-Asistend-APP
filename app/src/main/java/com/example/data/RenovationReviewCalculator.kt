@@ -26,16 +26,16 @@ data class RenovationReviewSummary(
     val lines: List<RenovationReviewLine>,
     val errors: List<String>
 ) {
-    val consideredNet: Double get() = lines.filter { it.included }.sumOf { it.netCost ?: 0.0 }
-    val remaining: Double get() = max(0.0, basis.limit15Percent - consideredNet)
-    val usagePercent: Double? get() = if (basis.limit15Percent > 0.0) consideredNet / basis.limit15Percent * 100 else null
-    val warning: RenovationWarning get() = when {
+    val consideredNet: Double = lines.filter { it.included }.sumOf { it.netCost ?: 0.0 }
+    val remaining: Double = max(0.0, basis.limit15Percent - consideredNet)
+    val usagePercent: Double? = if (basis.limit15Percent > 0.0) consideredNet / basis.limit15Percent * 100 else null
+    val warning: RenovationWarning = when {
         usagePercent == null || usagePercent!! < 70 -> RenovationWarning.NEUTRAL
         usagePercent!! < 90 -> RenovationWarning.HINWEIS
         usagePercent!! < 100 -> RenovationWarning.WARNUNG
         else -> RenovationWarning.GRENZE_ERREICHT
     }
-    val openCases: List<RenovationReviewLine> get() = lines.filter {
+    val openCases: List<RenovationReviewLine> = lines.filter {
         it.issue != null || it.relation.advisorMarked || it.relation.taxStatus in setOf(
             RenovationTaxStatus.NICHT_GEPRUEFT, RenovationTaxStatus.STEUERBERATER_PRUEFEN)
     }

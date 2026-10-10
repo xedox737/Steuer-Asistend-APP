@@ -72,6 +72,14 @@ class RenovationReviewCalculatorTest {
         }
     }
     @Test fun explicitEarmarkIncludesReliableNet() { assertEquals(100.0, calculate().consideredNet, .01) }
+    @Test fun explicitEarmarkWithoutMeasureIsAlsoListedInAdvisorReport() {
+        val result = calculate(relations = listOf(relation().copy(renovationMeasureId = "")), measures = emptyList())
+        val report = RenovationAdvisorReport.lines(result, emptyMap(), emptyList()).joinToString("\n")
+        assertEquals(100.0, result.consideredNet, .01)
+        assertTrue(report.contains("BELEGE OHNE MASSNAHME"))
+        assertTrue(report.contains("Beleg-ID r"))
+        assertTrue(report.contains("Testhandwerk"))
+    }
     @Test fun advisorConfirmationRetainsNetWithoutApprovingReceipt() {
         val r = receipt(); val result = calculate(listOf(r), listOf(relation(status = RenovationTaxStatus.STEUERBERATER_BESTAETIGT)))
         assertEquals(100.0, result.consideredNet, .01); assertEquals("OFFEN", r.freigabestatus)

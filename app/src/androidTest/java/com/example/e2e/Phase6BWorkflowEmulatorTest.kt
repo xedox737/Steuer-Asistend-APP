@@ -1,7 +1,10 @@
 package com.example.e2e
 
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.espresso.Espresso
 import com.example.data.*
 import com.example.ui.AppScreen
 import kotlinx.coroutines.Dispatchers
@@ -9,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
@@ -17,6 +21,8 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         seedProperty("6b-b", "MFH Bergstraße")
         val model = vm
         clickTab(AppScreen.ADD_RECEIPT)
+        ui.onNodeWithTag("capture_unit").performScrollTo().performClick()
+        ui.onNode(hasText("WE 01") and hasAnyAncestor(isPopup())).performClick()
         ui.onNodeWithTag("capture_property").performScrollTo().assertTextContains("MFH Bergstraße").performClick()
         ui.onNode(hasText("MFH Lindenstraße") and hasAnyAncestor(isPopup())).performClick()
         ui.onNodeWithTag("capture_unit").assertTextContains("Gesamtobjekt / Allgemein").performClick()
@@ -25,6 +31,7 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("edit_aussteller").performScrollTo().performTextReplacement("MW Globalhandwerk")
         ui.onNodeWithTag("edit_datum").performScrollTo().performTextReplacement("2026-10-10")
         ui.onNodeWithTag("edit_betrag").performScrollTo().performTextReplacement("119,00")
+        Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("save_extracted_receipt_button").performScrollTo().assertIsEnabled().performClick()
         ui.waitUntil(10_000) { model.currentScreen.value == AppScreen.RECEIPTS_LIST && model.receipts.value.any { it.aussteller == "MW Globalhandwerk" } }
         val saved = runBlocking(Dispatchers.IO) { db.receiptDao().getAllReceiptsList().single() }
@@ -58,6 +65,7 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("renovation_add_measure").performScrollTo().performClick()
         ui.onNodeWithTag("renovation_measure_name").performScrollTo().performTextReplacement("Bad OG links")
         ui.onNodeWithTag("renovation_measure_note").performScrollTo().performTextReplacement("Mit Fenster DG prüfen")
+        Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("renovation_measure_save").performClick()
         ui.waitUntil(10_000) { model.renovationReview.value.measures.size == 1 }
         ui.onNode(hasText("Bad OG links") and hasClickAction()).performScrollTo().performClick()
@@ -80,6 +88,17 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         systemBack() // Receipt -> same measure, not dashboard.
         ui.onNodeWithTag("renovation_measure_detail").assertIsDisplayed()
         capture("phase6b-measure-with-receipt")
+        val folder = File(context.cacheDir, "reports")
+        val previousReports = folder.listFiles().orEmpty().map { it.name }.toSet()
+        ui.onNode(hasText("Steuerberater-Bericht exportieren") and hasClickAction()).performScrollTo().performClick()
+        ui.waitUntil(10_000) { folder.listFiles().orEmpty().any { it.name !in previousReports && it.name.startsWith("Sanierungspruefung-") } }
+        ui.onNodeWithText("Steuerberater-Bericht erstellt").assertIsDisplayed()
+        val pdf = folder.listFiles().orEmpty().single { it.name !in previousReports && it.name.startsWith("Sanierungspruefung-") }
+        assertTrue(pdf.readBytes().take(5).toByteArray().decodeToString() == "%PDF-")
+        PdfRenderer(ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY)).use { assertTrue(it.pageCount >= 1) }
+        saveArtifact("phase6b-advisor-report.pdf", pdf.readBytes())
+        capture("phase6b-advisor-report-dialog")
+        ui.onNodeWithText("Schließen").performClick()
         ui.onNodeWithContentDescription("Zurück").performClick()
         ui.onNodeWithTag("renovation_overview").assertIsDisplayed()
         capture("phase6b-object-renovation-overview")

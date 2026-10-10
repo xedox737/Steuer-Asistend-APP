@@ -45,6 +45,40 @@ class RenovationReviewPersistenceTest {
         assertEquals("Bitte zusammen prüfen", store.snapshot.value.measures.single().advisorNote)
         assertEquals(20.0, store.snapshot.value.relations.single { it.receiptInternalId == "credit-r" }.confirmedNetAmount!!, .01)
     }
+    @Test fun completeRestoredGraphResolvesReceiptIdsDocumentsCreditsAndNotesAfterTwoMerges() = runTest {
+        val property = PropertyMetadata(propertyId = "a", name = "Haus A", uebergangNutzenLasten = "2026-01-01",
+            gesamtKaufpreis = 400_000.0, gebaeudewert = 320_000.0, grundUndBodenWert = 80_000.0)
+        db.propertyDao().insertPropertyMetadata(property)
+        val invoice = Receipt(internalId = "internal-r", aussteller = "Handwerk", datum = "2026-10-10", uhrzeit = "",
+            bruttobetrag = 119.0, hauptkategorie = "Reparatur", unterkategorie = "Bad", kontoNr = "4800", beschreibung = "Bad",
+            propertyId = "a", unitId = "a-unit")
+        val credit = invoice.copy(internalId = "credit-r", bruttobetrag = -23.8, beschreibung = "Gutschrift")
+        db.receiptDao().insertAll(listOf(invoice.copy(id = 41), credit.copy(id = 42)))
+        db.managedDocumentDao().upsert(ManagedDocument("doc", "a", receiptInternalId = invoice.internalId, originalFilename = "Angebot.pdf"))
+        populate(); store.saveRelation(relation.copy(receiptInternalId = credit.internalId, confirmedNetAmount = 20.0))
+        val payload = SupplementalDriveBackup.createPayload(context, db)
+        db.clearAllTables()
+        context.getSharedPreferences(RenovationReviewStore.PREFS, 0).edit().clear().commit()
+        val repository = ReceiptRepository(db.receiptDao(), db.propertyDao())
+        repeat(2) {
+            // Same core import entry point used by the existing full restore, followed by supplemental.
+            repository.upsertRestoredReceipt(invoice, RestoreMode.MERGE)
+            repository.upsertRestoredReceipt(credit, RestoreMode.MERGE)
+            SupplementalDriveBackup.restorePayload(context, db, payload, restoreMode = RestoreMode.MERGE)
+        }
+        store.refresh()
+        val restoredReceipts = db.receiptDao().getAllReceiptsList()
+        val restoredProperty = db.propertyDao().getPropertyByPropertyId("a")!!
+        val documents = db.managedDocumentDao().getAll()
+        val result = RenovationReviewCalculator.calculate(restoredProperty, restoredReceipts, store.snapshot.value, documents)
+        assertEquals(2, restoredReceipts.size); assertEquals(2, result.lines.size)
+        assertEquals(80.0, result.consideredNet, .01)
+        assertEquals(measure.advisorNote, result.measures.single().advisorNote)
+        assertTrue(result.lines.all { it.relation.advisorMarked && it.receipt?.unitId == "a-unit" })
+        assertEquals(invoice.internalId, documents.single().receiptInternalId)
+        assertEquals("doc", result.measures.single().evidence.single().documentId)
+        assertTrue(result.errors.isEmpty())
+    }
     @Test fun olderBackupCannotUndoNewNoteStatusOrMovedReceipt() = runTest {
         populate(); val payload = SupplementalDriveBackup.createPayload(context, db)
         store.saveMeasure(measure.copy(advisorNote = "Neu bestätigt", status = RenovationStatus.ABGESCHLOSSEN, taxStatus = RenovationTaxStatus.STEUERBERATER_BESTAETIGT))

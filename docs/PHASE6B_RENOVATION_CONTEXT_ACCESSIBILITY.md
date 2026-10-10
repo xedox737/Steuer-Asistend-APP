@@ -78,6 +78,8 @@ machen. Keine verkleinerte Schrift, scaleX, Ellipse oder neue Designsprache.
 
 BMF-Schreiben vom 26.01.2026, Abgrenzung Instandsetzung/Modernisierung:
 https://www.bundesfinanzministerium.de/Content/DE/Downloads/BMF_Schreiben/Steuerarten/Einkommensteuer/2026-01-26-instandsetzung-modernisierung-gebaeude.html
+Gesetzliche Grundlage (§ 6 Abs. 1 Nr. 1a EStG):
+https://www.gesetze-im-internet.de/estg/__6.html
 Vorprüfung, Zuordnung und Übergabe, keine Einzelfall-Steuerentscheidung. Zeitraum beginnt
 bevorzugt mit Besitz/Nutzen/Lasten; Notardatum ist nur ausdrücklich benannter Ersatz.
 
@@ -91,5 +93,12 @@ mit Beleg, Abbrechen/App-/Android-Zurück, FontScale 1.0/1.3/1.5 bei ca. 393 dp 
 Start, Immobilien, Beleg, Prüfung und DATEV. Textlayoutassertions prüfen zusätzlich
 Wortgrenzen und abgeschnittene Texte, Screenshots als vorhandene CI-Artefakte.
 Vollständige bestehende Phase-5A-/5B-/6A- und Android-Suiten bleiben aktiv.
+
+Der Emulator erzeugt zusätzlich einen echten PDF-Bericht, prüft ihn mit Android PdfRenderer
+und sichert ihn über den vorhandenen CI-Artefaktpfad. Wiederherstellung wird auch mit einem
+vollständigen Objekt-/Maßnahmen-/Beleg-/Gutschrift-/Dokument-Graphen geprüft: bestehender
+Core-Upsert, anschließend Supplemental, jeweils zweimal MERGE. Der Bericht listet auch
+explizit vorgemerkte Belege ohne Maßnahme. Kennzahlen werden pro StateFlow-Projektion
+einmal berechnet, nicht bei jedem UI-Zugriff erneut summiert.
 
 Prüfergebnisse und finaler Git-/PR-Stand werden nach Ausführung ergänzt.

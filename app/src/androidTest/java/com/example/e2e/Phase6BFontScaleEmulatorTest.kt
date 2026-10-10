@@ -61,7 +61,7 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
     }
 
     private fun completeText(text: String, scroll: Boolean = false) {
-        val node = ui.onNodeWithText(text, useUnmergedTree = true)
+        val node = ui.onAllNodesWithText(text, useUnmergedTree = true).onFirst()
         if (scroll) node.performScrollTo()
         node.assertIsDisplayed()
         val results = mutableListOf<TextLayoutResult>()

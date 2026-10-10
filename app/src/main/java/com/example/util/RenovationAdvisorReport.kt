@@ -17,6 +17,7 @@ object RenovationAdvisorReport {
         fun date(value: String) = runCatching { LocalDate.parse(value).format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) }.getOrDefault("Offen")
         fun receiptLine(line: RenovationReviewLine) = buildString {
             append(line.receipt?.getEffectiveDisplayId() ?: line.relation.receiptInternalId)
+            append(" | Beleg-ID "); append(line.relation.receiptInternalId)
             append(" | "); append(line.receipt?.aussteller ?: "Beleg fehlt")
             append(" | "); append(date(line.receipt?.datum.orEmpty()))
             append(" | Brutto "); append(amount(line.grossCost)); append(" | Netto "); append(amount(line.netCost))
@@ -63,6 +64,12 @@ object RenovationAdvisorReport {
                     val document = documents.firstOrNull { it.documentId == evidence.documentId && it.propertyId == summary.property.propertyId }
                     add("Nachweis ${evidence.role.label}: ${document?.originalFilename ?: "Dokument nicht verfügbar"} | ID ${evidence.documentId}")
                 }
+                add("")
+            }
+            val withoutMeasure = summary.lines.filter { it.relation.renovationMeasureId.isBlank() }
+            if (withoutMeasure.isNotEmpty()) {
+                add("BELEGE OHNE MASSNAHME")
+                withoutMeasure.forEach { add(receiptLine(it)) }
                 add("")
             }
             add("OFFENE PRÜFFÄLLE")
