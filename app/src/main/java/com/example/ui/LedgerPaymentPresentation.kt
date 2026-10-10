@@ -82,8 +82,7 @@ internal object LedgerPaymentPresentation {
             BankClassificationPolicy.decision(tx).eligibleForPropertyPayments &&
             tx.reconciliationStatus in setOf(BankReconciliationStatus.MATCHED, BankReconciliationStatus.PARTIAL, BankReconciliationStatus.NO_RECEIPT_REQUIRED) &&
             splitsByTx[tx.transactionId].orEmpty().sumOf { it.allocatedAmount } <= tx.absoluteAmount + BankAllocationPolicy.MONEY_TOLERANCE &&
-            confirmedLinks.filter { it.transactionId == tx.transactionId }.sumOf { it.allocatedAmount } <= tx.absoluteAmount + BankAllocationPolicy.MONEY_TOLERANCE &&
-            tx.transactionId !in loanTxIds
+            confirmedLinks.filter { it.transactionId == tx.transactionId }.sumOf { it.allocatedAmount } <= tx.absoluteAmount + BankAllocationPolicy.MONEY_TOLERANCE
         fun bankEntry(key: String, tx: BankTransaction, amount: Double, propertyId: String, unitId: String,
             receipt: Receipt? = null) = LedgerEntry(key, tx.bookingDate, amount, tx.isIncome, propertyId, unitId,
             receipt?.let(LedgerPresentation::category) ?: tx.subcategory.ifBlank { tx.category.ifBlank { "Sonstige Ausgabe" } },
@@ -130,7 +129,7 @@ internal object LedgerPaymentPresentation {
             }
         }
         transactions.distinctBy { it.transactionId }.forEach { tx ->
-            if (tx.isIncome || !confirmed(tx) || tx.propertyId.isBlank() ||
+            if (tx.isIncome || !confirmed(tx) || tx.propertyId.isBlank() || tx.transactionId in loanTxIds ||
                 confirmedLinks.any { it.transactionId == tx.transactionId } || assignments.any { it.transactionId == tx.transactionId } ||
                 !(tx.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED ||
                     tx.reconciliationStatus == BankReconciliationStatus.MATCHED && tx.reviewState == BankReviewState.DONE) ||

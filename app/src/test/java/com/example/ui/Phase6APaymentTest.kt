@@ -108,6 +108,15 @@ class Phase6APaymentTest {
             "2026-10", createdAt = "", updatedAt = "")
         assertTrue(LedgerPaymentPresentation.entries(emptyList(), emptyList(), emptyList(), listOf(tx()), loanAssignments = listOf(loan)).isEmpty())
     }
+    @Test fun explicitLinkedInterestReceiptStillCountsAlongsideLoanRelationship() {
+        val loan = BankLoanAssignment("loan", "insurance", 1, "a", 1200.0, BankLoanPaymentType.REGULAERE_RATE,
+            "2026-10", createdAt = "", updatedAt = "")
+        val interest = receipt(119.0).copy(unterkategorie = "Zinsen", beschreibung = "Bestätigter Zinsanteil")
+        val result = LedgerPaymentPresentation.entries(listOf(interest), emptyList(), listOf(link(amount = 119.0)),
+            listOf(tx().copy(reconciliationStatus = BankReconciliationStatus.MATCHED)), loanAssignments = listOf(loan))
+        assertEquals(119.0, expense(result), .001)
+        assertEquals(1, result.size)
+    }
     @Test fun internalIdWinsOverReusedRoomId() {
         val other = receipt().copy(internalId = "other-stable-id")
         assertEquals(1200.0, expense(rows(listOf(other), links = listOf(link()), txs = listOf(tx().copy(classification = BankTransactionClassification.PRIVATE_IGNORED)))), .001)

@@ -124,11 +124,17 @@ Bearbeitung im bestehenden Detail, Speichern/Abbrechen/Android- und App-Zurück
 - Vollständige private/ignorierte Zahlungen zählen null; gemischte bestätigte
   Splits zählen ausschließlich objektbezogene geschäftliche Anteile. Objektlose
   und ungeklärte Reste werden nicht zum Aufwand ergänzt. Unaufgeteilte Darlehensraten
-  bleiben ausgeschlossen. Vorhandene DATEV-Ausschlüsse werden im Belegdetail sichtbar.
+  bleiben ausgeschlossen; ein ausdrücklich belegter, bestätigter Geschäftsanteil
+  (z.B. Zinsen) bleibt über seinen Beleglink erhalten. Dafür gibt es eine eigene
+  Regression; es wird keine neue Zins-/Tilgungsberechnung eingeführt.
+  Vorhandene DATEV-Ausschlüsse werden im Belegdetail sichtbar.
 - Neue Tests: Resolver/DATEV, Freigaben, Bank-/Belegprojektion, tatsächliche
   Room-/Dokument-/Backup-Persistenz sowie drei echte MainActivity-Emulatorfälle.
   Androidfälle prüfen Speichern, erneutes Öffnen, Activity-Neustart, Abbrechen,
   Android-/App-Zurück, sichtbaren Freigabeentzug und Privatkorrektur/Rücknahme.
 - Screenshots werden über den vorhandenen Emulator-Artefaktpfad hochgeladen;
   Workflow, Testscript und alle bestehenden Tests bleiben unverändert aktiv.
-- CI-Ergebnisse und fachlich-technische PR-Prüfung werden nach Abschluss ergänzt.
+- CI-Berichte, Screenshots und die abschließende fachlich-technische Prüfung
+  werden in [PR #121](https://github.com/xedox737/Steuer-Asistend-APP/pull/121)
+  dokumentiert. Der vorhandene CI-Workflow prüft die vollständige Suite und den
+  echten API-35-Emulator; maßgeblich ist jeweils der dort ausgewiesene Head-SHA.

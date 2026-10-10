@@ -97,7 +97,7 @@ class Phase6AConsistencyEmulatorTest : EmulatorTestSupport() {
         seedReceipt(approved = true, general = true)
         openReceipt()
         ui.onNodeWithTag("receipt_more_data").performScrollTo().performClick()
-        ui.onNodeWithTag("receipt_approval_status").performScrollTo().assertTextContains("Freigegeben")
+        ui.onNodeWithTag("receipt_approval_status").performScrollTo().assertTextEquals("DATEV-Freigabe: Freigegeben")
         edit()
         ui.onNodeWithTag("edit_receipt_property").performScrollTo().performClick()
         ui.onNode(hasText("Parkstraße") and hasAnyAncestor(isPopup())).performClick()
@@ -108,7 +108,7 @@ class Phase6AConsistencyEmulatorTest : EmulatorTestSupport() {
         assertEquals("", saved.unitId)
         assertEquals("ZU_PRUEFEN", saved.pruefstatus)
         assertTrue(DatevMappingService.buildConfirmedDatevBookingRows(saved, DatevProfile()).isEmpty())
-        ui.onNodeWithTag("receipt_approval_status").performScrollTo().assertTextContains("Erneut zu prüfen")
+        ui.onNodeWithTag("receipt_approval_status").performScrollTo().assertTextEquals("DATEV-Freigabe: Erneut zu prüfen")
         capture("mw02-approval-reset-after-property-change")
     }
 
@@ -140,7 +140,8 @@ class Phase6AConsistencyEmulatorTest : EmulatorTestSupport() {
         capture("mw04-private-payment-financial-view")
         openReceipt()
         ui.onNodeWithTag("receipt_more_data").performScrollTo().performClick()
-        ui.onNodeWithTag("receipt_bank_classification_conflict").performScrollTo().assertTextContains("privater/ignorierter")
+        ui.onNodeWithTag("receipt_bank_classification_conflict").performScrollTo()
+            .assertTextEquals("Bankzuordnung prüfen: Mit privater/ignorierter Bankbuchung verknüpft – kein DATEV-Export.")
         capture("mw04-receipt-bank-classification-conflict")
         clickMore("Bank & Kontoauszüge")
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("MW Testhandwerk"))
