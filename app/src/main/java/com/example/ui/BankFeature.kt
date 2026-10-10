@@ -1508,7 +1508,7 @@ private fun BankTransactionPickerDialog(
 
 @Composable
 private fun NoReceiptReasonDialog(onDismiss: () -> Unit, onSelect: (String) -> Unit) {
-    val reasons = listOf("Eigene Umbuchung", "Mieteinnahme", "Darlehen / Tilgung", "Privat", "Bankgebühr", "Sonstiges")
+    val reasons = com.example.data.BankNoReceiptReason.all
     var selectedReason by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(

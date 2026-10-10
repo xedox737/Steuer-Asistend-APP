@@ -27,7 +27,9 @@ object DatevApprovalInvalidationPolicy {
     }
 
     fun hasRelevantChange(persisted: Receipt, candidate: Receipt): Boolean =
-        amountCent(persisted.bruttobetrag) != amountCent(candidate.bruttobetrag) ||
+        persisted.propertyId != candidate.propertyId ||
+            persisted.unitId != candidate.unitId ||
+            amountCent(persisted.bruttobetrag) != amountCent(candidate.bruttobetrag) ||
             persisted.datum != candidate.datum ||
             persisted.hauptkategorie != candidate.hauptkategorie ||
             persisted.unterkategorie != candidate.unterkategorie ||
@@ -36,7 +38,9 @@ object DatevApprovalInvalidationPolicy {
             persisted.isEigenleistungSanierung != candidate.isEigenleistungSanierung ||
             persisted.wohneinheit != candidate.wohneinheit ||
             persisted.mieter != candidate.mieter ||
-            persisted.positionenJson != candidate.positionenJson
+            persisted.positionenJson != candidate.positionenJson ||
+            persisted.allocationsJson != candidate.allocationsJson ||
+            persisted.bookingProposalsJson != candidate.bookingProposalsJson
 
     private fun amountCent(value: Double): Long = (value * 100.0).roundToLong()
 }
