@@ -54,6 +54,18 @@ class RenovationReviewCalculatorTest {
         assertEquals(49_200.0, result.basis.limit15Percent, .01)
     }
     @Test fun repairCategoryAloneNeverCounts() { assertEquals(0.0, calculate(relations = emptyList()).consideredNet, .01) }
+    @Test fun periodLabelWorksBeforeReceiptIsAssigned() {
+        val basis = calculate(relations = emptyList()).basis
+        assertEquals("Innerhalb Prüfzeitraum", RenovationReviewCalculator.periodLabel(receipt(), basis))
+        assertEquals("Außerhalb Prüfzeitraum", RenovationReviewCalculator.periodLabel(receipt(date = "2029-01-01"), basis))
+    }
+    @Test fun missingOrForeignDocumentReferenceRemainsVisibleAsReviewCase() {
+        val withEvidence = measure.copy(evidence = listOf(RenovationEvidence("doc", RenovationEvidenceRole.ANGEBOT)))
+        val review = RenovationReviewSnapshot(listOf(withEvidence), listOf(relation()))
+        assertEquals(1, RenovationReviewCalculator.calculate(property, listOf(receipt()), review, emptyList()).errors.size)
+        assertEquals(1, RenovationReviewCalculator.calculate(property, listOf(receipt()), review, listOf(ManagedDocument("doc", "b"))).errors.size)
+        assertTrue(RenovationReviewCalculator.calculate(property, listOf(receipt()), review, listOf(ManagedDocument("doc", "a"))).errors.isEmpty())
+    }
     @Test fun unreviewedAndAdvisorOnlyStatusesDoNotCount() {
         listOf(RenovationTaxStatus.NICHT_GEPRUEFT, RenovationTaxStatus.STEUERBERATER_PRUEFEN, RenovationTaxStatus.NICHT_BERUECKSICHTIGEN).forEach {
             assertEquals(0.0, calculate(relations = listOf(relation(status = it))).consideredNet, .01)

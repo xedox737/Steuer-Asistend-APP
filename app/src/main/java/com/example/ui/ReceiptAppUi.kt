@@ -72,6 +72,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.runtime.mutableIntStateOf
@@ -6236,11 +6237,11 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             zahlungsart = editZahlungsart,
                             positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen),
                             propertyId = editPropertyId,
-                            selectedUnitId = unitSelection.unitId
+                            selectedUnitId = editUnitId
                         )
                     },
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("save_extracted_receipt_button"),
-                    enabled = metadata != null && !originalImportInProgress && originalImportError == null && scanState !is ScanUiState.Loading,
+                    enabled = metadata != null && (editUnitId.isBlank() || unitsList.any { it.unitId == editUnitId }) && !originalImportInProgress && originalImportError == null && scanState !is ScanUiState.Loading,
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                 ) {
                     Text("Einbuchen", fontWeight = FontWeight.Bold)

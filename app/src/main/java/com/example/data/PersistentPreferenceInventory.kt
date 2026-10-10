@@ -74,6 +74,9 @@ internal object PersistentPreferenceInventory {
             values.keys().forEach { key ->
                 if (permits(store, key)) {
                     val value = values.getJSONObject(key)
+                    require(store.name != RenovationReviewStore.PREFS || value.getString("type") == "string") {
+                        "Ungültiger Datentyp in der Sanierungs-Sicherung."
+                    }
                     when (value.getString("type")) {
                         "string" -> value.getString("value").also { raw ->
                             if (store.name == RenovationReviewStore.PREFS) RenovationReviewStore.validateEntry(key, raw)

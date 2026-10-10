@@ -50,6 +50,7 @@ internal fun ReceiptObjectContextPicker(properties: List<PropertyMetadata>, prop
         ReviewDropdown("Einheit (optional)", choices.firstOrNull { it.first == unitId }, choices, { it.second },
             Modifier.fillMaxWidth().testTag("${tagPrefix}_unit"), propertyId.isNotBlank()) { onUnit(it.first) }
         if (propertyId.isBlank()) Text("Bitte vor dem Speichern eine Immobilie wählen.", color = WarmOrange)
+        if (unitId.isNotBlank() && units.none { it.unitId == unitId }) Text("Die Einheit ist nicht mehr verfügbar. Bitte erneut auswählen.", color = WarmOrange)
     }
 }
 
@@ -146,7 +147,7 @@ internal fun RenovationReviewScreen(viewModel: ReceiptViewModel, property: Prope
                     val lines = summary.lines.filter { it.relation.renovationMeasureId == measure.id }
                     Ui2Destination(measure.name, "${measure.status.label} · ${measure.taxStatus.label}\n${NumberFormatter.format(lines.filter { it.included }.sumOf { it.netCost ?: 0.0 })} berücksichtigt", Icons.Default.Build) { selectedMeasureId = measure.id }
                 }
-                item { Text("Offene Prüffälle (${summary.openCases.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                item { Text("Offene Prüffälle (${summary.openCases.size + summary.errors.size})", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 items(summary.openCases, key = { it.relation.receiptInternalId }) { line -> RenovationReceiptLine(line) { assignmentReceipt = line.receipt } }
             }
         } else {
@@ -212,7 +213,7 @@ internal fun RenovationReceiptCard(viewModel: ReceiptViewModel, receipt: Receipt
     RenovationErrorDialog(viewModel)
     if (assign) RenovationAssignmentDialog(viewModel, receipt, onDismiss = { assign = false })
     Ui2Section("Sanierungs- & 15%-Prüfung", Modifier.testTag("receipt_renovation_card")) {
-        Text(line?.periodLabel ?: "Noch nicht für 15%-Prüfung zugeordnet")
+        Text(line?.periodLabel ?: summaries[receipt.propertyId]?.basis?.let { RenovationReviewCalculator.periodLabel(receipt, it) } ?: "Prüfzeitraum offen")
         Text("Maßnahme: ${review.measures.firstOrNull { it.id == relation?.renovationMeasureId }?.name ?: "Keine"}")
         Text("Prüfstatus: ${relation?.taxStatus?.label ?: "Nicht geprüft"}")
         Text(if (line?.included == true) "Für 15%-Prüfung berücksichtigt: ${NumberFormatter.format(line.netCost)} netto" else "Nicht in Prüfsumme")
@@ -314,6 +315,11 @@ private fun RenovationEvidenceDialog(viewModel: ReceiptViewModel, measure: Renov
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Vorhandene Nachweise") }, text = {
         Column {
             Text("Originale bleiben in der bestehenden Dokumentenakte. Nur die Referenz wird gespeichert.")
+            evidence.filter { ref -> documents.none { it.documentId == ref.documentId && it.propertyId == measure.propertyId } }.forEach { missing ->
+                TextButton(onClick = { evidence = evidence.filterNot { it.documentId == missing.documentId } }) {
+                    Text("Fehlende Referenz entfernen: ${missing.role.label}")
+                }
+            }
             ReviewDropdown("Rolle für neue Auswahl", role, RenovationEvidenceRole.entries, { it.label }) { role = it }
             OutlinedTextField(query, { query = it }, label = { Text("Dokument suchen") }, modifier = Modifier.fillMaxWidth())
             LazyColumn(Modifier.heightIn(max = 320.dp)) {

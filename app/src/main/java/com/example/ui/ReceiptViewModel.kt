@@ -495,9 +495,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
-    val renovationSummaries = combine(properties, receipts, renovationReview) { all, currentReceipts, review ->
+    val renovationSummaries = combine(properties, receipts, renovationReview, managedDocuments) { all, currentReceipts, review, documents ->
         all.associate { property -> property.propertyId to
-            com.example.data.RenovationReviewCalculator.calculate(property, currentReceipts, review) }
+            com.example.data.RenovationReviewCalculator.calculate(property, currentReceipts, review, documents) }
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     fun clearRenovationError() { _renovationError.value = null }
@@ -509,12 +509,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     val property = requireNotNull(database.propertyDao().getPropertyByPropertyId(measure.propertyId)) { "Bitte eine gültige Immobilie wählen." }
                     require(measure.unitId.isBlank() || getWohneinheitenForProperty(property).any { it.unitId == measure.unitId }) { "Die Einheit gehört nicht zur gewählten Immobilie." }
                     val documents = database.managedDocumentDao().getAll().associateBy { it.documentId }
-                    require(measure.evidence.all { documents[it.documentId]?.propertyId == property.propertyId }) { "Ein Nachweis fehlt oder gehört zu einem anderen Objekt." }
+                    val existingRefs = renovationReview.value.measures.firstOrNull { it.id == measure.id }?.evidence.orEmpty()
+                    require(measure.evidence.all { it in existingRefs || documents[it.documentId]?.propertyId == property.propertyId }) { "Ein Nachweis fehlt oder gehört zu einem anderen Objekt." }
                     renovationStore.saveMeasure(measure)
                 }
                 _renovationError.value = null
                 onSaved()
-            } catch (e: Exception) { _renovationError.value = e.message ?: "Die Maßnahme konnte nicht gespeichert werden." }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { _renovationError.value = e.message ?: "Die Maßnahme konnte nicht gespeichert werden." }
         }
     }
 
@@ -531,7 +533,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
                 _renovationError.value = null
                 onSaved()
-            } catch (e: Exception) { _renovationError.value = e.message ?: "Die Belegzuordnung konnte nicht gespeichert werden." }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { _renovationError.value = e.message ?: "Die Belegzuordnung konnte nicht gespeichert werden." }
         }
     }
 
@@ -542,7 +545,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     renovationStore.refresh()
                     val property = requireNotNull(database.propertyDao().getPropertyByPropertyId(propertyId)) { "Die Immobilie ist nicht verfügbar." }
                     val summary = com.example.data.RenovationReviewCalculator.calculate(property,
-                        database.receiptDao().getAllReceiptsList(), renovationReview.value)
+                        database.receiptDao().getAllReceiptsList(), renovationReview.value, database.managedDocumentDao().getAll())
                     val lines = com.example.util.RenovationAdvisorReport.lines(summary,
                         getWohneinheitenForProperty(property).associate { it.unitId to it.name }, database.managedDocumentDao().getAll())
                     val folder = File(getApplication<Application>().cacheDir, "reports").apply { mkdirs() }
@@ -551,7 +554,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
                 onCreated(file)
-            } catch (e: Exception) { _renovationError.value = e.message ?: "Der Bericht konnte nicht erstellt werden." }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) { _renovationError.value = e.message ?: "Der Bericht konnte nicht erstellt werden." }
         }
     }
 

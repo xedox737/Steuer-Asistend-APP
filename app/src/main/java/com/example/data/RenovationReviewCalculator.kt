@@ -47,7 +47,8 @@ object RenovationReviewCalculator {
     const val RETROSPECTIVE_WARNING = "Die 15%-Grenze wurde erreicht oder überschritten. Bitte auch bereits zugeordnete Belege des Prüfzeitraums steuerlich erneut prüfen."
     const val PERIOD_NOTE = "Belegdatum als vorläufiger Zeitbezug. Leistungszeitraum und zeitanteilige Kosten bitte mit dem Steuerberater prüfen."
 
-    fun calculate(property: PropertyMetadata, receipts: List<Receipt>, snapshot: RenovationReviewSnapshot): RenovationReviewSummary {
+    fun calculate(property: PropertyMetadata, receipts: List<Receipt>, snapshot: RenovationReviewSnapshot,
+        documents: List<ManagedDocument>? = null): RenovationReviewSummary {
         val propertyReceipts = receipts.filter { it.propertyId == property.propertyId }
         // Same acquisition-cost source as AfA. No second allocation formula.
         val basis = TaxPropertyCalculator.calculate(property, propertyReceipts)
@@ -87,10 +88,22 @@ object RenovationReviewCalculator {
                     if (start == null || end == null || receiptDate == null) "Prüfzeitraum offen"
                     else if (inPeriod) "Innerhalb Prüfzeitraum" else "Außerhalb Prüfzeitraum", issue)
             }
+        val evidenceErrors = if (documents == null) emptyList() else measures.flatMap { measure ->
+            measure.evidence.filter { evidence -> documents.none { it.documentId == evidence.documentId && it.propertyId == property.propertyId } }
+                .map { "Nachweis für ${measure.name} nicht verfügbar. Bitte die Dokumentreferenz prüfen." }
+        }
         return RenovationReviewSummary(property, basis,
             if (property.uebergangNutzenLasten.isNotBlank()) "Besitz / Nutzen / Lasten"
             else if (property.notariellesKaufdatum.isNotBlank()) "Notarielles Kaufdatum (Ersatz; wirtschaftlichen Übergang prüfen)"
-            else "Anschaffungsdatum fehlt", measures, lines, snapshot.errors)
+            else "Anschaffungsdatum fehlt", measures, lines, snapshot.errors + evidenceErrors)
+    }
+
+    fun periodLabel(receipt: Receipt, basis: TaxPhase1Summary): String {
+        val start = date(basis.monitorStartDate)
+        val end = date(basis.monitorEndDate)
+        val receiptDate = date(receipt.datum)
+        return if (start == null || end == null || receiptDate == null) "Prüfzeitraum offen"
+            else if (receiptDate >= start && receiptDate <= end) "Innerhalb Prüfzeitraum" else "Außerhalb Prüfzeitraum"
     }
 
     /** Existing receipt positions / VAT rates, with no invented 19% estimate. */

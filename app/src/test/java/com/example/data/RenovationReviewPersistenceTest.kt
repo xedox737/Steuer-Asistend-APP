@@ -87,6 +87,16 @@ class RenovationReviewPersistenceTest {
         store.refresh(); assertEquals(1, store.snapshot.value.errors.size)
         assertEquals("broken", context.getSharedPreferences(RenovationReviewStore.PREFS, 0).getString("measure_broken", ""))
     }
+    @Test fun wrongPreferenceTypeIsRejectedBeforeAnyRestoreMutation() = runTest {
+        populate()
+        val payload = SupplementalDriveBackup.createPayload(context, db)
+        payload.getJSONObject(RenovationReviewStore.PAYLOAD_KEY).getJSONObject("receipt_internal-r")
+            .put("type", "int").put("value", 1)
+        assertTrue(runCatching { SupplementalDriveBackup.restorePayload(context, db, payload, restoreMode = RestoreMode.REPLACE_FULL) }.isFailure)
+        store.refresh()
+        assertEquals(relation.receiptInternalId, store.snapshot.value.relations.single().receiptInternalId)
+        assertEquals(measure.advisorNote, store.snapshot.value.measures.single().advisorNote)
+    }
     @Test fun measureValidationRejectsBlankNamesAndInvalidChronology() {
         listOf(measure.copy(name = " "), measure.copy(startDate = "2026-02-30"),
             measure.copy(startDate = "2026-10-10", endDate = "2026-10-09"), measure.copy(endDate = "2026-10-10")).forEach {
