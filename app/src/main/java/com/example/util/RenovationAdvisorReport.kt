@@ -51,7 +51,7 @@ object RenovationAdvisorReport {
                 add("Zeitraum: ${date(measure.startDate)} - ${date(measure.endDate)} | ${measure.status.label} | ${measure.taxStatus.label}")
                 if (measure.description.isNotBlank()) add("Beschreibung: ${measure.description}")
                 add("Bruttokosten: ${amount(lines.filter { it.grossCost >= 0 }.sumOf { it.grossCost })}")
-                add("Erstattungen / Gutschriften brutto: ${amount(-lines.filter { it.grossCost < 0 }.sumOf { it.grossCost })}")
+                add("Erstattungen / Gutschriften brutto: ${amount(kotlin.math.abs(lines.filter { it.grossCost < 0 }.sumOf { it.grossCost }))}")
                 add("Berücksichtigte Nettokosten: ${amount(lines.filter { it.included }.sumOf { it.netCost ?: 0.0 })}")
                 if (measure.advisorNote.isNotBlank()) add("Steuerberater-Notiz: ${measure.advisorNote}")
                 val start = runCatching { LocalDate.parse(measure.startDate) }.getOrNull()

@@ -166,7 +166,7 @@ internal fun RenovationReviewScreen(viewModel: ReceiptViewModel, property: Prope
                     Text("Prüfzeitraum: ${receiptDisplayDate(summary.basis.monitorStartDate).ifBlank { "Offen" }} – ${receiptDisplayDate(summary.basis.monitorEndDate).ifBlank { "Offen" }}")
                     Text(selected.taxStatus.label)
                     Text("Bruttokosten: ${NumberFormatter.format(measureLines.filter { it.grossCost >= 0 }.sumOf { it.grossCost })}")
-                    Text("Erstattungen / Gutschriften: ${NumberFormatter.format(-measureLines.filter { it.grossCost < 0 }.sumOf { it.grossCost })}")
+                    Text("Erstattungen / Gutschriften: ${NumberFormatter.format(kotlin.math.abs(measureLines.filter { it.grossCost < 0 }.sumOf { it.grossCost }))}")
                     Text("Berücksichtigte Nettokosten: ${NumberFormatter.format(measureLines.filter { it.included }.sumOf { it.netCost ?: 0.0 })}")
                     Text("Steuerberater-Notiz: ${selected.advisorNote.ifBlank { "Keine Notiz" }}")
                     Text(RenovationReviewCalculator.NO_TAX_DECISION)
