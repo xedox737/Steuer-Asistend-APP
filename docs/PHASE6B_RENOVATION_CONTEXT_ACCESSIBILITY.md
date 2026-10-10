@@ -25,7 +25,7 @@ einen Einheitennamen vorbefüllen, ohne eine eigene stabile Auswahl zu besitzen.
 Korrektur: eigener expliziter Erfassungskontext, sichtbarer Property-/Unit-Picker aus
 bestehenden Material-/UI2-Komponenten, stabile IDs und vorhandener ReceiptUnitResolver.
 Global nur eine tatsächlich gespeicherte aktive Auswahl vorbefüllen; kein First-Property-
-Fallback. Objektakte darf explizit vorbefüllen. Wechsel leert Unit und Maßnahmenwahl.
+Fallback. Objektakte darf explizit vorbefüllen. Wechsel leert die Einheitenwahl.
 Speichern validiert erneut die gewählte Property/Unit, ohne globale Auswahl umzuschreiben.
 
 ### MW-06
@@ -101,4 +101,5 @@ Core-Upsert, anschließend Supplemental, jeweils zweimal MERGE. Der Bericht list
 explizit vorgemerkte Belege ohne Maßnahme. Kennzahlen werden pro StateFlow-Projektion
 einmal berechnet, nicht bei jedem UI-Zugriff erneut summiert.
 
-Prüfergebnisse und finaler Git-/PR-Stand werden nach Ausführung ergänzt.
+Verbindliche Prüfergebnisse, Artefakte und finaler Git-Stand werden in
+PR #122 dokumentiert: https://github.com/xedox737/Steuer-Asistend-APP/pull/122

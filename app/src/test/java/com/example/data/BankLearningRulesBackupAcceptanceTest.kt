@@ -39,7 +39,7 @@ class BankLearningRulesBackupAcceptanceTest {
             subcategoryTarget = "Material", paymentMethodTarget = "Überweisung", createdAt = "c"
         ))
         val payload = SupplementalDriveBackup.createPayload(context, db)
-        assertEquals(14, payload.getInt("schemaVersion"))
+        assertEquals(15, payload.getInt("schemaVersion"))
         assertEquals(1, payload.getJSONArray("bankLearningRules").length())
         assertEquals(1, payload.getJSONArray("bankRuleEvidence").length())
 

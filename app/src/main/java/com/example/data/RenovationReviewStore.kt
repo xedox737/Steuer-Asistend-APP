@@ -71,57 +71,6 @@ data class RenovationReviewSnapshot(
 
 /** Small local supplemental store. No receipt, original file or accounting row is copied. */
 class RenovationReviewStore(context: Context) {
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private val mutex = Mutex()
-    private val _snapshot = MutableStateFlow(RenovationReviewSnapshot())
-    val snapshot = _snapshot.asStateFlow()
-
-    suspend fun refresh() = withContext(Dispatchers.IO) { mutex.withLock { _snapshot.value = load() } }
-
-    suspend fun saveMeasure(measure: RenovationMeasure) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            validateMeasure(measure)
-            val current = load().measures.firstOrNull { it.id == measure.id }
-            require(current == null || current.propertyId == measure.propertyId) { "Das Objekt einer bestehenden Maßnahme darf nicht gewechselt werden." }
-            val saved = measure.copy(name = measure.name.trim(),
-                createdAt = current?.createdAt ?: measure.createdAt, updatedAt = Instant.now().toString())
-            check(prefs.edit().putString("measure_${saved.id}", measureJson(saved).toString()).commit()) {
-                "Die Maßnahme konnte nicht dauerhaft gespeichert werden."
-            }
-            _snapshot.value = load()
-        }
-    }
-
-    suspend fun saveRelation(relation: RenovationReceiptRelation) = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            validateRelation(relation)
-            if (relation.renovationMeasureId.isNotBlank()) {
-                val measure = load().measures.singleOrNull { it.id == relation.renovationMeasureId }
-                require(measure?.propertyId == relation.propertyId) { "Die Maßnahme gehört nicht zur Immobilie dieses Belegs." }
-            }
-            check(prefs.edit().putString("receipt_${relation.receiptInternalId}",
-                relationJson(relation.copy(updatedAt = Instant.now().toString())).toString()).commit()) {
-                "Die Belegzuordnung konnte nicht dauerhaft gespeichert werden."
-            }
-            _snapshot.value = load()
-        }
-    }
-
-    private fun load(): RenovationReviewSnapshot {
-        val measures = mutableListOf<RenovationMeasure>()
-        val relations = mutableListOf<RenovationReceiptRelation>()
-        val errors = mutableListOf<String>()
-        prefs.all.toSortedMap().forEach { (key, raw) ->
-            runCatching {
-                require(raw is String) { "Ungültiger Datentyp" }
-                validateEntry(key, raw)
-                if (key.startsWith("measure_")) measures += parseMeasure(JSONObject(raw))
-                else relations += parseRelation(JSONObject(raw))
-            }.onFailure { errors += "Sanierungsdaten beschädigt ($key). Bitte die Sicherung prüfen; die Originaldaten bleiben erhalten." }
-        }
-        return RenovationReviewSnapshot(measures.sortedBy { it.name }, relations, errors)
-    }
-
     companion object {
         const val PREFS = "renovation_review_prefs"
         const val PAYLOAD_KEY = "renovationReviewPrefs"
@@ -192,4 +141,57 @@ class RenovationReviewStore(context: Context) {
             o.getString("propertyId"), o.getString("renovationMeasureId"), RenovationTaxStatus.valueOf(o.getString("taxStatus")),
             o.getBoolean("advisorMarked"), if (o.isNull("confirmedNetAmount")) null else o.getDouble("confirmedNetAmount"), o.getString("updatedAt"))
     }
+
+    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val mutex = Mutex()
+    private val _snapshot = MutableStateFlow(RenovationReviewSnapshot())
+    val snapshot = _snapshot.asStateFlow()
+
+    suspend fun refresh() = withContext(Dispatchers.IO) { mutex.withLock { _snapshot.value = load() } }
+
+    suspend fun saveMeasure(measure: RenovationMeasure) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            validateMeasure(measure)
+            val current = load().measures.firstOrNull { it.id == measure.id }
+            require(current == null || current.propertyId == measure.propertyId) { "Das Objekt einer bestehenden Maßnahme darf nicht gewechselt werden." }
+            val saved = measure.copy(name = measure.name.trim(),
+                createdAt = current?.createdAt ?: measure.createdAt, updatedAt = Instant.now().toString())
+            check(prefs.edit().putString("measure_${saved.id}", measureJson(saved).toString()).commit()) {
+                "Die Maßnahme konnte nicht dauerhaft gespeichert werden."
+            }
+            _snapshot.value = load()
+        }
+    }
+
+    suspend fun saveRelation(relation: RenovationReceiptRelation) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            validateRelation(relation)
+            if (relation.renovationMeasureId.isNotBlank()) {
+                val measure = load().measures.singleOrNull { it.id == relation.renovationMeasureId }
+                require(measure?.propertyId == relation.propertyId) { "Die Maßnahme gehört nicht zur Immobilie dieses Belegs." }
+            }
+            check(prefs.edit().putString("receipt_${relation.receiptInternalId}",
+                relationJson(relation.copy(updatedAt = Instant.now().toString())).toString()).commit()) {
+                "Die Belegzuordnung konnte nicht dauerhaft gespeichert werden."
+            }
+            _snapshot.value = load()
+        }
+    }
+
+    private fun load(): RenovationReviewSnapshot {
+        val measures = mutableListOf<RenovationMeasure>()
+        val relations = mutableListOf<RenovationReceiptRelation>()
+        val errors = mutableListOf<String>()
+        prefs.all.toSortedMap().forEach { (key, raw) ->
+            runCatching {
+                require(raw is String) { "Ungültiger Datentyp" }
+                validateEntry(key, raw)
+                if (key.startsWith("measure_")) measures += parseMeasure(JSONObject(raw))
+                else relations += parseRelation(JSONObject(raw))
+            }.onFailure { errors += "Sanierungsdaten beschädigt ($key). Bitte die Sicherung prüfen; die Originaldaten bleiben erhalten." }
+        }
+        return RenovationReviewSnapshot(measures.sortedBy { it.name }, relations, errors)
+    }
+
+
 }

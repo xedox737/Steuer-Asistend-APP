@@ -179,7 +179,7 @@ class PrimaryNavigationComposeTest {
     }
     @Test fun propertyUnitToEveryPrimaryRootIncludingActiveProperties() = matrix { openPropertyUnit() }
     @Test fun afaToEveryPrimaryRootIncludingActiveMore() = matrix { openMorePage("AfA Gebäude", "Gebäude abschreiben") }
-    @Test fun monitorToEveryPrimaryRootIncludingActiveMore() = matrix { openMorePage("Sanierungs-Monitor", "Sanierungs-Monitor") }
+    @Test fun monitorToEveryPrimaryRootIncludingActiveMore() = matrix { openMorePage("Sanierungs-Monitor", "Sanierung & 15%-Prüfung") }
     @Test fun rulesToEveryPrimaryRootIncludingActiveMore() = matrix { openMorePage("Gelernte Regeln", "Gelerntes KI-Wissen") }
     @Test fun backupToEveryPrimaryRootIncludingActiveMore() = matrix { openMorePage("Backup & Cloud", "Google Drive Backup") }
     @Test fun receiptDetailToEveryPrimaryRootIncludingActiveReceipts() = matrix {

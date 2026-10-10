@@ -48,8 +48,8 @@ internal fun ReceiptObjectContextPicker(properties: List<PropertyMetadata>, prop
             { it.name.ifBlank { it.adresse } }, Modifier.fillMaxWidth().testTag("${tagPrefix}_property")) { onProperty(it.propertyId) }
         val choices = listOf("" to "Gesamtobjekt / Allgemein") + units.map { it.unitId to it.name }
         ReviewDropdown("Einheit (optional)", choices.firstOrNull { it.first == unitId }, choices, { it.second },
-            Modifier.fillMaxWidth().testTag("${tagPrefix}_unit"), propertyId.isNotBlank()) { onUnit(it.first) }
-        if (propertyId.isBlank()) Text("Bitte vor dem Speichern eine Immobilie wählen.", color = WarmOrange)
+            Modifier.fillMaxWidth().testTag("${tagPrefix}_unit"), properties.any { it.propertyId == propertyId }) { onUnit(it.first) }
+        if (properties.none { it.propertyId == propertyId }) Text("Bitte vor dem Speichern eine Immobilie wählen.", color = WarmOrange)
         if (unitId.isNotBlank() && units.none { it.unitId == unitId }) Text("Die Einheit ist nicht mehr verfügbar. Bitte erneut auswählen.", color = WarmOrange)
     }
 }

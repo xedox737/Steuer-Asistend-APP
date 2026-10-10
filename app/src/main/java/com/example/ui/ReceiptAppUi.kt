@@ -358,6 +358,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                           fontWeight = FontWeight.SemiBold,
                           maxLines = 1,
                           softWrap = false,
+                          textAlign = TextAlign.Center,
                           modifier = Modifier.requiredWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp / PRIMARY_NAVIGATION_SCREENS.size)
                       )
                   },
