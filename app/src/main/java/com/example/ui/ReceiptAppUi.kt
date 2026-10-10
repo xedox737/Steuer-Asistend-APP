@@ -933,6 +933,10 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
+            val stackedWelcome = LocalDensity.current.fontScale >= 1.3f
+            val welcomeDate = java.time.LocalDate.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
+            ).replaceFirstChar { it.titlecase(Locale.GERMAN) }
             Row(
                 Modifier.fillMaxWidth().padding(Ui2.padding),
                 verticalAlignment = Alignment.CenterVertically,
@@ -943,15 +947,13 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     Text("Willkommen bei ImmoPilot", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (stackedWelcome) Text(welcomeDate, modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End)
                 }
-                Text(
-                    java.time.LocalDate.now().format(
-                        java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
-                    ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
+                if (!stackedWelcome) Text(welcomeDate,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.End
-                )
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End)
             }
         }
 

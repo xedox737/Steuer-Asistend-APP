@@ -18,6 +18,7 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
         assertTrue("CI-Gerätebreite nahe 393 dp", context.resources.configuration.screenWidthDp in 385..405)
         scenario.onActivity { assertEquals(fontScale, it.resources.configuration.fontScale, .01f) }
         completeText("Immobilien. Finanzen. Steuern.")
+        completeText("Schön, dass du da bist!")
         completeText("Immobilien")
         completeText("Fehlende Bankbelege", scroll = true)
         capture("phase6b-dashboard-bankbelege-font-$fontScale")
@@ -39,6 +40,7 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
         capture("phase6b-property-font-$fontScale")
         ui.onNode(hasText("Sanierung & 15%-Prüfung") and hasClickAction()).performClick()
         ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
+        completeText("Sanierung & 15%-Prüfung")
         completeText("Sanierungs- & 15%-Prüfung", scroll = true)
         completeText("Keine automatische Steuerentscheidung.", scroll = true)
         ui.onNodeWithTag("renovation_overview").performScrollToNode(hasTestTag("renovation_add_measure"))

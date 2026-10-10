@@ -67,7 +67,9 @@ UI2Grid erzwingt ab 320 dp zwei Spalten ohne FontScale. Ui2Metric ohne Icon legt
 lange Statuswerte und Label nebeneinander; die verbleibende Labelbreite zerlegt Bankbelege.
 Ui2ActionCard reserviert zusätzlich 42 dp für das Icon, weshalb Kontoauszüge im schmalen
 Halbkarten-Textbereich bricht. Hauptziel-Label Immobilien besitzt maxLines=1. Header enthält
-zwei Texte in der festen Standard-TopAppBar-Höhe; Untertext kann bei 1.5 überlaufen.
+zwei Texte in der festen Standard-TopAppBar-Höhe; Untertext kann bei 1.3/1.5 überlaufen.
+Die Dashboard-Begrüßung reserviert daneben Datumsbreite; bei großer Schrift kann das
+Datum den Untertext überlagern. Das Datum steht ab 1.3 unter dem Begrüßungstext.
 
 Korrektur: vorhandene Komponenten nach verfügbarer Breite und FontScale anordnen, lange
 Kennzahlen untereinander, Karten natürlich wachsen lassen. Header-/Bottom-Navigation-
