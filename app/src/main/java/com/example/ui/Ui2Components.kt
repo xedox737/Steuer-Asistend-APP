@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -56,7 +57,10 @@ internal fun Ui2Section(
     }
 }
 
-/** Keep the UI2 phone layout in two columns; only very narrow windows collapse. */
+/** Keep readable text width while preserving the existing two-column layout at normal font size. */
+internal fun ui2GridColumns(widthDp: Float, fontScale: Float): Int =
+    if (widthDp >= 320f * fontScale.coerceAtLeast(1f)) 2 else 1
+
 @Composable
 internal fun <T> Ui2Grid(
     items: List<T>,
@@ -64,10 +68,7 @@ internal fun <T> Ui2Grid(
     content: @Composable (T, Modifier) -> Unit
 ) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        // A normal phone content width is around 328–360 dp. Multiplying the
-        // breakpoint by the user's font scale turned the UI2 2×2 cards into a
-        // single vertical list on real devices. Card text already wraps safely.
-        val columns = if (maxWidth >= 320.dp) 2 else 1
+        val columns = ui2GridColumns(maxWidth.value, LocalDensity.current.fontScale)
         Column(verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
             items.chunked(columns).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
@@ -170,6 +171,13 @@ internal fun Ui2Metric(
                     }
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface)
+                    Text(label, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else if (value.length > 6 || LocalDensity.current.fontScale >= 1.3f) {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface)
                     Text(label, style = MaterialTheme.typography.bodyMedium,

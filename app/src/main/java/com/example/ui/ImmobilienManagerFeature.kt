@@ -326,7 +326,7 @@ private fun PropertyDetailHost(
     }
     BackHandler { goBack() }
     Column(Modifier.fillMaxSize()) {
-        if (section != PropertySection.UNITS && section != PropertySection.DOCUMENTS) {
+        if (section != PropertySection.UNITS && section != PropertySection.DOCUMENTS && section != PropertySection.RENOVATIONS) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { goBack() }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy)
@@ -346,7 +346,7 @@ private fun PropertyDetailHost(
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
             PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true) } }
-            PropertySection.RENOVATIONS -> PropertyRenovations(propertyReceipts)
+            PropertySection.RENOVATIONS -> RenovationReviewScreen(viewModel, property) { onSection(PropertySection.DASHBOARD) }
             PropertySection.DOCUMENTS -> DocumentManagementScreen(viewModel, propertyScoped = true, onBack = { onSection(PropertySection.DASHBOARD) })
             PropertySection.TAX -> AnnualTaxAssistantScreen(viewModel)
             PropertySection.TASKS -> PropertyTasksScreen(property.propertyId, units)
@@ -371,7 +371,8 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
         PropertySection.RENT to ("Mieteingänge" to Icons.Default.Payments),
         PropertySection.RECEIPTS to ("Einnahmen / Ausgaben" to Icons.Default.Receipt),
         PropertySection.DOCUMENTS to ("Objektunterlagen" to Icons.Default.Description),
-        PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment)
+        PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment),
+        PropertySection.RENOVATIONS to ("Sanierung & 15%-Prüfung" to Icons.Default.Build)
     )
     LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -471,7 +472,7 @@ private fun PropertyDashboard(
             Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
                 Column(Modifier.padding(14.dp), Arrangement.spacedBy(6.dp)) {
                     Text("Schnellaktionen", fontWeight = FontWeight.Bold, color = DarkNavy)
-                    Button(onClick = { viewModel.setScreen(AppScreen.ADD_RECEIPT) }, modifier = Modifier.fillMaxWidth()) { Text("Beleg hinzufügen") }
+                    Button(onClick = { viewModel.startReceiptForProperty(property.propertyId) }, modifier = Modifier.fillMaxWidth()) { Text("Beleg hinzufügen") }
                     OutlinedButton(onClick = { onSection(PropertySection.RENT) }, modifier = Modifier.fillMaxWidth()) { Text("Miete prüfen") }
                     OutlinedButton(onClick = { onSection(PropertySection.DOCUMENTS) }, modifier = Modifier.fillMaxWidth()) { Text("Dokumente öffnen") }
                     OutlinedButton(onClick = { onSection(PropertySection.UNITS) }, modifier = Modifier.fillMaxWidth()) { Text("Mieter / Einheit öffnen") }

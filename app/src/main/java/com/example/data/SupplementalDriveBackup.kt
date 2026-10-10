@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.first
 object SupplementalDriveBackup {
     private const val ENTITY_TYPE = "supplementalBackup"
     private const val FILE_NAME = "supplementalBackup.json"
-    internal const val SCHEMA_VERSION = 14
+    internal const val SCHEMA_VERSION = 15
     data class Result(val success: Boolean, val message: String)
 
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =

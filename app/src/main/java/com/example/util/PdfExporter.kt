@@ -371,6 +371,46 @@ object PdfExporter {
         }
     }
 
+    /** Uses the existing PDF/FileProvider path for a separate preparation report. */
+    fun createRenovationReviewPdf(lines: List<String>): ByteArray {
+        val document = PdfDocument()
+        val output = java.io.ByteArrayOutputStream()
+        val paint = Paint().apply {
+            color = 0xFF334155.toInt(); textSize = 10f; isAntiAlias = true
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        }
+        var page: PdfDocument.Page? = null
+        var number = 0
+        var y = 55f
+        fun newPage() {
+            page?.let(document::finishPage)
+            page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, ++number).create())
+            y = 55f
+            page!!.canvas.drawText("Sanierungs- & 15%-Prüfung | Seite $number", MARGIN_LEFT, 30f, paint)
+        }
+        try {
+            newPage()
+            lines.forEach { paragraph ->
+                paragraph.replace("\r", "").split("\n").forEach { raw ->
+                    var remaining = raw
+                    if (remaining.isBlank()) y += 14f
+                    while (remaining.isNotEmpty()) {
+                        if (y > PAGE_HEIGHT - 45f) newPage()
+                        val fit = paint.breakText(remaining, true, CONTENT_WIDTH, null).coerceAtLeast(1)
+                        val space = remaining.lastIndexOf(' ', (fit - 1).coerceAtLeast(0))
+                        val end = if (fit < remaining.length && space > 0) space else fit
+                        page!!.canvas.drawText(remaining.take(end), MARGIN_LEFT, y, paint)
+                        remaining = remaining.drop(end).trimStart()
+                        y += 14f
+                    }
+                }
+            }
+            page?.let(document::finishPage); page = null
+            document.writeTo(output)
+            return output.toByteArray()
+        } finally { document.close(); output.close() }
+    }
+
     fun sharePdf(context: Context, file: File) {
         val authority = "${context.packageName}.provider"
         try {

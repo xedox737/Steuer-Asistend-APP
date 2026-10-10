@@ -355,7 +355,7 @@ fun DocumentManagementScreen(
 }
 
 @Composable
-private fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
+internal fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val property = properties.firstOrNull { it.propertyId == document.propertyId }

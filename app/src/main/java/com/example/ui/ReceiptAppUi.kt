@@ -72,6 +72,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.runtime.mutableIntStateOf
@@ -282,6 +283,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
+                expandedHeight = 64.dp * LocalDensity.current.fontScale.coerceAtLeast(1f),
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -296,7 +298,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                                 Icon(Icons.Default.Home, null, tint = AccentBlue, modifier = Modifier.size(28.dp))
                             }
                         }
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text("ImmoPilot", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 25.sp)
                             Text("Immobilien. Finanzen. Steuern.", color = SlateGray, fontSize = 11.sp)
                         }
@@ -354,7 +356,10 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
                           label,
                           fontSize = 9.sp,
                           fontWeight = FontWeight.SemiBold,
-                          maxLines = 1
+                          maxLines = 1,
+                          softWrap = false,
+                          textAlign = TextAlign.Center,
+                          modifier = Modifier.requiredWidth(androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp / PRIMARY_NAVIGATION_SCREENS.size)
                       )
                   },
                             colors = NavigationBarItemDefaults.colors(
@@ -928,6 +933,10 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
+            val stackedWelcome = LocalDensity.current.fontScale >= 1.3f
+            val welcomeDate = java.time.LocalDate.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
+            ).replaceFirstChar { it.titlecase(Locale.GERMAN) }
             Row(
                 Modifier.fillMaxWidth().padding(Ui2.padding),
                 verticalAlignment = Alignment.CenterVertically,
@@ -938,15 +947,13 @@ fun DashboardScreen(viewModel: ReceiptViewModel) {
                     Text("Willkommen bei ImmoPilot", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text("Schön, dass du da bist!", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (stackedWelcome) Text(welcomeDate, modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End)
                 }
-                Text(
-                    java.time.LocalDate.now().format(
-                        java.time.format.DateTimeFormatter.ofPattern("EEEE\ndd.MM.yyyy", Locale.GERMAN)
-                    ).replaceFirstChar { it.titlecase(Locale.GERMAN) },
+                if (!stackedWelcome) Text(welcomeDate,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.End
-                )
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End)
             }
         }
 
@@ -1037,6 +1044,7 @@ private fun DashboardActivityRow(receipt: Receipt, onClick: () -> Unit) {
 /** The existing tax presentation moved from Start into More; the calculator is unchanged. */
 @Composable
 internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean, onBack: () -> Unit) {
+    if (monitor) { RenovationPortfolioScreen(viewModel, onBack); return }
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val propertyMetadataState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = propertyMetadataState ?: PropertyMetadata()
@@ -5260,11 +5268,17 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var receiptAmountError by remember { mutableStateOf(false) }
     var receiptDateError by remember { mutableStateOf(false) }
 
-    val propertyMetadataState by viewModel.propertyMetadata.collectAsStateWithLifecycle()
-    val metadata = propertyMetadataState ?: PropertyMetadata()
-    val unitsList = remember(metadata.wohneinheiten) {
-        metadata.wohneinheiten.split(",").map { it.trim() }.filter { it.isNotEmpty() } + listOf("Gesamtobjekt / Allgemein")
-    }
+    val availableProperties by viewModel.properties.collectAsStateWithLifecycle()
+    val selectedPropertyId by viewModel.selectedPropertyId.collectAsStateWithLifecycle()
+    val creationPropertyId by viewModel.receiptCreationPropertyId.collectAsStateWithLifecycle()
+    val renovationSummaries by viewModel.renovationSummaries.collectAsStateWithLifecycle()
+    var editPropertyId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(creationPropertyId ?: selectedPropertyId) }
+    var editUnitId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    val activeProperties = availableProperties.filter { it.status != "Archiviert" }
+    val metadata = activeProperties.firstOrNull { it.propertyId == editPropertyId }
+    val unitsList = remember(metadata) { metadata?.let(viewModel::getWohneinheitenForProperty).orEmpty() }
+    val unitSelection = ReceiptUnitResolver.resolve(editWohneinheit, editUnitId, unitsList, editUnitId)
+    val captureSummary = renovationSummaries[editPropertyId]
 
     val mainCategories = listOf(
         "Anschaffungskosten",
@@ -5367,8 +5381,10 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             if (extracted.mieter.isNotEmpty()) {
                 editMieter = extracted.mieter
             }
-            if (extracted.wohneinheit.isNotEmpty()) {
-                editWohneinheit = extracted.wohneinheit
+            if (extracted.wohneinheit.isNotEmpty() && editUnitId.isBlank()) {
+                val proposed = unitsList.singleOrNull { it.name.equals(extracted.wohneinheit, true) || it.label.equals(extracted.wohneinheit, true) }
+                editWohneinheit = proposed?.name ?: "Gesamtobjekt / Allgemein"
+                editUnitId = proposed?.unitId.orEmpty()
             }
             editPositionen = extracted.positionen
         }
@@ -5422,6 +5438,11 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             fontWeight = FontWeight.Black,
             color = DarkNavy
         )
+
+        ReceiptObjectContextPicker(activeProperties, editPropertyId, unitsList, editUnitId,
+            onProperty = { id ->
+                if (id != editPropertyId) { editPropertyId = id; editUnitId = ""; editWohneinheit = "Gesamtobjekt / Allgemein" }
+            }, onUnit = { id -> editUnitId = id; editWohneinheit = unitsList.firstOrNull { it.unitId == id }?.name ?: "Gesamtobjekt / Allgemein" })
 
         // Dropdown menu flags
         var mainCategoryExpanded by remember { mutableStateOf(false) }
@@ -6132,59 +6153,20 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 )
             )
 
-            // EXPOSED DROPDOWN: Wohneinheit
-            ExposedDropdownMenuBox(
-                expanded = wohneinheitExpanded,
-                onExpandedChange = { wohneinheitExpanded = !wohneinheitExpanded },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                OutlinedTextField(
-                    value = editWohneinheit,
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Zugeordnete Wohneinheit") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = wohneinheitExpanded) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_wohneinheit"),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    )
-                )
-                ExposedDropdownMenu(
-                    expanded = wohneinheitExpanded,
-                    onDismissRequest = { wohneinheitExpanded = false },
-                    modifier = Modifier.background(Color.White)
-                ) {
-                    unitsList.forEach { unit ->
-                        DropdownMenuItem(
-                            text = { Text(unit) },
-                            onClick = {
-                                editWohneinheit = unit
-                                wohneinheitExpanded = false
-                            }
-                        )
+            Ui2Section("Sanierungs- & 15%-Prüfung") {
+                Text(if (captureSummary?.basis?.monitorStartDate?.isNotBlank() == true)
+                    "Prüfzeitraum: ${receiptDisplayDate(captureSummary.basis.monitorStartDate)} – ${receiptDisplayDate(captureSummary.basis.monitorEndDate)}"
+                    else "Prüfzeitraum fehlt. Bitte Anschaffungsdaten im gewählten Objekt ergänzen.")
+                captureSummary?.let { Text("Quelle: ${it.startSource}", style = MaterialTheme.typography.bodySmall) }
+                Text("Maßnahme und 15%-Vormerkung kannst du nach dem Speichern im Beleg zuordnen.", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = editIsEigenleistung, onCheckedChange = { editIsEigenleistung = it }, modifier = Modifier.testTag("edit_eigenleistung_checkbox"))
+                    Column(Modifier.weight(1f)) {
+                        Text("Eigenleistung (optional)", fontWeight = FontWeight.Bold)
+                        Text("Arbeitsleistung ohne Handwerkerrechnung; keine automatische Aufnahme in die 15%-Prüfung.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
-            }
-
-            // Checkbox Eigenleistung
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { editIsEigenleistung = !editIsEigenleistung }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = editIsEigenleistung,
-                    onCheckedChange = { editIsEigenleistung = it },
-                    colors = CheckboxDefaults.colors(checkedColor = EmeraldGreen),
-                    modifier = Modifier.testTag("edit_eigenleistung_checkbox")
-                )
-                Column {
-                    Text("Eigenleistung Sanierung?", fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
-                    Text("Fällt in die Sanierungsphase 01.10.25 - 31.01.26", color = Color.Gray, fontSize = 11.sp)
-                }
+                Text(com.example.data.RenovationReviewCalculator.NO_TAX_DECISION, style = MaterialTheme.typography.bodySmall)
             }
 
             OutlinedTextField(
@@ -6229,7 +6211,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             viewModel.setScreen(AppScreen.DASHBOARD)
                         }
                     },
-                    modifier = Modifier.weight(1.5f).height(48.dp),
+                    modifier = Modifier.weight(1.5f).heightIn(min = 48.dp),
                     border = BorderStroke(1.dp, SlateGray)
                 ) {
                     Text("Zurück / Reset", color = SlateGray, fontSize = 12.sp)
@@ -6256,11 +6238,13 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             wohneinheit = editWohneinheit,
                             mieter = editMieter,
                             zahlungsart = editZahlungsart,
-                            positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
+                            positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen),
+                            propertyId = editPropertyId,
+                            selectedUnitId = editUnitId
                         )
                     },
-                    modifier = Modifier.weight(1f).height(48.dp).testTag("save_extracted_receipt_button"),
-                    enabled = !originalImportInProgress && originalImportError == null && scanState !is ScanUiState.Loading,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("save_extracted_receipt_button"),
+                    enabled = metadata != null && (editUnitId.isBlank() || unitsList.any { it.unitId == editUnitId }) && !originalImportInProgress && originalImportError == null && scanState !is ScanUiState.Loading,
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                 ) {
                     Text("Einbuchen", fontWeight = FontWeight.Bold)

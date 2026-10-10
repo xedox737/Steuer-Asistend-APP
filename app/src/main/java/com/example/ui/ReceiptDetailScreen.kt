@@ -160,6 +160,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
             onDelete = { delete = true },
             onUnlink = { link, transaction -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
             editor = { done -> ReceiptInlineEditor(current, viewModel, done) },
+            renovationCard = { RenovationReceiptCard(viewModel, current) },
             additionalData = { ReceiptAdditionalData(current, viewModel) }
         )
         if (fullScreen && bitmap != null) FullScreenReceiptPreviewDialog(bitmap!!) { fullScreen = false }
@@ -286,7 +287,8 @@ fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () 
         onDelete = { delete = true },
         onUnlink = { link, transaction -> viewModel.removeBankReceiptLink(link.linkId, transaction.transactionId) },
         editor = { done -> ReceiptInlineEditor(current, viewModel, done) },
-        additionalData = { ReceiptAdditionalData(current, viewModel) },
+        renovationCard = { RenovationReceiptCard(viewModel, current) },
+            additionalData = { ReceiptAdditionalData(current, viewModel) },
         embeddedInAppScaffold = true
     )
 
@@ -307,7 +309,7 @@ fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () 
 }
 
 /** Stateless data inputs let the actual mobile layout be rendered in Compose UI tests. */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ReceiptDetailLayout(
     receipt: Receipt,
@@ -332,6 +334,7 @@ internal fun ReceiptDetailLayout(
     onUnlink: (BankReceiptLink, BankTransaction) -> Unit,
     editor: @Composable (() -> Unit) -> Unit,
     additionalData: @Composable () -> Unit,
+    renovationCard: @Composable () -> Unit = {},
     embeddedInAppScaffold: Boolean = false
 ) {
     var additionalExpanded by remember(receipt.id) { mutableStateOf(false) }
@@ -444,12 +447,13 @@ internal fun ReceiptDetailLayout(
         Column(Modifier.padding(insets).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 6.dp)
             .testTag("receipt_detail_scroll"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!editing) ReceiptDetailCard {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val expandedText = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = if (expandedText) 1 else 2) {
                     Surface(Modifier.width(100.dp).height(132.dp), shape = RoundedCornerShape(8.dp), color = Color(0xFFEDF0F5)) {
                         if (bitmap != null) Image(bitmap.asImageBitmap(), "Beleg-Miniatur", contentScale = ContentScale.Fit)
                         else Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Description, "Keine Miniatur verfügbar", tint = slate) }
                     }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Column(if (expandedText) Modifier.fillMaxWidth() else Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(receipt.aussteller.ifBlank { "Beleg" }, fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, color = navy)
                         Text(receipt.getEffectiveDisplayId(), fontSize = 12.sp, color = slate)
                         Text(receiptDisplayDate(receipt.datum), fontSize = 12.sp, color = slate)
@@ -462,6 +466,7 @@ internal fun ReceiptDetailLayout(
                     ReceiptDetailAction("Teilen", Icons.Default.Share, Modifier.weight(1f), onClick = onShare)
                 }
             }
+            if (!editing) renovationCard()
             if (editing) ReceiptDetailCard {
                 Column(Modifier.bringIntoViewRequester(editorTarget)) {
                     editor { onEditingChange(false) }
@@ -616,8 +621,15 @@ private fun ReceiptReferenceRow(label: String, value: String, icon: ImageVector,
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).heightIn(min = 38.dp).padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, Modifier.size(22.dp), tint = Color(0xFF526078))
-        Text(label, Modifier.weight(0.8f), fontSize = 12.sp, color = Color(0xFF526078))
-        Text(value.ifBlank { "Nicht angegeben" }, Modifier.weight(1.5f), fontSize = 12.sp, color = Color(0xFF10182D))
+        if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+            Column(Modifier.weight(1f)) {
+                Text(label, fontSize = 12.sp, color = Color(0xFF526078))
+                Text(value.ifBlank { "Nicht angegeben" }, fontSize = 12.sp, color = Color(0xFF10182D))
+            }
+        } else {
+            Text(label, Modifier.weight(0.8f), fontSize = 12.sp, color = Color(0xFF526078))
+            Text(value.ifBlank { "Nicht angegeben" }, Modifier.weight(1.5f), fontSize = 12.sp, color = Color(0xFF10182D))
+        }
         Icon(Icons.Default.Edit, "${label} bearbeiten", Modifier.size(18.dp), tint = Color(0xFF0066FF))
     }
 }
