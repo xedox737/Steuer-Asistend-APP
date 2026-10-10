@@ -175,7 +175,7 @@ internal fun RenovationReviewScreen(viewModel: ReceiptViewModel, property: Prope
                 } }
                 item { Text("Belege & Nachweise", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
                 items(measureLines, key = { it.relation.receiptInternalId }) { line -> RenovationReceiptLine(line) {
-                    line.receipt?.let { viewModel.openReceiptDetail(it.id, AppScreen.PROPERTIES) }
+                    line.receipt?.let { viewModel.openReceiptDetail(it.id, viewModel.currentScreen.value) }
                 } }
                 if (measureLines.isEmpty()) item { Text("Noch keine Belege zugeordnet.") }
                 items(selected.evidence, key = { it.documentId }) { evidence ->

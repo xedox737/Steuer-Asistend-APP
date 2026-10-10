@@ -72,7 +72,9 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("renovation_measure_save").performClick()
         ui.waitUntil(10_000) { model.renovationReview.value.measures.size == 1 }
-        ui.onNode(hasText("Bad OG links") and hasClickAction()).performScrollTo().performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("renovation_overview").performScrollToNode(hasText("Bad OG links") and hasClickAction())
+        ui.onNode(hasText("Bad OG links") and hasClickAction()).performClick()
         ui.onNodeWithTag("renovation_measure_detail").assertIsDisplayed()
         ui.onNode(hasText("Belege zuordnen") and hasClickAction()).performScrollTo().performClick()
         ui.onNodeWithTag("renovation_pick_receipt_681").performScrollTo().performClick()
@@ -94,7 +96,8 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         capture("phase6b-measure-with-receipt")
         val folder = File(context.cacheDir, "reports")
         val previousReports = folder.listFiles().orEmpty().map { it.name }.toSet()
-        ui.onNode(hasText("Steuerberater-Bericht exportieren") and hasClickAction()).performScrollTo().performClick()
+        ui.onNodeWithTag("renovation_measure_detail").performScrollToNode(hasText("Steuerberater-Bericht exportieren") and hasClickAction())
+        ui.onNode(hasText("Steuerberater-Bericht exportieren") and hasClickAction()).performClick()
         ui.waitUntil(10_000) { folder.listFiles().orEmpty().any { it.name !in previousReports && it.name.startsWith("Sanierungspruefung-") } }
         ui.onNodeWithText("Steuerberater-Bericht erstellt").assertIsDisplayed()
         val pdf = folder.listFiles().orEmpty().single { it.name !in previousReports && it.name.startsWith("Sanierungspruefung-") }
@@ -111,5 +114,17 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         assertEquals(AppScreen.PROPERTIES, model.currentScreen.value)
         assertEquals("Mit Fenster DG prüfen", model.renovationReview.value.measures.single().advisorNote)
         assertEquals("OFFEN", runBlocking(Dispatchers.IO) { db.receiptDao().getReceiptById(681)!!.freigabestatus })
+        // The shared More entry must retain its own route when opening a measure receipt.
+        clickMore("Sanierungs-Monitor")
+        ui.onNode(hasText("MFH Prüfhof") and hasClickAction()).performScrollTo().performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("renovation_overview").performScrollToNode(hasText("Bad OG links") and hasClickAction())
+        ui.onNode(hasText("Bad OG links") and hasClickAction()).performClick()
+        ui.onNodeWithTag("renovation_measure_detail").performScrollToNode(hasText("MW Badhandwerk"))
+        ui.onNode(hasText("MW Badhandwerk") and hasClickAction()).performClick()
+        systemBack()
+        assertEquals(AppScreen.MORE, model.currentScreen.value)
+        ui.onNodeWithTag("renovation_measure_detail").assertIsDisplayed()
+        capture("phase6b-more-measure-receipt-return")
     }
 }

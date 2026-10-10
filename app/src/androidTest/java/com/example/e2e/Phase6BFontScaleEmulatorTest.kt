@@ -20,6 +20,7 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
         completeText("Immobilien. Finanzen. Steuern.")
         completeText("Immobilien")
         completeText("Fehlende Bankbelege", scroll = true)
+        capture("phase6b-dashboard-bankbelege-font-$fontScale")
         completeText("Kontoauszüge importieren", scroll = true)
         capture("phase6b-dashboard-font-$fontScale")
         val property = seedProperty("font-review", "MFH Lindenstraße")
@@ -37,15 +38,18 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
         completeText("Sanierung & 15%-Prüfung", scroll = true)
         capture("phase6b-property-font-$fontScale")
         ui.onNode(hasText("Sanierung & 15%-Prüfung") and hasClickAction()).performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
         completeText("Sanierungs- & 15%-Prüfung", scroll = true)
         completeText("Keine automatische Steuerentscheidung.", scroll = true)
-        ui.onNodeWithTag("renovation_add_measure").performScrollTo().assertIsDisplayed().assertIsEnabled()
+        ui.onNodeWithTag("renovation_overview").performScrollToNode(hasTestTag("renovation_add_measure"))
+        ui.onNodeWithTag("renovation_add_measure").assertIsDisplayed().assertIsEnabled()
         capture("phase6b-renovation-font-$fontScale")
         ui.onNodeWithContentDescription("Zurück").assertIsDisplayed().performClick()
         clickTab(AppScreen.RECEIPTS_LIST)
         ui.onNodeWithTag("receipts_list").performScrollToNode(hasTestTag("receipt_item_682"))
         ui.onNodeWithTag("receipt_item_682").performClick()
         completeText("Handwerkerrechnung", scroll = true)
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("receipt_renovation_card").fetchSemanticsNodes().isNotEmpty() }
         completeText("Sanierungs- & 15%-Prüfung", scroll = true)
         ui.onNodeWithTag("renovation_assign").performScrollTo().assertIsDisplayed().assertIsEnabled()
         capture("phase6b-receipt-font-$fontScale")
@@ -71,7 +75,9 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
             val last = layout.lineCount - 1
             assertFalse("$text: abgeschnitten", layout.multiParagraph.didExceedMaxLines)
             assertEquals("$text: Textende fehlt", text.length, layout.getLineEnd(last, visibleEnd = true))
-            assertTrue("$text: Höhe", layout.getLineBottom(last) <= layout.size.height + 1f)
+            // Android trims line-height padding; lineBottom can include the trimmed descent.
+            // TextLayoutResult's visual overflow flag compares the actual paragraph and box.
+            assertFalse("$text: Höhe", layout.didOverflowHeight)
             (0..last).forEach { line ->
                 assertFalse("$text: Ellipse", layout.isLineEllipsized(line))
                 assertTrue("$text: Breite", layout.getLineLeft(line) >= -1f && layout.getLineRight(line) <= layout.size.width + 1f)
