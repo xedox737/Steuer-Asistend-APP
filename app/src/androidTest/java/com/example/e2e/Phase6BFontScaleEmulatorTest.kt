@@ -77,7 +77,7 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
             assertEquals("$text: Textende fehlt", text.length, layout.getLineEnd(last, visibleEnd = true))
             // Android trims line-height padding; lineBottom can include the trimmed descent.
             // TextLayoutResult's visual overflow flag compares the actual paragraph and box.
-            assertFalse("$text: Höhe", layout.didOverflowHeight)
+            assertFalse("$text: Höhe (Text ${layout.multiParagraph.height}, Box ${layout.size.height})", layout.didOverflowHeight)
             (0..last).forEach { line ->
                 assertFalse("$text: Ellipse", layout.isLineEllipsized(line))
                 assertTrue("$text: Breite", layout.getLineLeft(line) >= -1f && layout.getLineRight(line) <= layout.size.width + 1f)

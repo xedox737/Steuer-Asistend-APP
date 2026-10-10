@@ -283,7 +283,7 @@ fun ReceiptAppUi(viewModel: ReceiptViewModel) {
     Scaffold(
         topBar = {
             TopAppBar(
-                expandedHeight = maxOf(64.dp, 58.dp * LocalDensity.current.fontScale),
+                expandedHeight = 64.dp * LocalDensity.current.fontScale.coerceAtLeast(1f),
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
