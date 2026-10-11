@@ -56,7 +56,7 @@ Keine Room-Schemaänderung, keine Migration und keine Umschreibung bestehender D
 
 ## CI-Stand
 
-Läufe 1204–1206: lintDebug erfolgreich. Lauf 1206: 897 Unit-Tests, nur Kalender-Selektor noch fehlgeschlagen. Material führt volle Datumstexte in Text-Semantics; Selektor anhand des ausgegebenen Baums korrigiert, deutsche Kalender-Configuration ergänzt. Keine Tests deaktiviert. Abschließende Resultate und Emulatornachweise werden im PR dokumentiert. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
+Lauf 1207: lintDebug, testDebugUnitTest (JUnit: 903 Tests, null Fehler/Übersprünge), assembleDebug und assembleDebugAndroidTest erfolgreich. Erster Emulatorlauf: 23 Tests, 17 Fehler; der Gerätescreenshot belegt einen überlagernden Pixel-Launcher-ANR. Launcher wird nur im abgesicherten wegwerfbaren Emulator vor dem Test gestoppt; App-Fehler und Assertions bleiben sichtbar. Zwei neue Test-Selektoren (LazyColumn und nicht scrollbarer Datumsdialog) korrigiert. Der Locale-Lint-Hinweis wird durch mitgelieferte Sprachressourcen im App Bundle behoben, nicht unterdrückt. Abschließende Resultate und visuelle Screenshotprüfung werden im PR dokumentiert. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
 
 ## Abschlusssuche: verbleibende ISO-Muster
 
@@ -103,6 +103,7 @@ app/src/main/java/com/example/ui/UnifiedUnitsFeature.kt:1140:                   
 
 ## Geänderte Dateien
 
+- `app/build.gradle.kts`
 - `app/src/androidTest/java/com/example/e2e/AppDateCalendarEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/AppDateDisplayEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/AppDatePersistenceEmulatorTest.kt`

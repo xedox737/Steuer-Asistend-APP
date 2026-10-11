@@ -36,7 +36,8 @@ class AppDateDisplayEmulatorTest : EmulatorTestSupport() {
         capture("date-afa-display")
 
         openUnits(property.propertyId)
-        ui.onNodeWithText("Testwohnung").performScrollTo().performClick()
+        ui.onNodeWithTag("property_units_overview").performScrollToNode(hasText("Testwohnung"))
+        ui.onNodeWithText("Testwohnung").assertIsDisplayed().performClick()
         ui.onNodeWithText("01.04.2021").performScrollTo().assertIsDisplayed()
         noVisibleIsoDate()
         capture("date-tenancy-display")

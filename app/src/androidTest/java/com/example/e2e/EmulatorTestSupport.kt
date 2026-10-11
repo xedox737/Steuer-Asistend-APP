@@ -60,6 +60,10 @@ class EmulatorEnvironmentRule(private val fontScale: () -> Float) : ExternalReso
         originalFontScale = shell("settings get system font_scale")
         shell("settings put system font_scale ${fontScale()}")
         shell("mkdir -p $DEVICE_ARTIFACTS")
+        // The API-35 Pixel Launcher can leave an ANR system dialog over the app.
+        // Stop only that unrelated launcher on this gated disposable emulator;
+        // app crashes/ANRs and all assertions remain observable.
+        shell("am force-stop com.google.android.apps.nexuslauncher")
     }
 
     override fun after() {
@@ -225,8 +229,10 @@ abstract class EmulatorTestSupport {
         // Close the real IME without using BACK (which is separately asserted).
         Espresso.closeSoftKeyboard()
     }
-    protected fun selectCalendarDate(tag: String, german: String, day: String) {
-        ui.onNodeWithTag(tag).performScrollTo().performTextReplacement(german)
+    protected fun selectCalendarDate(tag: String, german: String, day: String, scroll: Boolean = true) {
+        val field = ui.onNodeWithTag(tag)
+        if (scroll) field.performScrollTo()
+        field.assertIsDisplayed().performTextReplacement(german)
         Espresso.closeSoftKeyboard()
         ui.onNodeWithTag(tag).performClick()
         ui.onNodeWithTag("app_date_picker").assertExists()

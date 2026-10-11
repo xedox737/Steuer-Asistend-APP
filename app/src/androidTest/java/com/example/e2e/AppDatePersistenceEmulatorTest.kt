@@ -45,7 +45,7 @@ class AppDatePersistenceEmulatorTest : EmulatorTestSupport() {
         clickMore("Fahrtenbuch")
         ui.onNodeWithText("Neue Fahrt").performScrollTo().performClick()
         ui.onNode(hasText("Datum") and hasClickAction()).performScrollTo().performClick()
-        selectCalendarDate("logbook_date", "11.10.2026", "11")
+        selectCalendarDate("logbook_date", "11.10.2026", "11", scroll = false)
         ui.onNodeWithText("Übernehmen").performClick()
         ui.onNode(hasText("Zweck der Fahrt") and hasClickAction()).performScrollTo().performClick()
         ui.onNode(hasSetTextAction()).performTextReplacement("Besichtigung Kalenderobjekt")
