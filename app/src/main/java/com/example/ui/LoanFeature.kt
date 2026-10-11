@@ -437,7 +437,7 @@ private fun LoanEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (!dateFields.isValid) return@Button
+                    if (!dateFields.isValid) { validationError = DateFormatUtils.INPUT_ERROR; return@Button }
                     val original = parseLoanNumber(darlehensbetrag)
                     val balance = parseLoanNumber(restschuld)
                     val interest = parseLoanNumber(sollzins)

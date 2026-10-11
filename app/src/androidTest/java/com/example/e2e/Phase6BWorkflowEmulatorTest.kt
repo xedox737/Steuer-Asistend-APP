@@ -72,6 +72,8 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("renovation_measure_name").performScrollTo().performTextReplacement("Bad OG links")
         ui.onNodeWithTag("renovation_measure_note").performScrollTo().performTextReplacement("Mit Fenster DG prüfen")
         Espresso.closeSoftKeyboard()
+        selectCalendarDate("renovation_start", "10.10.2026", "10")
+        selectCalendarDate("renovation_end", "11.10.2026", "11")
         ui.onNodeWithTag("renovation_measure_save").performClick()
         ui.waitUntil(10_000) { model.renovationReview.value.measures.size == 1 }
         ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
@@ -119,6 +121,8 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("Notizen & Aufgaben") and hasClickAction()).assertExists()
         assertEquals(AppScreen.PROPERTIES, model.currentScreen.value)
         assertEquals("Mit Fenster DG prüfen", model.renovationReview.value.measures.single().advisorNote)
+        assertEquals("2026-10-10", model.renovationReview.value.measures.single().startDate)
+        assertEquals("2026-10-11", model.renovationReview.value.measures.single().endDate)
         assertEquals("OFFEN", runBlocking(Dispatchers.IO) { db.receiptDao().getReceiptById(681)!!.freigabestatus })
         // The shared More entry must retain its own route when opening a measure receipt.
         clickMore("Sanierungs-Monitor")

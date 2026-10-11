@@ -58,6 +58,7 @@ fun AppDateField(
     var showPicker by rememberSaveable { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(showPicker) { if (showPicker) keyboard?.hide() }
     LaunchedEffect(value) {
         if (value != observedValue) {
             text = DateFormatUtils.safeFormat(value)
@@ -163,7 +164,7 @@ fun AppDateField(
         ) {
             DatePicker(state, showModeToggle = false,
                 title = { Text(label) },
-                headline = { Text(state.selectedDateMillis?.let { DateFormatUtils.format(DateFormatUtils.fromPickerMillis(it)) } ?: "Datum auswählen") },
+                headline = { Text(state.selectedDateMillis?.let { DateFormatUtils.format(DateFormatUtils.fromPickerMillis(it)) } ?: "Datum auswählen", style = MaterialTheme.typography.titleLarge) },
                 modifier = Modifier.fillMaxWidth().testTag("app_date_picker"))
         }
     }

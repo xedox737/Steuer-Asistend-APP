@@ -3415,7 +3415,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     Button(
                         onClick = {
                             val parsedBetrag = parseReceiptEditAmount(editBruttobetrag)
-                            if (!dateFields.isValid) return@Button
+                            if (!dateFields.isValid) { dateError = true; return@Button }
                             val parsedDate = ReceiptInputValidation.date(editDatum)
                             amountError = parsedBetrag == null
                             dateError = parsedDate == null
@@ -6206,7 +6206,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 Button(
                     onClick = {
                         val amount = ReceiptInputValidation.amount(editBruttobetrag)
-                        if (!dateFields.isValid) return@Button
+                        if (!dateFields.isValid) { receiptDateError = true; return@Button }
                         val date = ReceiptInputValidation.date(editDatum)
                         receiptAmountError = amount == null
                         receiptDateError = date == null

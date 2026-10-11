@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -218,4 +220,18 @@ abstract class EmulatorTestSupport {
         // Close the real IME without using BACK (which is separately asserted).
         Espresso.closeSoftKeyboard()
     }
+    protected fun selectCalendarDate(tag: String, german: String, day: String) {
+        ui.onNodeWithTag(tag).performScrollTo().performTextReplacement(german)
+        Espresso.closeSoftKeyboard()
+        ui.onNodeWithTag(tag).performClick()
+        ui.onNodeWithTag("app_date_picker").assertExists()
+        ui.onNode(SemanticsMatcher("Kalendertag $day") { node ->
+            node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
+                Regex("(^|\\D)$day\\.(\\D|$)").containsMatchIn(it)
+            } == true
+        }, useUnmergedTree = true).performClick()
+        ui.onNodeWithTag("app_date_apply").performClick()
+        ui.onNodeWithTag(tag).assertTextContains(german)
+    }
+
 }

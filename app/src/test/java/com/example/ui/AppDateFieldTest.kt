@@ -3,6 +3,8 @@ package com.example.ui
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.example.util.DateFormatUtils
 import org.junit.Assert.*
@@ -47,12 +49,12 @@ class AppDateFieldTest {
         ui.onNodeWithTag("app_date_cancel").performClick()
         ui.runOnIdle { assertEquals(0, emissions) }
         ui.onNodeWithTag("date_calendar").performClick()
-        ui.onNodeWithText("12", useUnmergedTree = true).performClick()
+        ui.onNode(calendarDay("12"), useUnmergedTree = true).performClick()
         ui.onNodeWithTag("app_date_apply").performClick()
         ui.runOnIdle { assertEquals("2026-10-12", saved); assertEquals(1, emissions) }
         ui.onNodeWithTag("date").assertTextContains("12.10.2026")
     }
-    @Test fun requiredBoundsDisabledAndReadOnly() {
+    @Test fun requiredAndBoundsRejectInvalidValues() {
         var valid = true
         var emissions = 0
         ui.setContent { MaterialTheme {
@@ -65,4 +67,24 @@ class AppDateFieldTest {
         ui.onNodeWithTag("date").performTextReplacement("01.01.2026")
         ui.runOnIdle { assertTrue(valid); assertEquals(1, emissions) }
     }
+    @Test fun disabledAndReadOnlyFieldsKeepTheirCanonicalValues() {
+        ui.setContent { MaterialTheme {
+            androidx.compose.foundation.layout.Column {
+                AppDateField("2026-10-11", { error("Disabled field emitted") }, "Deaktiviert", enabled = false, testTag = "disabled")
+                AppDateField("2026-10-11", { error("Read-only field emitted") }, "Nur lesen", readOnly = true, testTag = "readonly")
+            }
+        } }
+        ui.onNodeWithTag("disabled").assertIsNotEnabled().assertTextContains("11.10.2026")
+        ui.onNodeWithTag("disabled_calendar").assertIsNotEnabled()
+        ui.onNodeWithTag("readonly_calendar").assertIsNotEnabled()
+        ui.onNodeWithTag("readonly").performClick()
+        ui.onNodeWithTag("app_date_picker").assertDoesNotExist()
+    }
+
+}
+
+private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
+    node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
+        Regex("(^|\\D)$day\\.(\\D|$)").containsMatchIn(it)
+    } == true
 }

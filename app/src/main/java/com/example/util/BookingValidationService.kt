@@ -164,7 +164,7 @@ object BookingValidationService {
                         bookingId = record.bookingId,
                         receiptId = record.receiptId,
                         field = "belegdatum",
-                        message = "Ungültiges Belegdatum '${record.belegdatum}' (erwartet: gültiges Kalenderdatum YYYY-MM-DD)"
+                        message = "Ungültiges Belegdatum. Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben."
                     )
                 )
             }

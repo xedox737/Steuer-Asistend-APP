@@ -279,7 +279,7 @@ private fun PropertyTaskBottomSheet(
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Abbrechen") }
                 Button(onClick = {
-                if (!dateFields.isValid) return@Button
+                if (!dateFields.isValid) { error = DateFormatUtils.INPUT_ERROR; return@Button }
                 val dueValid = due.isBlank() || runCatching { LocalDate.parse(due) }.isSuccess
                 if (title.isBlank()) error = "Bitte einen Titel eingeben."
                 else if (!dueValid) error = "Fälligkeitsdatum bitte als TT.MM.JJJJ eingeben."

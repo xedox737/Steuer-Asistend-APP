@@ -456,7 +456,7 @@ private fun TenantChangeDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (!dateFields.isValid) return@Button
+                    if (!dateFields.isValid) { error = DateFormatUtils.INPUT_ERROR; return@Button }
                     val startDate = runCatching { LocalDate.parse(newStart.trim()) }.getOrNull()
                     val endDate = if (current != null) runCatching { LocalDate.parse(oldEnd.trim()) }.getOrNull() else null
                     val c = parseTenantNumber(cold)

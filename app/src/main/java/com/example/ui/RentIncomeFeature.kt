@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -499,7 +501,7 @@ internal fun RentPlanEditDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (!dateFields.isValid) return@Button
+                    if (!dateFields.isValid) { error = DateFormatUtils.INPUT_ERROR; return@Button }
                     error = RentPlanInput.error(kalt, nk, other, dateValue, previousTenancyEnd, mode)
                     if (error != null) return@Button
                     val plan = ValidRentPlan(

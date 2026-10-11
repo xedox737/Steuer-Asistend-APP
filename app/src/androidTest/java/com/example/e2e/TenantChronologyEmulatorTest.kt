@@ -29,8 +29,8 @@ class TenantChronologyEmulatorTest : EmulatorTestSupport() {
         assertEquals("Testmieter Alt", vm.wohneinheitenStatus.value.single().mieter)
         capture("tenant-invalid-chronology")
 
-        changeField("tenant_change_old_end", "31.03.2024")
-        changeField("tenant_change_new_start", "01.04.2024")
+        selectCalendarDate("tenant_change_old_end", "31.03.2024", "31")
+        selectCalendarDate("tenant_change_new_start", "01.04.2024", "1")
         input("Neue Kaltmiete / Monat €*", "760,50")
         input("Neue NK-Vorauszahlung / Monat €", "220,25")
         ui.onNodeWithText("Wechsel speichern").performClick()

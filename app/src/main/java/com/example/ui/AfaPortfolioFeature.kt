@@ -420,7 +420,7 @@ private fun ConfirmedAfaValuesDialog(
         },
         confirmButton = {
             Button(onClick = {
-                if (!dateFields.isValid) return@Button
+                if (!dateFields.isValid) { error = DateFormatUtils.INPUT_ERROR; return@Button }
                 val date = runCatching { LocalDate.parse(cutoff.trim()) }.getOrNull()
                 val cumulated = amount(depreciation)
                 val remaining = amount(bookValue)
