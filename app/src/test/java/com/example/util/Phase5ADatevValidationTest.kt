@@ -17,7 +17,7 @@ class Phase5ADatevValidationTest {
         listOf("2026-02-30", "2025-02-29", "2026-04-31").forEach { date ->
             val report = BookingValidationService.validateRecords(listOf(record(date)), profile)
             assertFalse(date, report.isValidForExport)
-            assertTrue(date, report.errors.any { it.field == "belegdatum" && it.message.contains(date) })
+            assertTrue(date, report.errors.any { it.field == "belegdatum" && it.message.contains("TT.MM.JJJJ") })
         }
         listOf("2024-02-29", "2026-01-31").forEach { date ->
             assertFalse(date, BookingValidationService.validateRecords(listOf(record(date)), profile).errors.any { it.field == "belegdatum" })

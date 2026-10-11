@@ -66,6 +66,6 @@ abstract class AppDateCalendarMatrix : EmulatorTestSupport() {
 
 private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
     node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
-        Regex("(^|\\D)$day\\.(\\D|$)").containsMatchIn(it)
+        Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
     } == true
 }

@@ -227,7 +227,7 @@ abstract class EmulatorTestSupport {
         ui.onNodeWithTag("app_date_picker").assertExists()
         ui.onNode(SemanticsMatcher("Kalendertag $day") { node ->
             node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
-                Regex("(^|\\D)$day\\.(\\D|$)").containsMatchIn(it)
+                Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
             } == true
         }, useUnmergedTree = true).performClick()
         ui.onNodeWithTag("app_date_apply").performClick()

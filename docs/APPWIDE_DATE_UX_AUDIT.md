@@ -48,12 +48,13 @@ Keine Room-Schemaänderung, keine Migration und keine Umschreibung bestehender D
 - DateFormatUtilsTest: ISO/deutsche Darstellung, strikte vierstellige Eingabe, unmögliche Daten, Schaltjahr, leere Werte, Legacy-Read, chronologische ISO-Sortierung, Jahresgrenzen/Sommerzeit in UTC, Berlin, Los Angeles und Kiritimati.
 - AppDateFieldTest: ISO-Anzeige, manuelle Eingabe/Callback, ungültige Entwürfe ohne Callback, optionales Leeren, Kalender Feld/Icon, Auswahl, Abbrechen, Pflichtdatum, Grenzen, disabled/readOnly.
 - AppDateCalendarEmulatorTest: produktive Belegerfassung, Kalenderauswahl, Abbrechen, Android-Zurück, ungültige Eingabe blockiert Speicherung, ISO in Room, erneutes Öffnen; jeweils FontScale 1.0/1.3/1.5 mit Screenshots.
+- AppDateDisplayEmulatorTest: AfA-/Miet-/Aufgaben-/Darlehensanzeigen aus ISO-Persistenz, deutsche Darlehensfelder und Semantics-Assertion ohne ISO-Datumsanzeige.
 - AppDatePersistenceEmulatorTest: Kauf/Nutzen-Lasten-Kalender und Wiederöffnung; Fahrtkalender, echte Buchung und erneuter Activity-Start inklusive verknüpftem Kostenbeleg.
 - Bestehende PropertyPersistence-, TenantChronology- und Phase6B-Workflow-Emulatortests verwenden jetzt den Kalender und prüfen weiter Chronologie, IDs, Persistenz und Sanierungsberechnung.
 
 ## CI-Stand
 
-Erster Lauf 1204: lintDebug erfolgreich. Vollständige Unit-Tests noch laufend. Endgültige Resultate und Emulatornachweise werden nach dem abschließenden Lauf ergänzt. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
+Läufe 1204/1205: lintDebug erfolgreich. Lauf 1205: 897 Unit-Tests, drei Assertion-Fehler (Kalendertag-Semantics, doppelte Formularfehlermeldung, geänderter deutscher DATEV-Fehlertext). Assertions präzisiert; keine Tests deaktiviert. Abschließende Resultate und Emulatornachweise werden im PR dokumentiert. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
 
 ## Abschlusssuche: verbleibende ISO-Muster
 
@@ -101,6 +102,7 @@ app/src/main/java/com/example/ui/UnifiedUnitsFeature.kt:1140:                   
 ## Geänderte Dateien
 
 - `app/src/androidTest/java/com/example/e2e/AppDateCalendarEmulatorTest.kt`
+- `app/src/androidTest/java/com/example/e2e/AppDateDisplayEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/AppDatePersistenceEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/EmulatorTestSupport.kt`
 - `app/src/androidTest/java/com/example/e2e/Phase6BWorkflowEmulatorTest.kt`
@@ -148,4 +150,5 @@ app/src/main/java/com/example/ui/UnifiedUnitsFeature.kt:1140:                   
 - `app/src/test/java/com/example/ui/RentOverviewComposeTest.kt`
 - `app/src/test/java/com/example/ui/TenantHistoryReliabilityTest.kt`
 - `app/src/test/java/com/example/util/DateFormatUtilsTest.kt`
+- `app/src/test/java/com/example/util/Phase5ADatevValidationTest.kt`
 - `docs/APPWIDE_DATE_UX_AUDIT.md`

@@ -367,7 +367,7 @@ internal fun TenantHistoryDialog(
                                     Text("Ausgangs-Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                                     p.rentChanges.sortedBy { it.effectiveDate }.forEach { change ->
                                         Text(
-                                            "Mietänderung ab ${change.effectiveDate}: Kalt ${NumberFormatter.format(change.kaltmiete)} · NK ${NumberFormatter.format(change.nebenkosten)} · Sonst. ${NumberFormatter.format(change.sonstige)}",
+                                            "Mietänderung ab ${DateFormatUtils.safeFormat(change.effectiveDate)}: Kalt ${NumberFormatter.format(change.kaltmiete)} · NK ${NumberFormatter.format(change.nebenkosten)} · Sonst. ${NumberFormatter.format(change.sonstige)}",
                                             fontSize = 9.sp,
                                             lineHeight = 12.sp,
                                             color = AccentBlue

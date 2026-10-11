@@ -171,7 +171,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithTag("rent_plan_cold").performTextReplacement("650,50")
         ui.onNodeWithTag("rent_plan_start").performTextReplacement("30.02.2026")
         ui.onNodeWithTag("rent_plan_save").performClick()
-        ui.onNodeWithText("Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.").assertExists()
+        ui.onNodeWithTag("rent_plan_start").assertTextContains("Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.")
         ui.onNodeWithTag("rent_plan_start").performTextReplacement("01.01.2026")
         ui.onNodeWithTag("rent_plan_utilities").performTextReplacement("175,25")
         ui.onNodeWithTag("rent_plan_save").performClick()

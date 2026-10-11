@@ -554,7 +554,7 @@ private fun PropertyUnits(
                     Text("${unit.name} · ${unit.label}", fontWeight = FontWeight.Bold, color = DarkNavy)
                     Text("Status: ${unit.status}", fontSize = 11.sp, color = if (unit.status == "Vermietet") EmeraldGreen else WarmOrange)
                     Text("Mieter: ${unit.mieter.ifBlank { "–" }}", fontSize = 11.sp)
-                    Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)} · Seit: ${unit.mietvertragsstart.ifBlank { "–" }}", fontSize = 10.sp, color = SlateGray)
+                    Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)} · Seit: ${DateFormatUtils.safeFormat(unit.mietvertragsstart).ifBlank { "–" }}", fontSize = 10.sp, color = SlateGray)
                 }
             }
         }
@@ -642,7 +642,7 @@ private fun UnitDetailScreen(
                 }
                 UnitDetailSection.TENANT -> {
                     item { Text("Aktueller Mieter: ${unit.mieter.ifBlank { "–" }}", fontWeight = FontWeight.Bold) }
-                    item { Text("Mietbeginn: ${unit.mietvertragsstart.ifBlank { "–" }}", color = SlateGray) }
+                    item { Text("Mietbeginn: ${DateFormatUtils.safeFormat(unit.mietvertragsstart).ifBlank { "–" }}", color = SlateGray) }
                     item { Button(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) { Text("Mieterverlauf / Mieterwechsel") } }
                 }
                 UnitDetailSection.RENT -> {
@@ -709,7 +709,7 @@ private fun UnitContextCard(property: PropertyMetadata, unit: WohneinheitStatus,
             Text("Mieter: ${unit.mieter.ifBlank { "–" }}")
             Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)}")
             Text("Wohnfläche: ${unit.wohnflaeche} m²")
-            Text("Mietbeginn: ${unit.mietvertragsstart.ifBlank { "–" }}")
+            Text("Mietbeginn: ${DateFormatUtils.safeFormat(unit.mietvertragsstart).ifBlank { "–" }}")
         }
     }
 }

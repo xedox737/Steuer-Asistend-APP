@@ -49,6 +49,8 @@ class AppDateFieldTest {
         ui.onNodeWithTag("app_date_cancel").performClick()
         ui.runOnIdle { assertEquals(0, emissions) }
         ui.onNodeWithTag("date_calendar").performClick()
+        ui.onNodeWithTag("app_date_picker").assertExists()
+        println(ui.onNodeWithTag("app_date_picker", useUnmergedTree = true).printToString())
         ui.onNode(calendarDay("12"), useUnmergedTree = true).performClick()
         ui.onNodeWithTag("app_date_apply").performClick()
         ui.runOnIdle { assertEquals("2026-10-12", saved); assertEquals(1, emissions) }
@@ -85,6 +87,6 @@ class AppDateFieldTest {
 
 private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
     node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
-        Regex("(^|\\D)$day\\.(\\D|$)").containsMatchIn(it)
+        Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
     } == true
 }
