@@ -292,7 +292,7 @@ object GeminiClient {
         .build()
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = HttpLoggingInterceptor.Level.NONE
     }
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -371,11 +371,6 @@ object GeminiClient {
     // Helper used by the image-only Gemini features below.
     private fun Bitmap.toBase64(): String {
         return toReceiptImage().base64
-    }
-
-    private fun sanitizeErrorBody(body: String?): String {
-        if (body == null) return ""
-        return body.replace(Regex("AIzaSy[A-Za-z0-9_\\-]{33}"), "[REDACTED_KEY]")
     }
 
     /**
@@ -643,8 +638,8 @@ object GeminiClient {
                     DiagnosticLog.e(TAG, "Cleaned Error Message")
                     throw GeminiAnalysisException.GenericError(
                         errorCode = "UNKNOWN",
-                        userMessage = "Unerwarteter Fehler: ${e.localizedMessage}",
-                        cleanedMsg = e.localizedMessage
+                        userMessage = "Die Gemini-Analyse konnte nicht abgeschlossen werden. Bitte erneut versuchen.",
+                        cleanedMsg = "Unbekannter Analysefehler"
                     )
                 }
             }
