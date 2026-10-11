@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import com.example.data.Receipt
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -65,7 +67,7 @@ internal object LedgerPresentation {
         val signed = if (isIncome(receipt)) receipt.bruttobetrag else -receipt.bruttobetrag
         return (if (signed >= 0) "+" else "−") + money(kotlin.math.abs(signed))
     }
-    fun displayDate(receipt: Receipt): String = date(receipt)?.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) ?: receipt.datum
+    fun displayDate(receipt: Receipt): String = DateFormatUtils.safeFormat(receipt.datum)
     fun comparison(current: Double, previous: Double, year: Int): String? {
         if (previous <= 0.0) return null
         val percent = (current - previous) / previous * 100

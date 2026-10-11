@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -84,7 +86,7 @@ internal fun RentPaymentReviewDialog(payments: List<RentReviewPayment>, viewMode
                     }, shape = Ui2.controlShape) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("${payment.kind} · ${NumberFormatter.format(payment.amount)}")
-                            Text("${payment.date} · ${payment.partner.ifBlank { "Zahlungspartner unbekannt" }}")
+                            Text("${DateFormatUtils.safeFormat(payment.date)} · ${payment.partner.ifBlank { "Zahlungspartner unbekannt" }}")
                             if (payment.purpose.isNotBlank()) Text(payment.purpose)
                             Text(listOf(payment.propertyHint, payment.unitHint).filter(String::isNotBlank).joinToString(" · ")
                                 .ifBlank { "Immobilie / Einheit noch unklar" })

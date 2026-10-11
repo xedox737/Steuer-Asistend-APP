@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -45,13 +47,7 @@ internal object GermanNumberInput {
 }
 
 internal object CalendarInput {
-    private val isoPattern = Regex("""\d{4}-\d{2}-\d{2}""")
-
-    fun parseIsoDate(value: String): LocalDate? {
-        val text = value.trim()
-        if (!isoPattern.matches(text)) return null
-        return runCatching { LocalDate.parse(text, DateTimeFormatter.ISO_LOCAL_DATE) }.getOrNull()
-    }
+    fun parseIsoDate(value: String): LocalDate? = com.example.util.DateFormatUtils.parseIso(value)
 
     fun isValidIsoDate(value: String): Boolean = parseIsoDate(value) != null
 }
@@ -82,7 +78,7 @@ internal object PropertyWizardInput {
     const val PURCHASE_PRICE = "Kaufpreis €"
     const val LIVING_AREA = "Wohnfläche m²"
     const val LAND_AREA = "Grundstücksfläche m²"
-    const val PURCHASE_DATE = "Kaufdatum YYYY-MM-DD"
+    const val PURCHASE_DATE = "Kaufdatum"
     const val YEAR_BUILT = "Baujahr"
     const val BUILDING_VALUE = "Gebäudeanteil € (optional)"
     const val LAND_VALUE = "Grund und Boden € (optional)"

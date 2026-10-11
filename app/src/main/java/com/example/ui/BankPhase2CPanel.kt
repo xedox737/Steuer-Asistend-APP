@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.BorderStroke
@@ -177,7 +179,7 @@ private fun LoanAssignmentCard(
             Text(loanName, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text("${assignment.paymentType} • Periode ${assignment.period.ifBlank { "unklar" }} • ${assignment.status}", fontSize = 11.sp, color = SlateGray)
             Text("Zugeordnet ${NumberFormatter.format(assignment.allocatedAmount)}", fontSize = 12.sp, color = DarkNavy)
-            transaction?.let { Text("Bank: ${it.bookingDate} • ${it.counterparty.ifBlank { it.purpose }}", fontSize = 11.sp, color = SlateGray) }
+            transaction?.let { Text("Bank: ${DateFormatUtils.safeFormat(it.bookingDate)} • ${it.counterparty.ifBlank { it.purpose }}", fontSize = 11.sp, color = SlateGray) }
             if (assignment.proposedInterest != null && assignment.proposedPrincipal != null) {
                 Text("Zins/Tilgung – nur Vorschlag", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 if (assignment.interestBasis.isNotBlank()) Text(assignment.interestBasis, fontSize = 10.sp, color = SlateGray)
@@ -222,7 +224,7 @@ private fun RecurringPatternCard(
             Text("${cadenceLabel(pattern.cadence)} • typisch ${NumberFormatter.format(pattern.typicalAmount)} ± ${NumberFormatter.format(pattern.amountTolerance)} • Tag ${pattern.typicalDay}", fontSize = 11.sp, color = SlateGray)
             Text("${pattern.confidence}% Confidence • ${pattern.occurrenceCount} Vorkommen • zuletzt ${pattern.lastOccurrence}", fontSize = 11.sp, color = SlateGray)
             pattern.nextExpectedWindow?.let { window ->
-                Text("Erwartet: ${window.fromDate} bis ${window.toDate} (typisch ${window.expectedDate})", fontSize = 11.sp, color = SlateGray)
+                Text("Erwartet: ${DateFormatUtils.safeFormat(window.fromDate)} bis ${DateFormatUtils.safeFormat(window.toDate)} (typisch ${DateFormatUtils.safeFormat(window.expectedDate)})", fontSize = 11.sp, color = SlateGray)
             }
             if (missing) Text("Erwartete Zahlung noch nicht erkannt", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
             if (duplicateCount > 0) Text("Mögliche doppelte wiederkehrende Zahlung erkannt – Bankbuchung bleibt unverändert.", fontSize = 10.sp, color = SlateGray)

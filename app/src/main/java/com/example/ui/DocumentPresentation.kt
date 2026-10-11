@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.activity.compose.BackHandler
 import android.content.Context
 import android.content.Intent
@@ -135,7 +137,7 @@ internal fun ManagedDocumentCard(
                     Icon(Icons.Default.Home, null, tint = SlateGray, modifier = Modifier.size(15.dp))
                     Text(assignment, fontSize = 10.sp, color = SlateGray, maxLines = 1)
                     Text("·", color = SlateGray)
-                    Text(document.documentDate.ifBlank { "–" }, fontSize = 10.sp, color = SlateGray)
+                    Text(DateFormatUtils.safeFormat(document.documentDate).ifBlank { "–" }, fontSize = 10.sp, color = SlateGray)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -333,7 +335,7 @@ internal fun ManagedDocumentDetailScreen(
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                         MetadataLine("Dokumenttyp", documentTypeLabel(document))
-                        MetadataLine("Datum", document.documentDate.ifBlank { "–" })
+                        MetadataLine("Datum", DateFormatUtils.safeFormat(document.documentDate).ifBlank { "–" })
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                         MetadataLine("Zuordnung", assignment)
@@ -366,7 +368,7 @@ internal fun ManagedDocumentDetailScreen(
                                     Column(Modifier.padding(Ui2.padding)) {
                                         Text(field.first, fontSize = 10.sp, color = SlateGray)
                                         Text(
-                                            field.second,
+                                            DateFormatUtils.displayText(field.second),
                                             fontSize = 12.sp,
                                             color = DarkNavy,
                                             fontWeight = FontWeight.SemiBold,

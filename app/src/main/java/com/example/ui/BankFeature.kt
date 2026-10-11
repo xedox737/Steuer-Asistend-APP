@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1574,8 +1576,5 @@ private fun maskedIban(iban: String): String {
     return compact.take(4) + " •••• •••• " + compact.takeLast(4)
 }
 
-private fun formatDate(value: String): String {
-    val date = runCatching { LocalDate.parse(value) }.getOrNull() ?: return value
-    return date.format(DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMANY))
-}
+private fun formatDate(value: String): String = DateFormatUtils.safeFormat(value)
 

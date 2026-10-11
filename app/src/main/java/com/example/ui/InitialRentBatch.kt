@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -31,7 +33,7 @@ internal object InitialRentInput {
         listOf(row.cold, row.utilities, row.other).any { RentPlanInput.amount(it) == null } ->
             "Kaltmiete, NK und Sonstiges müssen gültige Beträge ab 0 € sein."
         row.status == "Vermietet" && row.tenant.isBlank() -> "Bitte den Mieter eintragen."
-        row.status == "Vermietet" && CalendarInput.parseIsoDate(row.start) == null -> "Bitte einen gültigen Mietbeginn (JJJJ-MM-TT) eingeben."
+        row.status == "Vermietet" && CalendarInput.parseIsoDate(row.start) == null -> "Bitte einen gültigen Mietbeginn (TT.MM.JJJJ) eingeben."
         row.status != "Vermietet" && (row.tenant.isNotBlank() || row.start.isNotBlank() ||
             listOf(row.cold, row.utilities, row.other).any { RentPlanInput.amount(it) != 0.0 }) ->
             "Bei Leerstand / Renovierung bleiben Mieter und Mietbeginn leer; Mietbeträge sind 0 €."
@@ -42,6 +44,7 @@ internal object InitialRentInput {
 @Composable
 internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<WohneinheitStatus>,
     viewModel: ReceiptViewModel, onSaved: () -> Unit, onDismiss: () -> Unit) {
+    val dateFields = rememberDateFieldValidation()
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var rows by remember(property.propertyId) { mutableStateOf(units.map {
@@ -89,11 +92,14 @@ internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<Wohn
                                     }
                                 }
                             }
-                            if (preview) Text("${row.status} · ${row.tenant.ifBlank { "leer" }} · ${row.start.ifBlank { "—" }} · Kalt ${row.cold} € · NK ${row.utilities} € · Sonstiges ${row.other} €")
+                            if (preview) Text("${row.status} · ${row.tenant.ifBlank { "leer" }} · ${DateFormatUtils.safeFormat(row.start).ifBlank { "—" }} · Kalt ${row.cold} € · NK ${row.utilities} € · Sonstiges ${row.other} €")
                             else if (!enabled) Text("Vorhandene Mietdaten: Änderungen über Mietverlauf / Mieterwechsel.", color = SlateGray)
                             else Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 BatchField(row.tenant, "Mieter", "tenant_${row.unitId}", 160, enabled) { change(row.copy(tenant = it)) }
-                                BatchField(row.start, "Mietbeginn", "start_${row.unitId}", 140, enabled) { change(row.copy(start = it)) }
+                                AppDateField(row.start, { change(row.copy(start = it)) }, "Mietbeginn",
+                                    modifier = Modifier.width(210.dp), testTag = "rent_batch_start_${row.unitId}",
+                                    enabled = enabled, required = row.status == "Vermietet",
+                                    onValidityChange = { dateFields.update(row.unitId, it) })
                                 BatchField(row.cold, "Kaltmiete €", "cold_${row.unitId}", 110, enabled, true) { change(row.copy(cold = it)) }
                                 BatchField(row.utilities, "NK €", "utilities_${row.unitId}", 100, enabled, true) { change(row.copy(utilities = it)) }
                                 BatchField(row.other, "Sonstiges €", "other_${row.unitId}", 110, enabled, true) { change(row.copy(other = it)) }
@@ -106,6 +112,7 @@ internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<Wohn
             }
         }, confirmButton = {
             Button(onClick = {
+                if (!dateFields.isValidFor(selected.map { it.unitId })) return@Button
                 errors = selected.mapNotNull { row -> InitialRentInput.error(row)?.let { row.unitId to it } }.toMap()
                 if (selected.isEmpty()) errors = mapOf("save" to "Bitte mindestens eine Zeile markieren.")
                 if (errors.isNotEmpty()) return@Button

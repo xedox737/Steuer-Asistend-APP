@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
@@ -359,7 +361,7 @@ internal fun TenantHistoryDialog(
                                         Text(p.tenantName.ifBlank { "Mieter ohne Namen" }, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = DarkNavy)
                                         Text(TenantChronology.status(p), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (TenantChronology.status(p) == "AKTUELL") EmeraldGreen else SlateGray)
                                     }
-                                    Text("${p.startDate.ifBlank { "Start unbekannt" }} bis ${p.endDate.ifBlank { "unbefristet" }}", fontSize = 10.sp, color = SlateGray)
+                                    Text("${DateFormatUtils.safeFormat(p.startDate).ifBlank { "Start unbekannt" }} bis ${DateFormatUtils.safeFormat(p.endDate).ifBlank { "unbefristet" }}", fontSize = 10.sp, color = SlateGray)
                                     HorizontalDivider(color = BorderColor)
                                     Text("Kalt ${NumberFormatter.format(p.kaltmiete)} · NK ${NumberFormatter.format(p.nebenkosten)} · Sonst. ${NumberFormatter.format(p.sonstige)}", fontSize = 9.sp, color = SlateGray)
                                     Text("Ausgangs-Soll ${NumberFormatter.format(p.monatSoll)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
@@ -423,6 +425,7 @@ private fun TenantChangeDialog(
     onDismiss: () -> Unit,
     onSave: (String, TenantPeriod) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     var oldEnd by remember { mutableStateOf("") }
     var newName by remember { mutableStateOf("") }
     var newStart by remember { mutableStateOf("") }
@@ -440,10 +443,10 @@ private fun TenantChangeDialog(
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 if (current != null) {
                     item { Text("Bisher: ${current.tenantName}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy) }
-                    item { OutlinedTextField(oldEnd, { oldEnd = it; chronologyError = null }, label = { Text("Auszug bisheriger Mieter YYYY-MM-DD*") }, isError = chronologyError?.field == TenantChronology.OLD_END, supportingText = { if (chronologyError?.field == TenantChronology.OLD_END) Text(chronologyError!!.message) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("tenant_change_old_end")) }
+                    item { AppDateField(value = oldEnd, onValueChange = { oldEnd = it; chronologyError = null }, label = "Auszug bisheriger Mieter*", isError = chronologyError?.field == TenantChronology.OLD_END, supportingText = { if (chronologyError?.field == TenantChronology.OLD_END) Text(chronologyError!!.message) }, modifier = Modifier.fillMaxWidth().testTag("tenant_change_old_end"), required = true, onValidityChange = { dateFields.update("oldEnd", it) }) }
                 }
                 item { OutlinedTextField(newName, { newName = it }, label = { Text("Neuer Mieter / Mietpartei*") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("tenant_change_name")) }
-                item { OutlinedTextField(newStart, { newStart = it; chronologyError = null }, label = { Text("Einzug / Mietbeginn YYYY-MM-DD*") }, isError = chronologyError?.field == TenantChronology.NEW_START, supportingText = { if (chronologyError?.field == TenantChronology.NEW_START) Text(chronologyError!!.message) }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("tenant_change_new_start")) }
+                item { AppDateField(value = newStart, onValueChange = { newStart = it; chronologyError = null }, label = "Einzug / Mietbeginn*", isError = chronologyError?.field == TenantChronology.NEW_START, supportingText = { if (chronologyError?.field == TenantChronology.NEW_START) Text(chronologyError!!.message) }, modifier = Modifier.fillMaxWidth().testTag("tenant_change_new_start"), required = true, onValidityChange = { dateFields.update("newStart", it) }) }
                 item { OutlinedTextField(cold, { cold = it }, label = { Text("Neue Kaltmiete / Monat €*") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(nk, { nk = it }, label = { Text("Neue NK-Vorauszahlung / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(other, { other = it }, label = { Text("Sonstige Mietbestandteile / Monat €") }, keyboardOptions = keyboard, singleLine = true, modifier = Modifier.fillMaxWidth()) }
@@ -453,6 +456,7 @@ private fun TenantChangeDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (!dateFields.isValid) return@Button
                     val startDate = runCatching { LocalDate.parse(newStart.trim()) }.getOrNull()
                     val endDate = if (current != null) runCatching { LocalDate.parse(oldEnd.trim()) }.getOrNull() else null
                     val c = parseTenantNumber(cold)

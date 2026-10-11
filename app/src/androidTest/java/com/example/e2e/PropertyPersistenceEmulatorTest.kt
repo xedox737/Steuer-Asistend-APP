@@ -20,7 +20,7 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("add_property_button").performClick()
         input("Objektname", "Testobjekt Persistenz", scroll = false)
         input("Straße und Hausnummer", "Beispielstraße 1", scroll = false)
-        input("Kaufdatum YYYY-MM-DD", "2021-03-15", scroll = false)
+        input("Kaufdatum", "15.03.2021", scroll = false)
         input("Kaufpreis €", "1.050.000,25", scroll = false)
         nextWizardStep("2/5")
         input("Baujahr", "1968", scroll = false)

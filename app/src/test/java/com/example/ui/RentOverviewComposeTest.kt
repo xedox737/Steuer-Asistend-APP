@@ -169,10 +169,10 @@ class RentOverviewComposeTest {
         ui.onNodeWithTag("rent_plan_save").performClick()
         ui.onNodeWithText("Bitte gültige Beträge ab 0 € eingeben (Komma oder Punkt).").assertExists()
         ui.onNodeWithTag("rent_plan_cold").performTextReplacement("650,50")
-        ui.onNodeWithTag("rent_plan_start").performTextReplacement("2026-02-30")
+        ui.onNodeWithTag("rent_plan_start").performTextReplacement("30.02.2026")
         ui.onNodeWithTag("rent_plan_save").performClick()
-        ui.onNodeWithText("Bitte einen gültigen Mietbeginn im Format JJJJ-MM-TT eingeben.").assertExists()
-        ui.onNodeWithTag("rent_plan_start").performTextReplacement("2026-01-01")
+        ui.onNodeWithText("Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.").assertExists()
+        ui.onNodeWithTag("rent_plan_start").performTextReplacement("01.01.2026")
         ui.onNodeWithTag("rent_plan_utilities").performTextReplacement("175,25")
         ui.onNodeWithTag("rent_plan_save").performClick()
         ui.waitUntil(10000) { vm.wohneinheitenStatus.value.first { it.name == "OG links" }.kaltmiete == 650.5 }

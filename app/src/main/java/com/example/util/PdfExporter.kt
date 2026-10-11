@@ -322,13 +322,7 @@ object PdfExporter {
                 activeCanvas().drawRect(MARGIN_LEFT, yPos, PAGE_WIDTH - MARGIN_RIGHT, yPos + 18f, rBg)
                 activeCanvas().drawLine(MARGIN_LEFT, yPos + 18f, PAGE_WIDTH - MARGIN_RIGHT, yPos + 18f, rowBorderPaint)
 
-                val dateFormatted = try {
-                    val inputFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                    val outputFmt = SimpleDateFormat("dd.MM.yyyy", Locale.GERMANY)
-                    inputFmt.parse(r.datum)?.let { outputFmt.format(it) } ?: r.datum
-                } catch (e: Exception) {
-                    r.datum
-                }
+                val dateFormatted = DateFormatUtils.safeFormat(r.datum)
 
                 activeCanvas().drawText(dateFormatted, MARGIN_LEFT + 6f, yPos + 12f, textPaintNormal)
                 val ausstellerStr = textPaintBold.truncate(r.aussteller, 120f)

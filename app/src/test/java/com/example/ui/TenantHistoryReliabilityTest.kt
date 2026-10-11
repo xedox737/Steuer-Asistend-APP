@@ -73,7 +73,7 @@ class TenantHistoryReliabilityTest {
             )
         )
         assertEquals(
-            "Bitte ein gültiges Datum für die Mietänderung im Format JJJJ-MM-TT eingeben.",
+            "Bitte ein gültiges Datum für die Mietänderung im Format TT.MM.JJJJ eingeben.",
             RentPlanInput.error(
                 "850,00", "220,00", "0,00", "2026-02-30", mode = RentPlanEditMode.CHANGE_FROM_DATE
             )

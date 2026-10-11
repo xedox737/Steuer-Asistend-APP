@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import com.example.util.DiagnosticLog
 
 import com.example.data.parseCamtV8
@@ -3263,7 +3265,7 @@ data class AiSearchUiState(
                         var yPos = 80f
                         receipts.forEach { r ->
                             if (yPos <= 800f) {
-                                canvas.drawText("${r.datum} | ${r.aussteller} | ${r.kontoNr} | ${r.bruttobetrag} EUR | ${r.beschreibung}", 40f, yPos, textPaint)
+                                canvas.drawText("${DateFormatUtils.safeFormat(r.datum)} | ${r.aussteller} | ${r.kontoNr} | ${r.bruttobetrag} EUR | ${r.beschreibung}", 40f, yPos, textPaint)
                                 yPos += 16f
                             }
                         }
@@ -3893,7 +3895,7 @@ data class AiSearchUiState(
                     return@launch
                 }
                 if (date.isNotBlank() && CalendarInput.parseIsoDate(date) == null) {
-                    documentReviewMessage(documentId, "Bitte ein gültiges Dokumentdatum im Format JJJJ-MM-TT eingeben.")
+                    documentReviewMessage(documentId, "Bitte ein gültiges Dokumentdatum im Format TT.MM.JJJJ eingeben.")
                     return@launch
                 }
                 val documentProperty = repository.getPropertyByPropertyId(document.propertyId)

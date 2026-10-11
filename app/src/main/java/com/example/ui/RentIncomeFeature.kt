@@ -405,6 +405,7 @@ internal fun RentPlanEditDialog(
     incomeBreakdown: Map<String, Double> = emptyMap(),
     previousTenancyEnd: LocalDate? = null
 ) {
+    val dateFields = rememberDateFieldValidation()
     var mode by remember(unit.unitId, unit.name) { mutableStateOf(RentPlanEditMode.CORRECT_EXISTING) }
     var kalt by remember(unit.unitId, unit.name) { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
     var nk by remember(unit.unitId, unit.name) { mutableStateOf(GermanNumberInput.formatForInput(nebenkostenInitial)) }
@@ -469,23 +470,13 @@ internal fun RentPlanEditDialog(
                     keyboardOptions = keyboard, singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("rent_plan_other")
                 )
-                OutlinedTextField(
-                    value = dateValue,
-                    onValueChange = {
+                AppDateField(value = dateValue, onValueChange = {
                         if (mode == RentPlanEditMode.CORRECT_EXISTING) correctionStart = it else changeDate = it
                         error = null
-                    },
-                    label = {
-                        Text(
-                            if (mode == RentPlanEditMode.CORRECT_EXISTING)
-                                "Mietbeginn JJJJ-MM-TT"
+                    }, label = if (mode == RentPlanEditMode.CORRECT_EXISTING)
+                                "Mietbeginn"
                             else
-                                "Miete gültig ab JJJJ-MM-TT*"
-                        )
-                    },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("rent_plan_start")
-                )
+                                "Miete gültig ab*", modifier = Modifier.fillMaxWidth().testTag("rent_plan_start"), required = mode == RentPlanEditMode.CHANGE_FROM_DATE, onValidityChange = { dateFields.update("dateValue", it) })
                 Text(
                     "Monatliches Soll: ${NumberFormatter.format((RentPlanInput.amount(kalt) ?: 0.0) + (RentPlanInput.amount(nk) ?: 0.0) + (RentPlanInput.amount(other) ?: 0.0))}",
                     fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DarkNavy
@@ -508,6 +499,7 @@ internal fun RentPlanEditDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (!dateFields.isValid) return@Button
                     error = RentPlanInput.error(kalt, nk, other, dateValue, previousTenancyEnd, mode)
                     if (error != null) return@Button
                     val plan = ValidRentPlan(

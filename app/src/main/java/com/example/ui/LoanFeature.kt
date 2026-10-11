@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.BorderStroke
@@ -263,7 +265,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(receipt.aussteller, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                                            Text(receipt.datum, fontSize = 9.sp, color = SlateGray)
+                                            Text(DateFormatUtils.safeFormat(receipt.datum), fontSize = 9.sp, color = SlateGray)
                                         }
                                         Text(NumberFormatter.format(receipt.bruttobetrag), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                                     }
@@ -297,7 +299,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
             text = {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
-                        Text("${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${DateFormatUtils.safeFormat(receipt.datum)} · ${NumberFormatter.format(receipt.bruttobetrag)}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         Text(receipt.aussteller, fontSize = 11.sp, color = SlateGray)
                     }
                     items(loans.filter { it.aktiv }, key = { "assign_${it.id}" }) { loan ->
@@ -373,6 +375,7 @@ private fun LoanEditDialog(
     onDismiss: () -> Unit,
     onSave: (Loan) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     var bezeichnung by remember(initial.id) { mutableStateOf(initial.bezeichnung) }
     var bank by remember(initial.id) { mutableStateOf(initial.bank) }
     var darlehensbetrag by remember(initial.id) { mutableStateOf(initial.darlehensbetrag.takeIf { it != 0.0 }?.toString() ?: "") }
@@ -411,12 +414,12 @@ private fun LoanEditDialog(
                 }
                 item { OutlinedTextField(rate, { rate = it }, label = { Text("Monatliche Rate €") }, keyboardOptions = numericKeyboard, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(startDatum, { startDatum = it }, label = { Text("Start YYYY-MM-DD") }, modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(zinsbindungBis, { zinsbindungBis = it }, label = { Text("Zinsbindung bis") }, modifier = Modifier.weight(1f), singleLine = true)
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AppDateField(value = startDatum, onValueChange = { startDatum = it }, label = "Start", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("startDatum", it) })
+                        AppDateField(value = zinsbindungBis, onValueChange = { zinsbindungBis = it }, label = "Zinsbindung bis", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("zinsbindungBis", it) })
                     }
                 }
-                item { OutlinedTextField(laufzeitBis, { laufzeitBis = it }, label = { Text("Geplantes Laufzeitende") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                item { AppDateField(value = laufzeitBis, onValueChange = { laufzeitBis = it }, label = "Geplantes Laufzeitende", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("laufzeitBis", it) }) }
                 item { OutlinedTextField(vermietungsanteil, { vermietungsanteil = it }, label = { Text("Vermietungsanteil %") }, keyboardOptions = numericKeyboard, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(notiz, { notiz = it }, label = { Text("Notiz") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item {
@@ -434,6 +437,7 @@ private fun LoanEditDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    if (!dateFields.isValid) return@Button
                     val original = parseLoanNumber(darlehensbetrag)
                     val balance = parseLoanNumber(restschuld)
                     val interest = parseLoanNumber(sollzins)

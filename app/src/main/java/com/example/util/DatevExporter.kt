@@ -318,7 +318,7 @@ object DatevExporter {
 
             canvas.drawText("BELEG-DOKUMENT", 40f, 50f, titlePaint)
             canvas.drawText("Aussteller: ${receipt.aussteller}", 40f, 80f, bodyPaint)
-            canvas.drawText("Datum: ${receipt.datum}", 40f, 100f, bodyPaint)
+            canvas.drawText("Datum: ${DateFormatUtils.safeFormat(receipt.datum)}", 40f, 100f, bodyPaint)
             canvas.drawText("Betrag: ${String.format(Locale.GERMANY, "%.2f", receipt.bruttobetrag)} EUR", 40f, 120f, bodyPaint)
             canvas.drawText("Kategorie: ${receipt.hauptkategorie} / ${receipt.unterkategorie}", 40f, 140f, bodyPaint)
             canvas.drawText("Konto-Nr: ${receipt.kontoNr}", 40f, 160f, bodyPaint)

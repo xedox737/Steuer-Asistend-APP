@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.example.util.DiagnosticLog
@@ -1033,7 +1035,7 @@ private fun DashboardActivityRow(receipt: Receipt, onClick: () -> Unit) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() },
                 fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold)
-            Text("${receipt.datum} · ${NumberFormatter.format(receipt.bruttobetrag)}",
+            Text("${DateFormatUtils.safeFormat(receipt.datum)} · ${NumberFormatter.format(receipt.bruttobetrag)}",
                 fontSize = 11.sp, lineHeight = 17.sp, color = SlateGray)
         }
         Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AccentBlue,
@@ -1133,7 +1135,7 @@ internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean,
                 }
                 if (taxPhase1.afaStartDate.isNotBlank()) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Erstes Jahr ab ${taxPhase1.afaStartDate}", fontSize = 11.sp, color = SlateGray)
+                        Text("Erstes Jahr ab ${DateFormatUtils.safeFormat(taxPhase1.afaStartDate)}", fontSize = 11.sp, color = SlateGray)
                         Text(NumberFormatter.format(taxPhase1.firstYearAfa), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = EmeraldGreen)
                     }
                 }
@@ -1185,7 +1187,7 @@ internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean,
                     Text(NumberFormatter.format(taxPhase1.limit15Percent), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                 }
                 Text(
-                    "Zeitraum: ${taxPhase1.monitorStartDate.ifBlank { "nicht festgelegt" }} bis ${taxPhase1.monitorEndDate.ifBlank { "nicht festgelegt" }} • ${taxPhase1.candidateReceiptCount} potenziell relevante Belege" +
+                    "Zeitraum: ${DateFormatUtils.safeFormat(taxPhase1.monitorStartDate).ifBlank { "nicht festgelegt" }} bis ${DateFormatUtils.safeFormat(taxPhase1.monitorEndDate).ifBlank { "nicht festgelegt" }} • ${taxPhase1.candidateReceiptCount} potenziell relevante Belege" +
                         if (taxPhase1.estimatedNetCount > 0) " • ${taxPhase1.estimatedNetCount} Nettobetrag/-beträge geschätzt" else "",
                     fontSize = 10.sp,
                     color = SlateGray,
@@ -1225,7 +1227,7 @@ internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean,
                             taxPhase1.acquisitionCostDetails.forEach { item ->
                                 Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))) {
                                     Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text("${item.displayId} • ${item.datum}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text("${item.displayId} • ${DateFormatUtils.safeFormat(item.datum)}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         Text(item.description, fontSize = 10.sp)
                                         Text("Gesamt: ${NumberFormatter.format(item.grossAmount)} • Gebäudeanteil: ${NumberFormatter.format(item.buildingAllocatedAmount)}", fontSize = 10.sp, color = SlateGray)
                                     }
@@ -1254,7 +1256,7 @@ internal fun PropertyTaxUi2Screen(viewModel: ReceiptViewModel, monitor: Boolean,
                                 ) {
                                     Column(Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("${item.displayId} • ${item.datum}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                            Text("${item.displayId} • ${DateFormatUtils.safeFormat(item.datum)}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                             Text(if (item.included) "EINBEZOGEN" else "AUSGESCHLOSSEN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (item.included) EmeraldGreen else SlateGray)
                                         }
                                         Text(item.description, fontSize = 10.sp)
@@ -1759,7 +1761,7 @@ fun ReceiptThumbnailBox(
                             )
                         }
                         Text(
-                            text = receipt.datum.takeLast(5),
+                            text = DateFormatUtils.safeFormat(receipt.datum),
                             fontSize = 8.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = SlateGray
@@ -1882,7 +1884,7 @@ fun ReceiptGridCard(
 
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = receipt.datum,
+                        text = DateFormatUtils.safeFormat(receipt.datum),
                         fontSize = 9.5.sp,
                         color = SlateGray,
                         fontWeight = FontWeight.Medium
@@ -2550,7 +2552,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = receipt.datum,
+                                            text = DateFormatUtils.safeFormat(receipt.datum),
                                             fontSize = 12.sp,
                                             color = DarkNavy,
                                             modifier = Modifier.width(105.dp)
@@ -2830,7 +2832,7 @@ fun ReceiptRowItem(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(receipt.datum, fontSize = 11.sp, color = Color.Gray)
+                        Text(DateFormatUtils.safeFormat(receipt.datum), fontSize = 11.sp, color = Color.Gray)
                         Text("•", fontSize = 11.sp, color = Color.Gray)
                         Text(receipt.hauptkategorie, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = categoryColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -3168,6 +3170,7 @@ internal fun ReceiptDeleteConfirmationDialog(onDismiss: () -> Unit, onConfirm: (
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, onDone: () -> Unit) {
+    val dateFields = rememberDateFieldValidation()
     // State for all editable fields
     var editAussteller by remember(receipt) { mutableStateOf(receipt.aussteller) }
     var editDatum by remember(receipt) { mutableStateOf(receipt.datum) }
@@ -3207,23 +3210,16 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                         modifier = Modifier.fillMaxWidth().testTag("edit_receipt_aussteller")
                     )
 
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
-                            value = editDatum,
-                            onValueChange = { editDatum = it; dateError = false },
-                            isError = dateError,
-                            supportingText = { if (dateError) Text("Bitte ein gültiges Datum eingeben.") },
-                            label = { Text("Datum (YYYY-MM-DD)") },
-                            modifier = Modifier.weight(1.1f).testTag("edit_receipt_datum")
-                        )
+                        AppDateField(value = editDatum, onValueChange = { editDatum = it; dateError = false }, isError = dateError, supportingText = { if (dateError) Text("Bitte ein gültiges Datum eingeben.") }, label = "Datum", modifier = Modifier.fillMaxWidth().testTag("edit_receipt_datum"), required = true, onValidityChange = { dateFields.update("editDatum", it) })
                         OutlinedTextField(
                             value = editUhrzeit,
                             onValueChange = { editUhrzeit = it },
                             label = { Text("Uhrzeit") },
-                            modifier = Modifier.weight(0.9f).testTag("edit_receipt_uhrzeit")
+                            modifier = Modifier.fillMaxWidth().testTag("edit_receipt_uhrzeit")
                         )
                     }
 
@@ -3419,6 +3415,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     Button(
                         onClick = {
                             val parsedBetrag = parseReceiptEditAmount(editBruttobetrag)
+                            if (!dateFields.isValid) return@Button
                             val parsedDate = ReceiptInputValidation.date(editDatum)
                             amountError = parsedBetrag == null
                             dateError = parsedDate == null
@@ -3489,7 +3486,7 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
                         }
                         DetailRow(label = "Zugeordnete Wohneinheit", value = if (receipt.wohneinheit.isNotEmpty()) receipt.wohneinheit else "Gesamtobjekt / Allgemein")
                         HorizontalDivider()
-                        DetailRow(label = "Datum & Uhrzeit", value = "${receipt.datum} ${if (receipt.uhrzeit.isNotEmpty()) receipt.uhrzeit + " Uhr" else ""}")
+                        DetailRow(label = "Datum & Uhrzeit", value = "${DateFormatUtils.safeFormat(receipt.datum)} ${if (receipt.uhrzeit.isNotEmpty()) receipt.uhrzeit + " Uhr" else ""}")
                         HorizontalDivider()
                         DetailRow(label = "Bruttobetrag", value = NumberFormatter.format(receipt.bruttobetrag), highlight = true)
                         HorizontalDivider()
@@ -3581,7 +3578,7 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
 
                             if (receipt.syncStatus == "SYNCED" && !receipt.lastSyncedAt.isNullOrBlank()) {
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text("Letzter Sync: ${receipt.lastSyncedAt}", fontSize = 10.sp, color = SlateGray)
+                                Text("Letzter Sync: ${DateFormatUtils.displayText(receipt.lastSyncedAt.orEmpty())}", fontSize = 10.sp, color = SlateGray)
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
@@ -3923,11 +3920,11 @@ fun TimelineSection(metadata: PropertyMetadata, receipts: List<Receipt>) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Kauf", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    Text(metadata.notariellesKaufdatum, fontSize = 12.sp)
+                    Text(DateFormatUtils.safeFormat(metadata.notariellesKaufdatum), fontSize = 12.sp)
                 }
                 Column {
                     Text("Nutzen/Lasten", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    Text(metadata.uebergangNutzenLasten, fontSize = 12.sp)
+                    Text(DateFormatUtils.safeFormat(metadata.uebergangNutzenLasten), fontSize = 12.sp)
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -4537,7 +4534,7 @@ fun ReceiptPreviewSection(receipt: Receipt, viewModel: ReceiptViewModel) {
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
-                            "Datum: ${receipt.datum} ${receipt.uhrzeit}",
+                            "Datum: ${DateFormatUtils.safeFormat(receipt.datum)} ${receipt.uhrzeit}",
                             fontSize = 9.sp,
                             color = Color.Gray,
                             textAlign = TextAlign.Center,
@@ -5000,6 +4997,7 @@ fun AiAnalysisLoadingContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddReceiptScreen(viewModel: ReceiptViewModel) {
+    val dateFields = rememberDateFieldValidation()
     val scanState by viewModel.scanState.collectAsStateWithLifecycle()
     val pendingBankTransactionId by viewModel.pendingBankTransactionId.collectAsStateWithLifecycle()
     val aiProviderState by viewModel.aiProviderState.collectAsStateWithLifecycle()
@@ -6007,24 +6005,13 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 )
             )
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = editDatum,
-                    onValueChange = { editDatum = it; receiptDateError = false },
-                    isError = receiptDateError,
-                    supportingText = { if (receiptDateError) Text("Bitte ein gültiges Datum eingeben.") },
-                    label = { Text("Datum (JJJJ-MM-TT)") },
-                    modifier = Modifier.weight(1f).testTag("edit_datum"),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    )
-                )
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AppDateField(value = editDatum, onValueChange = { editDatum = it; receiptDateError = false }, isError = receiptDateError, supportingText = { if (receiptDateError) Text("Bitte ein gültiges Datum eingeben.") }, label = "Datum", modifier = Modifier.fillMaxWidth().testTag("edit_datum"), required = true, onValidityChange = { dateFields.update("editDatum", it) })
                 OutlinedTextField(
                     value = editUhrzeit,
                     onValueChange = { editUhrzeit = it },
                     label = { Text("Uhrzeit (HH:MM)") },
-                    modifier = Modifier.weight(1f).testTag("edit_uhrzeit"),
+                    modifier = Modifier.fillMaxWidth().testTag("edit_uhrzeit"),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = Color.White,
                         unfocusedContainerColor = Color.White
@@ -6219,6 +6206,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                 Button(
                     onClick = {
                         val amount = ReceiptInputValidation.amount(editBruttobetrag)
+                        if (!dateFields.isValid) return@Button
                         val date = ReceiptInputValidation.date(editDatum)
                         receiptAmountError = amount == null
                         receiptDateError = date == null
@@ -8913,6 +8901,7 @@ fun PropertyMetadataFormDialog(
     property: PropertyMetadata? = null,
     onDismiss: () -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     val currentMetadata by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val metadata = property ?: currentMetadata ?: PropertyMetadata()
 
@@ -9130,33 +9119,13 @@ fun PropertyMetadataFormDialog(
                     )
                 )
 
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = editNotariellesKaufdatum,
-                        onValueChange = { editNotariellesKaufdatum = it },
-                        label = { Text("Notar. Kaufdatum") },
-                        placeholder = { Text("YYYY-MM-DD") },
-                        modifier = Modifier.weight(1f).testTag("edit_property_notarielles_kaufdatum"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
-                    )
+                    AppDateField(value = editNotariellesKaufdatum, onValueChange = { editNotariellesKaufdatum = it }, label = "Notar. Kaufdatum", modifier = Modifier.fillMaxWidth().testTag("edit_property_notarielles_kaufdatum"), required = false, onValidityChange = { dateFields.update("editNotariellesKaufdatum", it) })
 
-                    OutlinedTextField(
-                        value = editUebergangNutzenLasten,
-                        onValueChange = { editUebergangNutzenLasten = it },
-                        label = { Text("Übergang Nutzen/Lasten") },
-                        placeholder = { Text("YYYY-MM-DD") },
-                        modifier = Modifier.weight(1.2f).testTag("edit_property_uebergang"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        )
-                    )
+                    AppDateField(value = editUebergangNutzenLasten, onValueChange = { editUebergangNutzenLasten = it }, label = "Übergang Nutzen/Lasten", modifier = Modifier.fillMaxWidth().testTag("edit_property_uebergang"), required = false, onValidityChange = { dateFields.update("editUebergangNutzenLasten", it) })
                 }
 
                 Row(
@@ -9266,6 +9235,7 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                     val finalGesamtKaufpreis = nonNegativeOrExisting(editGesamtKaufpreis, metadata.gesamtKaufpreis)
                     val finalGebaeudewert = nonNegativeOrExisting(editGebaeudewert, metadata.gebaeudewert)
                     val finalGrundUndBodenWert = nonNegativeOrExisting(editGrundUndBodenWert, metadata.grundUndBodenWert)
+                    if (!dateFields.isValid) return@Button
                     val purchaseDateValid = editNotariellesKaufdatum.isBlank() || CalendarInput.isValidIsoDate(editNotariellesKaufdatum)
                     val transferDateValid = editUebergangNutzenLasten.isBlank() || CalendarInput.isValidIsoDate(editUebergangNutzenLasten)
 
@@ -9275,7 +9245,7 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                         finalBaujahr == null -> "Bitte ein plausibles Baujahr (1000 bis ${java.time.LocalDate.now().year + 1}) eingeben oder das Feld leer lassen."
                         finalWohnflaeche == null || finalGrundstuecksgroesse == null -> "Bitte gültige, nicht negative Flächen eingeben."
                         finalGesamtKaufpreis == null || finalGebaeudewert == null || finalGrundUndBodenWert == null -> "Bitte gültige Beträge eingeben."
-                        !purchaseDateValid || !transferDateValid -> "Bitte ein gültiges Datum im Format JJJJ-MM-TT eingeben."
+                        !purchaseDateValid || !transferDateValid -> "Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben."
                         else -> null
                     }
                     if (metadataInputError != null) return@Button
@@ -9947,7 +9917,7 @@ fun KiPowerCenterDialog(
                                                             horizontalArrangement = Arrangement.SpaceBetween,
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
-                                                            Text("${item.date} • ${item.counterparty}", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = DarkNavy)
+                                                            Text("${DateFormatUtils.safeFormat(item.date)} • ${item.counterparty}", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = DarkNavy)
                                                             Surface(
                                                                 color = when (item.status) {
                                                                     "MATCHED" -> EmeraldGreen.copy(alpha = 0.15f)
@@ -10338,7 +10308,7 @@ fun KiPowerCenterDialog(
                                     ) {
                                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                             Text("${contract.contractType} (${contract.parties})", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = DarkNavy)
-                                            Text("Beginn: ${contract.startDate} • Kündigungsfrist: ${contract.noticePeriod}", fontSize = 11.sp, color = SlateGray)
+                                            Text("Beginn: ${DateFormatUtils.safeFormat(contract.startDate)} • Kündigungsfrist: ${contract.noticePeriod}", fontSize = 11.sp, color = SlateGray)
                                             Text("Mietanpassung: ${contract.rentAdjustmentClause}", fontSize = 11.sp, color = DarkNavy)
                                             Text("Kaution: ${contract.depositTerms}", fontSize = 11.sp, color = SlateGray)
 
@@ -10677,6 +10647,7 @@ fun TenantItem(
     unit: WohneinheitStatus,
     onUpdate: (WohneinheitStatus) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     var mieter by remember { mutableStateOf(unit.mieter) }
     var start by remember { mutableStateOf(unit.mietvertragsstart) }
     var kaltmiete by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
@@ -10688,14 +10659,14 @@ fun TenantItem(
             Text(text = unit.label, style = MaterialTheme.typography.titleMedium)
             if (isEditing) {
                 OutlinedTextField(value = mieter, onValueChange = { mieter = it }, label = { Text("Mieter") })
-                OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Mietvertragsstart") })
+                AppDateField(start, { start = it }, "Mietvertragsstart", onValidityChange = { dateFields.update("start", it) })
                 OutlinedTextField(value = kaltmiete, onValueChange = { kaltmiete = it; tenantInputError = null }, label = { Text("Kaltmiete") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 tenantInputError?.let { Text(it, color = CrimsonRed, fontSize = 10.sp) }
                 Button(onClick = {
                     val amount = GermanNumberInput.parseNonNegative(kaltmiete)
                     tenantInputError = when {
                         amount == null -> "Bitte einen gültigen Mietbetrag eingeben."
-                        start.isNotBlank() && !CalendarInput.isValidIsoDate(start) -> "Bitte ein gültiges Datum eingeben."
+                        !dateFields.isValid || (start.isNotBlank() && !CalendarInput.isValidIsoDate(start)) -> "Bitte ein gültiges Datum eingeben."
                         else -> null
                     }
                     if (tenantInputError != null) return@Button
@@ -10706,7 +10677,7 @@ fun TenantItem(
                 }
             } else {
                 Text("Mieter: $mieter")
-                Text("Mietvertragsstart: $start")
+                Text("Mietvertragsstart: ${DateFormatUtils.safeFormat(start)}")
                 Text("Kaltmiete: $kaltmiete")
                 TextButton(onClick = { isEditing = true }) {
                     Text("Bearbeiten")
@@ -11259,7 +11230,7 @@ fun DatevExportScreen(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.SpaceBetween
                                                 ) {
-                                                    Text("${rec.belegdatum} | ${rec.belegfeld1}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                    Text("${DateFormatUtils.safeFormat(rec.belegdatum)} | ${rec.belegfeld1}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                                     Text(
                                                         "${String.format(Locale.GERMANY, "%.2f", rec.bruttobetrag)} EUR (${rec.sollHaben})",
                                                         fontWeight = FontWeight.Bold,
@@ -12151,7 +12122,7 @@ fun DocumentStatusOverviewDialog(
                                 )
                             }
                             Text(
-                                "Datum: ${receipt.datum} | ${receipt.bruttobetrag} € | ${receipt.hauptkategorie}",
+                                "Datum: ${DateFormatUtils.safeFormat(receipt.datum)} | ${receipt.bruttobetrag} € | ${receipt.hauptkategorie}",
                                 fontSize = 10.5.sp,
                                 color = SlateGray
                             )
@@ -12367,7 +12338,7 @@ fun OriginalReceiptAuditDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
-                                    "Datum: ${item.datum}",
+                                    "Datum: ${DateFormatUtils.safeFormat(item.datum)}",
                                     fontSize = 10.5.sp,
                                     color = SlateGray
                                 )
@@ -13021,7 +12992,7 @@ fun RecycleBinDialog(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
-                                                text = "Belegdatum: ${receipt.datum} • Betrag: ${NumberFormatter.format(receipt.bruttobetrag)}",
+                                                text = "Belegdatum: ${DateFormatUtils.safeFormat(receipt.datum)} • Betrag: ${NumberFormatter.format(receipt.bruttobetrag)}",
                                                 fontSize = 11.sp,
                                                 color = SlateGray
                                             )

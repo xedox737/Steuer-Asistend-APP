@@ -31,7 +31,7 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("WE 01") and hasAnyAncestor(isPopup())).performClick()
         capture("phase6b-global-object-a-unit-01")
         ui.onNodeWithTag("edit_aussteller").performScrollTo().performTextReplacement("MW Globalhandwerk")
-        ui.onNodeWithTag("edit_datum").performScrollTo().performTextReplacement("2026-10-10")
+        ui.onNodeWithTag("edit_datum").performScrollTo().performTextReplacement("10.10.2026")
         ui.onNodeWithTag("edit_betrag").performScrollTo().performTextReplacement("119,00")
         Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("save_extracted_receipt_button").performScrollTo().assertIsEnabled().performClick()

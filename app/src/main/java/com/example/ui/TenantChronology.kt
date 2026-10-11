@@ -10,11 +10,11 @@ internal object TenantChronology {
 
     fun changeError(periods: List<TenantPeriod>, currentId: Long?, oldEnd: String, newStart: String): TenantChronologyError? {
         val start = CalendarInput.parseIsoDate(newStart)
-            ?: return TenantChronologyError(NEW_START, "Bitte einen gültigen Mietbeginn im Format JJJJ-MM-TT eingeben.")
+            ?: return TenantChronologyError(NEW_START, "Bitte einen gültigen Mietbeginn im Format TT.MM.JJJJ eingeben.")
         val current = periods.firstOrNull { it.id == currentId }
         if (current != null) {
             val end = CalendarInput.parseIsoDate(oldEnd)
-                ?: return TenantChronologyError(OLD_END, "Bitte ein gültiges Vertragsende im Format JJJJ-MM-TT eingeben.")
+                ?: return TenantChronologyError(OLD_END, "Bitte ein gültiges Vertragsende im Format TT.MM.JJJJ eingeben.")
             val oldStart = if (current.startDate.isBlank()) LocalDate.MIN else CalendarInput.parseIsoDate(current.startDate)
                 ?: return TenantChronologyError(OLD_END, "Bitte zuerst den bisherigen Mietbeginn korrigieren.")
             if (end.isBefore(oldStart)) return TenantChronologyError(OLD_END, "Das Vertragsende darf nicht vor dem Mietbeginn liegen.")

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -192,7 +194,7 @@ internal fun PropertyTasksScreen(propertyId: String, units: List<WohneinheitStat
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(task.title, fontWeight = FontWeight.Bold, color = if (task.done) SlateGray else DarkNavy)
-                        Text(task.category + if (task.dueDate.isNotBlank()) " · fällig ${task.dueDate}" else "", fontSize = 10.sp, color = if (task.overdue) CrimsonRed else SlateGray)
+                        Text(task.category + if (task.dueDate.isNotBlank()) " · fällig ${DateFormatUtils.safeFormat(task.dueDate)}" else "", fontSize = 10.sp, color = if (task.overdue) CrimsonRed else SlateGray)
                         if (task.overdue) Text("ÜBERFÄLLIG", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = CrimsonRed)
                         if (task.note.isNotBlank()) Text(task.note, fontSize = 10.sp, color = SlateGray)
                         if (task.unitId.isNotBlank()) {
@@ -234,6 +236,7 @@ private fun PropertyTaskBottomSheet(
     onDismiss: () -> Unit,
     onSave: (PropertyTask) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     var title by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var due by remember { mutableStateOf("") }
@@ -254,14 +257,7 @@ private fun PropertyTaskBottomSheet(
                 item { OutlinedTextField(title, { title = it }, label = { Text("Titel") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(note, { note = it }, label = { Text("Notiz (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3) }
                 item {
-                    OutlinedTextField(
-                        due,
-                        { due = it },
-                        label = { Text("Fällig am (YYYY-MM-DD)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Default.CalendarMonth, null, tint = SlateGray) }
-                    )
+                    AppDateField(value = due, onValueChange = { due = it }, label = "Fällig am", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("due", it) })
                 }
                 item {
                     Text("Kategorie", fontSize = 12.sp, color = SlateGray)
@@ -283,9 +279,10 @@ private fun PropertyTaskBottomSheet(
             Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("Abbrechen") }
                 Button(onClick = {
+                if (!dateFields.isValid) return@Button
                 val dueValid = due.isBlank() || runCatching { LocalDate.parse(due) }.isSuccess
                 if (title.isBlank()) error = "Bitte einen Titel eingeben."
-                else if (!dueValid) error = "Fälligkeitsdatum bitte als YYYY-MM-DD eingeben."
+                else if (!dueValid) error = "Fälligkeitsdatum bitte als TT.MM.JJJJ eingeben."
                 else {
                     val now = java.time.Instant.now().toString()
                     onSave(
