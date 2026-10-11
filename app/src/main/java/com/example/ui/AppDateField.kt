@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
@@ -137,6 +138,9 @@ fun AppDateField(
         // Material uses the resource configuration as well as DatePickerState.locale.
         // Keep this override local to the calendar and preserve the device font scale.
         val context = LocalContext.current
+        // Give Material's weighted month layout a finite, uncompressed measurement.
+        // The enclosing scroll viewport remains constrained by DatePickerDialog.
+        val calendarHeight = (560 + 120 * (LocalConfiguration.current.fontScale - 1f).coerceAtLeast(0f)).dp
         val configuration = LocalConfiguration.current
         val calendarContext = remember(context, configuration) {
             context.createConfigurationContext(Configuration(configuration).apply { setLocale(Locale.GERMANY) })
@@ -191,7 +195,7 @@ fun AppDateField(
                         modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) },
                     // Material's dialog has a fixed maximum height. Let the complete calendar
                     // scroll at large font scales instead of squeezing its fixed-height rows.
-                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("app_date_picker"))
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).requiredHeight(calendarHeight).testTag("app_date_picker"))
             }
         }
     }

@@ -43,7 +43,7 @@ Die monatliche Mietfälligkeitsregel „z. B. 3. Werktag“, Steuerjahre, YearMo
 
 Keine Room-Schemaänderung, keine Migration und keine Umschreibung bestehender Daten. Backup/Restore inklusive MERGE, Originaldateien und Bankimport bleiben unverändert. Gemini-Prompts, JSON-Verträge und Fehlerklassifizierung unverändert. Sortierung, Jahresfilter, Mietchronologie, AfA und 15%-Prüfung verwenden weiter dieselben ISO-/LocalDate-Werte. Kalenderkonvertierung erfolgt ausschließlich in UTC und LocalDate, nicht in der Gerätezeitzone.
 
-Der Kalenderinhalt ist im Material-Dialog scrollbar: dessen feste Maximalhöhe darf bei Großschrift die festen Tageszeilen nicht zusammenquetschen. Dialogaktionen bleiben sichtbar; der unterste Kalendertag wird bei allen drei Schriftgrößen zusätzlich geprüft.
+Der Kalenderinhalt ist im Material-Dialog scrollbar: dessen feste Maximalhöhe darf bei Großschrift die festen Tageszeilen nicht zusammenquetschen. Der Material-Inhalt wird endlich und ausreichend hoch gemessen; nur der äußere sichtbare Bereich scrollt. Dialogaktionen bleiben sichtbar; der unterste Kalendertag wird bei allen drei Schriftgrößen zusätzlich geprüft.
 
 ## Neue Tests
 
@@ -58,7 +58,7 @@ Der Kalenderinhalt ist im Material-Dialog scrollbar: dessen feste Maximalhöhe d
 
 ## CI-Stand
 
-Lauf 1208: lintDebug ohne Fehler/Locale-Hinweis, testDebugUnitTest (JUnit: 903 Tests, null Fehler/Übersprünge), assembleDebug und assembleDebugAndroidTest erfolgreich. Emulator: 21/23 erfolgreich, darunter Belegkalender bei FontScale 1.0/1.3/1.5, Mietchronologie und Sanierung. Zwei Testfehler korrigiert: Kalender-Textsemantik statt altem ContentDescription-Selektor sowie Öffnen des Fahrtenbuchs vor dem Warten auf dessen WhileSubscribed-Flow nach Neustart. Screenshots zeigten komprimierte Material-Kalenderzeilen bei 1.5; der Inhalt scrollt jetzt, ergänzt durch eine Assertion auf den untersten Tag. Die manuelle Umschaltung wird zusätzlich mit Fokus-Assertion geprüft. Abschließende Resultate und visuelle Screenshotprüfung werden im PR dokumentiert.
+Lauf 1210: lintDebug ohne Fehler/Locale-Hinweis, testDebugUnitTest (JUnit: 903 Tests, null Fehler/Übersprünge), assembleDebug und assembleDebugAndroidTest erfolgreich. Emulator: 22/23 erfolgreich, einschließlich Immobilienanlage und Fahrtenbuch nach Neustart. Ein verbleibender Fehler betrifft den untersten Kalendertag bei FontScale 1.5. Der Material-Inhalt erhält jetzt eine ausreichend hohe endliche Messung innerhalb des scrollbaren Dialogbereichs; die Prüfung verwendet die reale vertikale Wischgeste statt des verschachtelten horizontalen Pager-Semantik-Scrolls. Die manuelle Umschaltung mit Fokus-Assertion besteht bereits. Abschließende Resultate und visuelle Screenshotprüfung werden im PR dokumentiert.
 
 Ein im ersten Lauf belegter Pixel-Launcher-ANR wird nur im abgesicherten wegwerfbaren Emulator durch Stoppen dieses fremden Launchers vermieden; App-Fehler und Assertions bleiben sichtbar. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
 

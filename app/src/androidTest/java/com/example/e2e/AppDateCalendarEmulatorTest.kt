@@ -26,7 +26,11 @@ abstract class AppDateCalendarMatrix : EmulatorTestSupport() {
         Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("edit_datum").performClick()
         ui.onNodeWithTag("app_date_picker").assertIsDisplayed()
-        ui.onNode(calendarDay("31"), useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        // Scroll the real calendar viewport; its nested horizontal month pager is not
+        // the vertical ancestor targeted by Semantics performScrollTo().
+        ui.onNodeWithTag("app_date_picker").performTouchInput { swipeUp() }
+        ui.onNode(calendarDay("31"), useUnmergedTree = true).assertIsDisplayed()
+        ui.onNodeWithTag("app_date_picker").performTouchInput { swipeDown() }
         ui.onNode(calendarDay("11"), useUnmergedTree = true).performScrollTo().performClick()
         capture("date-calendar-font-$fontScale")
         ui.onNodeWithTag("app_date_apply").performClick()
