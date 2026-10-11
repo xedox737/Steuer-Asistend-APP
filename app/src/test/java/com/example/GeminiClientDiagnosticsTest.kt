@@ -19,7 +19,7 @@ class GeminiClientDiagnosticsTest {
         val exception = GeminiAnalysisException.KeyInvalid("Invalid Key details")
         assertEquals("AUTH", exception.category)
         assertEquals("KEY_INVALID", exception.errorCode)
-        assertEquals("Die Gemini-Anmeldung oder API-Berechtigung ist ungültig.", exception.userMessage)
+        assertEquals("Der Gemini API-Key ist ungültig oder wurde nicht akzeptiert. Bitte den API-Key in den Einstellungen prüfen.", exception.userMessage)
         assertEquals(401, exception.httpStatus)
         assertEquals("Invalid Key details", exception.cleanedMessage)
     }
