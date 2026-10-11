@@ -135,6 +135,27 @@ private fun refund(id: String, property: String, amount: Double, date: String = 
 
 @RunWith(AndroidJUnit4::class)
 class Phase7AIncomeEmulatorTest : EmulatorTestSupport() {
+    @Test fun originalPropertyRetainsExistingLegacyLoanOwnershipRule() {
+        val a = seedProperty("p7-original", "Ursprüngliches Objekt")
+        val b = seedProperty("p7-second", "Zweites Objekt")
+        assertEquals(1, a.id)
+        val legacy = Loan(id = 703, bezeichnung = "Bestandsdarlehen", restschuld = 10000.0,
+            propertyId = StableDocumentIdentity.LEGACY_PROPERTY_ID)
+        runBlocking(Dispatchers.IO) { db.loanDao().upsertLoan(legacy) }
+        clickTab(AppScreen.PROPERTIES)
+        ui.onNodeWithTag("property_card_${a.propertyId}").performScrollTo().performClick()
+        ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
+        ui.onNodeWithTag("loan_management_card").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText("Bestandsdarlehen").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithText("Bestandsdarlehen").performScrollTo().assertIsDisplayed()
+        systemBack(); systemBack(); systemBack()
+        ui.onNodeWithTag("property_card_${b.propertyId}").performScrollTo().performClick()
+        ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
+        ui.onNodeWithTag("loan_management_card").performClick()
+        ui.onNodeWithText("Keine Darlehen vorhanden.").assertIsDisplayed()
+        ui.onNodeWithText("Bestandsdarlehen").assertDoesNotExist()
+        assertEquals(legacy, runBlocking(Dispatchers.IO) { db.loanDao().getAllLoans().single() })
+    }
     @Test fun bankConfirmationWithoutReceiptOrSplitFlowsIntoSameFilteredListAndMetrics() {
         val a = seedProperty("p7-a", "MFH Lindenstraße")
         val b = seedProperty("p7-b", "MFH Bergstraße")

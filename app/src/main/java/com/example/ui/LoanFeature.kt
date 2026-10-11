@@ -85,8 +85,13 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
     val allLoans by database.loanDao().getAllLoansFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     val allReceipts by database.receiptDao().getAllReceipts().collectAsStateWithLifecycle(initialValue = emptyList())
     val selectedProperty by viewModel.propertyMetadata.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
     val selectedPropertyId = propertyId ?: selectedProperty?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-    val loans = if (propertyScoped || propertyId != null) allLoans.filter { it.propertyId == selectedPropertyId } else allLoans
+    val scopedProperty = properties.firstOrNull { it.propertyId == selectedPropertyId }
+    val loans = if (propertyScoped || propertyId != null) {
+        scopedProperty?.let { ImmobilienManagerProjection.loans(it, allLoans) }
+            ?: allLoans.filter { it.propertyId == selectedPropertyId }
+    } else allLoans
     val receipts = if (propertyScoped || propertyId != null) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts
     val assignmentPrefs = remember(context) { context.getSharedPreferences("loan_interest_assignments", 0) }
 
