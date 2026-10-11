@@ -39,14 +39,14 @@ sealed class GeminiAnalysisException(
     class KeyInvalid(cleanedMsg: String? = null) : GeminiAnalysisException(
         category = "AUTH",
         errorCode = "KEY_INVALID",
-        userMessage = "Die Gemini-Anmeldung oder API-Berechtigung ist ungültig.",
+        userMessage = "Der Gemini API-Key ist ungültig oder wurde nicht akzeptiert. Bitte den API-Key in den Einstellungen prüfen.",
         httpStatus = 401,
         cleanedMessage = cleanedMsg
     )
     class PermissionDenied(cleanedMsg: String? = null) : GeminiAnalysisException(
         category = "AUTH",
         errorCode = "PERMISSION_DENIED",
-        userMessage = "Die Gemini-Anmeldung oder API-Berechtigung ist ungültig.",
+        userMessage = "Der Gemini API-Key hat keine Berechtigung für diese Anfrage. Bitte API-Key und Gemini-Zugriff prüfen.",
         httpStatus = 403,
         cleanedMessage = cleanedMsg
     )
@@ -616,40 +616,14 @@ object GeminiClient {
                         ?: e.response()?.headers()?.get("x-goog-request-id") 
                         ?: "unknown"
                     val errorBody = e.response()?.errorBody()?.string() ?: ""
-                    val cleanedError = sanitizeErrorBody(errorBody)
+                    val cleanedError = GeminiHttpErrorClassifier.sanitizeErrorBody(errorBody, apiKey)
 
                     DiagnosticLog.e(TAG, "HTTP Status")
                     DiagnosticLog.e(TAG, "Request ID")
                     DiagnosticLog.e(TAG, "Error Code: HTTP_")
                     DiagnosticLog.e(TAG, "Cleaned Error Message")
 
-                    when (httpStatus) {
-                        401 -> {
-                            DiagnosticLog.e(TAG, "Error Category: AUTH")
-                            throw GeminiAnalysisException.KeyInvalid(cleanedError)
-                        }
-                        403 -> {
-                            DiagnosticLog.e(TAG, "Error Category: AUTH")
-                            throw GeminiAnalysisException.PermissionDenied(cleanedError)
-                        }
-                        429 -> {
-                            DiagnosticLog.e(TAG, "Error Category: QUOTA")
-                            throw GeminiAnalysisException.QuotaExceeded(cleanedError)
-                        }
-                        400 -> {
-                            DiagnosticLog.e(TAG, "Error Category: LIMIT")
-                            throw GeminiAnalysisException.RequestTooLarge(cleanedError)
-                        }
-                        else -> {
-                            DiagnosticLog.e(TAG, "Error Category: SERVER")
-                            throw GeminiAnalysisException.GenericError(
-                                errorCode = "HTTP_$httpStatus",
-                                userMessage = "Ein unerwarteter Serverfehler ist aufgetreten (HTTP $httpStatus).",
-                                httpStatus = httpStatus,
-                                cleanedMsg = cleanedError
-                            )
-                        }
-                    }
+                    throw GeminiHttpErrorClassifier.classify(httpStatus, errorBody, apiKey)
                 }
                 is java.net.SocketTimeoutException -> {
                     DiagnosticLog.e(TAG, "Error Category: TIMEOUT")
