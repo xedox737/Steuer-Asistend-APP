@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -77,25 +78,25 @@ private fun actualDeductibleInterest(receipts: List<Receipt>, loansById: Map<Int
     }
 
 @Composable
-fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean = false) {
+fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean = false, propertyId: String? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val database = remember(context) { AppDatabase.getDatabase(context.applicationContext, scope) }
     val allLoans by database.loanDao().getAllLoansFlow().collectAsStateWithLifecycle(initialValue = emptyList())
     val allReceipts by database.receiptDao().getAllReceipts().collectAsStateWithLifecycle(initialValue = emptyList())
     val selectedProperty by viewModel.propertyMetadata.collectAsStateWithLifecycle()
-    val selectedPropertyId = selectedProperty?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-    val loans = if (propertyScoped && selectedProperty != null) ImmobilienManagerProjection.loans(selectedProperty!!, allLoans) else allLoans
-    val receipts = if (propertyScoped) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts
+    val selectedPropertyId = propertyId ?: selectedProperty?.propertyId ?: com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+    val loans = if (propertyScoped || propertyId != null) allLoans.filter { it.propertyId == selectedPropertyId } else allLoans
+    val receipts = if (propertyScoped || propertyId != null) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts
     val assignmentPrefs = remember(context) { context.getSharedPreferences("loan_interest_assignments", 0) }
 
-    var showManager by remember { mutableStateOf(false) }
-    var editingLoan by remember { mutableStateOf<Loan?>(null) }
-    var showNewLoan by remember { mutableStateOf(false) }
-    var pendingDelete by remember { mutableStateOf<Loan?>(null) }
-    var receiptToAssign by remember { mutableStateOf<Receipt?>(null) }
-    var taxYear by remember { mutableIntStateOf(LocalDate.now().year) }
-    var assignmentVersion by remember { mutableIntStateOf(0) }
+    var showManager by remember(selectedPropertyId) { mutableStateOf(false) }
+    var editingLoan by remember(selectedPropertyId) { mutableStateOf<Loan?>(null) }
+    var showNewLoan by remember(selectedPropertyId) { mutableStateOf(false) }
+    var pendingDelete by remember(selectedPropertyId) { mutableStateOf<Loan?>(null) }
+    var receiptToAssign by remember(selectedPropertyId) { mutableStateOf<Receipt?>(null) }
+    var taxYear by remember(selectedPropertyId) { mutableIntStateOf(LocalDate.now().year) }
+    var assignmentVersion by remember(selectedPropertyId) { mutableIntStateOf(0) }
 
     val assignments = remember(loans, receipts, assignmentVersion) {
         receipts.associateNotNull { receipt ->
@@ -135,7 +136,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
                     Text("Darlehen & Schuldzinsen", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                     Text("${activeLoans.size} aktive Darlehen · Steuerjahr $taxYear", fontSize = 11.sp, color = SlateGray)
                 }
@@ -378,15 +379,15 @@ private fun LoanEditDialog(
     val dateFields = rememberDateFieldValidation()
     var bezeichnung by remember(initial.id) { mutableStateOf(initial.bezeichnung) }
     var bank by remember(initial.id) { mutableStateOf(initial.bank) }
-    var darlehensbetrag by remember(initial.id) { mutableStateOf(initial.darlehensbetrag.takeIf { it != 0.0 }?.toString() ?: "") }
-    var restschuld by remember(initial.id) { mutableStateOf(initial.restschuld.takeIf { it != 0.0 }?.toString() ?: "") }
-    var sollzins by remember(initial.id) { mutableStateOf(initial.sollzinsProzent.takeIf { it != 0.0 }?.toString() ?: "") }
-    var tilgung by remember(initial.id) { mutableStateOf(initial.tilgungProzent.takeIf { it != 0.0 }?.toString() ?: "") }
-    var rate by remember(initial.id) { mutableStateOf(initial.monatlicheRate.takeIf { it != 0.0 }?.toString() ?: "") }
+    var darlehensbetrag by remember(initial.id) { mutableStateOf(initial.darlehensbetrag.takeIf { it != 0.0 }?.let { GermanNumberInput.formatForInput(it, maxOf(2, it.toBigDecimal().scale())) } ?: "") }
+    var restschuld by remember(initial.id) { mutableStateOf(initial.restschuld.takeIf { it != 0.0 }?.let { GermanNumberInput.formatForInput(it, maxOf(2, it.toBigDecimal().scale())) } ?: "") }
+    var sollzins by remember(initial.id) { mutableStateOf(initial.sollzinsProzent.takeIf { it != 0.0 }?.let { GermanNumberInput.formatForInput(it, maxOf(2, it.toBigDecimal().scale())) } ?: "") }
+    var tilgung by remember(initial.id) { mutableStateOf(initial.tilgungProzent.takeIf { it != 0.0 }?.let { GermanNumberInput.formatForInput(it, maxOf(2, it.toBigDecimal().scale())) } ?: "") }
+    var rate by remember(initial.id) { mutableStateOf(initial.monatlicheRate.takeIf { it != 0.0 }?.let { GermanNumberInput.formatForInput(it, maxOf(2, it.toBigDecimal().scale())) } ?: "") }
     var startDatum by remember(initial.id) { mutableStateOf(initial.startDatum) }
     var zinsbindungBis by remember(initial.id) { mutableStateOf(initial.zinsbindungBis) }
     var laufzeitBis by remember(initial.id) { mutableStateOf(initial.laufzeitBis) }
-    var vermietungsanteil by remember(initial.id) { mutableStateOf(initial.vermietungsanteilProzent.toString()) }
+    var vermietungsanteil by remember(initial.id) { mutableStateOf(GermanNumberInput.formatForInput(initial.vermietungsanteilProzent, maxOf(2, initial.vermietungsanteilProzent.toBigDecimal().scale()))) }
     var notiz by remember(initial.id) { mutableStateOf(initial.notiz) }
     var aktiv by remember(initial.id) { mutableStateOf(initial.aktiv) }
     var validationError by remember(initial.id) { mutableStateOf<String?>(null) }
@@ -395,7 +396,12 @@ private fun LoanEditDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück") }
+                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            }
+        },
         text = {
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 540.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 item { OutlinedTextField(bezeichnung, { bezeichnung = it }, label = { Text("Bezeichnung*") }, modifier = Modifier.fillMaxWidth().testTag("loan_name"), singleLine = true) }
