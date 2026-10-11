@@ -32,6 +32,7 @@ class AppDateFieldTest {
         ui.runOnIdle { assertEquals("2026-12-12", saved); assertTrue(valid) }
         ui.onNodeWithTag("date").performTextReplacement("31.02.2026")
         ui.onNodeWithText(DateFormatUtils.INPUT_ERROR).assertExists()
+        ui.onNodeWithTag("date").assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, DateFormatUtils.INPUT_ERROR))
         ui.runOnIdle { assertEquals("2026-12-12", saved); assertFalse(valid) }
         ui.onNodeWithTag("date").performTextReplacement("2026-10-11")
         ui.runOnIdle { assertEquals("2026-12-12", saved); assertFalse(valid) }
@@ -50,7 +51,7 @@ class AppDateFieldTest {
         ui.runOnIdle { assertEquals(0, emissions) }
         ui.onNodeWithTag("date_calendar").performClick()
         ui.onNodeWithTag("app_date_picker").assertExists()
-        println(ui.onNodeWithTag("app_date_picker", useUnmergedTree = true).printToString())
+        ui.onAllNodesWithText("Oktober 2026", substring = true, useUnmergedTree = true).onFirst().assertExists()
         ui.onNode(calendarDay("12"), useUnmergedTree = true).performClick()
         ui.onNodeWithTag("app_date_apply").performClick()
         ui.runOnIdle { assertEquals("2026-10-12", saved); assertEquals(1, emissions) }
@@ -86,7 +87,8 @@ class AppDateFieldTest {
 }
 
 private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
-    node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
+    (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).any {
         Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
-    } == true
+    } && node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
 }

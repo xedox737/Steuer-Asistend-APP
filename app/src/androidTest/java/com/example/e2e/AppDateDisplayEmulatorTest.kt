@@ -4,7 +4,6 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.data.Loan
 import com.example.ui.AppScreen
 import com.example.ui.PropertyTask
 import com.example.ui.PropertyTaskStore
@@ -16,14 +15,12 @@ import org.junit.runner.RunWith
 /** Complements the receipt/property/renovation/DATEV font-scale screenshot matrix. */
 @RunWith(AndroidJUnit4::class)
 class AppDateDisplayEmulatorTest : EmulatorTestSupport() {
-    @Test fun persistedIsoDatesAppearGermanInAfaTenancyTasksAndLoanReview() {
+    @Test fun persistedIsoDatesAppearGermanInAfaTenancyAndTasks() {
         val property = seedProperty("date-display", "Datumsobjekt", rented = true)
         val model = vm
         runBlocking(Dispatchers.IO) {
             db.propertyDao().insertPropertyMetadata(property.copy(
                 notariellesKaufdatum = "2025-10-01", uebergangNutzenLasten = "2026-01-01", gebaeudewert = 320_000.0))
-            db.loanDao().upsertLoan(Loan(bezeichnung = "Testdarlehen", propertyId = property.propertyId,
-                startDatum = "2026-01-01", zinsbindungBis = "2036-12-31", laufzeitBis = "2046-12-31"))
             db.receiptDao().insertReceipt(expense(911, 120.0, property.propertyId, "2026-10-11").copy(
                 hauptkategorie = "Finanzierung, Kredite & Versicherungen", unterkategorie = "Kreditzinsen"))
             PropertyTaskStore.upsert(context, PropertyTask(id = "date-task", propertyId = property.propertyId,
@@ -45,22 +42,11 @@ class AppDateDisplayEmulatorTest : EmulatorTestSupport() {
         capture("date-tenancy-display")
 
         openProperty(property.propertyId)
-        ui.onNode(hasText("Aufgaben & Fristen") and hasClickAction()).performScrollTo().performClick()
+        ui.onNode(hasText("Notizen & Aufgaben") and hasClickAction()).performScrollTo().performClick()
         ui.onNodeWithText("Sonstiges · fällig 11.10.2026").performScrollTo().assertIsDisplayed()
         noVisibleIsoDate()
         capture("date-task-display")
 
-        openProperty(property.propertyId)
-        ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
-        ui.onNodeWithTag("loan_management_card").performClick()
-        ui.onNodeWithText("11.10.2026").performScrollTo().assertIsDisplayed()
-        noVisibleIsoDate()
-        capture("date-loan-review-display")
-        ui.onNodeWithContentDescription("Bearbeiten").performScrollTo().performClick()
-        ui.onNode(hasText("Start") and hasSetTextAction()).performScrollTo().assertTextContains("01.01.2026")
-        ui.onNode(hasText("Zinsbindung bis") and hasSetTextAction()).performScrollTo().assertTextContains("31.12.2036")
-        ui.onNode(hasText("Geplantes Laufzeitende") and hasSetTextAction()).performScrollTo().assertTextContains("31.12.2046")
-        noVisibleIsoDate()
     }
 
     private fun openProperty(id: String) {

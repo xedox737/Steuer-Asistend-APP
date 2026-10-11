@@ -1,5 +1,6 @@
 package com.example.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -17,7 +18,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.error as dateErrorSemantics
 import androidx.compose.ui.text.input.KeyboardType
 import com.example.util.DateFormatUtils
 import java.time.LocalDate
@@ -81,6 +86,9 @@ fun AppDateField(
     val currentCallback by rememberUpdatedState(onValueChange)
     val currentValidityCallback by rememberUpdatedState(onValidityChange)
     val fieldModifier = modifier.focusRequester(focus).then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+        .semantics {
+            if (isError || (!valid && (touched || text.isNotBlank()))) dateErrorSemantics(error ?: DateFormatUtils.INPUT_ERROR)
+        }
         .pointerInput(enabled, readOnly) {
             awaitEachGesture {
                 awaitFirstDown(pass = PointerEventPass.Initial)
@@ -122,6 +130,13 @@ fun AppDateField(
         modifier = fieldModifier
     )
     if (showPicker && enabled && !readOnly) {
+        // Material uses the resource configuration as well as DatePickerState.locale.
+        // Keep this override local to the calendar and preserve the device font scale.
+        val context = LocalContext.current
+        val configuration = LocalConfiguration.current
+        val calendarContext = remember(context, configuration) {
+            context.createConfigurationContext(Configuration(configuration).apply { setLocale(Locale.GERMANY) })
+        }
         val selected = parsed?.takeIf(::allowed)
         val initial = selected ?: initialDate?.takeIf(::allowed)
         val shown = initial ?: LocalDate.now().let { today ->
@@ -162,10 +177,13 @@ fun AppDateField(
                     modifier = Modifier.testTag("app_date_manual")) { Text("Manuell eingeben") }
             } }
         ) {
+            CompositionLocalProvider(LocalContext provides calendarContext,
+                LocalConfiguration provides calendarContext.resources.configuration) {
             DatePicker(state, showModeToggle = false,
                 title = { Text(label) },
                 headline = { Text(state.selectedDateMillis?.let { DateFormatUtils.format(DateFormatUtils.fromPickerMillis(it)) } ?: "Datum auswählen", style = MaterialTheme.typography.titleLarge) },
                 modifier = Modifier.fillMaxWidth().testTag("app_date_picker"))
+            }
         }
     }
 }

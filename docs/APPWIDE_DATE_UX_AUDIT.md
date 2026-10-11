@@ -19,7 +19,7 @@ Die App verwendete ISO-Daten direkt in Textfeldern und mehreren Listen, daneben 
 
 `util/DateFormatUtils.kt`: konstante strikte Formatter; parseIso, parseGerman, safeParse (ISO/deutsches Legacy), safeFormat, formatIsoToGerman, parseGermanToIso, displayText sowie UTC-DatePicker-Konvertierung.
 
-`ui/AppDateField.kt`: Material-Kalender mit deutscher Locale, freier manueller Eingabe, TT.MM.JJJJ-Placeholder, Icon „Datum auswählen“, required/optional, enabled/readOnly, Grenzen, initialDate, TestTags. Ungültige Entwürfe bleiben lokal, werden als Fehler dargestellt und nicht als ISO an den Aufrufer ausgegeben. DateFieldValidation blockiert zusätzlich Speichern mit einem veralteten gültigen Modellwert. Abbrechen/Zurück übernehmen keine Kalenderänderung.
+`ui/AppDateField.kt`: Material-Kalender mit deutscher Locale (State und auf den Kalender begrenzte Resource-Configuration), freier manueller Eingabe, TT.MM.JJJJ-Placeholder, Icon „Datum auswählen“, required/optional, enabled/readOnly, Grenzen, initialDate, TestTags. Sichtbare Fehler und Accessibility-Fehler sind deutsch. Ungültige Entwürfe bleiben lokal, werden als Fehler dargestellt und nicht als ISO an den Aufrufer ausgegeben. DateFieldValidation blockiert zusätzlich Speichern mit einem veralteten gültigen Modellwert. Abbrechen/Zurück übernehmen keine Kalenderänderung.
 
 ## Migrierte Bereiche
 
@@ -45,16 +45,18 @@ Keine Room-Schemaänderung, keine Migration und keine Umschreibung bestehender D
 
 ## Neue Tests
 
-- DateFormatUtilsTest: ISO/deutsche Darstellung, strikte vierstellige Eingabe, unmögliche Daten, Schaltjahr, leere Werte, Legacy-Read, chronologische ISO-Sortierung, Jahresgrenzen/Sommerzeit in UTC, Berlin, Los Angeles und Kiritimati.
+- DateFormatUtilsTest: ISO/deutsche Darstellung, strikte vierstellige Eingabe, unmögliche Daten, Schaltjahr, leere Werte, Legacy-Read, chronologische ISO-Sortierung, explizites Material-UTC-Encoding/-Decoding, Jahresgrenzen/Sommerzeit in UTC, Berlin, Los Angeles und Kiritimati.
 - AppDateFieldTest: ISO-Anzeige, manuelle Eingabe/Callback, ungültige Entwürfe ohne Callback, optionales Leeren, Kalender Feld/Icon, Auswahl, Abbrechen, Pflichtdatum, Grenzen, disabled/readOnly.
 - AppDateCalendarEmulatorTest: produktive Belegerfassung, Kalenderauswahl, Abbrechen, Android-Zurück, ungültige Eingabe blockiert Speicherung, ISO in Room, erneutes Öffnen; jeweils FontScale 1.0/1.3/1.5 mit Screenshots.
-- AppDateDisplayEmulatorTest: AfA-/Miet-/Aufgaben-/Darlehensanzeigen aus ISO-Persistenz, deutsche Darlehensfelder und Semantics-Assertion ohne ISO-Datumsanzeige.
+- AppDateDisplayEmulatorTest: AfA-/Miet-/Aufgabenanzeigen aus ISO-Persistenz und Semantics-Assertion ohne ISO-Datumsanzeige.
+- LoanDateComponentEmulatorTest: unveränderte produktive Darlehens-Komponente mit echter Room-Persistenz, deutsche Anzeige, Kalender und Wiederöffnung. Komponentenintegration, kein Navigation-E2E: FINANCE ist schon auf main nicht im aktuellen Objektmenü verlinkt. Navigation bleibt unverändert.
 - AppDatePersistenceEmulatorTest: Kauf/Nutzen-Lasten-Kalender und Wiederöffnung; Fahrtkalender, echte Buchung und erneuter Activity-Start inklusive verknüpftem Kostenbeleg.
+- RestoreMergeDataIntegrityTest: ISO im Backup, identische Daten nach zweimaligem MERGE und deutsche Anzeige nach Restore.
 - Bestehende PropertyPersistence-, TenantChronology- und Phase6B-Workflow-Emulatortests verwenden jetzt den Kalender und prüfen weiter Chronologie, IDs, Persistenz und Sanierungsberechnung.
 
 ## CI-Stand
 
-Läufe 1204/1205: lintDebug erfolgreich. Lauf 1205: 897 Unit-Tests, drei Assertion-Fehler (Kalendertag-Semantics, doppelte Formularfehlermeldung, geänderter deutscher DATEV-Fehlertext). Assertions präzisiert; keine Tests deaktiviert. Abschließende Resultate und Emulatornachweise werden im PR dokumentiert. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
+Läufe 1204–1206: lintDebug erfolgreich. Lauf 1206: 897 Unit-Tests, nur Kalender-Selektor noch fehlgeschlagen. Material führt volle Datumstexte in Text-Semantics; Selektor anhand des ausgegebenen Baums korrigiert, deutsche Kalender-Configuration ergänzt. Keine Tests deaktiviert. Abschließende Resultate und Emulatornachweise werden im PR dokumentiert. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
 
 ## Abschlusssuche: verbleibende ISO-Muster
 
@@ -105,6 +107,7 @@ app/src/main/java/com/example/ui/UnifiedUnitsFeature.kt:1140:                   
 - `app/src/androidTest/java/com/example/e2e/AppDateDisplayEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/AppDatePersistenceEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/EmulatorTestSupport.kt`
+- `app/src/androidTest/java/com/example/e2e/LoanDateComponentEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/Phase6BWorkflowEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/PropertyPersistenceEmulatorTest.kt`
 - `app/src/androidTest/java/com/example/e2e/TenantChronologyEmulatorTest.kt`
@@ -148,6 +151,7 @@ app/src/main/java/com/example/ui/UnifiedUnitsFeature.kt:1140:                   
 - `app/src/test/java/com/example/ui/AppDateFieldTest.kt`
 - `app/src/test/java/com/example/ui/Phase5BComposeWorkflowTest.kt`
 - `app/src/test/java/com/example/ui/RentOverviewComposeTest.kt`
+- `app/src/test/java/com/example/ui/RestoreMergeDataIntegrityTest.kt`
 - `app/src/test/java/com/example/ui/TenantHistoryReliabilityTest.kt`
 - `app/src/test/java/com/example/util/DateFormatUtilsTest.kt`
 - `app/src/test/java/com/example/util/Phase5ADatevValidationTest.kt`

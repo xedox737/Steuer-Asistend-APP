@@ -9,6 +9,7 @@ import com.example.data.ManagedDocument
 import com.example.data.RestoreMode
 import com.example.data.StableDocumentIdentity
 import com.example.data.SupplementalDriveBackup
+import com.example.util.DateFormatUtils
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -46,6 +47,24 @@ class RestoreMergeDataIntegrityTest {
     private fun clearPrefs() {
         listOf("tenant_history_prefs", "property_tasks_prefs").forEach {
             context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun isoCalendarDateSurvivesBackupAndRepeatedMergeWithGermanDisplay() = runTest {
+        val task = PropertyTask(id = "date-restore", propertyId = "date-property", title = "Frist",
+            dueDate = "2026-10-11", createdAt = "2026-10-01T12:00:00Z", updatedAt = "2026-10-01T12:00:00Z")
+        PropertyTaskStore.upsert(context, task)
+        val payload = SupplementalDriveBackup.createPayload(context, database)
+        assertTrue(payload.toString().contains("2026-10-11"))
+        assertFalse(payload.toString().contains("11.10.2026"))
+        clearPrefs()
+        repeat(2) {
+            SupplementalDriveBackup.restorePayload(context, database, payload, restoreMode = RestoreMode.MERGE)
+            val restored = PropertyTaskStore.load(context, task.propertyId).single()
+            assertEquals(task, restored)
+            assertEquals("2026-10-11", restored.dueDate)
+            assertEquals("11.10.2026", DateFormatUtils.safeFormat(restored.dueDate))
         }
     }
 

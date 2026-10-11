@@ -65,7 +65,8 @@ abstract class AppDateCalendarMatrix : EmulatorTestSupport() {
 @RunWith(AndroidJUnit4::class) class AppDateCalendarFont150Test : AppDateCalendarMatrix() { override val fontScale = 1.5f }
 
 private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
-    node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
+    (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).any {
         Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
-    } == true
+    } && node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
 }

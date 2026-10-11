@@ -125,6 +125,11 @@ abstract class EmulatorTestSupport {
         saveBitmap(name, target.captureToImage().asAndroidBitmap())
     }
 
+    protected fun capture(name: String, target: SemanticsNodeInteraction) {
+        ui.waitForIdle()
+        saveBitmap(name, target.captureToImage().asAndroidBitmap())
+    }
+
     private fun saveBitmap(name: String, bitmap: Bitmap) {
         val file = File(requireNotNull(context.getExternalFilesDir(null)), "$name.png")
         try { file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) } }
@@ -226,9 +231,10 @@ abstract class EmulatorTestSupport {
         ui.onNodeWithTag(tag).performClick()
         ui.onNodeWithTag("app_date_picker").assertExists()
         ui.onNode(SemanticsMatcher("Kalendertag $day") { node ->
-            node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
+            (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).any {
                 Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
-            } == true
+            } && node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
         }, useUnmergedTree = true).performClick()
         ui.onNodeWithTag("app_date_apply").performClick()
         ui.onNodeWithTag(tag).assertTextContains(german)

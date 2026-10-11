@@ -3,6 +3,7 @@ package com.example.util
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.LocalDate
+import java.time.Instant
 import java.util.TimeZone
 
 class DateFormatUtilsTest {
@@ -28,6 +29,9 @@ class DateFormatUtilsTest {
                 TimeZone.setDefault(TimeZone.getTimeZone(zone))
                 listOf("2026-01-01", "2026-12-31", "2026-03-29", "2026-10-25").forEach { iso ->
                     val date = LocalDate.parse(iso)
+                    val midnightUtc = Instant.parse("${iso}T00:00:00Z").toEpochMilli()
+                    assertEquals("$zone $iso: UTC encoding", midnightUtc, DateFormatUtils.toPickerMillis(date))
+                    assertEquals("$zone $iso: Material UTC selection", iso, DateFormatUtils.fromPickerMillis(midnightUtc).toString())
                     assertEquals("$zone $iso", date, DateFormatUtils.fromPickerMillis(DateFormatUtils.toPickerMillis(date)))
                 }
             }
