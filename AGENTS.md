@@ -29,3 +29,11 @@ Navigation/Backstack, Room/Migrationen, ViewModels/StateFlow/Coroutines, Google 
 ## Fertig-Kriterium
 
 Eine Änderung ist erst fertig, wenn relevante Tests, `lintDebug`, `assembleDebug` und `git diff --check` erfolgreich sind oder ein konkreter externer Prüfgrund dokumentiert ist. Keine Tests deaktivieren oder Fehler verstecken.
+
+## Vorbereitung für eine spätere kommerzielle Webversion
+
+Die verbindliche Zielarchitektur und die bewusst **noch nicht** freigegebenen Cloud-/Web-Etappen stehen in
+[`docs/COMMERCIAL_WEB_READINESS_ARCHITECTURE.md`](docs/COMMERCIAL_WEB_READINESS_ARCHITECTURE.md).
+Bei neuen fachlichen Funktionen stabile IDs und Objekt-/Einheitenscope nutzen, fachliche Regeln
+von Compose trennen und Datenmodelle für spätere versionierte API-Verträge nachvollziehbar halten.
+**Jetzt keine Cloud-Synchronisation, Web-App, Mandantenmigration oder Abofunktion ohne eigenen Auftrag bauen.**
