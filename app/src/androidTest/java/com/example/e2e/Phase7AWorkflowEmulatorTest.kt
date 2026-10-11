@@ -36,6 +36,10 @@ abstract class Phase7ALoanMatrix : EmulatorTestSupport() {
         action.performClick()
         ui.onNodeWithTag("loan_management_card").assertIsDisplayed()
         capture("p7-financing-font-$fontScale")
+        // A divergent global selection must never change the financing of the opened object.
+        val model = vm
+        ui.runOnIdle { model.selectProperty(b.propertyId) }
+        ui.waitUntil(10_000) { model.propertyMetadata.value?.propertyId == b.propertyId }
         openLoan("Linden-Darlehen")
         ui.onNodeWithText("Berg-Darlehen").assertDoesNotExist()
         editLoan()

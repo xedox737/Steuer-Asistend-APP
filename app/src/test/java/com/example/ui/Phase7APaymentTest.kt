@@ -81,7 +81,8 @@ class Phase7APaymentTest {
     }
     @Test fun depositSplitAndDirectDepositStayExcluded() {
         assertIncome(0.0, rows(assignments = listOf(split(BankSplitPaymentType.DEPOSIT))), 0)
-        listOf("Kaution", BankSplitPaymentType.DEPOSIT, "Tilgung", "Darlehen", "Darlehensauszahlung").forEach {
+        listOf("Kaution", BankSplitPaymentType.DEPOSIT, "Tilgung", "Darlehen", "Darlehensauszahlung",
+            BankLoanPaymentType.REGULAERE_RATE, BankLoanPaymentType.SONSTIGE_DARLEHENSZAHLUNG).forEach {
             assertIncome(0.0, rows(listOf(tx().copy(category = it))), 0)
             assertIncome(0.0, rows(listOf(tx().copy(category = "", subcategory = it))), 0)
         }

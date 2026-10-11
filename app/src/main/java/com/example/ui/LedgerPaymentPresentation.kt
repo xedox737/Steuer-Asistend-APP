@@ -139,7 +139,8 @@ internal object LedgerPaymentPresentation {
             // Generic income must not replace the dedicated rent/NK path or loan/deposit handling.
             if (tx.isIncome && (tx.noReceiptReason == BankNoReceiptReason.RENT ||
                 tx.category in BankSplitPaymentType.rentScoped || tx.subcategory in BankSplitPaymentType.rentScoped ||
-                listOf(tx.category, tx.subcategory).any { it in setOf("Miete", "Mieteinnahmen", "Nebenkosten", "Darlehen", "Darlehensauszahlung") })) return@forEach
+                listOf(tx.category, tx.subcategory).any { it in setOf("Miete", "Mieteinnahmen", "Miete, Nebenkosten & Kaution", "Nebenkosten", "Darlehen", "Darlehensauszahlung",
+                    BankLoanPaymentType.REGULAERE_RATE, BankLoanPaymentType.SONSTIGE_DARLEHENSZAHLUNG) })) return@forEach
             rows += bankEntry("bank-${tx.transactionId}", tx, tx.absoluteAmount, tx.propertyId, tx.unitId)
         }
         return rows
