@@ -64,10 +64,11 @@ class AppDatePersistenceEmulatorTest : EmulatorTestSupport() {
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         val reloaded = vm
+        // The production StateFlow starts observing Room only while the logbook is visible.
+        clickMore("Fahrtenbuch")
         ui.waitUntil(10_000) { reloaded.logbookTrips.value.any { it.id == trip.id } }
         assertEquals("2026-10-11", reloaded.logbookTrips.value.single().date)
         ui.waitUntil(10_000) { reloaded.receipts.value.any { it.id == trip.expenseReceiptId } }
-        clickMore("Fahrtenbuch")
         ui.onNodeWithText("11.10.2026").performScrollTo().assertIsDisplayed()
         capture("date-logbook-after-fresh-activity")
     }

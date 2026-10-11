@@ -6,6 +6,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -24,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.error as dateErrorSemantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
 import com.example.util.DateFormatUtils
 import java.time.LocalDate
 import java.util.Locale
@@ -179,10 +183,15 @@ fun AppDateField(
         ) {
             CompositionLocalProvider(LocalContext provides calendarContext,
                 LocalConfiguration provides calendarContext.resources.configuration) {
-            DatePicker(state, showModeToggle = false,
-                title = { Text(label) },
-                headline = { Text(state.selectedDateMillis?.let { DateFormatUtils.format(DateFormatUtils.fromPickerMillis(it)) } ?: "Datum auswählen", style = MaterialTheme.typography.titleLarge) },
-                modifier = Modifier.fillMaxWidth().testTag("app_date_picker"))
+                DatePicker(state, showModeToggle = false,
+                    title = { Text(label, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp)) },
+                    headline = { Text(state.selectedDateMillis?.let { DateFormatUtils.format(DateFormatUtils.fromPickerMillis(it)) } ?: "Datum auswählen",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) },
+                    // Material's dialog has a fixed maximum height. Let the complete calendar
+                    // scroll at large font scales instead of squeezing its fixed-height rows.
+                    modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("app_date_picker"))
             }
         }
     }

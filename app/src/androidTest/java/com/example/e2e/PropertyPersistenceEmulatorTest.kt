@@ -99,7 +99,8 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
 }
 
 private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
-    node.config.getOrNull(SemanticsProperties.ContentDescription)?.any {
-        Regex("(^|\\D)$day\\.(\\D|$)").containsMatchIn(it)
-    } == true
+    (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).any {
+        Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
+    } && node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
 }

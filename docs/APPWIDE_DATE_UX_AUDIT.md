@@ -35,13 +35,15 @@ Die App verwendete ISO-Daten direkt in Textfeldern und mehreren Listen, daneben 
 | Dokumente | Dokumentdatum und datierte KI-Vorschläge (Kauf/Lasten/Vertrag); Details, erkannte Eckdaten |
 | Sanierung | Maßnahmenstart/-ende; Prüfzeitraum, Belege und Steuerberaterbericht |
 | Bank | Hauptliste/Details bleiben funktional erhalten; Miet-/Split-/Konflikt-/Wiederkehrend-Prüfpanels deutsch |
-| DATEV | Buchungs-/Belegdatum in Vorschau sowie verständliche Validierungsmeldungen; EXTF/CSV/XML nicht geändert |
+| DATEV | Buchungs-/Belegdatum in Vorschau sowie verständliche Validierungsmeldungen; EXTF/XML und definierte Import-/Fahrtenbuch-CSV-Formate nicht geändert; nutzerorientierte Begleitberichte deutsch |
 
 Die monatliche Mietfälligkeitsregel „z. B. 3. Werktag“, Steuerjahre, YearMonth-Filter und Uhrzeiten sind keine frei wählbaren Kalenderdaten und behalten ihre fachlichen Controls.
 
 ## Datenintegrität
 
 Keine Room-Schemaänderung, keine Migration und keine Umschreibung bestehender Daten. Backup/Restore inklusive MERGE, Originaldateien und Bankimport bleiben unverändert. Gemini-Prompts, JSON-Verträge und Fehlerklassifizierung unverändert. Sortierung, Jahresfilter, Mietchronologie, AfA und 15%-Prüfung verwenden weiter dieselben ISO-/LocalDate-Werte. Kalenderkonvertierung erfolgt ausschließlich in UTC und LocalDate, nicht in der Gerätezeitzone.
+
+Der Kalenderinhalt ist im Material-Dialog scrollbar: dessen feste Maximalhöhe darf bei Großschrift die festen Tageszeilen nicht zusammenquetschen. Dialogaktionen bleiben sichtbar; der unterste Kalendertag wird bei allen drei Schriftgrößen zusätzlich geprüft.
 
 ## Neue Tests
 
@@ -56,7 +58,9 @@ Keine Room-Schemaänderung, keine Migration und keine Umschreibung bestehender D
 
 ## CI-Stand
 
-Lauf 1207: lintDebug, testDebugUnitTest (JUnit: 903 Tests, null Fehler/Übersprünge), assembleDebug und assembleDebugAndroidTest erfolgreich. Erster Emulatorlauf: 23 Tests, 17 Fehler; der Gerätescreenshot belegt einen überlagernden Pixel-Launcher-ANR. Launcher wird nur im abgesicherten wegwerfbaren Emulator vor dem Test gestoppt; App-Fehler und Assertions bleiben sichtbar. Zwei neue Test-Selektoren (LazyColumn und nicht scrollbarer Datumsdialog) korrigiert. Der Locale-Lint-Hinweis wird durch mitgelieferte Sprachressourcen im App Bundle behoben, nicht unterdrückt. Abschließende Resultate und visuelle Screenshotprüfung werden im PR dokumentiert. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
+Lauf 1208: lintDebug ohne Fehler/Locale-Hinweis, testDebugUnitTest (JUnit: 903 Tests, null Fehler/Übersprünge), assembleDebug und assembleDebugAndroidTest erfolgreich. Emulator: 21/23 erfolgreich, darunter Belegkalender bei FontScale 1.0/1.3/1.5, Mietchronologie und Sanierung. Zwei Testfehler korrigiert: Kalender-Textsemantik statt altem ContentDescription-Selektor sowie Öffnen des Fahrtenbuchs vor dem Warten auf dessen WhileSubscribed-Flow nach Neustart. Screenshots zeigten komprimierte Material-Kalenderzeilen bei 1.5; der Inhalt scrollt jetzt, ergänzt durch eine Assertion auf den untersten Tag. Die manuelle Umschaltung wird zusätzlich mit Fokus-Assertion geprüft. Abschließende Resultate und visuelle Screenshotprüfung werden im PR dokumentiert.
+
+Ein im ersten Lauf belegter Pixel-Launcher-ANR wird nur im abgesicherten wegwerfbaren Emulator durch Stoppen dieses fremden Launchers vermieden; App-Fehler und Assertions bleiben sichtbar. Hier kein lokales Gradle/Android-SDK vorhanden; kein lokaler Emulatorlauf behauptet.
 
 ## Abschlusssuche: verbleibende ISO-Muster
 

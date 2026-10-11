@@ -28,7 +28,10 @@ class AppDateFieldTest {
             AppDateField(value, { saved = it; value = it }, "Datum", testTag = "date", onValidityChange = { valid = it })
         } }
         ui.onNodeWithTag("date").assertTextContains("11.10.2026")
-        ui.onNodeWithTag("date").performTextReplacement("12.12.2026")
+        ui.onNodeWithTag("date").performClick()
+        ui.onNodeWithTag("app_date_manual").performClick()
+        ui.onNodeWithTag("app_date_picker").assertDoesNotExist()
+        ui.onNodeWithTag("date").assertIsFocused().performTextReplacement("12.12.2026")
         ui.runOnIdle { assertEquals("2026-12-12", saved); assertTrue(valid) }
         ui.onNodeWithTag("date").performTextReplacement("31.02.2026")
         ui.onNodeWithText(DateFormatUtils.INPUT_ERROR).assertExists()
