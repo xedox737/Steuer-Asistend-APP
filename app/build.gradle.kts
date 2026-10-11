@@ -65,6 +65,9 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  // The calendar intentionally uses German Material resources on every device locale.
+  // Keep them available in App Bundle installations as well as standalone APKs.
+  bundle { language { enableSplit = false } }
 }
 
 tasks.withType<Test>().configureEach {

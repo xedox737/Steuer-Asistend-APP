@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import com.example.util.DiagnosticLog
@@ -367,12 +369,12 @@ internal fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptV
         title = { Text(document.title.ifBlank { "Dokumentdetail" }) },
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                DetailRow("Dokumenttyp", document.documentType); DetailRow("Datum", document.documentDate)
+                DetailRow("Dokumenttyp", document.documentType); DetailRow("Datum", DateFormatUtils.safeFormat(document.documentDate))
                 DetailRow("Immobilie", property?.let { it.name.ifBlank { it.adresse } } ?: "Nicht zugeordnet"); DetailRow("Wohneinheit", unit?.let { "${it.name} · ${it.label}" } ?: "Keine")
                 DetailRow("Speicherort", if (document.driveFolderId.isNullOrBlank()) "Nur lokal" else "Google Drive")
                 DetailRow("OCR", document.ocrStatus); DetailRow("KI-Analyse", document.aiAnalysisStatus)
                 DetailRow("Confidence", "${(document.aiConfidence * 100).toInt()} %"); DetailRow("Prüfstatus", document.reviewStatus)
-                if (document.extractedFieldsJson.isNotBlank()) { HorizontalDivider(); Text("Extrahierte Daten", fontWeight = FontWeight.Bold); Text(document.extractedFieldsJson, fontSize = 10.sp) }
+                if (document.extractedFieldsJson.isNotBlank()) { HorizontalDivider(); Text("Extrahierte Daten", fontWeight = FontWeight.Bold); Text(DateFormatUtils.displayText(document.extractedFieldsJson), fontSize = 10.sp) }
                 if (document.ocrText.isNotBlank()) { HorizontalDivider(); Text("Erkannter Text", fontWeight = FontWeight.Bold); Text(document.ocrText.take(4000), fontSize = 10.sp) }
                 OutlinedButton(onClick = { viewModel.runDocumentOcr(document.documentId) }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("OCR erneut ausführen") }
                 Button(onClick = { viewModel.analyzeManagedDocument(document.documentId) }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Icon(Icons.Default.AutoAwesome, null); Text(" Erneut analysieren") }
@@ -394,6 +396,7 @@ internal fun DocumentDetailDialog(document: ManagedDocument, viewModel: ReceiptV
 
 @Composable
 internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDocumentAiReview, units: List<WohneinheitStatus>, property: com.example.data.PropertyMetadata?, viewModel: ReceiptViewModel, reviewState: DocumentAiReviewState) {
+    val dateFields = rememberDateFieldValidation()
     val result = review.result
     val targetUnitId = result.suggestedUnitId.ifBlank { document.unitId.orEmpty() }
     val currentUnit = units.firstOrNull {
@@ -446,7 +449,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                 Text("KI-Vorschlag ${(result.confidence * 100).toInt()} %. Nichts wird ohne Auswahl übernommen.", fontSize = 11.sp, color = SlateGray)
                 OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${typeLabel(selectedType)}") }
                 DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(typeLabel(type)) }, { selectedType = type; typeMenu = false }) } }
-                OutlinedTextField(selectedDate, { selectedDate = it }, label = { Text("Dokumentdatum") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
+                AppDateField(value = selectedDate, onValueChange = { selectedDate = it }, label = "Dokumentdatum", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("selectedDate", it) })
                 OutlinedButton(onClick = { unitMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Wohneinheit: $displayedUnit") }
                 DropdownMenu(unitMenu, { unitMenu = false }) {
                     DropdownMenuItem({ Text("Keine Wohneinheit") }, { selectedUnitId = ""; unitMenu = false })
@@ -461,9 +464,14 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                     Card(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), shape = Ui2.shape) {
                         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                             Text(proposal.label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            Text("Erkannt: ${proposal.detectedValue} • ${(proposal.confidence * 100).toInt()} %${proposal.sourcePage.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", fontSize = 10.sp)
-                            if (proposal.currentValue.isNotBlank()) Text("Aktuell: ${proposal.currentValue}", fontSize = 10.sp, color = SlateGray)
-                            OutlinedTextField(proposal.editedValue ?: proposal.detectedValue, { value -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(editedValue = value) } }, label = { Text("Geprüfter Wert") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
+                            Text("Erkannt: ${com.example.util.DateFormatUtils.displayText(proposal.detectedValue)} • ${(proposal.confidence * 100).toInt()} %${proposal.sourcePage.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", fontSize = 10.sp)
+                            if (proposal.currentValue.isNotBlank()) Text("Aktuell: ${com.example.util.DateFormatUtils.displayText(proposal.currentValue)}", fontSize = 10.sp, color = SlateGray)
+                            if (proposal.key in setOf("kaufvertragsdatum", "nutzen_lasten", "vertragsbeginn", "vertragsende")) {
+                                AppDateField(proposal.editedValue ?: proposal.detectedValue,
+                                    { value -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(editedValue = value) } },
+                                    "Geprüfter Wert", modifier = Modifier.fillMaxWidth(),
+                                    onValidityChange = { dateFields.update(proposal.key, proposal.decision != DocumentFieldDecision.UEBERNEHMEN || it) })
+                            } else OutlinedTextField(proposal.editedValue ?: proposal.detectedValue, { value -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(editedValue = value) } }, label = { Text("Geprüfter Wert") }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape)
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(proposal.decision == DocumentFieldDecision.UEBERNEHMEN, { checked -> proposals = proposals.toMutableList().also { it[index] = proposal.copy(decision = if (checked) DocumentFieldDecision.UEBERNEHMEN else DocumentFieldDecision.AUSSTEHEND) } })
                                 Text("Übernehmen", fontSize = 11.sp)
@@ -475,7 +483,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                 }
             }
         },
-        confirmButton = { Button(onClick = { viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.takeIf { it in validUnitIds }, proposals, review.revision) }, enabled = document.documentId !in reviewState.analyzing && document.documentId !in reviewState.confirming, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
+        confirmButton = { Button(onClick = { if (!dateFields.isValid) return@Button; viewModel.confirmManagedDocumentReview(document.documentId, selectedType, selectedDate, selectedUnitId.takeIf { it in validUnitIds }, proposals, review.revision) }, enabled = document.documentId !in reviewState.analyzing && document.documentId !in reviewState.confirming, modifier = Modifier.testTag("confirm_document_ai_review"), shape = Ui2.controlShape) { Text("Geprüfte Werte übernehmen") } },
         dismissButton = { TextButton(onClick = { viewModel.dismissDocumentAiReview(document.documentId) }) { Text("Abbrechen") } }
     )
 }

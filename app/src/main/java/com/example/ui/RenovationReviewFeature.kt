@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -262,6 +264,7 @@ private fun RenovationAssignmentDialog(viewModel: ReceiptViewModel, receipt: Rec
 
 @Composable
 private fun RenovationMeasureDialog(viewModel: ReceiptViewModel, property: PropertyMetadata, initial: RenovationMeasure?, onDismiss: () -> Unit, onSaved: () -> Unit) {
+    val dateFields = rememberDateFieldValidation()
     val seed = remember { initial ?: RenovationMeasure(propertyId = property.propertyId, name = "") }
     val units = remember(property) { viewModel.getWohneinheitenForProperty(property) }
     var name by remember { mutableStateOf(seed.name) }; var description by remember { mutableStateOf(seed.description) }
@@ -276,8 +279,8 @@ private fun RenovationMeasureDialog(viewModel: ReceiptViewModel, property: Prope
             val choices = listOf("" to "Gesamtobjekt / Allgemein") + units.map { it.unitId to it.name }
             ReviewDropdown("Einheit (optional)", choices.firstOrNull { it.first == unitId }, choices, { it.second }) { unitId = it.first }
             OutlinedTextField(description, { description = it }, label = { Text("Beschreibung (optional)") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(start, { start = it }, label = { Text("Startdatum JJJJ-MM-TT (optional)") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(end, { end = it }, label = { Text("Enddatum JJJJ-MM-TT (optional)") }, modifier = Modifier.fillMaxWidth())
+            AppDateField(value = start, onValueChange = { start = it }, label = "Startdatum (optional)", testTag = "renovation_start", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("start", it) })
+            AppDateField(value = end, onValueChange = { end = it }, label = "Enddatum (optional)", testTag = "renovation_end", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("end", it) })
             ReviewDropdown("Maßnahmenstatus", status, RenovationStatus.entries, { it.label }) { status = it }
             ReviewDropdown("Steuerlicher Prüfstatus", taxStatus, RenovationTaxStatus.entries, { it.label }) { taxStatus = it }
             Text("Belege werden einzeln bewusst vorgemerkt. Dieser Status erteilt keine DATEV-Freigabe.", style = MaterialTheme.typography.bodySmall)
@@ -285,6 +288,7 @@ private fun RenovationMeasureDialog(viewModel: ReceiptViewModel, property: Prope
             error?.let { Text(it, color = CrimsonRed) }
         }
     }, confirmButton = { TextButton(onClick = {
+        if (!dateFields.isValid) { error = DateFormatUtils.INPUT_ERROR; return@TextButton }
         val measure = seed.copy(name = name, description = description, unitId = unitId, startDate = start.trim(), endDate = end.trim(), status = status, taxStatus = taxStatus, advisorNote = note)
         runCatching { RenovationReviewStore.validateMeasure(measure) }.onSuccess { viewModel.saveRenovationMeasure(measure, onSaved) }.onFailure { error = it.message }
     }, modifier = Modifier.testTag("renovation_measure_save")) { Text("Speichern") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } })

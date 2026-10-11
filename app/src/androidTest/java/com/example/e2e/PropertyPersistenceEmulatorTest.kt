@@ -1,6 +1,8 @@
 package com.example.e2e
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,7 +22,10 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("add_property_button").performClick()
         input("Objektname", "Testobjekt Persistenz", scroll = false)
         input("Straße und Hausnummer", "Beispielstraße 1", scroll = false)
-        input("Kaufdatum YYYY-MM-DD", "2021-03-15", scroll = false)
+        input("Kaufdatum", "15.03.2021", scroll = false)
+        ui.onNode(hasText("Kaufdatum") and hasSetTextAction()).performClick()
+        ui.onNode(calendarDay("15"), useUnmergedTree = true).performClick()
+        ui.onNodeWithTag("app_date_apply").performClick()
         input("Kaufpreis €", "1.050.000,25", scroll = false)
         nextWizardStep("2/5")
         input("Baujahr", "1968", scroll = false)
@@ -39,6 +44,7 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
             originalModel.wohneinheitenStatus.value.singleOrNull()?.wohnflaeche == 41.25 }
         val saved = originalModel.properties.value.single()
         val unit = originalModel.wohneinheitenStatus.value.single()
+        assertEquals("2021-03-15", saved.notariellesKaufdatum)
         assertEquals(1050000.25, saved.gesamtKaufpreis, .001)
         assertEquals(620.50, saved.wohnflaeche, .001)
         assertEquals(950.25, saved.grundstuecksgroesse, .001)
@@ -90,4 +96,11 @@ class PropertyPersistenceEmulatorTest : EmulatorTestSupport() {
         }
         ui.onNodeWithText("Immobilie anlegen · $step").assertIsDisplayed()
     }
+}
+
+private fun calendarDay(day: String) = SemanticsMatcher("Kalendertag $day") { node ->
+    (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).any {
+        Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
+    } && node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
 }

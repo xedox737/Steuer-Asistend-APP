@@ -31,7 +31,7 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("WE 01") and hasAnyAncestor(isPopup())).performClick()
         capture("phase6b-global-object-a-unit-01")
         ui.onNodeWithTag("edit_aussteller").performScrollTo().performTextReplacement("MW Globalhandwerk")
-        ui.onNodeWithTag("edit_datum").performScrollTo().performTextReplacement("2026-10-10")
+        ui.onNodeWithTag("edit_datum").performScrollTo().performTextReplacement("10.10.2026")
         ui.onNodeWithTag("edit_betrag").performScrollTo().performTextReplacement("119,00")
         Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("save_extracted_receipt_button").performScrollTo().assertIsEnabled().performClick()
@@ -72,6 +72,8 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("renovation_measure_name").performScrollTo().performTextReplacement("Bad OG links")
         ui.onNodeWithTag("renovation_measure_note").performScrollTo().performTextReplacement("Mit Fenster DG prüfen")
         Espresso.closeSoftKeyboard()
+        selectCalendarDate("renovation_start", "10.10.2026", "10")
+        selectCalendarDate("renovation_end", "11.10.2026", "11")
         ui.onNodeWithTag("renovation_measure_save").performClick()
         ui.waitUntil(10_000) { model.renovationReview.value.measures.size == 1 }
         ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
@@ -119,6 +121,8 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("Notizen & Aufgaben") and hasClickAction()).assertExists()
         assertEquals(AppScreen.PROPERTIES, model.currentScreen.value)
         assertEquals("Mit Fenster DG prüfen", model.renovationReview.value.measures.single().advisorNote)
+        assertEquals("2026-10-10", model.renovationReview.value.measures.single().startDate)
+        assertEquals("2026-10-11", model.renovationReview.value.measures.single().endDate)
         assertEquals("OFFEN", runBlocking(Dispatchers.IO) { db.receiptDao().getReceiptById(681)!!.freigabestatus })
         // The shared More entry must retain its own route when opening a measure receipt.
         clickMore("Sanierungs-Monitor")

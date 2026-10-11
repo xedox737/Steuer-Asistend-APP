@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -51,8 +53,8 @@ internal fun LogbookReceiptPicker(receipts: List<Receipt>, onDismiss: () -> Unit
         Column {
             OutlinedTextField(search, { search = it }, label = { Text("Beleg suchen") }, singleLine = true)
             Column(Modifier.heightIn(max = 350.dp).verticalScroll(rememberScrollState())) {
-                receipts.filter { "${it.aussteller} ${it.datum} ${it.beschreibung}".contains(search, true) }.forEach { receipt ->
-                    TextButton(onClick = { onSelect(receipt) }) { Text("${receipt.aussteller} · ${receipt.datum}") }
+                receipts.filter { "${it.aussteller} ${DateFormatUtils.safeFormat(it.datum)} ${it.beschreibung}".contains(search, true) }.forEach { receipt ->
+                    TextButton(onClick = { onSelect(receipt) }) { Text("${receipt.aussteller} · ${DateFormatUtils.safeFormat(receipt.datum)}") }
                 }
             }
         }
@@ -108,7 +110,7 @@ internal fun LogbookTripBrowser(trips: List<LogbookTrip>, onOpen: (LogbookTrip) 
     filtered.forEach { trip ->
         Card(Modifier.fillMaxWidth().clickable { onOpen(trip) }) {
             Column(Modifier.padding(10.dp)) {
-                Text("${trip.date} · ${trip.purpose}")
+                Text("${DateFormatUtils.safeFormat(trip.date)} · ${trip.purpose}")
                 Text("${trip.startAddress} → ${trip.destinationAddress}")
                 Text(if (trip.cancelledAt.isBlank()) "${trip.taxDistanceKm} km" else "Storniert")
             }
@@ -129,6 +131,7 @@ private fun LogbookFilter(label: String, selected: String, options: List<String>
 
 @Composable
 internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel) {
+    val dateFields = rememberDateFieldValidation()
     val scope = rememberCoroutineScope()
     var action by remember { mutableStateOf<String?>(null) }
     var date by remember(trip.updatedAt) { mutableStateOf(trip.date) }
@@ -148,14 +151,14 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
         Text("Änderungsverlauf")
         for (index in 0 until history.length()) {
             val record = history.getJSONObject(index)
-            Text("${record.optString("at")} · ${record.optString("action")}: ${record.optString("reason")}\nVorher: ${record.optString("date")} · ${record.optString("purpose")} · ${record.optDouble("km")} km")
+            Text("${DateFormatUtils.displayText(record.optString("at"))} · ${record.optString("action")}: ${record.optString("reason")}\nVorher: ${DateFormatUtils.safeFormat(record.optString("date"))} · ${record.optString("purpose")} · ${record.optDouble("km")} km")
         }
     }
     action?.let { currentAction ->
         AlertDialog(onDismissRequest = { if (!busy) action = null }, title = { Text("Fahrt $currentAction") }, text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (currentAction == "Korrigieren") {
-                    OutlinedTextField(date, { date = it }, label = { Text("Datum (JJJJ-MM-TT)") }, singleLine = true)
+                    AppDateField(value = date, onValueChange = { date = it }, label = "Datum", required = true, onValidityChange = { dateFields.update("date", it) })
                     OutlinedTextField(purpose, { purpose = it }, label = { Text("Zweck") })
                     OutlinedTextField(km, { km = it }, label = { Text("Geprüfte Gesamtstrecke (km)") }, singleLine = true)
                 }
@@ -167,6 +170,7 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
             }
         }, confirmButton = {
             TextButton(enabled = confirmed && reason.isNotBlank() && !busy, onClick = {
+                if (currentAction == "Korrigieren" && !dateFields.isValid) return@TextButton
                 busy = true
                 scope.launch {
                     val result = if (currentAction == "Stornieren") viewModel.cancelLogbookTrip(trip.id, reason.trim())

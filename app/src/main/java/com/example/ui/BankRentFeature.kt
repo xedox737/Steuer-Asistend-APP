@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.BorderStroke
@@ -154,7 +156,7 @@ private fun RentSuggestionCard(
                 Text("${suggestion.score}/100 · ${suggestion.confidence}", fontWeight = FontWeight.Bold, color = AccentBlue, fontSize = 10.sp)
             }
             Text("Mieter: ${suggestion.tenantName.ifBlank { "nicht hinterlegt" }}", fontSize = 10.sp, color = SlateGray)
-            Text("Mietmonat ${suggestion.rentMonth} · Buchung $bookingDate", fontSize = 10.sp, color = SlateGray)
+            Text("Mietmonat ${suggestion.rentMonth} · Buchung ${DateFormatUtils.safeFormat(bookingDate)}", fontSize = 10.sp, color = SlateGray)
             Text("Soll ${NumberFormatter.format(suggestion.expectedAmount)} · Ist ${NumberFormatter.format(suggestion.actualAmount)} · Rest ${NumberFormatter.format(suggestion.remainingAmount)}", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
             Text("Differenz ${NumberFormatter.format(suggestion.difference)} · Typ ${suggestion.paymentType}", fontSize = 9.sp, color = SlateGray)
             if (suggestion.conflictState != RentConflictState.NONE) {

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.content.Intent
@@ -645,9 +647,7 @@ private fun ReceiptAssignmentBadge(assigned: Boolean) {
     }
 }
 
-internal fun receiptDisplayDate(value: String): String = runCatching {
-    LocalDate.parse(value).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-}.getOrDefault(value)
+internal fun receiptDisplayDate(value: String): String = DateFormatUtils.safeFormat(value)
 
 /** Accept both existing decimal-dot values and German amount input without silently saving zero. */
 internal fun parseReceiptEditAmount(value: String): Double? =

@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.BorderStroke
@@ -132,7 +134,7 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
                         Text("Fall: ${item.stableKey}", fontSize = 10.sp, color = SlateGray)
                         val txObjects = item.transactionIds.mapNotNull { id -> transactions.firstOrNull { it.transactionId == id } }
                         txObjects.forEach { tx ->
-                            Text("Bank: ${tx.bookingDate} • ${tx.counterparty.ifBlank { tx.purpose }} • ${NumberFormatter.format(tx.amount)}", fontSize = 11.sp)
+                            Text("Bank: ${DateFormatUtils.safeFormat(tx.bookingDate)} • ${tx.counterparty.ifBlank { tx.purpose }} • ${NumberFormatter.format(tx.amount)}", fontSize = 11.sp)
                             if (tx.propertyId.isNotBlank()) Text("Bank-Property: ${tx.propertyId}", fontSize = 10.sp, color = SlateGray)
                         }
                         val receiptObjects = item.receiptIds.mapNotNull { id -> receipts.firstOrNull { it.id == id } }
@@ -263,7 +265,7 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
                         Card(border = BorderStroke(1.dp, BorderColor)) {
                             Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text("Fall ${row.stableKey}", fontSize = 10.sp, color = SlateGray)
-                                Text("${row.bookingDate} • ${row.counterpartyOrPurpose}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${DateFormatUtils.safeFormat(row.bookingDate)} • ${row.counterpartyOrPurpose}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 Text("Transaktion ${row.transactionId.take(12)} • ${NumberFormatter.format(row.transactionAmount)} • offen ${NumberFormatter.format(row.transactionRemaining)}", fontSize = 10.sp)
                                 Text("Beleg ${row.receiptId} • ${row.receiptIssuer} • ${NumberFormatter.format(row.receiptAmount)} • offen ${NumberFormatter.format(row.receiptRemaining)}", fontSize = 10.sp)
                                 Text("Allocation ${NumberFormatter.format(row.allocationAmount)} • ${row.confidence} • Score ${row.score}%", fontSize = 10.sp)
@@ -312,7 +314,7 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
                             txId?.let { viewModel.confirmBankReceiptLink(it, receipt.id) }
                             receiptPickerItem = null
                         }, modifier = Modifier.fillMaxWidth()) {
-                            Text("${receipt.aussteller} • ${NumberFormatter.format(receipt.bruttobetrag)} • ${receipt.datum}")
+                            Text("${receipt.aussteller} • ${NumberFormatter.format(receipt.bruttobetrag)} • ${DateFormatUtils.safeFormat(receipt.datum)}")
                         }
                     }
                 }

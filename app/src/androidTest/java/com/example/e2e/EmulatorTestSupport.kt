@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -58,6 +60,10 @@ class EmulatorEnvironmentRule(private val fontScale: () -> Float) : ExternalReso
         originalFontScale = shell("settings get system font_scale")
         shell("settings put system font_scale ${fontScale()}")
         shell("mkdir -p $DEVICE_ARTIFACTS")
+        // The API-35 Pixel Launcher can leave an ANR system dialog over the app.
+        // Stop only that unrelated launcher on this gated disposable emulator;
+        // app crashes/ANRs and all assertions remain observable.
+        shell("am force-stop com.google.android.apps.nexuslauncher")
     }
 
     override fun after() {
@@ -120,6 +126,11 @@ abstract class EmulatorTestSupport {
         val target = if (ui.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) {
             ui.onNode(isDialog())
         } else ui.onRoot()
+        saveBitmap(name, target.captureToImage().asAndroidBitmap())
+    }
+
+    protected fun capture(name: String, target: SemanticsNodeInteraction) {
+        ui.waitForIdle()
         saveBitmap(name, target.captureToImage().asAndroidBitmap())
     }
 
@@ -218,4 +229,21 @@ abstract class EmulatorTestSupport {
         // Close the real IME without using BACK (which is separately asserted).
         Espresso.closeSoftKeyboard()
     }
+    protected fun selectCalendarDate(tag: String, german: String, day: String, scroll: Boolean = true) {
+        val field = ui.onNodeWithTag(tag)
+        if (scroll) field.performScrollTo()
+        field.assertIsDisplayed().performTextReplacement(german)
+        Espresso.closeSoftKeyboard()
+        ui.onNodeWithTag(tag).performClick()
+        ui.onNodeWithTag("app_date_picker").assertExists()
+        ui.onNode(SemanticsMatcher("Kalendertag $day") { node ->
+            (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
+            node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).any {
+                Regex("(^|\\D)$day(\\D|$)").containsMatchIn(it)
+            } && node.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick) != null
+        }, useUnmergedTree = true).performClick()
+        ui.onNodeWithTag("app_date_apply").performClick()
+        ui.onNodeWithTag(tag).assertTextContains(german)
+    }
+
 }

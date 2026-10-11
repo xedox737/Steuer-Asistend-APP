@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.activity.compose.BackHandler
@@ -1090,6 +1092,7 @@ private fun UnifiedUnitStatusDialog(
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     val states = listOf(
         "Vermietet",
         "Kündigung / Auszug geplant",
@@ -1099,7 +1102,7 @@ private fun UnifiedUnitStatusDialog(
         "Neuvermietung geplant"
     )
     var selectedStatus by remember { mutableStateOf<String?>(null) }
-    var effectiveDateText by remember { mutableStateOf(LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))) }
+    var effectiveDateText by remember { mutableStateOf(LocalDate.now().toString()) }
     var dateError by remember { mutableStateOf<String?>(null) }
 
     val destructiveStatuses = setOf(
@@ -1134,7 +1137,7 @@ private fun UnifiedUnitStatusDialog(
                         OutlinedButton(
                             onClick = {
                                 selectedStatus = state
-                                effectiveDateText = LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+                                effectiveDateText = LocalDate.now().toString()
                                 dateError = null
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -1187,36 +1190,11 @@ private fun UnifiedUnitStatusDialog(
                         }
                     }
 
-                    OutlinedTextField(
-                        value = effectiveDateText,
-                        onValueChange = {
-                            effectiveDateText = it
-                            dateError = null
-                        },
-                        label = {
-                            Text(
-                                if (status == "Kündigung / Auszug geplant") "Geplanter Auszug"
-                                else "Gültig ab"
-                            )
-                        },
-                        placeholder = { Text("TT.MM.JJJJ") },
-                        supportingText = {
-                            Text(
-                                dateError ?: when {
-                                    status == "Kündigung / Auszug geplant" ->
-                                        "Das geplante Auszugsdatum darf auch in der Zukunft liegen. Das Mietverhältnis bleibt bis zur tatsächlichen Beendigung aktiv."
-                                    endsLease ->
-                                        "Heute oder rückwirkend. Dieses Datum wird als Mietende in die Miethistorie übernommen."
-                                    else ->
-                                        "Datum, ab dem der neue Status gelten soll."
-                                }
-                            )
-                        },
-                        isError = dateError != null,
-                        singleLine = true,
-                        shape = Ui2.controlShape,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    AppDateField(effectiveDateText, { effectiveDateText = it; dateError = null },
+                        label = if (status == "Kündigung / Auszug geplant") "Geplanter Auszug" else "Gültig ab",
+                        required = true, maxDate = if (status == "Kündigung / Auszug geplant") null else LocalDate.now(),
+                        isError = dateError != null, supportingText = { dateError?.let { Text(it) } },
+                        modifier = Modifier.fillMaxWidth(), onValidityChange = { dateFields.update("effectiveDate", it) })
                 }
             }
         },
@@ -1225,12 +1203,8 @@ private fun UnifiedUnitStatusDialog(
             if (status != null) {
                 Button(
                     onClick = {
-                        val parsed = runCatching {
-                            LocalDate.parse(
-                                effectiveDateText.trim(),
-                                DateTimeFormatter.ofPattern("dd.MM.uuuu").withResolverStyle(java.time.format.ResolverStyle.STRICT)
-                            )
-                        }.getOrNull()
+                        if (!dateFields.isValid) return@Button
+                        val parsed = CalendarInput.parseIsoDate(effectiveDateText)
                         val activeStart = unit.mietvertragsstart
                             .takeIf { it.isNotBlank() }
                             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
@@ -1375,10 +1349,7 @@ private fun unifiedMoney(value: Double): String =
         if (formatted.contains("€")) formatted else "$formatted €"
     }
 
-private fun formatGermanDate(raw: String): String =
-    runCatching {
-        LocalDate.parse(raw).format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-    }.getOrDefault(raw)
+private fun formatGermanDate(raw: String): String = DateFormatUtils.safeFormat(raw)
 
 @Composable
 private fun UnifiedMonthlyCheckDialog(

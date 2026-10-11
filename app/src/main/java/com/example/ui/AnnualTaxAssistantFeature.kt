@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.content.Context
@@ -712,13 +714,7 @@ internal fun buildAdvisorAnnualSummary(
     fun area(value: Double): String =
         String.format(Locale.GERMANY, "%.2f m²", value)
 
-    fun germanDate(value: String): String {
-        if (value.isBlank()) return ""
-        return runCatching {
-            java.time.LocalDate.parse(value)
-                .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy"))
-        }.getOrDefault(value)
-    }
+    fun germanDate(value: String): String = DateFormatUtils.safeFormat(value)
 
     val propertyOverview = buildList {
         if (metadata.name.isNotBlank()) add("Objektbezeichnung: ${metadata.name}")
@@ -1263,7 +1259,7 @@ private fun AnnualManualApprovalCard(
             Text("Manuelle Jahres-Freigabe $year", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             Text(status, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = color)
             if (isCurrent && approvedAt.isNotBlank()) {
-                Text("Freigegeben: ${approvedAt.replace('T', ' ').take(16)}", fontSize = 9.sp, color = SlateGray)
+                Text("Freigegeben: ${DateFormatUtils.displayText(approvedAt.replace('T', ' ').take(16))}", fontSize = 9.sp, color = SlateGray)
             }
             if (!blocked && reviewCount > 0) {
                 Text("$reviewCount gelbe Prüfpunkt(e) bleiben sichtbar. Die Freigabe bestätigt, dass sie bewusst geprüft wurden.", fontSize = 9.sp, color = WarmOrange)
@@ -1654,7 +1650,7 @@ private fun AnnualTaxReceiptDialog(
                                     )
                                 }
                                 Text(r.aussteller, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
-                                Text("${r.datum} · ${r.unterkategorie}", fontSize = 9.sp, color = SlateGray)
+                                Text("${DateFormatUtils.safeFormat(r.datum)} · ${r.unterkategorie}", fontSize = 9.sp, color = SlateGray)
                                 if (r.wohneinheit.isNotBlank()) {
                                     Text(r.wohneinheit, fontSize = 9.sp, color = SlateGray)
                                 }

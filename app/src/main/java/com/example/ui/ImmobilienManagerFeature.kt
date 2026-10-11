@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -552,7 +554,7 @@ private fun PropertyUnits(
                     Text("${unit.name} · ${unit.label}", fontWeight = FontWeight.Bold, color = DarkNavy)
                     Text("Status: ${unit.status}", fontSize = 11.sp, color = if (unit.status == "Vermietet") EmeraldGreen else WarmOrange)
                     Text("Mieter: ${unit.mieter.ifBlank { "–" }}", fontSize = 11.sp)
-                    Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)} · Seit: ${unit.mietvertragsstart.ifBlank { "–" }}", fontSize = 10.sp, color = SlateGray)
+                    Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)} · Seit: ${DateFormatUtils.safeFormat(unit.mietvertragsstart).ifBlank { "–" }}", fontSize = 10.sp, color = SlateGray)
                 }
             }
         }
@@ -640,7 +642,7 @@ private fun UnitDetailScreen(
                 }
                 UnitDetailSection.TENANT -> {
                     item { Text("Aktueller Mieter: ${unit.mieter.ifBlank { "–" }}", fontWeight = FontWeight.Bold) }
-                    item { Text("Mietbeginn: ${unit.mietvertragsstart.ifBlank { "–" }}", color = SlateGray) }
+                    item { Text("Mietbeginn: ${DateFormatUtils.safeFormat(unit.mietvertragsstart).ifBlank { "–" }}", color = SlateGray) }
                     item { Button(onClick = { showHistory = true }, modifier = Modifier.fillMaxWidth()) { Text("Mieterverlauf / Mieterwechsel") } }
                 }
                 UnitDetailSection.RENT -> {
@@ -707,7 +709,7 @@ private fun UnitContextCard(property: PropertyMetadata, unit: WohneinheitStatus,
             Text("Mieter: ${unit.mieter.ifBlank { "–" }}")
             Text("Kaltmiete: ${NumberFormatter.format(unit.kaltmiete)}")
             Text("Wohnfläche: ${unit.wohnflaeche} m²")
-            Text("Mietbeginn: ${unit.mietvertragsstart.ifBlank { "–" }}")
+            Text("Mietbeginn: ${DateFormatUtils.safeFormat(unit.mietvertragsstart).ifBlank { "–" }}")
         }
     }
 }
@@ -799,7 +801,7 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
             val isIncome = receipt.hauptkategorie in setOf("Miete, Nebenkosten & Kaution", "Sonstige Einnahmen")
             Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), Arrangement.SpaceBetween) {
-                    Column(Modifier.weight(1f)) { Text(receipt.aussteller, fontWeight = FontWeight.Bold); Text("${receipt.datum} · ${receipt.hauptkategorie} · ${receipt.wohneinheit}", fontSize = 10.sp, color = SlateGray) }
+                    Column(Modifier.weight(1f)) { Text(receipt.aussteller, fontWeight = FontWeight.Bold); Text("${DateFormatUtils.safeFormat(receipt.datum)} · ${receipt.hauptkategorie} · ${receipt.wohneinheit}", fontSize = 10.sp, color = SlateGray) }
                     Text((if (isIncome) "+ " else "− ") + NumberFormatter.format(receipt.bruttobetrag), fontWeight = FontWeight.Bold, color = if (isIncome) EmeraldGreen else CrimsonRed)
                 }
             }
@@ -811,7 +813,7 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
     val renovations = receipts.filter { it.hauptkategorie.contains("Renovierungs") || it.hauptkategorie.contains("Instandhaltung") }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Sanierungen", fontSize = 20.sp, fontWeight = FontWeight.Black, color = DarkNavy); Text("15-%-Bewertung erfolgt unverändert im Steuerbereich.", fontSize = 11.sp, color = SlateGray) }
-        items(renovations, key = { it.id }) { Text("${it.datum} · ${it.beschreibung} · ${NumberFormatter.format(it.bruttobetrag)}", Modifier.fillMaxWidth().padding(8.dp)) }
+        items(renovations, key = { it.id }) { Text("${DateFormatUtils.safeFormat(it.datum)} · ${it.beschreibung} · ${NumberFormatter.format(it.bruttobetrag)}", Modifier.fillMaxWidth().padding(8.dp)) }
     }
 }
 
@@ -862,9 +864,9 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
                         PropertyFactRow("Anzahl Einheiten", unitCount.toString())
                     }
                     PropertyDataSection("Kauf & Steuer") {
-                        PropertyFactRow("Notarielles Kaufdatum", property.notariellesKaufdatum)
+                        PropertyFactRow("Notarielles Kaufdatum", DateFormatUtils.safeFormat(property.notariellesKaufdatum))
                         PropertyFactDivider()
-                        PropertyFactRow("Übergang Nutzen/Lasten", property.uebergangNutzenLasten)
+                        PropertyFactRow("Übergang Nutzen/Lasten", DateFormatUtils.safeFormat(property.uebergangNutzenLasten))
                         PropertyFactDivider()
                         PropertyFactRow("Gesamtkaufpreis", NumberFormatter.format(property.gesamtKaufpreis))
                         PropertyFactDivider()
@@ -1042,6 +1044,7 @@ private fun MoreMenuItem(
 
 @Composable
 private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetadata, List<WohneinheitStatus>, Loan?) -> Unit) {
+    val dateFields = rememberDateFieldValidation()
     var step by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     var preparingUnits by remember { mutableStateOf(false) }
@@ -1098,7 +1101,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                         field(street, "Straße und Hausnummer") { street = it }
                         field(zip, "PLZ") { zip = it }
                         field(city, "Ort") { city = it }
-                        field(purchaseDate, "Kaufdatum YYYY-MM-DD") { purchaseDate = it }
+                        AppDateField(purchaseDate, { purchaseDate = it }, "Kaufdatum", modifier = Modifier.fillMaxWidth(), onValidityChange = { dateFields.update("purchaseDate", it) })
                         field(purchasePrice, "Kaufpreis €") { purchasePrice = it }
                     }
                     1 -> { field(yearBuilt, "Baujahr") { yearBuilt = it }; field(livingArea, "Wohnfläche m²") { livingArea = it }; field(landArea, "Grundstücksfläche m²") { landArea = it }; field(unitCount, "Anzahl Einheiten") { unitCount = it } }
@@ -1136,6 +1139,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
         },
         confirmButton = {
             Button(onClick = {
+                if (!dateFields.isValid) return@Button
                 val validation = PropertyWizardInput.validate(
                     purchasePrice = purchasePrice,
                     livingArea = livingArea,

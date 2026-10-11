@@ -130,7 +130,7 @@ object DatevExportPolicy {
                 return@forEach
             }
             if (!datePattern.matches(receipt.bookingDate)) {
-                reject("INVALID_BOOKING_DATE", "Buchungsdatum muss YYYY-MM-DD entsprechen.")
+                reject("INVALID_BOOKING_DATE", "Bitte ein gültiges Buchungsdatum im Format TT.MM.JJJJ eingeben.")
             }
             if (receipt.amountCent == 0L) {
                 reject("ZERO_RECEIPT_AMOUNT", "Ein Nullbetrag ist nicht exportierbar.")

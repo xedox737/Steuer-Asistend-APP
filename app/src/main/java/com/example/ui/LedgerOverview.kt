@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -286,7 +288,7 @@ private fun LedgerBooking(receipt: LedgerEntry, property: String, onClick: () ->
                     fontWeight = FontWeight.Bold, color = color)
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(CalendarInput.parseIsoDate(receipt.date)?.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy")) ?: receipt.date, fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
+                Text(DateFormatUtils.safeFormat(receipt.date), fontSize = 9.sp, lineHeight = 12.sp, color = SlateGray)
                 Text(category, fontSize = 9.sp, lineHeight = 12.sp, color = color, maxLines = 1,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                         .background(color.copy(alpha = .08f), Ui2.shape).padding(horizontal = 5.dp, vertical = 2.dp))

@@ -154,7 +154,7 @@ object AdvisorPackageBuilder {
             val nichtExpSb = StringBuilder()
             nichtExpSb.append("Receipt_ID;Aussteller;Datum;Betrag_EUR;Kategorie;ExportStatus;Grund\n")
             excludedReceipts.forEach { r ->
-                nichtExpSb.append("${r.id};\"${r.aussteller}\";${r.datum};${r.bruttobetrag};\"${r.hauptkategorie}\";${r.exportStatus};\"Ausgeschlossen/Nicht freigegeben\"\n")
+                nichtExpSb.append("${r.id};\"${r.aussteller}\";${DateFormatUtils.safeFormat(r.datum)};${r.bruttobetrag};\"${r.hauptkategorie}\";${r.exportStatus};\"Ausgeschlossen/Nicht freigegeben\"\n")
             }
             zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Nicht_exportierte_Belege.csv"))
             zos.write(bom)
@@ -187,7 +187,7 @@ object AdvisorPackageBuilder {
                 Anzahl Fehler:          ${validationReport.errors.size}
                 
                 DOKUMENTATION DER BUCHUNGSSÄTZE:
-                ${records.joinToString("\n") { " - ${it.belegdatum} | ${it.belegfeld1} | Konto ${it.sachkonto} -> ${it.gegenkonto} | ${String.format(Locale.GERMANY, "%.2f", it.bruttobetrag)} EUR | ${it.beschreibung}" }}
+                ${records.joinToString("\n") { " - ${DateFormatUtils.safeFormat(it.belegdatum)} | ${it.belegfeld1} | Konto ${it.sachkonto} -> ${it.gegenkonto} | ${String.format(Locale.GERMANY, "%.2f", it.bruttobetrag)} EUR | ${it.beschreibung}" }}
             """.trimIndent()
 
             zos.putNextEntry(ZipEntry("08_Pruefprotokoll/Exportprotokoll.txt"))

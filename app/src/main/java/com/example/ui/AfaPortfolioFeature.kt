@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import android.graphics.BitmapFactory
@@ -205,8 +207,8 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     }
                     AfaValueRow("Adresse", property.adresse)
                     AfaValueRow("Baujahr", property.baujahr.toString())
-                    AfaValueRow("Kaufdatum", property.notariellesKaufdatum)
-                    AfaValueRow("Nutzen und Lasten", property.uebergangNutzenLasten)
+                    AfaValueRow("Kaufdatum", DateFormatUtils.safeFormat(property.notariellesKaufdatum))
+                    AfaValueRow("Nutzen und Lasten", DateFormatUtils.safeFormat(property.uebergangNutzenLasten))
                     AfaValueRow("Kaufpreis", NumberFormatter.format(property.gesamtKaufpreis))
                     AfaValueRow("Gebäudeanteil", NumberFormatter.format(summary.buildingPurchaseShare))
                     AfaValueRow("Grund und Boden", NumberFormatter.format(summary.landPurchaseShare))
@@ -237,7 +239,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                              else "Szenario – die reguläre AfA bleibt maßgeblich.", fontSize = 11.sp, color = SlateGray)
                     }
                     AfaValueRow("Jährliche AfA (volles Jahr)", NumberFormatter.format(summary.annualAfa), true)
-                    AfaValueRow("Erstes Jahr ab ${summary.afaStartDate.ifBlank { "unbekannt" }}", NumberFormatter.format(summary.firstYearAfa))
+                    AfaValueRow("Erstes Jahr ab ${DateFormatUtils.safeFormat(summary.afaStartDate).ifBlank { "unbekannt" }}", NumberFormatter.format(summary.firstYearAfa))
                     if (summary.allocationNeedsReview) Text("Kaufpreisaufteilung prüfen: Differenz ${NumberFormatter.format(summary.allocationDifference)}", color = CrimsonRed, fontSize = 11.sp)
                     TextButton(onClick = { showBreakdown = true }) { Text("Aufteilung & Nebenkosten") }
                 } }
@@ -246,7 +248,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     TextButton(onClick = { editConfirmedAfa = true }) { Text(if (confirmedAfa == null) "Bestätigte Vorjahreswerte erfassen" else "Bestätigte Vorjahreswerte bearbeiten") }
                     if (confirmedAfa != null) {
                         Text("Bestätigt durch externe Quelle – getrennt von ImmoPilot-Planwerten", color = DarkNavy, fontWeight = FontWeight.SemiBold)
-                        AfaValueRow("Stichtag", confirmedAfa.cutoffDate)
+                        AfaValueRow("Stichtag", DateFormatUtils.safeFormat(confirmedAfa.cutoffDate))
                         AfaValueRow("Bestätigte AfA kumuliert", NumberFormatter.format(confirmedAfa.cumulativeAfa))
                         AfaValueRow("Bestätigter Restbuchwert", NumberFormatter.format(confirmedAfa.remainingBookValue), true)
                         AfaValueRow("Quelle", confirmedAfa.source)
@@ -334,6 +336,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
     onDismiss: () -> Unit,
     onSave: (PropertyMetadata) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     var years by remember(property.propertyId) { mutableStateOf(property.afaShorterYears.takeIf { it > 0 }?.toString().orEmpty()) }
     var start by remember(property.propertyId) { mutableStateOf(property.afaShorterStartDate) }
     var reason by remember(property.propertyId) { mutableStateOf(property.afaShorterReason) }
@@ -350,8 +353,8 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Text("Regulär bleibt voreingestellt. Eine kürzere Nutzungsdauer kann zunächst als Szenario gespeichert werden.", fontSize = 12.sp) }
                 item { OutlinedTextField(years, { years = it.filter(Char::isDigit).take(3); confirmed = false }, label = { Text("Kürzere Dauer in Jahren") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-                item { OutlinedTextField(start, { start = it; confirmed = false }, label = { Text("Beginn (JJJJ-MM-TT)") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-                item { Text("Für eine Bestätigung muss der Beginn derzeit ${expectedStart.ifBlank { "dem Erwerbsdatum" }} entsprechen. Spätere Methodenwechsel bleiben ein Szenario.", fontSize = 11.sp, color = SlateGray) }
+                item { AppDateField(value = start, onValueChange = { start = it; confirmed = false }, label = "Beginn", modifier = Modifier.fillMaxWidth(), required = false, onValidityChange = { dateFields.update("start", it) }) }
+                item { Text("Für eine Bestätigung muss der Beginn derzeit ${DateFormatUtils.safeFormat(expectedStart).ifBlank { "dem Erwerbsdatum" }} entsprechen. Spätere Methodenwechsel bleiben ein Szenario.", fontSize = 11.sp, color = SlateGray) }
                 item { OutlinedTextField(reason, { reason = it; confirmed = false }, label = { Text("Begründung") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item { Text("Nachweis aus der Dokumentenakte zuordnen", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                 if (documents.isEmpty()) item { Text("Noch kein Dokument vorhanden. Importiere den Nachweis in der Dokumentenakte.", fontSize = 11.sp, color = SlateGray) }
@@ -375,6 +378,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
             }
         }, confirmButton = {
             Button(onClick = {
+                if (!dateFields.isValid) return@Button
                 onSave(property.copy(afaShorterYears = enteredYears, afaShorterStartDate = start.trim(),
                     afaShorterReason = reason.trim(), afaShorterDocumentId = documentId,
                     afaShorterConfirmed = confirmed && valid))
@@ -388,6 +392,7 @@ private fun ConfirmedAfaValuesDialog(
     onDismiss: () -> Unit,
     onSave: (ConfirmedAfaValues) -> Unit
 ) {
+    val dateFields = rememberDateFieldValidation()
     var cutoff by remember(current) { mutableStateOf(current?.cutoffDate.orEmpty()) }
     var depreciation by remember(current) { mutableStateOf(current?.cumulativeAfa?.toString().orEmpty()) }
     var bookValue by remember(current) { mutableStateOf(current?.remainingBookValue?.toString().orEmpty()) }
@@ -406,7 +411,7 @@ private fun ConfirmedAfaValuesDialog(
         text = {
             Column(Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Nur nach Steuerberaterunterlagen oder Steuerbescheid übernehmen. ImmoPilot-Planwerte bleiben unverändert.")
-                OutlinedTextField(cutoff, { cutoff = it }, label = { Text("Stichtag (JJJJ-MM-TT)") }, modifier = Modifier.fillMaxWidth())
+                AppDateField(value = cutoff, onValueChange = { cutoff = it }, label = "Stichtag", modifier = Modifier.fillMaxWidth(), required = true, onValidityChange = { dateFields.update("cutoff", it) })
                 OutlinedTextField(depreciation, { depreciation = it }, label = { Text("Bisherige AfA kumuliert (€)") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(bookValue, { bookValue = it }, label = { Text("Bestätigter Restbuchwert (€)") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(source, { source = it }, label = { Text("Quelle / Notiz") }, modifier = Modifier.fillMaxWidth())
@@ -415,6 +420,7 @@ private fun ConfirmedAfaValuesDialog(
         },
         confirmButton = {
             Button(onClick = {
+                if (!dateFields.isValid) { error = DateFormatUtils.INPUT_ERROR; return@Button }
                 val date = runCatching { LocalDate.parse(cutoff.trim()) }.getOrNull()
                 val cumulated = amount(depreciation)
                 val remaining = amount(bookValue)

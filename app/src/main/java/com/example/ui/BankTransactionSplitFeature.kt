@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.BorderStroke
@@ -234,7 +236,7 @@ private fun BankTransactionSplitDialog(
         text = {
             LazyColumn(Modifier.heightIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
-                    Text("Buchungsdatum: ${transaction.bookingDate}")
+                    Text("Buchungsdatum: ${DateFormatUtils.safeFormat(transaction.bookingDate)}")
                     Text("Gegenpartei: ${transaction.counterparty.ifBlank { "–" }}")
                     Text("Verwendungszweck: ${transaction.purpose.ifBlank { "–" }}")
                     Text("Originalbetrag: ${euro.format(transaction.absoluteAmount)}", fontWeight = FontWeight.Bold)
@@ -273,9 +275,9 @@ private fun BankTransactionSplitDialog(
                             }
                             if (draft.paymentType == BankSplitPaymentType.RECEIPT) {
                                 val selected = receipts.firstOrNull { it.id == draft.receiptId }
-                                OutlinedButton(onClick = { if (!previewMode) receiptMenu = index }, enabled = !previewMode) { Text("Beleg: ${selected?.let { "${it.datum} • ${it.aussteller} • ${euro.format(it.bruttobetrag)}" } ?: "auswählen"}") }
+                                OutlinedButton(onClick = { if (!previewMode) receiptMenu = index }, enabled = !previewMode) { Text("Beleg: ${selected?.let { "${DateFormatUtils.safeFormat(it.datum)} • ${it.aussteller} • ${euro.format(it.bruttobetrag)}" } ?: "auswählen"}") }
                                 DropdownMenu(expanded = receiptMenu == index, onDismissRequest = { receiptMenu = null }) {
-                                    receipts.take(30).forEach { receipt -> DropdownMenuItem(text = { Text("${receipt.datum} • ${receipt.aussteller} • ${euro.format(receipt.bruttobetrag)}") }, onClick = {
+                                    receipts.take(30).forEach { receipt -> DropdownMenuItem(text = { Text("${DateFormatUtils.safeFormat(receipt.datum)} • ${receipt.aussteller} • ${euro.format(receipt.bruttobetrag)}") }, onClick = {
                                         drafts = drafts.toMutableList().also { it[index] = draft.copy(receiptId = receipt.id, propertyId = draft.propertyId.ifBlank { receipt.propertyId }) }
                                         receiptMenu = null
                                     }) }

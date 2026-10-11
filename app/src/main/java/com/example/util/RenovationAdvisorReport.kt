@@ -14,7 +14,7 @@ object RenovationAdvisorReport {
     fun lines(summary: RenovationReviewSummary, unitNames: Map<String, String>, documents: List<ManagedDocument>): List<String> {
         val money = NumberFormat.getCurrencyInstance(Locale.GERMANY)
         fun amount(value: Double?) = value?.let(money::format) ?: "Offen"
-        fun date(value: String) = runCatching { LocalDate.parse(value).format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) }.getOrDefault("Offen")
+        fun date(value: String) = DateFormatUtils.safeFormat(value).ifBlank { "Offen" }
         fun receiptLine(line: RenovationReviewLine) = buildString {
             append(line.receipt?.getEffectiveDisplayId() ?: line.relation.receiptInternalId)
             append(" | Beleg-ID "); append(line.relation.receiptInternalId)

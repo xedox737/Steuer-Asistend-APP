@@ -398,7 +398,7 @@ object GoogleDriveClient {
             STEUERASSISTENT - BELEGS-EXPORT
             =========================================
             Aussteller:       ${receipt.aussteller}
-            Datum:            ${receipt.datum} ${receipt.uhrzeit}
+            Datum:            ${com.example.util.DateFormatUtils.safeFormat(receipt.datum)} ${receipt.uhrzeit}
             Bruttobetrag:     ${receipt.bruttobetrag} EUR
             Hauptkategorie:   ${receipt.hauptkategorie}
             Unterkategorie:   ${receipt.unterkategorie}
@@ -406,7 +406,7 @@ object GoogleDriveClient {
             Eigenleistung:    ${if (receipt.isEigenleistungSanierung) "Ja" else "Nein"}
             Beschreibung:     ${receipt.beschreibung}
             $itemsText=========================================
-            Exportiert am:    ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}
+            Exportiert am:    ${SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.GERMANY).format(Date())}
             =========================================
         """.trimIndent()
         

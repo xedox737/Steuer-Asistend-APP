@@ -133,11 +133,11 @@ internal object RentPlanInput {
         listOf(kalt, nk, other).any { amount(it) == null } ->
             "Bitte gültige Beträge ab 0 € eingeben (Komma oder Punkt)."
         mode == RentPlanEditMode.CHANGE_FROM_DATE && CalendarInput.parseIsoDate(date) == null ->
-            "Bitte ein gültiges Datum für die Mietänderung im Format JJJJ-MM-TT eingeben."
+            "Bitte ein gültiges Datum für die Mietänderung im Format TT.MM.JJJJ eingeben."
         mode == RentPlanEditMode.CHANGE_FROM_DATE && CalendarInput.parseIsoDate(date)?.dayOfMonth != 1 ->
             "Mietänderungen sind derzeit nur zum Monatsersten möglich."
         mode == RentPlanEditMode.CORRECT_EXISTING && date.isNotBlank() && CalendarInput.parseIsoDate(date) == null ->
-            "Bitte einen gültigen Mietbeginn im Format JJJJ-MM-TT eingeben."
+            "Bitte einen gültigen Mietbeginn im Format TT.MM.JJJJ eingeben."
         mode == RentPlanEditMode.CORRECT_EXISTING && previousEnd != null && !dateAfter(date, previousEnd) ->
             "Der Mietbeginn muss nach dem Ende des bisherigen Mietvertrags liegen."
         else -> null

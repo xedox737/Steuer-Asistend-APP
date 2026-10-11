@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.util.DateFormatUtils
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.activity.compose.BackHandler
@@ -105,8 +107,7 @@ private val LogbookCoins = ImageVector.Builder("LogbookCoins", 24.dp, 24.dp, 24f
 }.build()
 
 private fun Double.germanKm(): String = String.format(Locale.GERMANY, "%.1f km", this)
-private val logbookDateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy", Locale.GERMANY)
-private fun String.logbookDate(): String = runCatching { LocalDate.parse(this).format(logbookDateFormat) }.getOrDefault(this)
+private fun String.logbookDate(): String = DateFormatUtils.safeFormat(this)
 
 private fun manualTripReceipt() = Receipt(
     aussteller = "Manuelle Fahrt", datum = LocalDate.now().toString(), uhrzeit = "",
@@ -441,6 +442,7 @@ private fun LogbookSuggestionCard(
     onSaved: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val dateFields = rememberDateFieldValidation()
     val scope = rememberCoroutineScope()
     val draftKey = receipt.id.toString()
     val draft = remember(receipt.id) { runCatching { JSONObject(viewModel.logbookDrafts.value[draftKey].orEmpty()) }.getOrDefault(JSONObject()) }
@@ -558,13 +560,18 @@ private fun LogbookSuggestionCard(
             title = { Text(when {
                 target == "start" -> "Startadresse"
                 target == "destination" -> "Zieladresse"
-                target == "date" -> "Datum (JJJJ-MM-TT)"
+                target == "date" -> "Datum"
                 target == "purpose" -> "Zweck der Fahrt"
                 else -> "Zwischenstopp"
             }) },
-            text = { OutlinedTextField(editValue, { editValue = it }, singleLine = target != "purpose") },
+            text = {
+                if (target == "date") AppDateField(editValue, { editValue = it }, "Fahrtdatum", required = true,
+                    testTag = "logbook_date", onValidityChange = { dateFields.update("date", it) })
+                else OutlinedTextField(editValue, { editValue = it }, singleLine = target != "purpose")
+            },
             confirmButton = {
                 Button(onClick = {
+                    if (target == "date" && !dateFields.isValid) return@Button
                     when {
                         target == "start" -> start = editValue.trim()
                         target == "destination" -> destination = editValue.trim()
