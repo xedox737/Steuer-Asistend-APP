@@ -3,6 +3,9 @@ package com.example.e2e
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.text.TextLayoutResult
+import android.os.SystemClock
+import android.view.KeyEvent
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MainActivity
@@ -43,7 +46,17 @@ abstract class Phase7ALoanMatrix : EmulatorTestSupport() {
         openLoan("Linden-Darlehen")
         ui.onNodeWithText("Berg-Darlehen").assertDoesNotExist()
         editLoan()
-        ui.onNode(hasText("Restschuld €*") and hasSetTextAction()).performScrollTo().assertTextContains("90000,00")
+        val originalField = ui.onNode(hasText("Darlehenssumme €*") and hasSetTextAction())
+        originalField.performScrollTo().assertTextContains("100000,00")
+        val balanceField = ui.onNode(hasText("Restschuld €*") and hasSetTextAction())
+        balanceField.performScrollTo().assertTextContains("90000,00")
+        if (fontScale >= 1.3f) {
+            val originalBounds = originalField.fetchSemanticsNode().boundsInRoot
+            val balanceBounds = balanceField.fetchSemanticsNode().boundsInRoot
+            assertEquals(originalBounds.left, balanceBounds.left, 1f)
+            assertEquals(originalBounds.right, balanceBounds.right, 1f)
+            assertTrue("Großschrift: Zahlenfelder untereinander", balanceBounds.top >= originalBounds.bottom)
+        }
         capture("p7-loan-editor-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
         input("Restschuld €*", "89.000,50")
         ui.onNodeWithTag("save_loan_button").performClick()
@@ -53,7 +66,7 @@ abstract class Phase7ALoanMatrix : EmulatorTestSupport() {
         editLoan(); input("Restschuld €*", "1,00")
         ui.onNode(hasText("Abbrechen") and hasAnyAncestor(isDialog())).performClick()
         assertEquals(89_000.50, savedLoan().restschuld, .001)
-        editLoan(); input("Restschuld €*", "2,00"); systemBack()
+        editLoan(); input("Restschuld €*", "2,00"); loanSystemBack()
         ui.onNodeWithText("Darlehen bearbeiten").assertDoesNotExist()
         assertEquals(89_000.50, savedLoan().restschuld, .001)
         editLoan(); input("Restschuld €*", "3,00")
@@ -64,7 +77,13 @@ abstract class Phase7ALoanMatrix : EmulatorTestSupport() {
         ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
         openLoan("Linden-Darlehen"); editLoan()
         ui.onNode(hasText("Restschuld €*") and hasSetTextAction()).performScrollTo().assertTextContains("89000,50")
-        systemBack(); systemBack(); systemBack() // editor -> manager -> financing -> object
+        loanSystemBack() // editor -> manager
+        ui.onNodeWithText("Darlehen bearbeiten").assertDoesNotExist()
+        ui.onNodeWithText("Schließen").assertIsDisplayed()
+        loanSystemBack() // manager -> financing
+        ui.onAllNodes(isDialog()).assertCountEquals(0)
+        ui.onNodeWithTag("loan_management_card").assertIsDisplayed()
+        loanSystemBack() // financing -> object
         ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().assertIsDisplayed()
         scenario.recreate()
         ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
@@ -78,16 +97,31 @@ abstract class Phase7ALoanMatrix : EmulatorTestSupport() {
         openLoan("Berg-Darlehen")
         ui.onNodeWithText("Linden-Darlehen").assertDoesNotExist()
         capture("p7-object-b-isolation-font-$fontScale")
-        systemBack(); systemBack(); systemBack() // manager -> financing -> object -> portfolio
+        loanSystemBack() // manager -> financing
+        ui.onAllNodes(isDialog()).assertCountEquals(0)
+        ui.onNodeWithTag("loan_management_card").assertIsDisplayed()
+        loanSystemBack() // financing -> object
+        ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().assertIsDisplayed()
+        loanSystemBack() // object -> portfolio
         ui.onNodeWithTag("properties_overview").assertIsDisplayed()
         openProperty(a.propertyId)
         ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
         openLoan("Linden-Darlehen")
         ui.onNodeWithText("Berg-Darlehen").assertDoesNotExist()
-        systemBack(); systemBack()
+        loanSystemBack(); loanSystemBack()
         clickMore("Einnahmen & Ausgaben")
         ledgerProperty("MFH Lindenstraße"); ledgerMetric("Einnahmen", "200,00 €")
         ledgerProperty("MFH Bergstraße"); ledgerMetric("Einnahmen", "300,00 €")
+    }
+    private fun loanSystemBack() {
+        // Inject the real Android key into the focused window. Espresso's root picker can
+        // retain the underlying Activity after dismissing one of two nested dialog windows.
+        // No dispatcher callback, retry or timing sleep; each predecessor is asserted above.
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val down = SystemClock.uptimeMillis()
+        assertTrue(automation.injectInputEvent(KeyEvent(down, down, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK, 0), true))
+        assertTrue(automation.injectInputEvent(KeyEvent(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0), true))
+        ui.waitForIdle()
     }
     private fun savedLoan() = runBlocking(Dispatchers.IO) { db.loanDao().getAllLoans().single { it.id == 701 } }
     private fun openProperty(id: String) {

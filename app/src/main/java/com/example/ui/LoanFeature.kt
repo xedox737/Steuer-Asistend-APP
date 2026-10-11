@@ -8,6 +8,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -46,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -374,6 +377,7 @@ private inline fun <K, V, R> Map<K, V>.associateNotNull(transform: (Map.Entry<K,
 private fun <T, K, V> Iterable<T>.associateNotNull(transform: (T) -> Pair<K, V>?): Map<K, V> =
     mapNotNull(transform).toMap()
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun LoanEditDialog(
     initial: Loan,
@@ -398,6 +402,7 @@ private fun LoanEditDialog(
     var validationError by remember(initial.id) { mutableStateOf<String?>(null) }
 
     val numericKeyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+    val expandedNumbers = LocalDensity.current.fontScale >= 1.3f
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -412,13 +417,15 @@ private fun LoanEditDialog(
                 item { OutlinedTextField(bezeichnung, { bezeichnung = it }, label = { Text("Bezeichnung*") }, modifier = Modifier.fillMaxWidth().testTag("loan_name"), singleLine = true) }
                 item { OutlinedTextField(bank, { bank = it }, label = { Text("Bank / Kreditgeber") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = if (expandedNumbers) 1 else 2) {
                         OutlinedTextField(darlehensbetrag, { darlehensbetrag = it }, label = { Text("Darlehenssumme €*") }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
                         OutlinedTextField(restschuld, { restschuld = it }, label = { Text("Restschuld €*") }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
                     }
                 }
                 item {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = if (expandedNumbers) 1 else 2) {
                         OutlinedTextField(sollzins, { sollzins = it }, label = { Text("Sollzins %*") }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
                         OutlinedTextField(tilgung, { tilgung = it }, label = { Text("Tilgung %") }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
                     }
