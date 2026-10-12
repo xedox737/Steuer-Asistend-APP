@@ -15,7 +15,7 @@ Das Objekt-Dashboard verwendet bestehende Datenquellen und ergänzt ausschließl
 | Einheiten & Mieter | `WohneinheitStatus`, bestehende Unit-Prefs, `TenantHistoryStore` |
 | Mieteingänge | bestehende Receipt-Mieteinnahmen + Mietplan + Mieterhistorie |
 | Miet-Jahresübersicht | 12 Monatsprojektionen aus derselben `RentTrackingLogic` wie der Monatscheck |
-| Belege & Kosten | vorhandene `Receipt`-Datensätze, nur gefiltert |
+| Einnahmen / Ausgaben | gemeinsamer `LedgerScreen` / `LedgerPaymentPresentation`, feste `propertyId`, bestehende Beleg-/Bankdetails mit Rückkehr zur Objektakte (Phase 7B) |
 | Finanzierung | vorhandene `LoanManagementSection` / `Loan`-Daten |
 | Sanierungen | vorhandene Belege; 15-%-Bewertung bleibt im Steuerbereich |
 | Dokumente | vorhandene `ManagedDocument`-Daten |

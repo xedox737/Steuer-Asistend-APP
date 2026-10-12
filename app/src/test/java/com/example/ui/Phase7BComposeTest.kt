@@ -125,7 +125,10 @@ class Phase7BComposeTest {
         assertTrue(TenantHistoryStore.load(ui.activity, p.propertyId, units.first().unitId, units.first().name).isEmpty())
     }
 
-    @Test fun existingLoanNumbersRoundTripWithoutChangingAnyValue() {
+    // Native Robolectric cannot idle this existing FlowRow editor before window measurement.
+    // Keep the same UI/save assertions; real Android rendering is covered by Phase7ALoanMatrix.
+    @Test @GraphicsMode(GraphicsMode.Mode.LEGACY)
+    fun existingLoanNumbersRoundTripWithoutChangingAnyValue() {
         val original = Loan(id = 901, propertyId = "loan", bezeichnung = "Bestand", darlehensbetrag = 100000.0,
             restschuld = 90000.0, sollzinsProzent = 3.0, tilgungProzent = 3.5, monatlicheRate = 100000.25,
             vermietungsanteilProzent = 87.12345, startDatum = "2026-01-01")

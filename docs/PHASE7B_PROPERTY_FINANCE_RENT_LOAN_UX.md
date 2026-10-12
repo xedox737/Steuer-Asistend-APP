@@ -74,3 +74,10 @@ Unit-/Restore-/DATEV-/Phase-7A-/Emulatortests über den unveränderten Android-C
 Tatsächliche Ergebnisse werden nach Ausführung im PR dokumentiert; keine vorweggenommene Erfolgsaussage.
 Room-Schema, Migrationen, Backup 15, Restore, DATEV, Bankliste und Persistenzlogik unverändert.
 Keine Cloud-/Kanzlei-/Realgeräteabnahme behauptet.
+
+Native Robolectric prüft die responsive Sammelerfassung; nur die Darlehens-Compose-Methode nutzt
+Legacy-Grafik, da der vorhandene FlowRow-Editor vor einer endlichen Fenstervermessung in Robolectric
+nicht idle wird (AppNotIdleException). Alle UI-, Eingabe- und Double-Gleichheitsassertionen bleiben aktiv.
+Die echte Android-Darstellung des Editors wird durch die drei bestehenden Phase-7A-Emulatorfälle geprüft.
+Die bestehende Ledger-Compose-Klasse erhält dieselbe Application/AndroidViewModelFactory-Isolation
+wie die übrigen App-Workflowtests; keine Timeout-Erhöhung oder abgeschwächte Erwartung.

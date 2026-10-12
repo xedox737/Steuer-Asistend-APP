@@ -13,7 +13,7 @@ class Phase7BPaymentScopeTest {
     private fun entries() = LedgerPaymentPresentation.entries(listOf(receipt, receipt.copy(id = 982, propertyId = "b", internalId = "original-b", bruttobetrag = 700.0),
         receipt.copy(id = 983, internalId = "original-prior", datum = "2025-10-01", bruttobetrag = 50.0)), emptyList(),
         listOf(BankReceiptLink("link", "linked", receipt.id, receipt.internalId, 500.0)),
-        listOf(tx("linked", "a", -500.0), tx("direct", "a", -1200.0), tx("refund", "a", 200.0), tx("b-refund", "b", 300.0)))
+        listOf(tx("linked", "a", -500.0).copy(counterparty = "Handwerker", purpose = "Kessel"), tx("direct", "a", -1200.0), tx("refund", "a", 200.0), tx("b-refund", "b", 300.0)))
     @Test fun twoObjectsUseTheSameEntriesForListAndTotalsWithReceiptBankDedup() {
         val entries = entries()
         val a = LedgerPaymentPresentation.filter(entries, LedgerFilters(2026, propertyId = "a"))
