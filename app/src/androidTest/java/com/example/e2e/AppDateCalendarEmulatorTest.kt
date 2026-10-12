@@ -40,8 +40,13 @@ abstract class AppDateCalendarMatrix : EmulatorTestSupport() {
         ui.onNode(calendarDay("12"), useUnmergedTree = true).performScrollTo().performClick()
         ui.onNodeWithTag("app_date_cancel").performClick()
         ui.onNodeWithTag("edit_datum").assertTextContains("11.10.2026")
+        // Finish any restored manual-input focus before testing dismissal of the calendar window.
+        Espresso.closeSoftKeyboard()
         ui.onNodeWithTag("edit_datum").performClick()
+        ui.onNodeWithTag("app_date_picker").assertIsDisplayed()
+        Espresso.closeSoftKeyboard()
         systemBack()
+        ui.waitUntil(5_000) { ui.onAllNodesWithTag("app_date_picker").fetchSemanticsNodes().isEmpty() }
         ui.onNodeWithTag("app_date_picker").assertDoesNotExist()
         ui.onNodeWithTag("edit_datum").assertTextContains("11.10.2026")
         ui.onNodeWithTag("edit_datum").performTextReplacement("31.02.2026")
