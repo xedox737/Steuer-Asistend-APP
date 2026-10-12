@@ -178,9 +178,14 @@ abstract class EmulatorTestSupport {
     }
 
     protected fun systemBack() {
-        // Espresso injects a real Android BACK key event into the focused window.
-        // Do not call onBackPressedDispatcher or a navigation callback here.
-        Espresso.pressBack()
+        // Keep Espresso's real key injection and main-thread synchronization, but select
+        // the actually focused window instead of a cached Activity behind a modal dialog.
+        val focusedWindow = object : org.hamcrest.TypeSafeMatcher<androidx.test.espresso.Root>() {
+            override fun matchesSafely(root: androidx.test.espresso.Root): Boolean = root.decorView.hasWindowFocus()
+            override fun describeTo(description: org.hamcrest.Description) { description.appendText("focused Android window") }
+        }
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot()).inRoot(focusedWindow)
+            .perform(androidx.test.espresso.action.ViewActions.pressBack())
         ui.waitForIdle()
     }
 

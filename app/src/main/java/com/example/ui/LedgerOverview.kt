@@ -54,6 +54,7 @@ internal fun LedgerOverview(
     bankTransactions: List<com.example.data.BankTransaction> = emptyList(),
     bankLoanAssignments: List<com.example.data.BankLoanAssignment> = emptyList(),
     onBank: (com.example.data.BankTransaction) -> Unit = {},
+    scopedPropertyId: String? = null,
     onReceipt: (Receipt) -> Unit
 ) {
     var view by rememberSaveable { mutableStateOf(LedgerView.PAYMENTS) }
@@ -73,7 +74,8 @@ internal fun LedgerOverview(
     var category by rememberSaveable { mutableStateOf<String?>(null) }
     var period by rememberSaveable { mutableStateOf(LedgerPeriod.YEAR) }
     var query by rememberSaveable { mutableStateOf("") }
-    val filters = LedgerFilters(selectedYear, kind, propertyId, category, period, query)
+    val effectivePropertyId = scopedPropertyId ?: propertyId
+    val filters = LedgerFilters(selectedYear, kind, effectivePropertyId, category, period, query)
     val knownPropertyIds = properties.map { it.propertyId }.toSet()
     val yearEntries = remember(entries, selectedYear) { entries.filter { CalendarInput.parseIsoDate(it.date)?.year == selectedYear } }
     val filtered = remember(entries, filters, knownPropertyIds) {
@@ -144,10 +146,11 @@ internal fun LedgerOverview(
         }
         ledgerSection {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                LedgerDropdown(propertyOptions.firstOrNull { it.first == propertyId }?.second
-                    ?: if (propertyId == "") "Nicht zugeordnet" else "Immobilie", "ledger_property",
-                    listOf(null to "Alle Immobilien", "" to "Nicht zugeordnet") + propertyOptions,
-                    Modifier.weight(1f), propertyId != null) { propertyId = it }
+                LedgerDropdown(propertyOptions.firstOrNull { it.first == effectivePropertyId }?.second
+                    ?: if (effectivePropertyId == "") "Nicht zugeordnet" else "Immobilie", "ledger_property",
+                    if (scopedPropertyId == null) listOf(null to "Alle Immobilien", "" to "Nicht zugeordnet") + propertyOptions
+                    else propertyOptions.filter { it.first == scopedPropertyId },
+                    Modifier.weight(1f), effectivePropertyId != null) { if (scopedPropertyId == null) propertyId = it }
                 LedgerDropdown(category ?: "Kategorie", "ledger_category", listOf(null to "Alle Kategorien") + categories.map { it to it },
                     Modifier.weight(1f), category != null) { category = it }
                 LedgerDropdown(if (period == LedgerPeriod.YEAR) "Zeitraum" else period.label, "ledger_period",
