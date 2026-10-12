@@ -162,7 +162,7 @@ class Phase7BLoanNumbersEmulatorTest : EmulatorTestSupport() {
             ui.onNode(hasText(label) and hasSetTextAction()).assertTextContains(value)
         }
         editorScroll(hasTestTag("loan_name"))
-        capture("p7b-loan-german-existing-numbers", ui.onAllNodes(isDialog()).onLast())
+        capture("p7b-loan-german-existing-numbers", ui.onNode(isDialog() and hasAnyDescendant(hasText("Darlehen bearbeiten"))))
         save(original)
         listOf("100000", "100000,00").forEach { value ->
             edit(); enter("Darlehenssumme €*", value); save(original)
@@ -179,8 +179,8 @@ class Phase7BLoanNumbersEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("Abbrechen") and hasAnyAncestor(isDialog())).performClick()
         assertEquals(changed, stored())
     }
-    private fun editorScroll(matcher: SemanticsMatcher) = ui.onAllNodes(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
-        .onLast().performScrollToNode(matcher)
+    private fun editorScroll(matcher: SemanticsMatcher) = ui.onNode(hasScrollToIndexAction() and
+        hasAnyAncestor(isDialog() and hasAnyDescendant(hasText("Darlehen bearbeiten")))).performScrollToNode(matcher)
     private fun enter(label: String, value: String) {
         editorScroll(hasText(label) and hasSetTextAction())
         input(label, value, scroll = false)
