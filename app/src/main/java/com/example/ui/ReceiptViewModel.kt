@@ -3986,6 +3986,10 @@ data class AiSearchUiState(
                 zinsbindungBis = values["zinsbindung"] ?: existing?.zinsbindungBis.orEmpty(),
                 laufzeitBis = values["laufzeit"] ?: existing?.laufzeitBis.orEmpty()
             )
+            // This second existing write path must not introduce unsafe loan numbers either.
+            require(LoanInputValidation.numbers(loan).all { (field, value) ->
+                LoanInputValidation.parse(LoanInputValidation.prefill(value), field).error == null
+            }) { "Bitte die Darlehenswerte korrigieren." }
             val loanId = database.loanDao().upsertLoan(loan).toInt()
             repository.updateManagedDocumentLoan(document, if (loan.id != 0) loan.id else loanId)
                 ?: throw IllegalStateException("Das Dokument ist nicht mehr verfügbar oder wurde neu zugeordnet.")
