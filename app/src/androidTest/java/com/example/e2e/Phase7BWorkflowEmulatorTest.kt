@@ -140,3 +140,49 @@ abstract class Phase7BBatchMatrix : EmulatorTestSupport() {
 @RunWith(AndroidJUnit4::class) class Phase7BBatch10EmulatorTest : Phase7BBatchMatrix() { override val fontScale = 1f }
 @RunWith(AndroidJUnit4::class) class Phase7BBatch13EmulatorTest : Phase7BBatchMatrix() { override val fontScale = 1.3f }
 @RunWith(AndroidJUnit4::class) class Phase7BBatch15EmulatorTest : Phase7BBatchMatrix() { override val fontScale = 1.5f }
+
+@RunWith(AndroidJUnit4::class)
+class Phase7BLoanNumbersEmulatorTest : EmulatorTestSupport() {
+    /** Same editor/save assertions as the JVM probe, now with real Android and persisted Room values. */
+    @Test fun existingLoanNumbersRoundTripWithoutChangingAnyValue() {
+        val property = seedProperty("p7b-loan", "Darlehensobjekt")
+        val original = Loan(id = 901, propertyId = property.propertyId, bezeichnung = "Bestand", darlehensbetrag = 100000.0,
+            restschuld = 90000.0, sollzinsProzent = 3.0, tilgungProzent = 3.5, monatlicheRate = 100000.25,
+            vermietungsanteilProzent = 87.12345, startDatum = "2026-01-01")
+        runBlocking(Dispatchers.IO) { db.loanDao().upsertLoan(original) }
+        clickTab(AppScreen.PROPERTIES)
+        ui.onNodeWithTag("property_card_${property.propertyId}").performScrollTo().performClick()
+        ui.onNode(hasText("Finanzierung") and hasClickAction()).performScrollTo().performClick()
+        ui.onNodeWithTag("loan_management_card").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText("Bestand").fetchSemanticsNodes().isNotEmpty() }
+        edit()
+        mapOf("Darlehenssumme €*" to "100000,00", "Restschuld €*" to "90000,00", "Sollzins %*" to "3,00",
+            "Tilgung %" to "3,50", "Monatliche Rate €" to "100000,25", "Vermietungsanteil %" to "87,12345").forEach { (label, value) ->
+            ui.onNode(hasText(label) and hasSetTextAction()).performScrollTo().assertTextContains(value)
+        }
+        ui.onNodeWithTag("loan_name").performScrollTo()
+        capture("p7b-loan-german-existing-numbers", ui.onAllNodes(isDialog()).onLast())
+        save(original)
+        listOf("100000", "100000,00").forEach { value ->
+            edit(); input("Darlehenssumme €*", value); save(original)
+        }
+        edit(); input("Sollzins %*", "3"); save(original)
+        edit(); input("Sollzins %*", "3,5"); input("Restschuld €*", "90000,25")
+        val changed = original.copy(sollzinsProzent = 3.5, restschuld = 90000.25)
+        save(changed)
+        edit(); input("Darlehenssumme €*", "ungültig")
+        ui.onNodeWithTag("save_loan_button").performClick()
+        ui.onNodeWithText("Darlehenssumme ist ungültig.").performScrollTo().assertIsDisplayed()
+        assertEquals(changed, stored())
+        ui.onNode(hasText("Abbrechen") and hasAnyAncestor(isDialog())).performClick()
+        assertEquals(changed, stored())
+    }
+    private fun stored() = runBlocking(Dispatchers.IO) { db.loanDao().getAllLoans().single() }
+    private fun edit() = ui.onNodeWithContentDescription("Bearbeiten").performScrollTo().performClick()
+    private fun save(expected: Loan) {
+        ui.onNodeWithTag("save_loan_button").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText("Darlehen bearbeiten").fetchSemanticsNodes().isEmpty() }
+        ui.waitUntil(10_000) { stored() == expected }
+        assertEquals(expected, stored())
+    }
+}

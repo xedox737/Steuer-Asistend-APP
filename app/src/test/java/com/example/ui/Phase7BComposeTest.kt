@@ -125,37 +125,4 @@ class Phase7BComposeTest {
         assertTrue(TenantHistoryStore.load(ui.activity, p.propertyId, units.first().unitId, units.first().name).isEmpty())
     }
 
-    // Native Robolectric cannot idle this existing FlowRow editor before window measurement.
-    // Keep the same UI/save assertions; real Android rendering is covered by Phase7ALoanMatrix.
-    @Test @GraphicsMode(GraphicsMode.Mode.LEGACY)
-    fun existingLoanNumbersRoundTripWithoutChangingAnyValue() {
-        val original = Loan(id = 901, propertyId = "loan", bezeichnung = "Bestand", darlehensbetrag = 100000.0,
-            restschuld = 90000.0, sollzinsProzent = 3.0, tilgungProzent = 3.5, monatlicheRate = 100000.25,
-            vermietungsanteilProzent = 87.12345, startDatum = "2026-01-01")
-        var saved: Loan? = null
-        ui.runOnUiThread { ui.activity.setContent { MyApplicationTheme { LoanEditDialog(original, "Darlehen bearbeiten", {}, { saved = it }) } } }
-        settleWindow()
-        mapOf("Darlehenssumme €*" to "100000,00", "Restschuld €*" to "90000,00", "Sollzins %*" to "3,00",
-            "Tilgung %" to "3,50", "Monatliche Rate €" to "100000,25", "Vermietungsanteil %" to "87,12345").forEach { (label, value) ->
-            ui.onNode(hasText(label) and hasSetTextAction()).performScrollTo().assertTextContains(value)
-        }
-        ui.onNodeWithTag("save_loan_button").performClick()
-        assertEquals(original, saved)
-        fun enter(label: String, value: String) = ui.onNode(hasText(label) and hasSetTextAction()).performScrollTo().performTextReplacement(value)
-        listOf("100000", "100000,00").forEach { value ->
-            enter("Darlehenssumme €*", value)
-            ui.onNodeWithTag("save_loan_button").performClick()
-            assertEquals(original, saved)
-        }
-        enter("Sollzins %*", "3")
-        ui.onNodeWithTag("save_loan_button").performClick(); assertEquals(original, saved)
-        enter("Sollzins %*", "3,5"); enter("Restschuld €*", "90000,25")
-        ui.onNodeWithTag("save_loan_button").performClick()
-        assertEquals(original.copy(sollzinsProzent = 3.5, restschuld = 90000.25), saved)
-        saved = null
-        enter("Darlehenssumme €*", "ungültig")
-        ui.onNodeWithTag("save_loan_button").performClick()
-        ui.onNodeWithText("Darlehenssumme ist ungültig.").assertExists()
-        assertNull(saved)
-    }
 }

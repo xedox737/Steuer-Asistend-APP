@@ -53,8 +53,8 @@ Standard-Dialog-IME-Verhalten und vertikal scrollende Eingabefelder; Aktionen au
 Im Base sind Darlehenssumme, Restschuld, Sollzins, Tilgung, Rate und Vermietungsanteil bereits über
 GermanNumberInput.formatForInput vorbefüllt. Skala mindestens 2, sonst volle gespeicherte Double-Dezimalpräzision.
 Speichern nutzt den bestehenden LoanFeature-Parser (Punkte entfernen, Komma → Punkt).
-Kein zusätzlicher produktiver Zahlenfix nötig. LoanEditDialog wird lediglich `internal` statt `private`,
-um die echte UI samt unverändertem Save-Callback zu testen. Neue Compose-Prüfung enthält 100000/90000/3,
+Kein zusätzlicher produktiver Zahlenfix nötig. LoanEditDialog bleibt privat und unverändert. Die Zahlen-/Speicherassertionen laufen über
+den aktiven Finanzierungsweg auf echtem Android mit Room. Die Compose-Prüfung enthält 100000/90000/3,
 3,5/100000,25 und 87,12345; vollständige Loan-Gleichheit beim unveränderten Speichern.
 Bestehender Phase-7A-Emulatorpfad erhält zusätzlich unverändertes Speichern mit vollständiger Room-Gleichheit.
 
@@ -75,9 +75,12 @@ Tatsächliche Ergebnisse werden nach Ausführung im PR dokumentiert; keine vorwe
 Room-Schema, Migrationen, Backup 15, Restore, DATEV, Bankliste und Persistenzlogik unverändert.
 Keine Cloud-/Kanzlei-/Realgeräteabnahme behauptet.
 
-Native Robolectric prüft die responsive Sammelerfassung; nur die Darlehens-Compose-Methode nutzt
-Legacy-Grafik, da der vorhandene FlowRow-Editor vor einer endlichen Fenstervermessung in Robolectric
-nicht idle wird (AppNotIdleException). Alle UI-, Eingabe- und Double-Gleichheitsassertionen bleiben aktiv.
-Die echte Android-Darstellung des Editors wird durch die drei bestehenden Phase-7A-Emulatorfälle geprüft.
+Native Robolectric prüft die responsive Sammelerfassung. Der zusätzliche vollständige
+Darlehens-Zahlen-/Eingabe-/Speichertest läuft als Android-Compose-Test über den aktiven Objektweg:
+Robolectric erreicht für den vorhandenen FlowRow-Editor keinen ruhenden Layoutzustand und läuft
+auch mit Legacy-Grafik in eine Textvermessungsschleife (AppNotIdleException / ShadowTrace-OOM).
+Die Assertions wurden auf das echte Android-Rendering mit zusätzlicher Room-Prüfung
+übertragen; keine Produktionsfensteränderung, Testsperre, Timeout-Erhöhung oder Testabschaltung.
+Zwei reine Zahlenregressionen prüfen die zentrale Vorbelegung und präzisen Double-Roundtrip.
 Die bestehende Ledger-Compose-Klasse erhält dieselbe Application/AndroidViewModelFactory-Isolation
-wie die übrigen App-Workflowtests; keine Timeout-Erhöhung oder abgeschwächte Erwartung.
+wie die übrigen App-Workflowtests; ihre Erwartungen bleiben unverändert.
