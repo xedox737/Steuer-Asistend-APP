@@ -399,7 +399,7 @@ internal fun LoanEditDialog(
     var aktiv by remember(initial.id, initial.propertyId) { mutableStateOf(initial.aktiv) }
     var validationError by remember(initial.id, initial.propertyId) { mutableStateOf<String?>(null) }
     var attemptedSave by remember(initial.id, initial.propertyId) { mutableStateOf(false) }
-    val numberResults = mapOf(
+    fun currentNumberResults() = mapOf(
         LoanInputValidation.Field.AMOUNT to LoanInputValidation.parse(darlehensbetrag, LoanInputValidation.Field.AMOUNT),
         LoanInputValidation.Field.BALANCE to LoanInputValidation.parse(restschuld, LoanInputValidation.Field.BALANCE),
         LoanInputValidation.Field.INTEREST to LoanInputValidation.parse(sollzins, LoanInputValidation.Field.INTEREST),
@@ -407,10 +407,12 @@ internal fun LoanEditDialog(
         LoanInputValidation.Field.MONTHLY to LoanInputValidation.parse(rate, LoanInputValidation.Field.MONTHLY),
         LoanInputValidation.Field.RENTED to LoanInputValidation.parse(vermietungsanteil, LoanInputValidation.Field.RENTED)
     )
+    val numberResults = currentNumberResults()
     fun fieldError(field: LoanInputValidation.Field): String? = numberResults.getValue(field).let {
         if (attemptedSave || it.status == LoanInputValidation.Status.INVALID_STORED) it.error else null
     }
     val chronologyErrors = LoanInputValidation.dateErrors(startDatum, zinsbindungBis, laufzeitBis)
+    val chronologyWarning = LoanInputValidation.dateWarning(zinsbindungBis, laufzeitBis)
 
     val numericKeyboard = KeyboardOptions(keyboardType = KeyboardType.Decimal)
     val expandedNumbers = LocalDensity.current.fontScale >= 1.3f
@@ -430,26 +432,26 @@ internal fun LoanEditDialog(
                 item {
                     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = if (expandedNumbers) 1 else 2) {
-                        OutlinedTextField(darlehensbetrag, { darlehensbetrag = it }, label = { Text("Darlehenssumme €*") }, isError = fieldError(LoanInputValidation.Field.AMOUNT) != null, supportingText = fieldError(LoanInputValidation.Field.AMOUNT)?.let { error -> { Text(error, modifier = Modifier.testTag("loan_error_AMOUNT")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(restschuld, { restschuld = it }, label = { Text("Restschuld €*") }, isError = fieldError(LoanInputValidation.Field.BALANCE) != null, supportingText = fieldError(LoanInputValidation.Field.BALANCE)?.let { error -> { Text(error, modifier = Modifier.testTag("loan_error_BALANCE")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(darlehensbetrag, { darlehensbetrag = it }, label = { Text("Darlehenssumme €*") }, isError = fieldError(LoanInputValidation.Field.AMOUNT) != null, supportingText = fieldError(LoanInputValidation.Field.AMOUNT)?.let { error -> { Text(error, modifier = Modifier.fillMaxWidth().testTag("loan_error_AMOUNT")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(restschuld, { restschuld = it }, label = { Text("Restschuld €*") }, isError = fieldError(LoanInputValidation.Field.BALANCE) != null, supportingText = fieldError(LoanInputValidation.Field.BALANCE)?.let { error -> { Text(error, modifier = Modifier.fillMaxWidth().testTag("loan_error_BALANCE")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
                     }
                 }
                 item {
                     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = if (expandedNumbers) 1 else 2) {
-                        OutlinedTextField(sollzins, { sollzins = it }, label = { Text("Sollzins %*") }, isError = fieldError(LoanInputValidation.Field.INTEREST) != null, supportingText = fieldError(LoanInputValidation.Field.INTEREST)?.let { error -> { Text(error, modifier = Modifier.testTag("loan_error_INTEREST")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(tilgung, { tilgung = it }, label = { Text("Tilgung %") }, isError = fieldError(LoanInputValidation.Field.REPAYMENT) != null, supportingText = fieldError(LoanInputValidation.Field.REPAYMENT)?.let { error -> { Text(error, modifier = Modifier.testTag("loan_error_REPAYMENT")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(sollzins, { sollzins = it }, label = { Text("Sollzins %*") }, isError = fieldError(LoanInputValidation.Field.INTEREST) != null, supportingText = fieldError(LoanInputValidation.Field.INTEREST)?.let { error -> { Text(error, modifier = Modifier.fillMaxWidth().testTag("loan_error_INTEREST")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
+                        OutlinedTextField(tilgung, { tilgung = it }, label = { Text("Tilgung %") }, isError = fieldError(LoanInputValidation.Field.REPAYMENT) != null, supportingText = fieldError(LoanInputValidation.Field.REPAYMENT)?.let { error -> { Text(error, modifier = Modifier.fillMaxWidth().testTag("loan_error_REPAYMENT")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.weight(1f), singleLine = true)
                     }
                 }
-                item { OutlinedTextField(rate, { rate = it }, label = { Text("Monatliche Rate €") }, isError = fieldError(LoanInputValidation.Field.MONTHLY) != null, supportingText = fieldError(LoanInputValidation.Field.MONTHLY)?.let { error -> { Text(error, modifier = Modifier.testTag("loan_error_MONTHLY")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                item { OutlinedTextField(rate, { rate = it }, label = { Text("Monatliche Rate €") }, isError = fieldError(LoanInputValidation.Field.MONTHLY) != null, supportingText = fieldError(LoanInputValidation.Field.MONTHLY)?.let { error -> { Text(error, modifier = Modifier.fillMaxWidth().testTag("loan_error_MONTHLY")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item {
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AppDateField(value = startDatum, onValueChange = { startDatum = it }, label = "Start", modifier = Modifier.fillMaxWidth(), isError = attemptedSave && chronologyErrors["start"] != null, supportingText = chronologyErrors["start"]?.takeIf { attemptedSave }?.let { error -> { Text(error) } }, required = false, onValidityChange = { dateFields.update("startDatum", it) })
                         AppDateField(value = zinsbindungBis, onValueChange = { zinsbindungBis = it }, label = "Zinsbindung bis", modifier = Modifier.fillMaxWidth(), isError = attemptedSave && chronologyErrors["binding"] != null, supportingText = chronologyErrors["binding"]?.takeIf { attemptedSave }?.let { error -> { Text(error) } }, required = false, onValidityChange = { dateFields.update("zinsbindungBis", it) })
                     }
                 }
-                item { AppDateField(value = laufzeitBis, onValueChange = { laufzeitBis = it }, label = "Geplantes Laufzeitende", modifier = Modifier.fillMaxWidth(), isError = attemptedSave && chronologyErrors["end"] != null, supportingText = chronologyErrors["end"]?.takeIf { attemptedSave }?.let { error -> { Text(error) } }, required = false, onValidityChange = { dateFields.update("laufzeitBis", it) }) }
-                item { OutlinedTextField(vermietungsanteil, { vermietungsanteil = it }, label = { Text("Vermietungsanteil %") }, isError = fieldError(LoanInputValidation.Field.RENTED) != null, supportingText = fieldError(LoanInputValidation.Field.RENTED)?.let { error -> { Text(error, modifier = Modifier.testTag("loan_error_RENTED")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                item { AppDateField(value = laufzeitBis, onValueChange = { laufzeitBis = it }, label = "Geplantes Laufzeitende", modifier = Modifier.fillMaxWidth(), isError = attemptedSave && chronologyErrors["end"] != null, supportingText = if (attemptedSave && chronologyErrors["end"] != null) ({ Text(chronologyErrors.getValue("end")) }) else chronologyWarning?.let { warning -> { Text(warning, color = WarmOrange) } }, required = false, onValidityChange = { dateFields.update("laufzeitBis", it) }) }
+                item { OutlinedTextField(vermietungsanteil, { vermietungsanteil = it }, label = { Text("Vermietungsanteil %") }, isError = fieldError(LoanInputValidation.Field.RENTED) != null, supportingText = fieldError(LoanInputValidation.Field.RENTED)?.let { error -> { Text(error, modifier = Modifier.fillMaxWidth().testTag("loan_error_RENTED")) } }, keyboardOptions = numericKeyboard, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(notiz, { notiz = it }, label = { Text("Notiz") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -467,17 +469,20 @@ internal fun LoanEditDialog(
             Button(
                 onClick = {
                     attemptedSave = true
+                    // Validate the latest state at the write boundary, even before the next UI frame.
+                    val currentNumbers = currentNumberResults()
+                    val currentDateErrors = LoanInputValidation.dateErrors(startDatum, zinsbindungBis, laufzeitBis)
                     if (!dateFields.isValid) { validationError = DateFormatUtils.INPUT_ERROR; return@Button }
-                    if (numberResults.values.any { it.error != null } || chronologyErrors.isNotEmpty()) {
+                    if (currentNumbers.values.any { it.error != null } || currentDateErrors.isNotEmpty()) {
                         validationError = "Bitte die markierten Felder korrigieren."
                         return@Button
                     }
-                    val original = requireNotNull(numberResults.getValue(LoanInputValidation.Field.AMOUNT).value)
-                    val balance = requireNotNull(numberResults.getValue(LoanInputValidation.Field.BALANCE).value)
-                    val interest = requireNotNull(numberResults.getValue(LoanInputValidation.Field.INTEREST).value)
-                    val repayment = requireNotNull(numberResults.getValue(LoanInputValidation.Field.REPAYMENT).value)
-                    val monthly = requireNotNull(numberResults.getValue(LoanInputValidation.Field.MONTHLY).value)
-                    val rented = requireNotNull(numberResults.getValue(LoanInputValidation.Field.RENTED).value)
+                    val original = requireNotNull(currentNumbers.getValue(LoanInputValidation.Field.AMOUNT).value)
+                    val balance = requireNotNull(currentNumbers.getValue(LoanInputValidation.Field.BALANCE).value)
+                    val interest = requireNotNull(currentNumbers.getValue(LoanInputValidation.Field.INTEREST).value)
+                    val repayment = requireNotNull(currentNumbers.getValue(LoanInputValidation.Field.REPAYMENT).value)
+                    val monthly = requireNotNull(currentNumbers.getValue(LoanInputValidation.Field.MONTHLY).value)
+                    val rented = requireNotNull(currentNumbers.getValue(LoanInputValidation.Field.RENTED).value)
                     when {
                         bezeichnung.isBlank() -> validationError = "Bitte eine Bezeichnung eingeben."
                         else -> onSave(

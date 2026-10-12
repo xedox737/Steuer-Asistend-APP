@@ -70,6 +70,8 @@ class Phase8ALoanValidationTest {
             assertEquals(value, parse(LoanInputValidation.prefill(value), field).value!!, 0.0)
         }
         assertEquals("0,00", LoanInputValidation.prefill(0.0))
+        val negativeZero = LoanInputValidation.prefill(-0.0, blankZero = true)
+        assertEquals((-0.0).toBits(), parse(negativeZero, LoanInputValidation.Field.MONTHLY).value!!.toBits())
         listOf(0.0000001, Double.MIN_VALUE, 1.2345678901234567).forEach {
             assertEquals(it, parse(LoanInputValidation.prefill(it)).value!!, 0.0)
         }
@@ -83,6 +85,9 @@ class Phase8ALoanValidationTest {
     @Test fun dateChronologyBlocksImpossibleEndsAndPreservesUnusualValidTerms() {
         assertEquals(setOf("binding", "end"), LoanInputValidation.dateErrors("2026-01-01", "2025-12-31", "2025-12-31").keys)
         assertTrue(LoanInputValidation.dateErrors("2026-01-01", "2040-01-01", "2030-01-01").isEmpty())
+        assertNotNull(LoanInputValidation.dateWarning("2040-01-01", "2030-01-01"))
+        assertNull(LoanInputValidation.dateWarning("2030-01-01", "2040-01-01"))
+        assertNull(LoanInputValidation.dateWarning("", ""))
         assertTrue(LoanInputValidation.dateErrors("2026-01-01", "2026-01-01", "2026-01-01").isEmpty())
         assertTrue(LoanInputValidation.dateErrors("", "", "").isEmpty())
         assertEquals(setOf("start"), LoanInputValidation.dateErrors("2026-02-30", "", "").keys)

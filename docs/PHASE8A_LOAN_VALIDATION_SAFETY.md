@@ -43,12 +43,14 @@ Pflichtfeldern als 0 vorbefüllt; neues Darlehen startet dort weiterhin leer. Op
 
 Datum: AppDateField/ISO intern unverändert. Zinsbindungs-/Laufzeitende vor Start blockiert;
 gleiches Datum erlaubt. Kein harter Vergleich Bindungsende ↔ geplantes Laufzeitende
-(z.B. vorzeitige Rückzahlung), keine Datumsänderung. Fehler direkt am betroffenen Feld.
-Alle Zahlen/Datumsfehler werden vor `onSave` geprüft, kein partieller Editor-Write.
+(z.B. vorzeitige Rückzahlung): nicht blockierender deutscher Hinweis am Laufzeitende,
+keine Datumsänderung. Fehler direkt am betroffenen Feld.
+Alle Zahlen/Datumsfehler werden vor `onSave` erneut aus dem aktuellen Text-State geprüft,
+auch vor einer folgenden Recomposition (eigener Same-UI-Event-Android-Test); kein partieller Editor-Write.
 Abbrechen und beide Rückwege unverändert. Objekt-/Darlehensidentität bindet Editor-State.
 
 Der zusätzliche bestehende Dokument-Darlehens-Write in ReceiptViewModel prüft den fertigen
-Darlehenskandidaten mit denselben Zahlenregeln vor upsert; kein KI-Feature/Anbieterverhalten geändert.
+Darlehenskandidaten mit denselben Zahlenregeln vor jedem fachlichen Write dieses Pfads und vor upsert; kein KI-Feature/Anbieterverhalten geändert.
 Objektanlage nutzt bereits den endlichkeitssicheren zentralen Parser. Restore darf historische
 Sonderwerte weiterhin lesen, damit sie reparierbar bleiben; kein DAO-/Schema-/Restore-Filter,
 keine automatische Bereinigung und keine Umdeutung zu null/0.
@@ -60,7 +62,7 @@ Neue 8 Unit-Testmethoden: deutsche Eingaben und Punktdezimal, alle sechs Felder 
 leer vs. ungültig, Negativwerte, Anteilsgrenzen, Altwert-Korrektur, Skalen-/Zero-/Subnormal-Roundtrip,
 technische Produktgrenze und Kalender/Chronologie.
 
-Neue 9 Android-Compose-/E2E-Fälle (3 Methoden × Schrift 1,0/1,3/1,5):
+Neue 12 Android-Compose-/E2E-Fälle (4 Methoden × Schrift 1,0/1,3/1,5):
 aktiver Objektweg, extrem große Restschuld, W02-Beispiele, Room bleibt unverändert bei Fehler/Abbruch,
 Korrektur/Speichern/Wiederöffnen, vollständige Gleichheit beim unveränderten Speichern,
 Activity.recreate, neuer Activity/VM-Zyklus, Objekt A/B, historischer Restore mit Infinity und Reparatur.
@@ -68,7 +70,11 @@ NaN wird direkt als Modellfixture in den **produktiven** Editor eingespeist: SQL
 als NULL; ein behaupteter NaN-Room-Roundtrip wäre nicht aussagekräftig.
 Screenshots: gültig, Extremrestschuld, Tilgung/Rate, Anteil, korrigiert, Infinity/NaN-Altbestand;
 Fehlertexte per TextLayoutResult auf vollständigen Umbruch geprüft, Aktionen bleiben sichtbar.
-Bestehende Phase-7A-/7B-/AppDateField-/Backup-/DATEV-/Bank-/AfA-/Gemini-Tests bleiben unverändert aktiv.
+Bestehende Phase-7A-/7B-/AppDateField-/Backup-/DATEV-/Bank-/AfA-/Gemini-Tests bleiben aktiv.
+Die Phase-7B-Assertion zur ungültigen Summe prüft jetzt die neue deutsche Meldung direkt am
+betroffenen Feld; Save-Blockade, vollständige Room-Gleichheit und Abbruchassertion bleiben erhalten.
+Der erste Emulatorlauf wies Textlayout-Überlauf bei 1,0/1,3 aus: Fehlertexte erhalten ausdrücklich
+die gesamte verfügbare Feldbreite. Keine Overflow-Assertion entfernt oder gelockert.
 
 Lokal: Java 17, kein Gradle/Android-SDK/adb. Gradle-Aufrufe scheitern lokal bereits an
 `gradle: command not found`. `git diff --check` lokal erfolgreich.

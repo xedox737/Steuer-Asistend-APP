@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.AnnotatedString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.MainActivity
@@ -90,6 +91,24 @@ abstract class Phase8ALoanValidationMatrix : EmulatorTestSupport() {
         assertEquals(final, stored())
     }
 
+    @Test fun immediatePasteAndSaveValidateCurrentTextBeforeRecomposition() {
+        var saved: Loan? = null
+        scenario.onActivity { activity -> activity.setContent {
+            MaterialTheme { LoanEditDialog(Loan(id = 898, bezeichnung = "Direkter Speicherpfad",
+                darlehensbetrag = 100000.0, restschuld = 90000.0, sollzinsProzent = 3.0),
+                "Darlehen bearbeiten", {}, { saved = it }) }
+        } }
+        val replace = inputField("Restschuld €*").fetchSemanticsNode().config[SemanticsActions.SetText].action!!
+        val click = ui.onNodeWithTag("save_loan_button").fetchSemanticsNode().config[SemanticsActions.OnClick].action!!
+        // One main-thread event: deliberately no intermediate frame/recomposition.
+        ui.runOnUiThread {
+            assertTrue(replace(AnnotatedString("9".repeat(310))))
+            assertTrue(click())
+            assertNull(saved)
+        }
+        error("BALANCE", "Der Wert ist zu groß oder ungültig.")
+    }
+
     @Test fun restoredInfinityOpensWithoutCrashAndCanBeCancelledOrRepaired() {
         val a = seedProperty("p8-legacy", "Altbestand")
         // JSON cannot contain a numeric Infinity literal; historical strings are read by optDouble.
@@ -156,7 +175,8 @@ abstract class Phase8ALoanValidationMatrix : EmulatorTestSupport() {
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(results)) }
         assertTrue(results.isNotEmpty())
         results.forEach {
-            assertFalse(it.didOverflowWidth); assertFalse(it.didOverflowHeight)
+            assertFalse("Width overflow: $field at $fontScale; ${it.size}; ${it.layoutInput.constraints}; paragraph=${it.multiParagraph.width}", it.didOverflowWidth)
+            assertFalse("Height overflow: $field at $fontScale; ${it.size}; ${it.layoutInput.constraints}; paragraph=${it.multiParagraph.height}", it.didOverflowHeight)
             assertFalse(it.multiParagraph.didExceedMaxLines)
             assertEquals(expected.length, it.getLineEnd(it.lineCount - 1, visibleEnd = true))
         }

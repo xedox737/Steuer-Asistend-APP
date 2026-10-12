@@ -46,7 +46,7 @@ internal object LoanInputValidation {
 
     fun prefill(value: Double, blankZero: Boolean = false): String = when {
         !value.isFinite() -> INVALID_STORED_TEXT
-        blankZero && value == 0.0 -> ""
+        blankZero && value.toBits() == 0.0.toBits() -> ""
         else -> GermanNumberInput.formatForInput(value, maxOf(2, value.toBigDecimal().scale()))
     }
 
@@ -55,6 +55,14 @@ internal object LoanInputValidation {
         Field.INTEREST to loan.sollzinsProzent, Field.REPAYMENT to loan.tilgungProzent,
         Field.MONTHLY to loan.monatlicheRate, Field.RENTED to loan.vermietungsanteilProzent
     )
+
+    fun dateWarning(bindingEnd: String, termEnd: String): String? {
+        val binding = CalendarInput.parseIsoDate(bindingEnd) ?: return null
+        val term = CalendarInput.parseIsoDate(termEnd) ?: return null
+        return if (binding.isAfter(term))
+            "Die Zinsbindung endet nach dem geplanten Laufzeitende. Das kann bei vorzeitiger Tilgung passen – bitte Vertragsdaten prüfen."
+        else null
+    }
 
     fun dateErrors(start: String, bindingEnd: String, termEnd: String): Map<String, String> = buildMap {
         val dates = mapOf("start" to start, "binding" to bindingEnd, "end" to termEnd)
