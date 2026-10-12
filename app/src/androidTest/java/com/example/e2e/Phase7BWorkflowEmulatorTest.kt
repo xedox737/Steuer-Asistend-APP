@@ -158,24 +158,32 @@ class Phase7BLoanNumbersEmulatorTest : EmulatorTestSupport() {
         edit()
         mapOf("Darlehenssumme €*" to "100000,00", "Restschuld €*" to "90000,00", "Sollzins %*" to "3,00",
             "Tilgung %" to "3,50", "Monatliche Rate €" to "100000,25", "Vermietungsanteil %" to "87,12345").forEach { (label, value) ->
-            ui.onNode(hasText(label) and hasSetTextAction()).performScrollTo().assertTextContains(value)
+            editorScroll(hasText(label) and hasSetTextAction())
+            ui.onNode(hasText(label) and hasSetTextAction()).assertTextContains(value)
         }
-        ui.onNodeWithTag("loan_name").performScrollTo()
+        editorScroll(hasTestTag("loan_name"))
         capture("p7b-loan-german-existing-numbers", ui.onAllNodes(isDialog()).onLast())
         save(original)
         listOf("100000", "100000,00").forEach { value ->
-            edit(); input("Darlehenssumme €*", value); save(original)
+            edit(); enter("Darlehenssumme €*", value); save(original)
         }
-        edit(); input("Sollzins %*", "3"); save(original)
-        edit(); input("Sollzins %*", "3,5"); input("Restschuld €*", "90000,25")
+        edit(); enter("Sollzins %*", "3"); save(original)
+        edit(); enter("Sollzins %*", "3,5"); enter("Restschuld €*", "90000,25")
         val changed = original.copy(sollzinsProzent = 3.5, restschuld = 90000.25)
         save(changed)
-        edit(); input("Darlehenssumme €*", "ungültig")
+        edit(); enter("Darlehenssumme €*", "ungültig")
         ui.onNodeWithTag("save_loan_button").performClick()
-        ui.onNodeWithText("Darlehenssumme ist ungültig.").performScrollTo().assertIsDisplayed()
+        editorScroll(hasText("Darlehenssumme ist ungültig."))
+        ui.onNodeWithText("Darlehenssumme ist ungültig.").assertIsDisplayed()
         assertEquals(changed, stored())
         ui.onNode(hasText("Abbrechen") and hasAnyAncestor(isDialog())).performClick()
         assertEquals(changed, stored())
+    }
+    private fun editorScroll(matcher: SemanticsMatcher) = ui.onAllNodes(hasScrollToIndexAction() and hasAnyAncestor(isDialog()))
+        .onLast().performScrollToNode(matcher)
+    private fun enter(label: String, value: String) {
+        editorScroll(hasText(label) and hasSetTextAction())
+        input(label, value, scroll = false)
     }
     private fun stored() = runBlocking(Dispatchers.IO) { db.loanDao().getAllLoans().single() }
     private fun edit() = ui.onNodeWithContentDescription("Bearbeiten").performScrollTo().performClick()

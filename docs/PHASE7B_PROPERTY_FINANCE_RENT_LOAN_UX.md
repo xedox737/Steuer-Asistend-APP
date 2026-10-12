@@ -84,3 +84,9 @@ Die Assertions wurden auf das echte Android-Rendering mit zusätzlicher Room-Pr�
 Zwei reine Zahlenregressionen prüfen die zentrale Vorbelegung und präzisen Double-Roundtrip.
 Die bestehende Ledger-Compose-Klasse erhält dieselbe Application/AndroidViewModelFactory-Isolation
 wie die übrigen App-Workflowtests; ihre Erwartungen bleiben unverändert.
+
+Die gemeinsame Emulator-Zurückhilfe injiziert nun wie der vorhandene Phase-7A-Darlehenstest
+die echte Android-Keyfolge in das fokussierte Fenster. Dies behebt den beobachteten Espresso-
+RootViewWithoutFocus-Fehler nach modalen Kalendern; keine Callback-Abkürzung, Wiederholung,
+Zeitverzögerung oder schwächere Zielassertion. Der Darlehens-Zahlenfall scrollt die LazyColumn
+vor der Suche nach noch nicht komponierten Feldern.
