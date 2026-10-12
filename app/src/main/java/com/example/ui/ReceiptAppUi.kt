@@ -6247,7 +6247,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
 // --- SCREEN 5: FINANCIAL OVERVIEW ---
 
 @Composable
-fun LedgerScreen(viewModel: ReceiptViewModel) {
+fun LedgerScreen(viewModel: ReceiptViewModel, propertyId: String? = null) {
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
@@ -6255,8 +6255,9 @@ fun LedgerScreen(viewModel: ReceiptViewModel) {
     val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val loanAssignments by viewModel.bankLoanAssignments.collectAsStateWithLifecycle()
     LedgerOverview(receipts, properties, assignments, links, transactions, loanAssignments,
+        scopedPropertyId = propertyId,
         onBank = { viewModel.openBankTransactionDetails(it.transactionId) }) {
-        viewModel.openReceiptDetail(it.id, AppScreen.LEDGER)
+        viewModel.openReceiptDetail(it.id, if (propertyId == null) AppScreen.LEDGER else AppScreen.PROPERTIES)
     }
 }
 

@@ -379,7 +379,7 @@ private fun <T, K, V> Iterable<T>.associateNotNull(transform: (T) -> Pair<K, V>?
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LoanEditDialog(
+internal fun LoanEditDialog(
     initial: Loan,
     title: String,
     onDismiss: () -> Unit,

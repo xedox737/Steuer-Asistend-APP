@@ -58,6 +58,10 @@ abstract class Phase7ALoanMatrix : EmulatorTestSupport() {
             assertTrue("Großschrift: Zahlenfelder untereinander", balanceBounds.top >= originalBounds.bottom)
         }
         capture("p7-loan-editor-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
+        ui.onNodeWithTag("save_loan_button").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithText("Darlehen bearbeiten").fetchSemanticsNodes().isEmpty() }
+        assertEquals("Opening/saving must preserve every Double and identity", original, savedLoan())
+        editLoan()
         input("Restschuld €*", "89.000,50")
         ui.onNodeWithTag("save_loan_button").performClick()
         ui.waitUntil(10_000) { savedLoan().restschuld == 89_000.50 }

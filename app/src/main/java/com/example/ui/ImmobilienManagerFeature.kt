@@ -346,7 +346,9 @@ private fun PropertyDetailHost(
             PropertySection.UNITS -> UnifiedPropertyUnitsScreen(viewModel, property, units, propertyReceipts, propertyDocuments, onAnnualDetails = { annualDetailsFromUnits = true; onSection(PropertySection.RENT) }, onBackToProperty = { onSection(PropertySection.DASHBOARD) })
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
-            PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
+            PropertySection.RECEIPTS -> androidx.compose.runtime.key(property.propertyId) {
+                LedgerScreen(viewModel, propertyId = property.propertyId)
+            }
             PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true, propertyId = property.propertyId) } }
             PropertySection.RENOVATIONS -> RenovationReviewScreen(viewModel, property) { onSection(PropertySection.DASHBOARD) }
             PropertySection.DOCUMENTS -> DocumentManagementScreen(viewModel, propertyScoped = true, onBack = { onSection(PropertySection.DASHBOARD) })
