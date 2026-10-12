@@ -178,14 +178,14 @@ abstract class EmulatorTestSupport {
     }
 
     protected fun systemBack() {
-        // Send the real key into the focused Android window. Espresso's root picker may cache
-        // the unfocused Activity after closing a modal calendar (also seen in Phase 7A loans).
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val down = android.os.SystemClock.uptimeMillis()
-        assertTrue(automation.injectInputEvent(android.view.KeyEvent(down, down,
-            android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK, 0), true))
-        assertTrue(automation.injectInputEvent(android.view.KeyEvent(down, android.os.SystemClock.uptimeMillis(),
-            android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK, 0), true))
+        // Keep Espresso's real key injection and main-thread synchronization, but select
+        // the actually focused window instead of a cached Activity behind a modal dialog.
+        val focusedWindow = object : org.hamcrest.TypeSafeMatcher<androidx.test.espresso.Root>() {
+            override fun matchesSafely(root: androidx.test.espresso.Root): Boolean = root.decorView.hasWindowFocus()
+            override fun describeTo(description: org.hamcrest.Description) { description.appendText("focused Android window") }
+        }
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot()).inRoot(focusedWindow)
+            .perform(androidx.test.espresso.action.ViewActions.pressBack())
         ui.waitForIdle()
     }
 

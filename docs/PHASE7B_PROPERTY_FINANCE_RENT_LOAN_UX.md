@@ -85,8 +85,10 @@ Zwei reine Zahlenregressionen prüfen die zentrale Vorbelegung und präzisen Dou
 Die bestehende Ledger-Compose-Klasse erhält dieselbe Application/AndroidViewModelFactory-Isolation
 wie die übrigen App-Workflowtests; ihre Erwartungen bleiben unverändert.
 
-Die gemeinsame Emulator-Zurückhilfe injiziert nun wie der vorhandene Phase-7A-Darlehenstest
-die echte Android-Keyfolge in das fokussierte Fenster. Dies behebt den beobachteten Espresso-
-RootViewWithoutFocus-Fehler nach modalen Kalendern; keine Callback-Abkürzung, Wiederholung,
+Die gemeinsame Emulator-Zurückhilfe behält Espressos echte Key-Injektion und Main-Thread-
+Synchronisation bei und wählt ausdrücklich das tatsächlich fokussierte Android-Fenster.
+Dies vermeidet den beobachteten gecachten Activity-Root hinter modalen Kalendern.
+Eine direkte, verallgemeinerte UiAutomation-Injektion wurde verworfen, weil der Fenster-
+Fokuswechsel noch nicht zwingend abgeschlossen war. Keine Callback-Abkürzung, Wiederholung,
 Zeitverzögerung oder schwächere Zielassertion. Der Darlehens-Zahlenfall scrollt die LazyColumn
-vor der Suche nach noch nicht komponierten Feldern.
+vor der Suche nach noch nicht komponierten Feldern und identifiziert den Editor über seinen Dialogtitel.
