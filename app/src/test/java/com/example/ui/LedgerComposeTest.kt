@@ -25,7 +25,8 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class LedgerComposeTest {
-    @get:Rule val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
+    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
     @Before fun clearFixtureData() {
         // These assertions require an empty database (or exactly the rows seeded

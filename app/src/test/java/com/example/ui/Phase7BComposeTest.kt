@@ -47,11 +47,11 @@ class Phase7BComposeTest {
         val units = model.getWohneinheitenForProperty(p)
         val first = units.first().unitId; val last = units.last().unitId
         var dismissed = false
-        ui.activity.setContent { MyApplicationTheme {
+        ui.runOnUiThread { ui.activity.setContent { MyApplicationTheme {
             CompositionLocalProvider(LocalDensity provides Density(ui.activity.resources.displayMetrics.density, scale)) {
                 InitialRentBatchDialog(p, units, model, {}, { dismissed = true })
             }
-        } }
+        } } }
         settleWindow(if (tablet) 880 else 393)
         ui.onNodeWithTag(if (tablet) "rent_batch_table_$first" else "rent_batch_vertical_$first").assertExists()
         if (!tablet) {
@@ -90,6 +90,8 @@ class Phase7BComposeTest {
         assertTrue(saved.drop(1).all { it.mieter.isBlank() })
     }
     private fun settleWindow(width: Int = 393) {
+        ui.waitForIdle()
+        ui.onAllNodes(isDialog()).onFirst().assertExists()
         ui.mainClock.advanceTimeByFrame()
         ui.runOnUiThread {
             val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
@@ -109,7 +111,7 @@ class Phase7BComposeTest {
         ui.waitUntil(10_000) { vm.properties.value.size == 1 }
         val model = vm; val units = model.getWohneinheitenForProperty(p)
         var dismissals = 0
-        ui.activity.setContent { MyApplicationTheme { InitialRentBatchDialog(p, units, model, {}, { dismissals++ }) } }
+        ui.runOnUiThread { ui.activity.setContent { MyApplicationTheme { InitialRentBatchDialog(p, units, model, {}, { dismissals++ }) } } }
         settleWindow()
         ui.onNodeWithTag("rent_batch_tenant_${units.first().unitId}").performTextReplacement("Entwurf")
         ui.onNodeWithText("Abbrechen").performClick()
@@ -128,7 +130,7 @@ class Phase7BComposeTest {
             restschuld = 90000.0, sollzinsProzent = 3.0, tilgungProzent = 3.5, monatlicheRate = 100000.25,
             vermietungsanteilProzent = 87.12345, startDatum = "2026-01-01")
         var saved: Loan? = null
-        ui.activity.setContent { MyApplicationTheme { LoanEditDialog(original, "Darlehen bearbeiten", {}, { saved = it }) } }
+        ui.runOnUiThread { ui.activity.setContent { MyApplicationTheme { LoanEditDialog(original, "Darlehen bearbeiten", {}, { saved = it }) } } }
         settleWindow()
         mapOf("Darlehenssumme €*" to "100000,00", "Restschuld €*" to "90000,00", "Sollzins %*" to "3,00",
             "Tilgung %" to "3,50", "Monatliche Rate €" to "100000,25", "Vermietungsanteil %" to "87,12345").forEach { (label, value) ->
@@ -136,5 +138,21 @@ class Phase7BComposeTest {
         }
         ui.onNodeWithTag("save_loan_button").performClick()
         assertEquals(original, saved)
+        fun enter(label: String, value: String) = ui.onNode(hasText(label) and hasSetTextAction()).performScrollTo().performTextReplacement(value)
+        listOf("100000", "100000,00").forEach { value ->
+            enter("Darlehenssumme €*", value)
+            ui.onNodeWithTag("save_loan_button").performClick()
+            assertEquals(original, saved)
+        }
+        enter("Sollzins %*", "3")
+        ui.onNodeWithTag("save_loan_button").performClick(); assertEquals(original, saved)
+        enter("Sollzins %*", "3,5"); enter("Restschuld €*", "90000,25")
+        ui.onNodeWithTag("save_loan_button").performClick()
+        assertEquals(original.copy(sollzinsProzent = 3.5, restschuld = 90000.25), saved)
+        saved = null
+        enter("Darlehenssumme €*", "ungültig")
+        ui.onNodeWithTag("save_loan_button").performClick()
+        ui.onNodeWithText("Darlehenssumme ist ungültig.").assertExists()
+        assertNull(saved)
     }
 }

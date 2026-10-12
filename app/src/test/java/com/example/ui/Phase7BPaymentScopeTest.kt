@@ -10,8 +10,8 @@ class Phase7BPaymentScopeTest {
     private fun tx(id: String, property: String, amount: Double, date: String = "2026-10-02") = BankTransaction(id, "bank", date,
         amount = amount, propertyId = property, category = if (amount > 0) "Sonstige Einnahmen" else "Versicherung",
         reconciliationStatus = BankReconciliationStatus.NO_RECEIPT_REQUIRED, noReceiptReason = "Sonstiges")
-    private fun entries() = LedgerPaymentPresentation.entries(listOf(receipt, receipt.copy(id = 982, propertyId = "b", bruttobetrag = 700.0),
-        receipt.copy(id = 983, datum = "2025-10-01", bruttobetrag = 50.0)), emptyList(),
+    private fun entries() = LedgerPaymentPresentation.entries(listOf(receipt, receipt.copy(id = 982, propertyId = "b", internalId = "original-b", bruttobetrag = 700.0),
+        receipt.copy(id = 983, internalId = "original-prior", datum = "2025-10-01", bruttobetrag = 50.0)), emptyList(),
         listOf(BankReceiptLink("link", "linked", receipt.id, receipt.internalId, 500.0)),
         listOf(tx("linked", "a", -500.0), tx("direct", "a", -1200.0), tx("refund", "a", 200.0), tx("b-refund", "b", 300.0)))
     @Test fun twoObjectsUseTheSameEntriesForListAndTotalsWithReceiptBankDedup() {

@@ -228,6 +228,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("rent_batch_utilities_u-1").performScrollTo().performTextReplacement("220,25")
         ui.onNodeWithTag("rent_batch_status_u-1").performScrollTo().performClick()
         ui.onNodeWithText("Vermietet").performClick()
+        ui.onNodeWithTag("rent_batch_rows").performScrollToNode(hasTestTag("rent_batch_select_u-2"))
         ui.onNodeWithTag("rent_batch_select_u-2").performClick()
         capture("initial-rent-editor-393")
         ui.onNodeWithTag("rent_batch_confirm").performClick()

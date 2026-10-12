@@ -71,46 +71,46 @@ internal fun InitialRentBatchDialog(property: PropertyMetadata, units: List<Wohn
         title = { Text(if (preview) "${selected.size} Einheiten speichern?" else "Mietdaten gesammelt erfassen") },
         text = {
             BoxWithConstraints {
-            val fontScale = LocalDensity.current.fontScale
-            val tableLayout = maxWidth >= (714 * fontScale).dp
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Erstbefüllung: vorhandene Mietverträge bleiben geschützt. Nur markierte Zeilen werden gespeichert.")
-                LazyColumn(Modifier.heightIn(max = 420.dp).testTag("rent_batch_rows"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(if (preview) selected else rows, key = { it.unitId }) { row ->
-                        val unit = units.first { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == row.unitId }
-                        val enabled = row.unitId in eligibleIds && !saving
-                        Surface(Modifier.fillMaxWidth().testTag("rent_batch_unit_${row.unitId}"),
-                            shape = Ui2.shape, border = BorderStroke(0.5.dp, BorderColor)) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (!preview) Checkbox(row.included, { included ->
-                                    rows = rows.map { if (it.unitId == row.unitId) it.copy(included = included) else it }
-                                }, enabled = enabled, modifier = Modifier.testTag("rent_batch_select_${row.unitId}"))
-                                Text(unit.label.ifBlank { unit.name }, Modifier.weight(1f).testTag("rent_batch_name_${row.unitId}"))
-                                if (!preview && enabled) {
-                                    var expanded by remember(row.unitId) { mutableStateOf(false) }
-                                    Box {
-                                        OutlinedButton(onClick = { expanded = true }, enabled = !saving,
-                                            modifier = Modifier.testTag("rent_batch_status_${row.unitId}")) { Text(row.status) }
-                                        DropdownMenu(expanded, { expanded = false }) {
-                                            InitialRentInput.statuses.forEach { status -> DropdownMenuItem(text = { Text(status) }, onClick = {
-                                                change(row.copy(status = status)); expanded = false
-                                            }) }
+                val fontScale = LocalDensity.current.fontScale
+                val tableLayout = maxWidth >= (714 * fontScale).dp
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Erstbefüllung: vorhandene Mietverträge bleiben geschützt. Nur markierte Zeilen werden gespeichert.")
+                    LazyColumn(Modifier.heightIn(max = 420.dp).testTag("rent_batch_rows"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(if (preview) selected else rows, key = { it.unitId }) { row ->
+                            val unit = units.first { PropertyUnitScopedData.stableUnitId(property.propertyId, it) == row.unitId }
+                            val enabled = row.unitId in eligibleIds && !saving
+                            Surface(Modifier.fillMaxWidth().testTag("rent_batch_unit_${row.unitId}"),
+                                shape = Ui2.shape, border = BorderStroke(0.5.dp, BorderColor)) {
+                                Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        if (!preview) Checkbox(row.included, { included ->
+                                            rows = rows.map { if (it.unitId == row.unitId) it.copy(included = included) else it }
+                                        }, enabled = enabled, modifier = Modifier.testTag("rent_batch_select_${row.unitId}"))
+                                        Text(unit.label.ifBlank { unit.name }, Modifier.weight(1f).testTag("rent_batch_name_${row.unitId}"))
+                                        if (!preview && enabled) {
+                                            var expanded by remember(row.unitId) { mutableStateOf(false) }
+                                            Box {
+                                                OutlinedButton(onClick = { expanded = true }, enabled = !saving,
+                                                    modifier = Modifier.testTag("rent_batch_status_${row.unitId}")) { Text(row.status) }
+                                                DropdownMenu(expanded, { expanded = false }) {
+                                                    InitialRentInput.statuses.forEach { status -> DropdownMenuItem(text = { Text(status) }, onClick = {
+                                                        change(row.copy(status = status)); expanded = false
+                                                    }) }
+                                                }
+                                            }
                                         }
                                     }
+                                    if (preview) Text("${row.status} · ${row.tenant.ifBlank { "leer" }} · ${DateFormatUtils.safeFormat(row.start).ifBlank { "—" }} · Kalt ${row.cold} € · NK ${row.utilities} € · Sonstiges ${row.other} €")
+                                    else if (!enabled) Text("Vorhandene Mietdaten: Änderungen über Mietverlauf / Mieterwechsel.", color = SlateGray)
+                                    else InitialRentBatchFields(row, enabled, tableLayout, dateFields) { change(it) }
+                                    errors[row.unitId]?.let { Text(it, color = CrimsonRed) }
                                 }
                             }
-                            if (preview) Text("${row.status} · ${row.tenant.ifBlank { "leer" }} · ${DateFormatUtils.safeFormat(row.start).ifBlank { "—" }} · Kalt ${row.cold} € · NK ${row.utilities} € · Sonstiges ${row.other} €")
-                            else if (!enabled) Text("Vorhandene Mietdaten: Änderungen über Mietverlauf / Mieterwechsel.", color = SlateGray)
-                            else InitialRentBatchFields(row, enabled, tableLayout, dateFields) { change(it) }
-                            errors[row.unitId]?.let { Text(it, color = CrimsonRed) }
-                        }
                         }
                     }
+                    errors["save"]?.let { Text(it, color = CrimsonRed) }
                 }
-                errors["save"]?.let { Text(it, color = CrimsonRed) }
-            }
             }
         }, confirmButton = {
             Button(onClick = {
