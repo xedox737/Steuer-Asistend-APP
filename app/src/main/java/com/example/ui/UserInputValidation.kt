@@ -12,25 +12,31 @@ import java.util.Locale
  * Accepts German grouping/decimal notation as well as the app's technical decimal-dot roundtrip.
  */
 internal object GermanNumberInput {
+    enum class Status { EMPTY, VALID, INVALID_FORMAT, NON_FINITE }
+    data class Result(val status: Status, val value: Double? = null)
     private val germanNumber = Regex("""[+-]?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?""")
     private val technicalDecimal = Regex("""[+-]?\d+\.\d+""")
     private val integerNumber = Regex("""[+-]?\d+""")
 
-    fun parse(value: String): Double? {
+    fun parse(value: String): Double? = parseResult(value).value
+
+    fun parseResult(value: String): Result {
         val compact = value.trim()
             .replace("\u00a0", "")
             .replace(" ", "")
             .replace("€", "")
-        if (compact.isBlank()) return null
+        if (compact.isBlank()) return Result(Status.EMPTY)
+        if (compact in setOf("NaN", "Infinity", "+Infinity", "-Infinity")) return Result(Status.NON_FINITE)
 
         val normalized = when {
             germanNumber.matches(compact) && (compact.contains(',') || compact.matches(Regex("""[+-]?\d{1,3}(?:\.\d{3})+"""))) ->
                 compact.replace(".", "").replace(',', '.')
             technicalDecimal.matches(compact) || integerNumber.matches(compact) -> compact
             germanNumber.matches(compact) -> compact.replace(',', '.')
-            else -> return null
+            else -> return Result(Status.INVALID_FORMAT)
         }
-        return normalized.toDoubleOrNull()?.takeIf(Double::isFinite)
+        val number = normalized.toDoubleOrNull() ?: return Result(Status.INVALID_FORMAT)
+        return if (number.isFinite()) Result(Status.VALID, number) else Result(Status.NON_FINITE)
     }
 
     fun parseNonNegative(value: String): Double? =

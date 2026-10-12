@@ -3971,8 +3971,6 @@ data class AiSearchUiState(
         values["nutzen_lasten"]?.let { property = property.copy(uebergangNutzenLasten = it) }
         number("grundstuecksflaeche")?.let { property = property.copy(grundstuecksgroesse = it) }
         number("baujahr")?.toInt()?.let { property = property.copy(baujahr = it) }
-        if (property != currentProperty) repository.updatePropertyMetadata(property)
-
         if (document.documentType == com.example.data.ManagedDocumentType.DARLEHENSVERTRAG.name) {
             val existing = document.loanId?.let { id -> database.loanDao().getAllLoans().firstOrNull { it.id == id } }
             val loan = (existing ?: com.example.data.Loan(propertyId = document.propertyId)).copy(
@@ -3986,9 +3984,16 @@ data class AiSearchUiState(
                 zinsbindungBis = values["zinsbindung"] ?: existing?.zinsbindungBis.orEmpty(),
                 laufzeitBis = values["laufzeit"] ?: existing?.laufzeitBis.orEmpty()
             )
+            // This second existing write path must not introduce unsafe loan numbers either.
+            require(LoanInputValidation.numbers(loan).all { (field, value) ->
+                LoanInputValidation.parse(LoanInputValidation.prefill(value), field).error == null
+            }) { "Bitte die Darlehenswerte korrigieren." }
+            if (property != currentProperty) repository.updatePropertyMetadata(property)
             val loanId = database.loanDao().upsertLoan(loan).toInt()
             repository.updateManagedDocumentLoan(document, if (loan.id != 0) loan.id else loanId)
                 ?: throw IllegalStateException("Das Dokument ist nicht mehr verfügbar oder wurde neu zugeordnet.")
+        } else if (property != currentProperty) {
+            repository.updatePropertyMetadata(property)
         }
 
         val unit = getWohneinheitenForProperty(property).firstOrNull {
