@@ -26,13 +26,11 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class LedgerComposeTest {
     @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
-    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 1) val databaseIsolation = IsolatedAppDatabaseRule()
+    @get:Rule(order = 2) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
-    @Before fun clearFixtureData() {
-        // These assertions require an empty database (or exactly the rows seeded
-        // below), independently of other Compose test classes using the same DB.
-        val database = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
-        runBlocking(Dispatchers.IO) { database.clearAllTables() }
+    @Before fun verifyEmptyFixture() {
+        // The database is already isolated before MainActivity starts collecting.
         ui.waitUntil(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
         ui.waitForIdle()
     }
