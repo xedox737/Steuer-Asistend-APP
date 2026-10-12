@@ -85,7 +85,7 @@ internal object LedgerPaymentPresentation {
             confirmedLinks.filter { it.transactionId == tx.transactionId }.sumOf { it.allocatedAmount } <= tx.absoluteAmount + BankAllocationPolicy.MONEY_TOLERANCE
         fun bankEntry(key: String, tx: BankTransaction, amount: Double, propertyId: String, unitId: String,
             receipt: Receipt? = null) = LedgerEntry(key, tx.bookingDate, amount, tx.isIncome, propertyId, unitId,
-            receipt?.let(LedgerPresentation::category) ?: tx.subcategory.ifBlank { tx.category.ifBlank { "Sonstige Ausgabe" } },
+            receipt?.let(LedgerPresentation::category) ?: tx.subcategory.ifBlank { tx.category.ifBlank { if (tx.isIncome) "Sonstige Einnahme" else "Sonstige Ausgabe" } },
             tx.counterparty, tx.purpose, receipt = receipt, transaction = tx)
 
         confirmedSplits.forEach { split ->
@@ -129,13 +129,18 @@ internal object LedgerPaymentPresentation {
             }
         }
         transactions.distinctBy { it.transactionId }.forEach { tx ->
-            if (tx.isIncome || !confirmed(tx) || tx.propertyId.isBlank() || tx.transactionId in loanTxIds ||
+            if (!confirmed(tx) || tx.propertyId.isBlank() || tx.transactionId in loanTxIds ||
                 confirmedLinks.any { it.transactionId == tx.transactionId } || assignments.any { it.transactionId == tx.transactionId } ||
                 !(tx.reconciliationStatus == BankReconciliationStatus.NO_RECEIPT_REQUIRED ||
                     tx.reconciliationStatus == BankReconciliationStatus.MATCHED && tx.reviewState == BankReviewState.DONE) ||
                 tx.category in setOf(BankSplitPaymentType.DEPOSIT, "Kaution", "Tilgung", BankLoanPaymentType.SONDERTILGUNG,
                     BankLoanPaymentType.REGULAERE_RATE, BankLoanPaymentType.SONSTIGE_DARLEHENSZAHLUNG) ||
                 tx.subcategory in setOf("Kaution", "Tilgung", BankLoanPaymentType.SONDERTILGUNG)) return@forEach
+            // Generic income must not replace the dedicated rent/NK path or loan/deposit handling.
+            if (tx.isIncome && (tx.noReceiptReason == BankNoReceiptReason.RENT ||
+                tx.category in BankSplitPaymentType.rentScoped || tx.subcategory in BankSplitPaymentType.rentScoped ||
+                listOf(tx.category, tx.subcategory).any { it in setOf("Miete", "Mieteinnahmen", "Miete, Nebenkosten & Kaution", "Nebenkosten", "Darlehen", "Darlehensauszahlung",
+                    BankLoanPaymentType.REGULAERE_RATE, BankLoanPaymentType.SONSTIGE_DARLEHENSZAHLUNG) })) return@forEach
             rows += bankEntry("bank-${tx.transactionId}", tx, tx.absoluteAmount, tx.propertyId, tx.unitId)
         }
         return rows

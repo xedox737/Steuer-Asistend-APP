@@ -347,7 +347,7 @@ private fun PropertyDetailHost(
             PropertySection.RENT -> RentIncomeWithTenantHistoryScreen(viewModel, propertyScoped = true)
             PropertySection.RENT_MATRIX -> PropertyRentYearMatrix(property, units, propertyReceipts)
             PropertySection.RECEIPTS -> PropertyReceipts(propertyReceipts)
-            PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true) } }
+            PropertySection.FINANCE -> LazyColumn(Modifier.fillMaxSize().padding(16.dp)) { item { LoanManagementSection(viewModel, propertyScoped = true, propertyId = property.propertyId) } }
             PropertySection.RENOVATIONS -> RenovationReviewScreen(viewModel, property) { onSection(PropertySection.DASHBOARD) }
             PropertySection.DOCUMENTS -> DocumentManagementScreen(viewModel, propertyScoped = true, onBack = { onSection(PropertySection.DASHBOARD) })
             PropertySection.TAX -> AnnualTaxAssistantScreen(viewModel)
@@ -372,6 +372,7 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
         PropertySection.UNITS to ("Einheiten" to Icons.Default.Apartment),
         PropertySection.RENT to ("Mieteingänge" to Icons.Default.Payments),
         PropertySection.RECEIPTS to ("Einnahmen / Ausgaben" to Icons.Default.Receipt),
+        PropertySection.FINANCE to ("Finanzierung" to Icons.Default.AccountBalance),
         PropertySection.DOCUMENTS to ("Objektunterlagen" to Icons.Default.Description),
         PropertySection.TASKS to ("Notizen & Aufgaben" to Icons.Default.Assessment),
         PropertySection.RENOVATIONS to ("Sanierung & 15%-Prüfung" to Icons.Default.Build)
