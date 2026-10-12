@@ -37,7 +37,7 @@ class Phase8ALoanValidationTest {
             assertEquals(LoanInputValidation.Status.EMPTY, empty.status)
             if (field.required) { assertNotNull(empty.error); assertNull(empty.value) }
             else { assertNull(empty.error); assertEquals(field.emptyValue, empty.value!!, 0.0) }
-            listOf("abc", "1,2,3", "--", "12,,3").forEach {
+            listOf("abc", "1,2,3", "--", "12,,3", "€", " €€ ").forEach {
                 assertEquals(LoanInputValidation.Status.INVALID_FORMAT, parse(it, field).status)
                 assertNull(parse(it, field).value)
             }

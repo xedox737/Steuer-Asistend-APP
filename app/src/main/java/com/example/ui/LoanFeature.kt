@@ -384,19 +384,19 @@ internal fun LoanEditDialog(
     onSave: (Loan) -> Unit
 ) {
     val dateFields = rememberDateFieldValidation()
-    var bezeichnung by remember(initial.id) { mutableStateOf(initial.bezeichnung) }
-    var bank by remember(initial.id) { mutableStateOf(initial.bank) }
+    var bezeichnung by remember(initial.id, initial.propertyId) { mutableStateOf(initial.bezeichnung) }
+    var bank by remember(initial.id, initial.propertyId) { mutableStateOf(initial.bank) }
     var darlehensbetrag by remember(initial.id, initial.propertyId) { mutableStateOf(LoanInputValidation.prefill(initial.darlehensbetrag, blankZero = initial.id == 0)) }
     var restschuld by remember(initial.id, initial.propertyId) { mutableStateOf(LoanInputValidation.prefill(initial.restschuld, blankZero = initial.id == 0)) }
     var sollzins by remember(initial.id, initial.propertyId) { mutableStateOf(LoanInputValidation.prefill(initial.sollzinsProzent, blankZero = initial.id == 0)) }
     var tilgung by remember(initial.id, initial.propertyId) { mutableStateOf(LoanInputValidation.prefill(initial.tilgungProzent, blankZero = true)) }
     var rate by remember(initial.id, initial.propertyId) { mutableStateOf(LoanInputValidation.prefill(initial.monatlicheRate, blankZero = true)) }
-    var startDatum by remember(initial.id) { mutableStateOf(initial.startDatum) }
-    var zinsbindungBis by remember(initial.id) { mutableStateOf(initial.zinsbindungBis) }
-    var laufzeitBis by remember(initial.id) { mutableStateOf(initial.laufzeitBis) }
+    var startDatum by remember(initial.id, initial.propertyId) { mutableStateOf(initial.startDatum) }
+    var zinsbindungBis by remember(initial.id, initial.propertyId) { mutableStateOf(initial.zinsbindungBis) }
+    var laufzeitBis by remember(initial.id, initial.propertyId) { mutableStateOf(initial.laufzeitBis) }
     var vermietungsanteil by remember(initial.id, initial.propertyId) { mutableStateOf(LoanInputValidation.prefill(initial.vermietungsanteilProzent, blankZero = false)) }
-    var notiz by remember(initial.id) { mutableStateOf(initial.notiz) }
-    var aktiv by remember(initial.id) { mutableStateOf(initial.aktiv) }
+    var notiz by remember(initial.id, initial.propertyId) { mutableStateOf(initial.notiz) }
+    var aktiv by remember(initial.id, initial.propertyId) { mutableStateOf(initial.aktiv) }
     var validationError by remember(initial.id, initial.propertyId) { mutableStateOf<String?>(null) }
     var attemptedSave by remember(initial.id, initial.propertyId) { mutableStateOf(false) }
     val numberResults = mapOf(

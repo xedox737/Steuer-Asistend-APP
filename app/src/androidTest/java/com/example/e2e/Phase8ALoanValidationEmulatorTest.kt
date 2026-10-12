@@ -122,6 +122,12 @@ abstract class Phase8ALoanValidationMatrix : EmulatorTestSupport() {
         save(); ui.runOnIdle { assertNull(saved) }
         loanInput("Restschuld €*", "85000,50"); save()
         ui.runOnIdle { assertEquals(85000.5, saved!!.restschuld, 0.0) }
+        scenario.onActivity { activity -> activity.setContent {
+            MaterialTheme { LoanEditDialog(requireNotNull(saved), "Darlehen bearbeiten", {}, {}) }
+        } }
+        inputField("Restschuld €*").assertTextContains("85000,50")
+        ui.onAllNodesWithTag("loan_error_BALANCE").assertCountEquals(0)
+        screenshot("nan-repaired-reopened")
     }
 
     private fun stored() = runBlocking(Dispatchers.IO) { db.loanDao().getAllLoans().single { it.id == 801 } }

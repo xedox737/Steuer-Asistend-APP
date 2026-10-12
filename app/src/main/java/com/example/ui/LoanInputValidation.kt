@@ -22,6 +22,10 @@ internal object LoanInputValidation {
     fun parse(raw: String, field: Field): Result {
         if (raw == INVALID_STORED_TEXT) return Result(Status.INVALID_STORED, error = STORED_ERROR)
         val parsed = GermanNumberInput.parseResult(raw)
+        // Currency-only text is not an explicitly empty optional field.
+        if (parsed.status == GermanNumberInput.Status.EMPTY && raw.isNotBlank()) {
+            return Result(Status.INVALID_FORMAT, error = "Bitte eine gültige Zahl eingeben.")
+        }
         return when (parsed.status) {
             GermanNumberInput.Status.EMPTY -> Result(Status.EMPTY,
                 value = if (field.required) null else field.emptyValue,
