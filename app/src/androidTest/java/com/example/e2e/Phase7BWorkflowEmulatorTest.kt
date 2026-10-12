@@ -57,8 +57,13 @@ class Phase7BObjectLedgerEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("Heizung") and hasAnyAncestor(isPopup())).performClick()
         metric("Ausgaben", "500,00 €"); metric("Buchungen", "1")
         scroll("ledger_search"); ui.onNodeWithTag("ledger_search").performTextReplacement("Reparaturen")
+        // Finish the search input before testing screen back; otherwise Android Back first dismisses the IME.
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        ui.waitForIdle()
         scroll("ledger_receipt_981"); ui.onNodeWithTag("ledger_receipt_981").performClick()
+        assertEquals(AppScreen.RECEIPT_DETAIL, model.currentScreen.value)
         systemBack()
+        assertEquals(AppScreen.PROPERTIES, model.currentScreen.value)
         scroll("ledger_search"); ui.onNodeWithTag("ledger_search").assertTextContains("Reparaturen")
         ui.onNodeWithTag("ledger_search").performTextClearance()
         scroll("ledger_category"); ui.onNodeWithTag("ledger_category").performClick()
