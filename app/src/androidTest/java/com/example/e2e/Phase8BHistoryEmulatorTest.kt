@@ -68,8 +68,8 @@ abstract class Phase8BHistoryMatrix : EmulatorTestSupport() {
             zipFileName = "EXTF-$index.csv", bookingCount = index, totalAmount = index * 100.0, zipSha256 = "a".repeat(64)) }
         runBlocking(Dispatchers.IO) { runs.forEach { db.exportAuditDao().insertRun(it) } }
         val model = vm
-        ui.waitUntil(10_000) { model.allAuditRuns.value.size == 6 }
         clickMore("DATEV Export")
+        ui.waitUntil(10_000) { model.allAuditRuns.value.size == 6 }
         // Prepared result fixture uses the real wizard state; no export or historical audit is fabricated by UI.
         ui.runOnIdle { model.setWizardStep(6) }
         ui.onNodeWithTag("datev_audit_show_all").performScrollTo().assertIsDisplayed()
