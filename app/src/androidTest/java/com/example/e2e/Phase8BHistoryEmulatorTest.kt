@@ -57,7 +57,7 @@ abstract class Phase8BHistoryMatrix : EmulatorTestSupport() {
         paymentText("Ist bestätigt"); paymentText("600,00 €") // bank+receipt once; prior tenancy's 980 is not current rent
         ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_payment_status"))).assertDoesNotExist()
         capture("p8b-current-dedup-font-$fontScale")
-        assertEquals("801", runBlocking(Dispatchers.IO) { db.bankRentAssignmentDao().getAll().single { it.transactionId == oldTx.transactionId }.tenantReference)
+        assertEquals("801", runBlocking(Dispatchers.IO) { db.bankRentAssignmentDao().getAll().single { it.transactionId == oldTx.transactionId }.tenantReference })
         assertEquals(receipt, runBlocking(Dispatchers.IO) { db.receiptDao().getReceiptById(receipt.id) })
     }
 
