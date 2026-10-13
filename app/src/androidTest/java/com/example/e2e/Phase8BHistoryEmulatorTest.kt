@@ -45,17 +45,17 @@ abstract class Phase8BHistoryMatrix : EmulatorTestSupport() {
         val model = vm
         ui.waitUntil(10_000) { model.bankRentAssignments.value.size == 3 && model.bankTransactions.value.size == 3 && model.bankReceiptLinks.value.size == 1 && model.receipts.value.size == 1 }
         openUnits(vacant.propertyId); openUnit()
-        paymentText("Letzte Mieterzahlung"); paymentText("980,00 €"); paymentText("am 05.10.2026")
-        completePaymentText("Letzte Mieterzahlung"); completePaymentText("980,00 €"); completePaymentText("am 05.10.2026")
+        paymentText("Letzte Mieterzahlung"); paymentText("980,00 €"); paymentText("am 05.10.2026")
+        completePaymentText("Letzte Mieterzahlung"); completePaymentText("980,00 €"); completePaymentText("am 05.10.2026")
         capture("p8b-vacant-bank-font-$fontScale")
         scenario.recreate()
-        paymentText("980,00 €"); paymentText("am 05.10.2026")
+        paymentText("980,00 €"); paymentText("am 05.10.2026")
         systemBack(); ui.onNodeWithTag("property_units_overview").assertIsDisplayed()
         openUnit(); ui.onNodeWithContentDescription("Zurück").performClick()
         ui.onNodeWithTag("property_units_overview").assertIsDisplayed()
         openUnits(current.propertyId); openUnit()
-        paymentText("Ist bestätigt"); paymentText("600,00 €") // bank+receipt once; prior tenancy's 980 is not current rent
-        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_payment_status"))).assertDoesNotExist()
+        paymentText("Ist bestätigt"); paymentText("600,00 €") // bank+receipt once; prior tenancy's 980 is not current rent
+        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_payment_status"))).assertDoesNotExist()
         capture("p8b-current-dedup-font-$fontScale")
         assertEquals("801", runBlocking(Dispatchers.IO) { db.bankRentAssignmentDao().getAll().single { it.transactionId == oldTx.transactionId }.tenantReference)
         assertEquals(receipt, runBlocking(Dispatchers.IO) { db.receiptDao().getReceiptById(receipt.id) })
