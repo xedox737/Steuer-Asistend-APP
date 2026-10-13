@@ -986,13 +986,13 @@ class DrivePersistenceRepository(
         val receiptSchema = json.backupInt("schemaVersion", 1)
         require(receiptSchema in 1..2) { "Diese Belegsicherung benötigt eine neuere App-Version." }
         if (receiptSchema >= 2) {
-            listOf("receiptId", "unitId", "exportlaufId", "kontoNr", "isEigenleistungSanierung", "uhrzeit", "mieter")
+            listOf("receiptId", "propertyId", "unitId", "exportlaufId", "kontoNr", "isEigenleistungSanierung", "uhrzeit", "mieter")
                 .forEach { require(json.has(it) && !json.isNull(it)) { "Belegsicherung ist unvollständig. Bitte prüfen." } }
         }
 
         
         val docsList = mutableListOf<ReceiptDocumentReference>()
-        val docsArr = json.optJSONArray("documents") ?: JSONArray()
+        val docsArr = if (json.has("documents")) json.getJSONArray("documents") else JSONArray()
         for (i in 0 until docsArr.length()) {
             val d = docsArr.getJSONObject(i)
             docsList.add(
@@ -1011,16 +1011,16 @@ class DrivePersistenceRepository(
         }
         
         val posList = mutableListOf<PersistedReceiptItem>()
-        val posArr = json.optJSONArray("positionen") ?: JSONArray()
+        val posArr = if (json.has("positionen")) json.getJSONArray("positionen") else JSONArray()
         for (i in 0 until posArr.length()) {
             val p = posArr.getJSONObject(i)
             posList.add(
                 PersistedReceiptItem(
                     id = p.getString("id"),
                     bezeichnung = p.getString("bezeichnung"),
-                    menge = p.optDouble("menge", 1.0),
-                    einzelpreisCent = p.getLong("einzelpreisCent"),
-                    gesamtpreisCent = p.getLong("gesamtpreisCent"),
+                    menge = p.backupDouble("menge", 1.0),
+                    einzelpreisCent = p.backupLong("einzelpreisCent"),
+                    gesamtpreisCent = p.backupLong("gesamtpreisCent"),
                     hauptkategorie = p.getString("hauptkategorie"),
                     unterkategorie = p.getString("unterkategorie"),
                     wohneinheit = p.optString("wohneinheit", ""),
@@ -1028,8 +1028,8 @@ class DrivePersistenceRepository(
                     konto = p.getString("konto"),
                     gegenkonto = p.optString("gegenkonto", ""),
                     buSchluessel = p.optString("buSchluessel", ""),
-                    steuersatz = p.optDouble("steuersatz", 19.0),
-                    privatanteilProzent = p.optDouble("privatanteilProzent", 0.0),
+                    steuersatz = p.backupDouble("steuersatz", 19.0),
+                    privatanteilProzent = p.backupDouble("privatanteilProzent", 0.0),
                     zuordnungsstatus = p.optString("zuordnungsstatus", "ZUGEORDNET")
                 )
             )
@@ -1115,7 +1115,7 @@ class DrivePersistenceRepository(
             internalId = json.getString("internalId"),
             displayId = if (json.isNull("displayId")) null else json.getString("displayId"),
             documents = docsList,
-            originalDocuments = ReceiptOriginalChain.parseMetadata(json.optJSONArray("originalDocuments") ?: JSONArray(),
+            originalDocuments = ReceiptOriginalChain.parseMetadata(if (json.has("originalDocuments")) json.getJSONArray("originalDocuments") else JSONArray(),
                 json.getString("internalId"), json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID)),
             metadataFileId = json.optString("metadataFileId", ""),
             driveFileId = json.optString("driveFileId", ""),
@@ -1136,7 +1136,7 @@ class DrivePersistenceRepository(
             hauptkategorie = if (json.isNull("hauptkategorie")) null else json.getString("hauptkategorie"),
             unterkategorie = if (json.isNull("unterkategorie")) null else json.getString("unterkategorie"),
             wohneinheit = if (json.isNull("wohneinheit")) null else json.getString("wohneinheit"),
-            propertyId = json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
+            propertyId = (if (json.has("propertyId")) json.getString("propertyId") else StableDocumentIdentity.LEGACY_PROPERTY_ID).also { require(it.isNotBlank()) },
             massnahme = if (json.isNull("massnahme")) null else json.getString("massnahme"),
             positionen = posList,
             allocations = allocationsList,
@@ -1214,8 +1214,8 @@ class DrivePersistenceRepository(
             driveFileId = mainDoc?.driveFileId ?: driveFileId.takeIf(String::isNotBlank),
             driveFolderId = mainDoc?.driveFolderId ?: driveFolderId,
             driveMetadataFileId = metadataFileId,
-            storedFilename = mainDoc?.filename,
-            originalMimeType = mainDoc?.mimeType,
+            storedFilename = mainDoc?.filename ?: filename.takeIf(String::isNotBlank),
+            originalMimeType = mainDoc?.mimeType ?: mimeType.takeIf(String::isNotBlank),
             fileSizeBytes = mainDoc?.sizeBytes,
             syncStatus = "SYNCED",
             syncError = null,
@@ -2730,7 +2730,12 @@ class DrivePersistenceRepository(
                         val metaJson = managedDocumentDriveGateway.downloadJson(accessToken, entry.metadataFileId)
                         val persisted = parsePersistedReceipt(metaJson)
 
-                        if (persisted.bruttobetragCent == null) {
+                        val candidate = persisted.toLocalReceipt(entry.metadataFileId)
+                        val amountValid = persisted.bruttobetragCent != null &&
+                            com.example.ui.ReceiptInputValidation.amount(
+                                com.example.ui.GermanNumberInput.formatForInput(candidate.bruttobetrag)) != null &&
+                            (candidate.bruttobetrag >= 0.0 || com.example.util.DatevMappingService.isCreditNote(candidate))
+                        if (!amountValid) {
                             errors.add(RestoreError("INVALID_AMOUNT", "Ungültiger Bruttobetrag (${persisted.bruttobetragCent}) in Beleg '${persisted.displayId ?: persisted.internalId}'", targetId = persisted.internalId, isBlocking = true))
                         }
 
@@ -2745,7 +2750,7 @@ class DrivePersistenceRepository(
                             )
                         )
                     } catch (e: Exception) {
-                        errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Metadaten-JSON für Beleg '${entry.displayId ?: entry.internalId}' nicht lesbar: ${e.message}", targetId = entry.internalId, isBlocking = true))
+                        errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Die gesicherten Daten für Beleg '${entry.displayId ?: entry.internalId}' sind unvollständig oder ungültig. Bitte prüfen.", targetId = entry.internalId, isBlocking = true))
                     }
                 }
 

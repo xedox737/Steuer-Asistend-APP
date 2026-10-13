@@ -35,6 +35,13 @@ class Phase9ADriveReceiptContractTest {
     @After fun cleanup() { PersistentPreferenceInventory.stores.forEach { context.getSharedPreferences(it.name, 0).edit().clear().commit() } }
 
     @Test fun actualMetadataWriterFakeDriveSnapshotAndFreshDoubleMergePreserveFieldsCentsAndOriginals() = runTest {
+        val property = PropertyMetadata(id = 1, propertyId = "property-a", name = "Testobjekt", adresse = "Musterstraße 1", wohneinheiten = "WE 01")
+        repository.updatePropertyMetadata(property)
+        val prefix = "property_property-a_unit_WE 01_"
+        context.getSharedPreferences("wohneinheiten_prefs", 0).edit().putString(prefix + "id", "unit-a")
+            .putString(prefix + "status", "Leerstand").putString(prefix + "label", "WE 01")
+            .putFloat(prefix + "area", 72.5f).putString("property_property-a_unit_id_index_0", "unit-a").commit()
+        fake.putJson("property", "system", "propertyMetadata", with(drive) { property.toJson() })
         val amounts = listOf(.29, 1.13, 10.01, 1000.99, -119.0)
         val bytes = SyntheticDocumentFixtureFactory.create().first { it.number == 1 }.bytes
         val originals = mutableListOf<ManagedDocument>()
@@ -67,12 +74,27 @@ class Phase9ADriveReceiptContractTest {
                 .put("bruttobetragCent", ReceiptMoney.toCent(receipt.bruttobetrag)).put("syncStatus", "SYNCED"))
         } })
         fake.putJson("index", "system", "receiptIndex", index.toString())
+        db.exportAuditDao().insertRun(ExportAuditRun("export-9a", timestamp = 1791889307000, status = "SUCCESS"))
+        db.bankDao().upsertAccount(BankAccount("account-9a", "Testkonto"))
+        db.bankDao().upsertTransaction(BankTransaction("tx-9a", "account-9a", "2026-10-13", amount = .29, propertyId = "property-a"))
+        db.bankDao().upsertLink(BankReceiptLink("link-9a", "tx-9a", sources.first().id, sources.first().internalId, .29))
+        val supplemental = SupplementalDriveBackup.createPayload(context, db)
+        fake.putJson("supplemental", "system", "supplementalBackup", supplemental.toString())
+        suspend fun restore(mode: RestoreMode): Boolean = FullRestoreCoordinator.execute(
+            coreRestore = { drive.executeFullDriveRestore("test-token", config, mode) },
+            preflight = { SupplementalDriveBackup.validatePayload(JSONObject(fake.json("supplemental"))) },
+            supplementalRestore = {
+                SupplementalDriveBackup.restorePayload(context, db, JSONObject(fake.json("supplemental")),
+                    replaceManagedDocuments = mode == RestoreMode.REPLACE_FULL, restoreMode = mode)
+                SupplementalDriveBackup.Result(true, "ok")
+            }).isSuccess
         val snapshot = drive.buildRestoreSnapshot("test-token", config)
         assertTrue(snapshot.errors.toString(), snapshot.errors.none { it.isBlocking })
         assertEquals(5, snapshot.receipts.size)
         assertTrue(snapshot.receipts.any { it.bruttobetragCent == -11900L })
         kotlinx.coroutines.withContext(Dispatchers.IO) { db.clearAllTables() } // Logical fresh target, retaining the fake remote snapshot.
-        repeat(2) { assertTrue(drive.executeFullDriveRestore("test-token", config, RestoreMode.MERGE).isSuccess) }
+        PersistentPreferenceInventory.stores.forEach { context.getSharedPreferences(it.name, 0).edit().clear().commit() }
+        repeat(2) { assertTrue(restore(RestoreMode.MERGE)) }
         assertEquals(5, repository.getAllReceiptsList().size)
         sources.forEach { source ->
             drive.downloadReceiptOriginals("test-token", repository.getReceiptByInternalId(source.internalId)!!)
@@ -90,10 +112,52 @@ class Phase9ADriveReceiptContractTest {
             assertArrayEquals(bytes, java.io.File(original.localUri).readBytes())
             assertArrayEquals(bytes, java.io.File(restoredDocument.localUri).readBytes())
         }
-        assertTrue(drive.executeFullDriveRestore("test-token", config, RestoreMode.REPLACE_FULL).isSuccess)
+        assertEquals(sources.first().id, db.bankDao().getAllLinks().single().receiptId)
+        assertEquals(sources.first().internalId, db.bankDao().getAllLinks().single().receiptInternalId)
+        assertNotNull(db.exportAuditDao().getRunById("export-9a"))
+        assertEquals("unit-a", context.getSharedPreferences("wohneinheiten_prefs", 0).getString(prefix + "id", null))
+        assertTrue(restore(RestoreMode.REPLACE_FULL))
         assertEquals(sources.map { it.id }, repository.getAllReceiptsList().map { it.id }.sorted())
         assertEquals("export-9a", repository.getReceiptByInternalId("phase9a-0")!!.exportlaufId)
         originals.forEach { java.io.File(it.localUri).delete() }
+    }
+
+    @Test fun malformedPrimaryStammdatenAndMissingAmountBlockReplaceBeforeMutatingLocalData() = runTest {
+        val existing = Receipt(71, "Bestand", "2026-10-13", "", 12.0, "Sonstige Ausgaben", "", "4970", "", internalId = "before")
+        repository.insert(existing)
+        val before = repository.getReceiptById(71)!!
+        fake.putJson("bad-property", "system", "propertyMetadata", """{"id":1,"propertyId":"a","wohnflaeche":"kaputt"}""")
+        assertFalse(drive.executeFullDriveRestore("test-token", config, RestoreMode.REPLACE_FULL).isSuccess)
+        assertEquals(before, repository.getReceiptById(71))
+        fake.putJson("bad-property", "system", "propertyMetadata", """{"id":1,"propertyId":"a"}""")
+        val metadata = JSONObject().put("internalId", "bad").put("bruttobetragCent", JSONObject.NULL)
+        fake.putJson("bad-meta", "receipts", "receiptMetadata", metadata.toString())
+        fake.putJson("index", "system", "receiptIndex", JSONObject().put("entries", JSONArray().put(JSONObject()
+            .put("internalId", "bad").put("metadataFileId", "bad-meta").put("mainDriveFileId", "main").put("syncStatus", "SYNCED"))).toString())
+        val snapshot = drive.buildRestoreSnapshot("test-token", config)
+        assertTrue(snapshot.errors.any { it.code == "INVALID_AMOUNT" && it.isBlocking })
+        assertFalse(drive.executeFullDriveRestore("test-token", config, RestoreMode.REPLACE_FULL).isSuccess)
+        assertEquals(before, repository.getReceiptById(71))
+    }
+
+    @Test fun schemaOneFallbackDoesNotGuessIdsAndMalformedSchemaTwoDoesNotDefault() {
+        val legacy = JSONObject().put("schemaVersion", 1).put("internalId", "old")
+            .put("bruttobetragCent", 113).put("positionen", JSONArray())
+        val old = with(drive) { parsePersistedReceipt(legacy.toString()).toLocalReceipt("meta-old") }
+        assertEquals(1.13, old.bruttobetrag, 0.0); assertEquals("", old.unitId); assertEquals("", old.exportlaufId)
+        val current = JSONObject(legacy.toString()).put("schemaVersion", 2).put("receiptId", 41)
+            .put("propertyId", "property-a").put("unitId", "unit-a").put("exportlaufId", "audit").put("kontoNr", "4970")
+            .put("isEigenleistungSanierung", true).put("uhrzeit", "").put("mieter", "")
+        for (field in listOf("unitId", "exportlaufId", "kontoNr", "isEigenleistungSanierung")) {
+            val bad = JSONObject(current.toString()).apply { remove(field) }
+            assertTrue(runCatching { drive.parsePersistedReceipt(bad.toString()) }.isFailure)
+        }
+        val fractional = JSONObject(current.toString()).put("bruttobetragCent", 1.5)
+        assertTrue(runCatching { drive.parsePersistedReceipt(fractional.toString()) }.isFailure)
+        for (field in listOf("positionen", "documents", "originalDocuments")) {
+            assertTrue(runCatching { drive.parsePersistedReceipt(JSONObject(current.toString()).put(field, "kaputt").toString()) }.isFailure)
+        }
+        assertTrue(runCatching { drive.parsePersistedReceipt(JSONObject(current.toString()).put("schemaVersion", 3).toString()) }.isFailure)
     }
 
     @Test fun checkedCentRoundingRejectsNonfiniteAndOverflowButAllowsExistingSignedRule() {

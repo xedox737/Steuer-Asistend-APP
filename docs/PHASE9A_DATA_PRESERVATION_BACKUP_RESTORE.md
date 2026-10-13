@@ -23,7 +23,7 @@ Reparatur bleibt gezielt am erhaltenen Originalrohwert möglich.
 Positionseditor prüft Menge × Einzelpreis und die serialisierbare Gesamtliste.
 ReceiptItemConverter.serialize liefert Result, toJson wirft im Fehlerfall kontrolliert
 statt einen leeren String zu liefern. Endlichkeit aller Positionszahlen, Produkt,
-Steuerprodukt und Gesamtsumme wird vor der Serialisierung geprüft. VM und Repository
+Netto-/Steuerberechnung und Gesamtsummen wird vor der Serialisierung geprüft. VM und Repository
 validieren Positions-JSON nochmals vor Schreiben; insertAll prüft den gesamten Batch
 vor dem ersten DAO-Write. UI zeigt einen deutschen Fehler. Bewusst alle Positionen
 entfernen bleibt erlaubt. Ein Überlauf kann vorhandene Positionen oder andere
@@ -108,18 +108,40 @@ Sein bisheriger Infinity-Restore-Eingang wird zusätzlich als abgewiesen geprüf
 der schon vorhandene historische Room-Infinity-Wert wird separat als Altbestand
 injiziert. Keine Assertion entfernt/abgeschwächt, keine Tests deaktiviert.
 
-Prüfstatus bei erstem Commit: git diff --check erfolgreich. Lokal fehlen Gradle,
-Android-SDK und adb; Unit-/Lint-/Build-/Instrumentation- und vollständige Emulator-
-Prüfung erfolgen über den bestehenden Android-CI-Workflow. Tatsächliche Resultate
-werden erst nach Ausführung im PR und Abschlussbericht eingetragen.
+git diff --check erfolgreich. Der erste CI-Verify-Job (Run 38481150712) bestand
+lintDebug, testDebugUnitTest einschließlich Store-/Room-/Robolectric-Tests sowie
+assembleDebug. Auch assembleDebugAndroidTest bestand; der anschließende vollständige
+Emulatorlauf war zum Zeitpunkt dieser Dokumentationsaktualisierung noch aktiv.
+Die ergänzten Bank-/Audit-Roundtrip- und Altpositionsschutztests werden anschließend
+auf dem aktuellen PR-Head erneut im gesamten Workflow geprüft. Der verbindliche
+abschließende Status steht bei [PR #131](https://github.com/xedox737/Steuer-Asistend-APP/pull/131)
+und in dessen aktuellen Checks, nicht beim überholten ersten Commit.
+Lokal fehlen Gradle, Android-SDK und adb; die Android-Prüfungen laufen im bestehenden CI.
 Keine physische Geräte-, Live-Drive- oder Kanzleiabnahme behauptet.
+
+### Cross-Module Regression Matrix für 9A
+
+| Suite | Nachweis in dieser Phase | Abgrenzung |
+| --- | --- | --- |
+| B Schreibgrenzen | Store-save/upsert/ensure, VM/Repository-Positionsvalidierung, Batch-Preflight, beschädigte Altpositionen | Keine allgemeine Zahlen-/Float-Härtung |
+| D Backup-Serialisierung | Result statt leerem Serializerfallback, Centvertrag, Schema-1/2-Contract, Fake-Drive-Roundtrip | Kein zweites Backupsystem |
+| G Altwerte | Rohwert stringgleich, gültige Nachbarn lesbar, beschädigt sichtbar und Schreibsperre; vorhandener Loan-Altwert reparierbar | Keine stille Datenbereinigung |
+| H Mehrfach-Einstiege | Primäre und Supplemental-Preflights, Coordinator, frisches Ziel, zweimal MERGE, REPLACE_FULL | Keine KI-/Fahrtenbuchänderung |
+| I Stabile IDs | Receipt/Property/Unit/Original/Audit/Banklink, Kollisionsschutz, Schema-1-Kompatibilität | Keine textbasierte ID-Rekonstruktion |
+
+Emulator-Screenshots werden vom unveränderten Diagnosejob im Artefakt
+android-emulator-e2e-reports gesammelt: phase9a-damaged-history,
+phase9a-position-overflow, phase9a-positions-reopened,
+phase9a-restored-receipt-context. Die Restore-Preflightmeldung wird durch den
+Coordinator-Test einschließlich betroffener Darlehens-ID belegt; ein echter
+Drive-Dialog wird ohne angemeldetes Testkonto nicht als abgenommen dargestellt.
 
 ## Arbeitsbasis und Grenzen
 
 Git fetch origin scheiterte lokal am nicht erreichbaren Proxy. main wurde frisch
 über den GitHub-Connector gelesen. Der lokale Git-Arbeitsstand verwendet den exakt
-rekonstruierten signierten Originalcommit und unveränderte Git-Blobs; fehlende
-Dateien werden sparse geführt. Über den Connector wird nur der eigene Branch
+rekonstruierten signierten Originalcommit und verifizierte Git-Blobs. Alle Dateien
+des Basisbaums wurden anschließend vollständig nachgeladen. Über den Connector wird nur der eigene Branch
 aktualisiert. Kein direkter main-Write, kein Merge.
 
 Unverändert: Bankliste/Facharchitektur, DATEV, Fahrtenbuch, Mietaggregate,

@@ -3,6 +3,9 @@ package com.example.data
 import org.json.JSONObject
 import java.math.BigDecimal
 
+/** Only this deliberately written user message may cross the restore UI boundary. */
+internal class BackupPreflightException(message: String, cause: Throwable) : IllegalArgumentException(message, cause)
+
 /** Missing legacy fields may have defaults; damaged present values never do. */
 internal fun JSONObject.backupDouble(key: String, default: Double = 0.0): Double {
     if (!has(key)) return default

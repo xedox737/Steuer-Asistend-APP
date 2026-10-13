@@ -63,8 +63,10 @@ class Phase9ARestorePreflightTest {
         val outcome = FullRestoreCoordinator.execute(
             coreRestore = { calls++; DriveRestoreReport("test", isSuccess = true) },
             supplementalRestore = { calls++; SupplementalDriveBackup.Result(true, "ok") },
-            preflight = { throw IllegalArgumentException("kaputt") })
+            preflight = { SupplementalDriveBackup.validatePayload(JSONObject().put("schemaVersion", 15)
+                .put("loans", JSONArray().put(JSONObject().put("id", 81).put("restschuld", "kaputt")))) })
         assertFalse(outcome.isSuccess); assertEquals(0, calls); assertFalse(outcome.supplementalAttempted)
         assertFalse(outcome.message.contains("kaputt"))
+        assertTrue(outcome.message.contains("81 (Darlehen)"))
     }
 }

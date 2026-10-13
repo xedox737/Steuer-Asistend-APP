@@ -86,7 +86,7 @@ internal object PropertyTaskStore {
         for (i in 0 until arr.length()) {
             runCatching {
                 val o = arr.getJSONObject(i)
-                val id = o.getString("id")
+                val id = o.get("id") as? String ?: error("Invalid stored task ID")
                 require(id.isNotBlank() && ids.add(id))
                 require(o.optString("propertyId", propertyId) == propertyId)
                 val task = PropertyTask(id = id, propertyId = propertyId,

@@ -62,13 +62,19 @@ object ReceiptItemConverter {
 
     fun validate(items: List<ReceiptItem>) {
         var sum = 0.0
+        var netSum = 0.0
+        var taxSum = 0.0
         items.forEach { item ->
             require(listOf(item.menge, item.einzelpreis, item.gesamtpreis, item.steuersatz,
                 item.privatanteilProzent).all { it.isFinite() }) { WRITE_ERROR }
             require((item.menge * item.einzelpreis).isFinite()) { WRITE_ERROR }
-            require((item.gesamtpreis * item.steuersatz / 100.0).isFinite()) { WRITE_ERROR }
+            val net = item.gesamtpreis / (1.0 + item.steuersatz / 100.0)
+            val tax = item.gesamtpreis - net
+            require(net.isFinite() && tax.isFinite()) { WRITE_ERROR }
             sum += item.gesamtpreis
-            require(sum.isFinite()) { WRITE_ERROR }
+            netSum += net
+            taxSum += tax
+            require(sum.isFinite() && netSum.isFinite() && taxSum.isFinite()) { WRITE_ERROR }
         }
     }
 
@@ -940,6 +946,12 @@ class ReceiptRepository(
 
     suspend fun insert(receipt: Receipt): Long {
         ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson)
+        if (receipt.id > 0) {
+            val existing = receiptDao.getReceiptById(receipt.id)
+            if (existing != null && existing.positionenJson != receipt.positionenJson) {
+                ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+            }
+        }
         val preparedInternalId = if (receipt.internalId.isBlank()) java.util.UUID.randomUUID().toString() else receipt.internalId
         val year = try { receipt.datum.split("-").firstOrNull()?.trim() ?: "2026" } catch (e: Exception) { "2026" }
         val preparedDisplayId = receipt.displayId ?: "BLG-$year-${String.format("%06d", if (receipt.id != 0) receipt.id else 0)}"
@@ -982,7 +994,12 @@ class ReceiptRepository(
     }
 
     suspend fun insertAll(receipts: List<Receipt>) {
-        receipts.forEach { ReceiptItemConverter.validateJsonForWrite(it.positionenJson) }
+        receipts.forEach { candidate ->
+            ReceiptItemConverter.validateJsonForWrite(candidate.positionenJson)
+            if (candidate.id > 0) receiptDao.getReceiptById(candidate.id)?.let { existing ->
+                if (existing.positionenJson != candidate.positionenJson) ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+            }
+        }
         receiptDao.insertAll(receipts)
         receipts.forEach { receipt ->
             receiptEntityDao?.insert(

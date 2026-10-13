@@ -3195,7 +3195,10 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var editMieter by remember(receipt) { mutableStateOf(receipt.mieter) }
     var editZahlungsart by remember(receipt) { mutableStateOf(receipt.zahlungsart) }
     var editPositionen by remember(receipt) { mutableStateOf(receipt.getPositionenList()) }
-    var positionWriteError by remember(receipt) { mutableStateOf<String?>(null) }
+    val storedPositionsReadable = remember(receipt) {
+        runCatching { com.example.data.ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson) }.isSuccess
+    }
+    var positionWriteError by remember(receipt) { mutableStateOf(if (storedPositionsReadable) null else com.example.data.ReceiptItemConverter.WRITE_ERROR) }
 
     var mainCategoryExpanded by remember { mutableStateOf(false) }
     var subCategoryExpanded by remember { mutableStateOf(false) }
@@ -3432,6 +3435,10 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                             amountError = parsedBetrag == null
                             dateError = parsedDate == null
                             if (amountError || dateError) return@Button
+                            if (!storedPositionsReadable) {
+                                positionWriteError = com.example.data.ReceiptItemConverter.WRITE_ERROR
+                                return@Button
+                            }
                             val positionsJson = com.example.data.ReceiptItemConverter.serialize(editPositionen).getOrElse {
                                 positionWriteError = com.example.data.ReceiptItemConverter.WRITE_ERROR
                                 return@Button

@@ -290,7 +290,11 @@ object SupplementalDriveBackup {
                             require(Base64.decode(json.getString("imageBase64"), Base64.NO_WRAP).isNotEmpty())
                         }
                     } catch (e: Exception) {
-                        throw IllegalArgumentException("Sicherung '$key', Datensatz $identity: gespeicherte Werte sind ungültig. Bitte prüfen. Es wurden keine Daten übernommen.", e)
+                        throw BackupPreflightException("Gesicherter Datensatz $identity (${when (key) {
+                            "loans" -> "Darlehen"
+                            "properties" -> "Immobilie"
+                            else -> "Zusatzdaten"
+                        }}): gespeicherte Werte sind ungültig. Bitte prüfen. Es wurden keine Daten übernommen.", e)
                     }
                 }
             }

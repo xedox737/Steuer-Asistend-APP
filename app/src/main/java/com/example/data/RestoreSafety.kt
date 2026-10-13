@@ -26,7 +26,8 @@ object FullRestoreCoordinator {
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             onPhase(FullRestorePhase.FAILED)
-            val message = "Die Sicherung enthält ungültige Daten. Bitte prüfen. Es wurden keine Daten übernommen."
+            val message = (e as? BackupPreflightException)?.message
+                ?: "Die Sicherung enthält ungültige Daten. Bitte prüfen. Es wurden keine Daten übernommen."
             return FullRestoreOutcome(
                 coreReport = DriveRestoreReport(timestamp = java.time.Instant.now().toString(),
                     errorCount = 1, errors = listOf(message), isSuccess = false),

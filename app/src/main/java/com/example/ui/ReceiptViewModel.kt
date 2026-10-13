@@ -4561,6 +4561,10 @@ data class AiSearchUiState(
                 return@launch
             }
             val persistedReceipt = repository.getReceiptById(receipt.id)
+            if (persistedReceipt != null && runCatching { com.example.data.ReceiptItemConverter.validateJsonForWrite(persistedReceipt.positionenJson) }.isFailure) {
+                _driveSyncStatus.value = com.example.data.ReceiptItemConverter.WRITE_ERROR
+                return@launch
+            }
             val property = database.propertyDao().getPropertyByPropertyId(receipt.propertyId)
             val textSelectionChanged = persistedReceipt != null && receipt.wohneinheit != persistedReceipt.wohneinheit
             val selection = property?.let {

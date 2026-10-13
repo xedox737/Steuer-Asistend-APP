@@ -75,4 +75,22 @@ class Phase9AStoredDataPreservationTest {
         assertTrue(PropertyTaskStore.upsert(context, task.copy(done = true)))
         assertEquals(listOf(task.copy(done = true)), PropertyTaskStore.load(context, "property-a"))
     }
+
+    @Test fun missingOrFractionalHistoryIdsAndNonStringTaskIdsNeverGenerateReplacementIds() {
+        assertTrue(TenantHistoryStore.save(context, "property-a", unit.unitId, unit.name, listOf(period)))
+        val good = JSONArray(history().getString(key, null)).getJSONObject(0)
+        for (bad in listOf(JSONObject(good.toString()).apply { remove("id") }, JSONObject(good.toString()).put("id", 1.5))) {
+            val raw = JSONArray().put(good).put(bad).toString()
+            history().edit().putString(key, raw).commit()
+            val read = TenantHistoryStore.read(context, "property-a", unit.unitId, unit.name)
+            assertTrue(read.damaged); assertEquals(listOf(period), read.entries)
+            TenantHistoryStore.ensureCurrentPeriod(context, unit, 220.0, 0.0, "property-a")
+            assertEquals(raw, history().getString(key, null))
+        }
+        val raw = JSONArray().put(JSONObject().put("id", 17).put("title", "Aufgabe")).toString()
+        tasks().edit().putString("tasks_property-a", raw).commit()
+        assertTrue(PropertyTaskStore.read(context, "property-a").damaged)
+        assertFalse(PropertyTaskStore.upsert(context, PropertyTask("new", "property-a", title = "Neu", createdAt = "", updatedAt = "")))
+        assertEquals(raw, tasks().getString("tasks_property-a", null))
+    }
 }

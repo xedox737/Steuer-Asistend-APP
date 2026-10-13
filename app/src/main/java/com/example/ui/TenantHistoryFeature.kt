@@ -106,7 +106,7 @@ internal object TenantHistoryStore {
                 val o = array.getJSONObject(i)
                 val changes = if (o.has("rentChanges")) o.getJSONArray("rentChanges") else JSONArray()
                 val period = TenantPeriod(
-                    id = if (o.has("id")) o.getLong("id") else i.toLong() + 1,
+                    id = o.get("id").toString().toLong(),
                     unitName = unitName,
                     tenantName = o.optString("tenantName"),
                     startDate = o.optString("startDate"), endDate = o.optString("endDate"),
@@ -298,8 +298,8 @@ internal object TenantHistoryStore {
             nebenkosten = nebenkosten,
             sonstige = sonstige
         )
-        save(context, propertyId, unitId, unit.name, listOf(initial))
-        return listOf(initial)
+        return if (save(context, propertyId, unitId, unit.name, listOf(initial))) listOf(initial)
+            else read(context, propertyId, unitId, unit.name).entries
     }
 
     fun expectedInMonth(period: TenantPeriod, month: YearMonth): Double {

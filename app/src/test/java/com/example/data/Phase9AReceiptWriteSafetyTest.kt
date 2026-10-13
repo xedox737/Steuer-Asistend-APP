@@ -50,6 +50,15 @@ class Phase9AReceiptWriteSafetyTest {
         assertTrue(repository.getReceiptById(id)!!.getPositionenList().isEmpty())
         assertEquals(id, repository.getReceiptById(id)!!.id)
     }
+    @Test fun damagedLegacyPositionsCannotBeErasedByAnOtherwiseValidEdit() = runTest {
+        val raw = "[{incomplete"
+        val existing = receipt(raw).copy(id = 44, displayId = "BLG-44")
+        db.receiptDao().insertReceipt(existing)
+        assertTrue(runCatching { repository.insert(existing.copy(aussteller = "Neu", positionenJson = "")) }.isFailure)
+        assertEquals(existing, repository.getReceiptById(44))
+        assertTrue(ReceiptItemConverter.serialize(listOf(ReceiptItem("Netto", 1.0, 1.0, 1.0, steuersatz = -100.0))).isFailure)
+    }
+
     private fun receipt(items: String) = Receipt(aussteller = "Original", datum = "2026-10-13", uhrzeit = "12:00", bruttobetrag = 29.0,
         hauptkategorie = "Sonstige Ausgaben", unterkategorie = "", kontoNr = "4970", beschreibung = "Unverändert", positionenJson = items, internalId = "phase9a-original")
 }
