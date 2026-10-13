@@ -111,11 +111,16 @@ abstract class Phase8ALoanValidationMatrix : EmulatorTestSupport() {
 
     @Test fun restoredInfinityOpensWithoutCrashAndCanBeCancelledOrRepaired() {
         val a = seedProperty("p8-legacy", "Altbestand")
-        // JSON cannot contain a numeric Infinity literal; historical strings are read by optDouble.
+        // Phase 9A blocks malformed restore input; an existing historical Room value stays reparable.
         val payload = JSONObject().put("schemaVersion", 15).put("loans", JSONArray().put(JSONObject()
             .put("id", 801).put("propertyId", a.propertyId).put("bezeichnung", "Altdarlehen")
             .put("darlehensbetrag", 100000).put("restschuld", "Infinity").put("sollzinsProzent", 3)))
-        runBlocking(Dispatchers.IO) { SupplementalDriveBackup.restorePayload(context, db, payload) }
+        runBlocking(Dispatchers.IO) {
+            assertTrue(runCatching { SupplementalDriveBackup.restorePayload(context, db, payload) }.isFailure)
+            assertTrue(db.loanDao().getAllLoans().none { it.id == 801 })
+            db.loanDao().upsertLoan(Loan(id = 801, propertyId = a.propertyId, bezeichnung = "Altdarlehen",
+                darlehensbetrag = 100000.0, restschuld = Double.POSITIVE_INFINITY, sollzinsProzent = 3.0))
+        }
         assertEquals(Double.POSITIVE_INFINITY, stored().restschuld, 0.0)
         open(a.propertyId, "Altdarlehen")
         error("BALANCE", LoanInputValidation.STORED_ERROR); screenshot("legacy-infinity")

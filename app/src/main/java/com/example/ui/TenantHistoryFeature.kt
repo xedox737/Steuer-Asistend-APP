@@ -94,44 +94,46 @@ internal object TenantHistoryStore {
     private fun legacyKey(unitName: String) = "history_$unitName"
     private fun scopedKey(propertyId: String, unitId: String) = "history_v2_${propertyId}_$unitId"
 
-    private fun decode(raw: String, unitName: String): List<TenantPeriod> = try {
-        val arr = JSONArray(raw)
-        buildList {
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                add(
-                    TenantPeriod(
-                        id = o.optLong("id", i.toLong() + 1),
-                        unitName = unitName,
-                        tenantName = o.optString("tenantName"),
-                        startDate = o.optString("startDate"),
-                        endDate = o.optString("endDate"),
-                        kaltmiete = o.optDouble("kaltmiete", 0.0),
-                        nebenkosten = o.optDouble("nebenkosten", 0.0),
-                        sonstige = o.optDouble("sonstige", 0.0),
-                        rentChanges = o.optJSONArray("rentChanges")?.let { changes ->
-                            buildList {
-                                for (j in 0 until changes.length()) {
-                                    val change = changes.optJSONObject(j) ?: continue
-                                    val effectiveDate = change.optString("effectiveDate")
-                                    val kaltmiete = change.optDouble("kaltmiete", Double.NaN)
-                                    val nebenkosten = change.optDouble("nebenkosten", Double.NaN)
-                                    val sonstige = change.optDouble("sonstige", Double.NaN)
-                                    if (CalendarInput.isValidIsoDate(effectiveDate) &&
-                                        kaltmiete.isFinite() && nebenkosten.isFinite() && sonstige.isFinite()
-                                    ) {
-                                        add(RentAmountChange(effectiveDate, kaltmiete, nebenkosten, sonstige))
-                                    }
-                                }
-                            }.sortedBy { it.effectiveDate }
-                        }.orEmpty()
-                    )
+    private fun decode(raw: String, unitName: String): StoredListRead<TenantPeriod> {
+        val entries = mutableListOf<TenantPeriod>()
+        var damaged = false
+        val ids = mutableSetOf<Long>()
+        val array = runCatching { JSONArray(raw) }.getOrElse {
+            return StoredListRead(emptyList(), true, true)
+        }
+        for (i in 0 until array.length()) {
+            runCatching {
+                val o = array.getJSONObject(i)
+                val changes = if (o.has("rentChanges")) o.getJSONArray("rentChanges") else JSONArray()
+                val period = TenantPeriod(
+                    id = if (o.has("id")) o.getLong("id") else i.toLong() + 1,
+                    unitName = unitName,
+                    tenantName = o.optString("tenantName"),
+                    startDate = o.optString("startDate"), endDate = o.optString("endDate"),
+                    kaltmiete = storedAmount(o, "kaltmiete"),
+                    nebenkosten = storedAmount(o, "nebenkosten"),
+                    sonstige = storedAmount(o, "sonstige"),
+                    rentChanges = (0 until changes.length()).map { j ->
+                        val c = changes.getJSONObject(j)
+                        val date = c.getString("effectiveDate")
+                        require(CalendarInput.isValidIsoDate(date))
+                        RentAmountChange(date, storedAmount(c, "kaltmiete"),
+                            storedAmount(c, "nebenkosten"), storedAmount(c, "sonstige"))
+                    }.sortedBy { it.effectiveDate }
                 )
-            }
-        }.sortedBy { it.startDate }
-    } catch (_: Exception) {
-        emptyList()
+                require(period.startDate.isBlank() || CalendarInput.isValidIsoDate(period.startDate))
+                require(period.endDate.isBlank() || CalendarInput.isValidIsoDate(period.endDate))
+                require(ids.add(period.id))
+                entries += period
+            }.onFailure { damaged = true }
+        }
+        return StoredListRead(entries.sortedBy { it.startDate }, true, damaged)
     }
+
+    private fun storedAmount(json: JSONObject, key: String): Double =
+        (if (json.has(key)) json.getDouble(key) else 0.0).also {
+            require(it.isFinite() && it >= 0.0)
+        }
 
     private fun encode(periods: List<TenantPeriod>): String {
         val arr = JSONArray()
@@ -159,26 +161,33 @@ internal object TenantHistoryStore {
         return arr.toString()
     }
 
-    fun load(context: Context, propertyId: String, unitId: String, unitName: String): List<TenantPeriod> {
+    fun read(context: Context, propertyId: String, unitId: String, unitName: String): StoredListRead<TenantPeriod> {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
         val scoped = scopedKey(propertyId, stableUnitId)
-        prefs.getString(scoped, null)?.let { return decode(it, unitName) }
-
-        // Backward-compatible lazy migration only for the historical object.
-        // The legacy entry is copied, never deleted.
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
-            prefs.getString(legacyKey(unitName), null)?.let { raw ->
-                prefs.edit().putString(scoped, raw).apply()
-                return decode(raw, unitName)
-            }
+        if (prefs.contains(scoped)) {
+            return runCatching { decode(requireNotNull(prefs.getString(scoped, null)), unitName) }
+                .getOrElse { StoredListRead(emptyList(), true, true) }
         }
-        return emptyList()
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && prefs.contains(legacyKey(unitName))) {
+            return runCatching {
+                val raw = requireNotNull(prefs.getString(legacyKey(unitName), null))
+                val result = decode(raw, unitName)
+                // Only successful historical reads retain the existing lazy migration.
+                if (!result.damaged) prefs.edit().putString(scoped, raw).apply()
+                result
+            }.getOrElse { StoredListRead(emptyList(), true, true) }
+        }
+        return StoredListRead(emptyList(), false)
     }
 
-    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>) = synchronized(this) {
+    fun load(context: Context, propertyId: String, unitId: String, unitName: String): List<TenantPeriod> =
+        read(context, propertyId, unitId, unitName).entries
+
+    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>): Boolean = synchronized(this) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
+        if (read(context, propertyId, stableUnitId, unitName).damaged) return@synchronized false
         val raw = encode(periods)
         prefs.edit().putString(scopedKey(propertyId, stableUnitId), raw).apply()
         // Keep historical readers compatible for property-1, but never create a
@@ -186,14 +195,16 @@ internal object TenantHistoryStore {
         if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
             prefs.edit().putString(legacyKey(unitName), raw).apply()
         }
+        true
     }
 
     /** A malformed stored history is existing data, never an invitation to overwrite it. */
     fun hasStoredPeriods(context: Context, propertyId: String, unitId: String, unitName: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val raw = prefs.getString(scopedKey(propertyId, unitId), null)
-            ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) prefs.getString(legacyKey(unitName), null) else null)
-            ?: return false
+        val raw = runCatching {
+            prefs.getString(scopedKey(propertyId, unitId), null)
+                ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) prefs.getString(legacyKey(unitName), null) else null)
+        }.getOrElse { return true } ?: return false
         return runCatching { JSONArray(raw).length() > 0 }.getOrDefault(true)
     }
 
@@ -244,11 +255,13 @@ internal object TenantHistoryStore {
         }.maxByOrNull { CalendarInput.parseIsoDate(it.startDate) ?: LocalDate.MIN }
 
     /** Explicit corrections from the simple editor must update the same contractual source. */
-    fun correctCurrentRentalDetails(context: Context, propertyId: String, unitId: String, unit: WohneinheitStatus) {
-        val periods = load(context, propertyId, unitId, unit.name)
+    fun correctCurrentRentalDetails(context: Context, propertyId: String, unitId: String, unit: WohneinheitStatus): Boolean {
+        val read = read(context, propertyId, unitId, unit.name)
+        if (read.damaged) return false
+        val periods = read.entries
         val today = LocalDate.now()
-        val current = currentAt(periods, today) ?: return
-        if (unit.status != "Vermietet") return
+        val current = currentAt(periods, today) ?: return true
+        if (unit.status != "Vermietet") return true
         val latestChange = current.rentChanges.filter {
             CalendarInput.parseIsoDate(it.effectiveDate)?.let { date -> !date.isAfter(today) } == true
         }.maxByOrNull { it.effectiveDate }
@@ -260,7 +273,7 @@ internal object TenantHistoryStore {
                 if (change === latestChange) change.copy(kaltmiete = unit.kaltmiete) else change
             }
         )
-        if (corrected != current) save(context, propertyId, unitId, unit.name,
+        return corrected == current || save(context, propertyId, unitId, unit.name,
             periods.map { if (it.id == current.id) corrected else it })
     }
 
@@ -272,8 +285,9 @@ internal object TenantHistoryStore {
         propertyId: String = PropertyUnitScopedData.selectedPropertyId(context)
     ): List<TenantPeriod> {
         val unitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
-        val existing = load(context, propertyId, unitId, unit.name)
-        if (existing.isNotEmpty() || unit.mieter.isBlank() || unit.status != "Vermietet") return existing
+        val read = read(context, propertyId, unitId, unit.name)
+        val existing = read.entries
+        if (read.damaged || hasStoredPeriods(context, propertyId, unitId, unit.name) || existing.isNotEmpty() || unit.mieter.isBlank() || unit.status != "Vermietet") return existing
         val initial = TenantPeriod(
             id = System.currentTimeMillis(),
             unitName = unit.name,
@@ -328,7 +342,8 @@ internal fun TenantHistoryDialog(
     var periods by remember(propertyId, unitId, version) {
         mutableStateOf(TenantHistoryStore.ensureCurrentPeriod(context, unit, nebenkostenCurrent, sonstigeCurrent, propertyId))
     }
-    var showChange by remember { mutableStateOf(initiallyShowChange) }
+    var storeError by remember(propertyId, unitId, version) { mutableStateOf(TenantHistoryStore.read(context, propertyId, unitId, unit.name).error) }
+    var showChange by remember { mutableStateOf(initiallyShowChange && storeError == null) }
 
     if (!initiallyShowChange || !showChange) {
     AlertDialog(
@@ -336,16 +351,18 @@ internal fun TenantHistoryDialog(
         title = { Text("Mieterwechsel · ${unit.name}", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                storeError?.let { Text(it, color = CrimsonRed, modifier = Modifier.testTag("tenant_history_read_error")) }
                 Text("Alte Mietverhältnisse bleiben erhalten. Ein neuer Wechsel beendet den bisherigen Vertrag und legt einen neuen Vertrag an.", fontSize = 10.sp, color = SlateGray)
                 Button(
                     onClick = { showChange = true },
+                    enabled = storeError == null,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Text(" Mieterwechsel erfassen")
                 }
-                if (periods.isEmpty()) {
+                if (periods.isEmpty() && storeError == null) {
                     Text("Noch keine Mieterhistorie vorhanden.", fontSize = 11.sp, color = SlateGray)
                 } else {
                     LazyColumn(modifier = Modifier.heightIn(max = 390.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -399,16 +416,20 @@ internal fun TenantHistoryDialog(
             onDismiss = { showChange = false; if (initiallyShowChange) onDismiss() },
             onSave = { exitDate, newPeriod ->
                 val updated = TenantHistoryStore.changeTenant(periods, exitDate, newPeriod, activePeriod?.id)
-                TenantHistoryStore.save(context, propertyId, unitId, unit.name, updated)
-                periods = updated
-                version++
-                TenantHistoryStore.currentAt(updated)?.let { current ->
-                    val amounts = current.amountsAt(LocalDate.now())
-                    onCurrentTenantChanged(current.copy(kaltmiete = amounts.kaltmiete, nebenkosten = amounts.nebenkosten, sonstige = amounts.sonstige))
+                if (!TenantHistoryStore.save(context, propertyId, unitId, unit.name, updated)) {
+                    storeError = StoredListRead.ERROR
+                    showChange = false
+                } else {
+                    periods = updated
+                    version++
+                    TenantHistoryStore.currentAt(updated)?.let { current ->
+                        val amounts = current.amountsAt(LocalDate.now())
+                        onCurrentTenantChanged(current.copy(kaltmiete = amounts.kaltmiete, nebenkosten = amounts.nebenkosten, sonstige = amounts.sonstige))
+                    }
+                    onHistoryChanged()
+                    showChange = false
+                    if (initiallyShowChange) onDismiss()
                 }
-                onHistoryChanged()
-                showChange = false
-                if (initiallyShowChange) onDismiss()
             }
         )
     }

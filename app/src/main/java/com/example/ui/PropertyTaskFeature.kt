@@ -74,35 +74,39 @@ internal object PropertyTaskStore {
     const val PREFS = "property_tasks_prefs"
     private fun key(propertyId: String) = "tasks_$propertyId"
 
-    fun load(context: Context, propertyId: String): List<PropertyTask> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key(propertyId), null)
-            ?: return emptyList()
-        return runCatching {
-            val arr = JSONArray(raw)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    add(
-                        PropertyTask(
-                            id = o.optString("id"),
-                            propertyId = o.optString("propertyId", propertyId),
-                            unitId = o.optString("unitId"),
-                            title = o.optString("title"),
-                            note = o.optString("note"),
-                            dueDate = o.optString("dueDate"),
-                            category = o.optString("category", "Sonstiges"),
-                            done = o.optBoolean("done", false),
-                            createdAt = o.optString("createdAt"),
-                            updatedAt = o.optString("updatedAt")
-                        )
-                    )
-                }
-            }.filter { it.propertyId == propertyId }
-                .sortedWith(compareBy<PropertyTask> { it.done }.thenBy { it.dueDate.ifBlank { "9999-99-99" } }.thenBy { it.title })
-        }.getOrDefault(emptyList())
+    fun read(context: Context, propertyId: String): StoredListRead<PropertyTask> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!prefs.contains(key(propertyId))) return StoredListRead(emptyList(), false)
+        val raw = runCatching { requireNotNull(prefs.getString(key(propertyId), null)) }
+            .getOrElse { return StoredListRead(emptyList(), true, true) }
+        val arr = runCatching { JSONArray(raw) }.getOrElse { return StoredListRead(emptyList(), true, true) }
+        val tasks = mutableListOf<PropertyTask>()
+        val ids = mutableSetOf<String>()
+        var damaged = false
+        for (i in 0 until arr.length()) {
+            runCatching {
+                val o = arr.getJSONObject(i)
+                val id = o.getString("id")
+                require(id.isNotBlank() && ids.add(id))
+                require(o.optString("propertyId", propertyId) == propertyId)
+                val task = PropertyTask(id = id, propertyId = propertyId,
+                    unitId = o.optString("unitId"), title = o.getString("title"),
+                    note = o.optString("note"), dueDate = o.optString("dueDate"),
+                    category = o.optString("category", "Sonstiges"),
+                    done = if (o.has("done")) o.getBoolean("done") else false,
+                    createdAt = o.optString("createdAt"), updatedAt = o.optString("updatedAt"))
+                require(task.title.isNotBlank())
+                tasks += task
+            }.onFailure { damaged = true }
+        }
+        return StoredListRead(tasks.sortedWith(compareBy<PropertyTask> { it.done }
+            .thenBy { it.dueDate.ifBlank { "9999-99-99" } }.thenBy { it.title }), true, damaged)
     }
 
-    fun save(context: Context, propertyId: String, tasks: List<PropertyTask>) {
+    fun load(context: Context, propertyId: String): List<PropertyTask> = read(context, propertyId).entries
+
+    fun save(context: Context, propertyId: String, tasks: List<PropertyTask>): Boolean = synchronized(this) {
+        if (read(context, propertyId).damaged) return@synchronized false
         val arr = JSONArray()
         tasks.filter { it.propertyId == propertyId }.forEach { task ->
             arr.put(JSONObject().apply {
@@ -118,11 +122,13 @@ internal object PropertyTaskStore {
                 put("updatedAt", task.updatedAt)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(key(propertyId), arr.toString()).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(key(propertyId), arr.toString()).commit()
     }
 
-    fun upsert(context: Context, task: PropertyTask) {
-        val existing = load(context, task.propertyId).toMutableList()
+    fun upsert(context: Context, task: PropertyTask): Boolean = synchronized(this) {
+        val read = read(context, task.propertyId)
+        if (read.damaged) return@synchronized false
+        val existing = read.entries.toMutableList()
         val index = existing.indexOfFirst { it.id == task.id }
         if (index >= 0) existing[index] = task else existing.add(task)
         save(context, task.propertyId, existing)
@@ -134,13 +140,16 @@ internal fun PropertyTasksScreen(propertyId: String, units: List<WohneinheitStat
     val context = LocalContext.current
     var version by remember { mutableIntStateOf(0) }
     var showAdd by remember { mutableStateOf(false) }
-    val tasks = remember(propertyId, version) { PropertyTaskStore.load(context, propertyId) }
+    val read = remember(propertyId, version) { PropertyTaskStore.read(context, propertyId) }
+    val tasks = read.entries
+    var storeError by remember(propertyId, version) { mutableStateOf(read.error) }
 
     if (showAdd) {
         PropertyTaskBottomSheet(propertyId, units, onDismiss = { showAdd = false }) { task ->
-            PropertyTaskStore.upsert(context, task)
-            version++
-            showAdd = false
+            if (PropertyTaskStore.upsert(context, task)) {
+                version++
+                showAdd = false
+            } else { storeError = StoredListRead.ERROR; showAdd = false }
         }
     }
 
@@ -157,6 +166,7 @@ internal fun PropertyTasksScreen(propertyId: String, units: List<WohneinheitStat
                 }
                 Button(
                     onClick = { showAdd = true },
+                    enabled = storeError == null,
                     modifier = Modifier.widthIn(min = 176.dp).heightIn(min = 48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
                 ) {
@@ -165,7 +175,8 @@ internal fun PropertyTasksScreen(propertyId: String, units: List<WohneinheitStat
                 }
             }
         }
-        if (tasks.isEmpty()) {
+        storeError?.let { error -> item { Text(error, color = CrimsonRed) } }
+        if (tasks.isEmpty() && storeError == null) {
             item { TaskEmptyState() }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF3FF)), border = BorderStroke(1.dp, Color(0xFFD9E9FF))) {
@@ -184,12 +195,12 @@ internal fun PropertyTasksScreen(propertyId: String, units: List<WohneinheitStat
             ) {
                 Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IconButton(onClick = {
-                        PropertyTaskStore.upsert(
+                        val saved = PropertyTaskStore.upsert(
                             context,
                             task.copy(done = !task.done, updatedAt = java.time.Instant.now().toString())
                         )
-                        version++
-                    }) {
+                        if (saved) version++ else storeError = StoredListRead.ERROR
+                    }, enabled = storeError == null) {
                         Icon(if (task.done) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = if (task.done) EmeraldGreen else AccentBlue)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

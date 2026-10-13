@@ -18,8 +18,21 @@ object FullRestoreCoordinator {
     suspend fun execute(
         coreRestore: suspend () -> DriveRestoreReport,
         supplementalRestore: suspend () -> SupplementalDriveBackup.Result,
-        onPhase: (FullRestorePhase) -> Unit = {}
+        onPhase: (FullRestorePhase) -> Unit = {},
+        preflight: suspend () -> Unit = {}
     ): FullRestoreOutcome {
+        try {
+            preflight()
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            onPhase(FullRestorePhase.FAILED)
+            val message = "Die Sicherung enthält ungültige Daten. Bitte prüfen. Es wurden keine Daten übernommen."
+            return FullRestoreOutcome(
+                coreReport = DriveRestoreReport(timestamp = java.time.Instant.now().toString(),
+                    errorCount = 1, errors = listOf(message), isSuccess = false),
+                supplementalAttempted = false, isSuccess = false,
+                phase = FullRestorePhase.FAILED, message = message)
+        }
         onPhase(FullRestorePhase.CORE_IMPORT)
         val core = coreRestore()
         onPhase(FullRestorePhase.CORE_VERIFY)

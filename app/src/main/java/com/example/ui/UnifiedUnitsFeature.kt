@@ -515,6 +515,7 @@ private fun UnifiedUnitDetailScreen(
     var detailsVersion by remember { mutableIntStateOf(0) }
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
+    var historyReadError by remember(unitId, detailsVersion) { mutableStateOf(TenantHistoryStore.read(context, property.propertyId, unitId, unit.name).error) }
     val unitReceipts = receipts.filter { it.wohneinheit == unit.name || it.wohneinheit == unit.label }
     val unitDocs = documents.filter { it.unitId == unitId }
     val periods = remember(unitId, unit, detailsVersion) {
@@ -676,7 +677,9 @@ private fun UnifiedUnitDetailScreen(
             periods = periods,
             onDismiss = { showStatusDialog = false },
             onSave = { status, effectiveDate ->
-                UnitStatusMetaStore.save(context, property.propertyId, unitId, status, effectiveDate)
+                if (TenantHistoryStore.read(context, property.propertyId, unitId, unit.name).damaged) {
+                    historyReadError = StoredListRead.ERROR
+                } else {
                 val endsCurrentLease = status in setOf(
                     "Leerstand",
                     "Renovierung",
@@ -687,7 +690,7 @@ private fun UnifiedUnitDetailScreen(
                     val updatedPeriods = periods.map { period ->
                         if (period.id == activePeriod?.id) period.copy(endDate = effectiveDate) else period
                     }
-                    TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)
+                    if (TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)) {
                     viewModel.updateWohneinheit(
                         unit.copy(
                             status = status,
@@ -696,8 +699,11 @@ private fun UnifiedUnitDetailScreen(
                         )
                     )
                     detailsVersion++
+                    } else historyReadError = StoredListRead.ERROR
                 } else {
                     viewModel.updateWohneinheit(unit.copy(status = status))
+                }
+                if (historyReadError == null) UnitStatusMetaStore.save(context, property.propertyId, unitId, status, effectiveDate)
                 }
                 showStatusDialog = false
             }
@@ -717,6 +723,7 @@ private fun UnifiedUnitDetailScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+        historyReadError?.let { Text(it, color = CrimsonRed, modifier = Modifier.testTag("unit_history_read_error").padding(12.dp)) }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically

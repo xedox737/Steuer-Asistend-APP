@@ -996,7 +996,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         } ?: propertyMetadata.value ?: PropertyMetadata()
         if (correctCurrentContract) {
             val unitId = PropertyUnitScopedData.stableUnitId(targetProperty.propertyId, updated)
-            TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)
+            if (!TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)) {
+                _driveSyncStatus.value = StoredListRead.ERROR
+                return
+            }
         }
         updateWohneinheitForProperty(updated, targetProperty)
     }
@@ -1293,14 +1296,18 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val token = getValidToken(email)
                 val initResult = drivePersistenceRepository.initializeDriveStorage(token)
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
+                    var supplementalPayload: org.json.JSONObject? = null
                     val outcome = com.example.data.FullRestoreCoordinator.execute(
+                        preflight = { supplementalPayload = com.example.data.SupplementalDriveBackup.loadValidatedPayload(token, initResult.config.systemFolderId) },
                         coreRestore = { drivePersistenceRepository.executeFullDriveRestore(token, initResult.config, mode) },
                         supplementalRestore = {
-                            com.example.data.SupplementalDriveBackup.restore(
-                                getApplication(), database, token, initResult.config.systemFolderId,
-                                replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL,
-                                restoreMode = mode
-                            )
+                            supplementalPayload?.let { payload ->
+                                com.example.data.SupplementalDriveBackup.restorePayload(
+                                    getApplication(), database, payload,
+                                    replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL,
+                                    restoreMode = mode)
+                            }
+                            com.example.data.SupplementalDriveBackup.Result(true, "Zusatzdaten vollständig geprüft und wiederhergestellt")
                         },
                         onPhase = { phase ->
                             drivePersistenceRepository.updateLatestRestorePhase(phase)
@@ -4441,6 +4448,10 @@ data class AiSearchUiState(
         propertyId: String? = null,
         selectedUnitId: String? = null
     ) {
+        if (runCatching { com.example.data.ReceiptItemConverter.validateJsonForWrite(positionenJson) }.isFailure) {
+            _scanState.value = ScanUiState.Error(com.example.data.ReceiptItemConverter.WRITE_ERROR)
+            return
+        }
         if (!receiptSaveGate.compareAndSet(false, true)) return
         val navigationGeneration = _primaryNavigationReset.value.generation
         // A primary click may close the editor while its committed save finishes.
@@ -4545,6 +4556,10 @@ data class AiSearchUiState(
     // Update an existing receipt in database
     fun updateReceipt(receipt: Receipt, selectedUnitId: String? = null) {
         viewModelScope.launch {
+            if (runCatching { com.example.data.ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson) }.isFailure) {
+                _driveSyncStatus.value = com.example.data.ReceiptItemConverter.WRITE_ERROR
+                return@launch
+            }
             val persistedReceipt = repository.getReceiptById(receipt.id)
             val property = database.propertyDao().getPropertyByPropertyId(receipt.propertyId)
             val textSelectionChanged = persistedReceipt != null && receipt.wohneinheit != persistedReceipt.wohneinheit

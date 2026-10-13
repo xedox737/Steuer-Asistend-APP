@@ -349,9 +349,9 @@ class DrivePersistenceManagedDocumentE2eTest {
     }
 }
 
-private enum class FakeDriveFailure { NONE, HTTP_404, HTTP_429, HTTP_503, TIMEOUT }
+internal enum class FakeDriveFailure { NONE, HTTP_404, HTTP_429, HTTP_503, TIMEOUT }
 
-private data class FakeManagedDriveFile(
+internal data class FakeManagedDriveFile(
     val id: String,
     val parentId: String,
     val name: String,
@@ -364,7 +364,27 @@ private data class FakeManagedDriveFile(
     override fun hashCode(): Int = 31 * id.hashCode() + sha256.hashCode()
 }
 
-private class ManagedDocumentFakeDrive : ManagedDocumentDriveGateway {
+internal class ManagedDocumentFakeDrive : ManagedDocumentDriveGateway {
+    private val jsonFiles = linkedMapOf<String, String>()
+    private val jsonEntities = linkedMapOf<Pair<String, String>, String>()
+    fun putJson(id: String, folderId: String, entity: String, json: String) {
+        jsonFiles[id] = json; jsonEntities[folderId to entity] = id
+    }
+    fun json(id: String): String = requireNotNull(jsonFiles[id])
+    override suspend fun findJsonFile(accessToken: String, folderId: String, entityType: String): com.example.api.DriveFile? =
+        jsonEntities[folderId to entityType]?.let { com.example.api.DriveFile(it, "$it.json") }
+    override suspend fun downloadJson(accessToken: String, fileId: String): String = json(fileId)
+    override suspend fun findReceiptJsonFile(accessToken: String, folderId: String, internalId: String): String? =
+        jsonFiles.keys.firstOrNull { it == "meta-$internalId" }
+    override suspend fun writeReceiptJson(accessToken: String, fileId: String?, folderId: String, filename: String,
+        json: String, appProperties: Map<String, String>): DriveFileResult {
+        val id = fileId ?: "meta-${appProperties.getValue("receiptInternalId")}"
+        jsonFiles[id] = json
+        return DriveFileResult(true, id)
+    }
+    override suspend fun tombstoneJsonFiles(accessToken: String, systemFolderId: String): List<String> =
+        jsonEntities[systemFolderId to "tombstone"]?.let { listOf(json(it)) }.orEmpty()
+
     var failure: FakeDriveFailure = FakeDriveFailure.NONE
     var moveCalls = 0
     var uploadCalls = 0
