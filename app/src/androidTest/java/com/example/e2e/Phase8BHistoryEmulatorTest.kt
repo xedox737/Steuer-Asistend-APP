@@ -104,7 +104,10 @@ abstract class Phase8BHistoryMatrix : EmulatorTestSupport() {
         ui.onNodeWithText("15.06.2021", substring = true).assertIsDisplayed()
         ui.onNodeWithText("SUCCESS").assertDoesNotExist()
     }
-    private fun openUnit() = ui.onNode(hasText("Testwohnung") and hasClickAction()).performScrollTo().performClick()
+    private fun openUnit() {
+        ui.onNodeWithTag("property_units_overview").performScrollToNode(hasText("Testwohnung"))
+        ui.onNodeWithText("Testwohnung").assertIsDisplayed().performClick()
+    }
     private fun paymentText(text: String) {
         ui.onNodeWithTag("unit_detail_list").performScrollToNode(hasTestTag("unit_payment_status"))
         ui.onNode(hasText(text) and hasAnyAncestor(hasTestTag("unit_payment_status"))).assertIsDisplayed()

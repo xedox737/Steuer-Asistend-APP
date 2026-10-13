@@ -61,6 +61,6 @@ class Phase8BAuditComposeTest {
         list.performScrollToIndex(1)
         ui.onNodeWithTag("datev_audit_run-$count").assertIsDisplayed()
         ui.onNodeWithText("SUCCESS").assertDoesNotExist()
-        assertTrue("LazyColumn must not compose all 100 entries", ui.onAllNodes(hasTestTag("datev_audit_run-1")).fetchSemanticsNodes().isEmpty())
+        if (count == 100) assertTrue("LazyColumn must not compose all 100 entries", ui.onAllNodes(hasTestTag("datev_audit_run-1")).fetchSemanticsNodes().isEmpty())
     }
 }
