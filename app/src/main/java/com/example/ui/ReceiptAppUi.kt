@@ -10741,14 +10741,17 @@ fun DatevExportScreen(
     var editableMandantenName by remember(activeProfile) { mutableStateOf(activeProfile.mandantenName) }
     var editableSachkontenLaenge by remember(activeProfile) { mutableStateOf(activeProfile.sachkontenLaenge.toString()) }
     var showOpenBookings by remember { mutableStateOf(false) }
+    var showAuditHistory by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.recalculateWizardStepData()
     }
 
-    BackHandler(onBack = {
-        if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
-    })
+    val navigateBack: () -> Unit = {
+        if (showAuditHistory) showAuditHistory = false
+        else if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
+    }
+    BackHandler(onBack = navigateBack)
     val datevParentDensity = LocalDensity.current
     val datevDensity = remember(datevParentDensity.density, datevParentDensity.fontScale) {
         Density(density = datevParentDensity.density, fontScale = datevParentDensity.fontScale)
@@ -10772,19 +10775,17 @@ fun DatevExportScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = {
-                        if (step > 1 && step < 6) viewModel.setWizardStep(step - 1) else onDismiss()
-                    }) {
+                    IconButton(onClick = navigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "DATEV Export",
+                            text = if (showAuditHistory) "Exporthistorie" else "DATEV Export",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        if (step > 1) Text(
+                        if (step > 1 && !showAuditHistory) Text(
                             text = "Schritt $step von 6 · " + when (step) {
                                 2 -> "Kanzleiprofil & Mapping"
                                 3 -> "Vorprüfung & Plausibilität"
@@ -10801,7 +10802,7 @@ fun DatevExportScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (step > 1) {
+                if (step > 1 && !showAuditHistory) {
                 // Progress Step Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -10830,7 +10831,9 @@ fun DatevExportScreen(
                         .weight(1f)
                         .fillMaxWidth()
                 ) {
-                    when (step) {
+                    if (showAuditHistory) {
+                        DatevAuditHistory(auditRuns)
+                    } else when (step) {
                         1 -> {
                             val ignoredCount = excludedReceipts.count { receipt ->
                                 exclusionReasons[com.example.util.DatevReceiptEligibility.key(receipt)]
@@ -10945,6 +10948,12 @@ fun DatevExportScreen(
                                     }
                                 }
 
+                                if (auditRuns.isNotEmpty()) {
+                                    OutlinedButton(onClick = { showAuditHistory = true },
+                                        modifier = Modifier.fillMaxWidth().testTag("datev_audit_open"), shape = Ui2.controlShape) {
+                                        Text("Exporthistorie (${auditRuns.size})")
+                                    }
+                                }
                                 AccountingSupportPanel(viewModel)
 
                                 Card(
@@ -11384,36 +11393,13 @@ fun DatevExportScreen(
 
                                 HorizontalDivider()
 
-                                Text("Revisionssichere Exporthistorie (${auditRuns.size} Läufe):", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-
-                                if (auditRuns.isEmpty()) {
-                                    Text("Bisher keine protokollierten Exportläufe vorhanden.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                } else {
-                                    auditRuns.take(5).forEach { run ->
-                                        Card(
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Column(modifier = Modifier.padding(10.dp)) {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    horizontalArrangement = Arrangement.SpaceBetween
-                                                ) {
-                                                    Text(run.exportlaufId, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                                    Text(run.status, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
-                                                }
-                                                Text("${run.kanzleiprofilNameVersion} | ${run.bookingCount} Sätze | ${String.format(Locale.GERMANY, "%.2f", run.totalAmount)} EUR", fontSize = 11.sp)
-                                                Text("SHA-256: ${run.zipSha256.take(20)}...", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            }
-                                        }
-                                    }
-                                }
+                                DatevAuditPreview(auditRuns, onShowAll = { showAuditHistory = true })
                             }
                         }
                     }
                 }
 
-                if (step > 1) {
+                if (step > 1 && !showAuditHistory) {
                 Spacer(modifier = Modifier.height(Ui2.spacing))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(Ui2.spacing))

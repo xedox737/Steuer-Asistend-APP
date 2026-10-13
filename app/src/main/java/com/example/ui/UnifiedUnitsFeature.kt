@@ -8,6 +8,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -59,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -487,6 +490,7 @@ private fun UnifiedStatusPill(label: String, positive: Boolean, onClick: (() -> 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun UnifiedUnitDetailScreen(
     viewModel: ReceiptViewModel,
@@ -540,7 +544,10 @@ private fun UnifiedUnitDetailScreen(
     val currentExpected = if (isCurrentlyRented) month.expected else 0.0
     val currentActual = if (isCurrentlyRented) month.actual else 0.0
     val currentMissing = if (isCurrentlyRented) month.missing else 0.0
-    val lastPayment = unitReceipts.filter { isRentalIncomeReceipt(it) }.maxByOrNull { it.datum }
+    val lastPayment = remember(property.propertyId, unitId, receipts, bankAssignments, bankLinks, bankTransactions) {
+        LedgerPaymentPresentation.lastRentalPayment(property.propertyId, unitId, receipts,
+            bankAssignments, bankLinks, bankTransactions)
+    }
     val paymentMonthLabel = currentMonthLabel()
     val paidOnTime = currentExpected > 0.01 && currentMissing <= 0.01
 
@@ -746,7 +753,7 @@ private fun UnifiedUnitDetailScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().testTag("unit_detail_list"),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 130.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp)
         ) {
@@ -879,13 +886,16 @@ private fun UnifiedUnitDetailScreen(
 
             item {
                 UnifiedDetailCard("Zahlungsstatus · $paymentMonthLabel") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    FlowRow(Modifier.fillMaxWidth().testTag("unit_payment_status"),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                        maxItemsInEachRow = if (LocalDensity.current.fontScale > 1f) 1 else 3) {
                         UnifiedStatusMetric(
                             if (isCurrentlyRented) "Ist bestätigt" else "Letzte Mieterzahlung",
                             if (isCurrentlyRented) unifiedMoney(currentActual)
-                            else lastPayment?.let { NumberFormatter.format(it.bruttobetrag) } ?: "–",
+                            else lastPayment?.let { unifiedMoney(it.amount) } ?: "–",
                             if (isCurrentlyRented) paymentMonthLabel
-                            else lastPayment?.datum?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
+                            else lastPayment?.date?.let { "am ${formatGermanDate(it)}" } ?: "keine Zahlung",
                             EmeraldGreen,
                             Color(0xFFF0FAF5),
                             Modifier.weight(1f)
@@ -1054,8 +1064,8 @@ private fun UnifiedStatusMetric(
     Card(modifier = modifier, shape = Ui2.controlShape, colors = CardDefaults.cardColors(containerColor = background)) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(label, fontSize = 9.sp, lineHeight = 10.sp, color = SlateGray)
-            Text(value, fontSize = 12.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
-            if (subtitle.isNotBlank()) Text(subtitle, fontSize = 8.sp, lineHeight = 9.sp, color = SlateGray, maxLines = 1)
+            Text(value, fontSize = 12.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor)
+            if (subtitle.isNotBlank()) Text(subtitle, fontSize = 8.sp, lineHeight = 9.sp, color = SlateGray)
         }
     }
 }
