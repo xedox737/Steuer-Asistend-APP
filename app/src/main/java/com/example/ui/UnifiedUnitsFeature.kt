@@ -1063,9 +1063,9 @@ private fun UnifiedStatusMetric(
 ) {
     Card(modifier = modifier, shape = Ui2.controlShape, colors = CardDefaults.cardColors(containerColor = background)) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(label, fontSize = 9.sp, lineHeight = 10.sp, color = SlateGray)
-            Text(value, fontSize = 12.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor)
-            if (subtitle.isNotBlank()) Text(subtitle, fontSize = 8.sp, lineHeight = 9.sp, color = SlateGray)
+            Text(label, modifier = Modifier.fillMaxWidth(), fontSize = 9.sp, lineHeight = 10.sp, color = SlateGray)
+            Text(value, modifier = Modifier.fillMaxWidth(), fontSize = 12.sp, lineHeight = 13.sp, fontWeight = FontWeight.Bold, color = valueColor)
+            if (subtitle.isNotBlank()) Text(subtitle, modifier = Modifier.fillMaxWidth(), fontSize = 8.sp, lineHeight = 9.sp, color = SlateGray)
         }
     }
 }

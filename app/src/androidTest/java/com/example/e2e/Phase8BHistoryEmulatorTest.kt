@@ -122,7 +122,9 @@ abstract class Phase8BHistoryMatrix : EmulatorTestSupport() {
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(results)) }
         assertTrue(results.isNotEmpty())
         results.forEach {
-            assertFalse(it.didOverflowWidth); assertFalse(it.didOverflowHeight); assertFalse(it.multiParagraph.didExceedMaxLines)
+            assertFalse("Width overflow: $text; size=${it.size}; paragraph=${it.multiParagraph.width}; constraints=${it.layoutInput.constraints}", it.didOverflowWidth)
+            assertFalse("Height overflow: $text; size=${it.size}; paragraph=${it.multiParagraph.height}; constraints=${it.layoutInput.constraints}", it.didOverflowHeight)
+            assertFalse(it.multiParagraph.didExceedMaxLines)
             assertEquals(text.length, it.getLineEnd(it.lineCount - 1, visibleEnd = true))
         }
     }

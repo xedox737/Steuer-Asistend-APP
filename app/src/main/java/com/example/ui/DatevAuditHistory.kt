@@ -74,18 +74,18 @@ private fun DatevAuditRunCard(run: ExportAuditRun) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
         shape = Ui2.shape, modifier = Modifier.fillMaxWidth().testTag("datev_audit_${run.exportlaufId}")) {
         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(run.exportlaufId, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(run.exportlaufId, modifier = Modifier.fillMaxWidth(), fontWeight = FontWeight.Bold, fontSize = 12.sp)
             Text(DatevAuditPresentation.statusLabel(run.status), fontSize = 11.sp, fontWeight = FontWeight.Bold,
                 color = when (run.status) {
                     "SUCCESS" -> Color(0xFF166534)
                     "FAILED" -> CrimsonRed
                     "CREATED_NOT_READY" -> WarmOrange
                     else -> SlateGray
-                }, modifier = Modifier.testTag("datev_audit_status_${run.exportlaufId}"))
-            Text(DatevAuditPresentation.dateLabel(run.timestamp), fontSize = 11.sp, color = SlateGray)
-            Text("${run.kanzleiprofilNameVersion} | ${run.bookingCount} Sätze | ${String.format(Locale.GERMANY, "%.2f", run.totalAmount)} EUR", fontSize = 11.sp)
-            if (run.zipFileName.isNotBlank()) Text("Datei: ${run.zipFileName}", fontSize = 11.sp)
-            Text("SHA-256: ${run.zipSha256.take(20)}...", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }, modifier = Modifier.fillMaxWidth().testTag("datev_audit_status_${run.exportlaufId}"))
+            Text(DatevAuditPresentation.dateLabel(run.timestamp), modifier = Modifier.fillMaxWidth(), fontSize = 11.sp, color = SlateGray)
+            Text("${run.kanzleiprofilNameVersion} | ${run.bookingCount} Sätze | ${String.format(Locale.GERMANY, "%.2f", run.totalAmount)} EUR", modifier = Modifier.fillMaxWidth(), fontSize = 11.sp)
+            if (run.zipFileName.isNotBlank()) Text("Datei: ${run.zipFileName}", modifier = Modifier.fillMaxWidth(), fontSize = 11.sp)
+            Text("SHA-256: ${run.zipSha256.take(20)}...", modifier = Modifier.fillMaxWidth(), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
