@@ -40,8 +40,17 @@ internal object LedgerPaymentPresentation {
     ): List<LedgerEntry> {
         val active = receipts.filter { it.deletionStatus in setOf("", "ACTIVE") && it.bruttobetrag.isFinite() }
         if (view == LedgerView.APPROVED) return active.filter { DatevReceiptEligibility.isAccountingApproved(it) && BankLinkedReceiptDatevPolicy.exclusions(it, links, transactions).isEmpty() }.map { entry(it) }
+        return nonRentalEntries(active.filterNot(::isRentalIncomeReceipt), assignments, links, transactions, loanAssignments) +
+            rentalEntries(active, assignments, links, transactions)
+    }
+
+    /** The existing shared rent/NK payment rows, also used by the unit's historical payment card. */
+    fun rentalEntries(
+        receipts: List<Receipt>, assignments: List<BankRentAssignment>,
+        links: List<BankReceiptLink>, transactions: List<BankTransaction>
+    ): List<LedgerEntry> {
         val txById = transactions.associateBy { it.transactionId }
-        val rentalReceipts = active.filter(::isRentalIncomeReceipt).mapNotNull { receipt ->
+        val rentalReceipts = receipts.filter { isConfirmedRentalIncomeReceipt(it) }.mapNotNull { receipt ->
             val excluded = BankLinkedReceiptDatevPolicy.linksForReceipt(receipt, links).filter {
                 it.status == BankLinkStatus.CONFIRMED && it.allocatedAmount.isFinite() && it.allocatedAmount > 0.0 &&
                     txById[it.transactionId]?.let { tx -> !BankClassificationPolicy.decision(tx).eligibleForPropertyPayments } == true
@@ -50,8 +59,7 @@ internal object LedgerPaymentPresentation {
             receipt.copy(bruttobetrag = remaining).takeIf { remaining > 0.0 }
         }
         val sources = RentPaymentProjection.project(rentalReceipts, assignments, links, transactions)
-        return nonRentalEntries(active.filterNot(::isRentalIncomeReceipt), assignments, links, transactions, loanAssignments) +
-            sources.receiptPayments.map { entry(it.receipt, it.amount) } +
+        return sources.receiptPayments.map { entry(it.receipt, it.amount) } +
             sources.bankPayments.map { assignment ->
                 val tx = txById.getValue(assignment.transactionId)
                 LedgerEntry("bank-${assignment.assignmentId}", tx.bookingDate, assignment.allocatedAmount,
@@ -60,6 +68,18 @@ internal object LedgerPaymentPresentation {
                     tx.counterparty, tx.purpose, transaction = tx)
             }
     }
+
+    /** Stable scope only; payment date is independent of rentMonth and the current tenancy. */
+    fun lastRentalPayment(
+        propertyId: String, unitId: String, receipts: List<Receipt>,
+        assignments: List<BankRentAssignment>, links: List<BankReceiptLink>, transactions: List<BankTransaction>
+    ): LedgerEntry? = rentalEntries(receipts, assignments, links, transactions)
+        .filter { it.propertyId == propertyId && it.unitId == unitId && propertyId.isNotBlank() &&
+            unitId.isNotBlank() && it.amount > 0.0 && CalendarInput.parseIsoDate(it.date) != null }
+        // Rent and NK splits of one bank movement are components of the same unit payment.
+        .groupBy { it.transaction?.let { tx -> "bank-${tx.transactionId}" } ?: it.key }
+        .values.map { components -> components.first().copy(amount = components.sumOf { it.amount }) }
+        .maxWithOrNull(compareBy<LedgerEntry> { it.date }.thenBy { it.key })
 
     /** Existing links and split assignments cover the same cents before any UI filter. */
     private fun nonRentalEntries(
