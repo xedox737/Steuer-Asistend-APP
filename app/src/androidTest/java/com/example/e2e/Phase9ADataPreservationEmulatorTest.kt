@@ -69,6 +69,7 @@ class Phase9ADataPreservationEmulatorTest : EmulatorTestSupport() {
             .put("uhrzeit", "12:34").put("mieter", "Mieter").put("aussteller", "Restaurierter Beleg")
             .put("datum", "2026-10-13").put("bruttobetragCent", -11900).put("hauptkategorie", "Sonstige Ausgaben")
             .put("unterkategorie", "Material").put("wohneinheit", "WE 01").put("beschreibung", "Gutschrift")
+            .put("createdAt", "2026-10-13T12:00:00Z").put("updatedAt", "2026-10-13T12:00:00Z")
         val receipt = runBlocking(Dispatchers.IO) {
             val repository = ReceiptRepository(db.receiptDao(), db.propertyDao())
             val drive = DrivePersistenceRepository(context, repository)
