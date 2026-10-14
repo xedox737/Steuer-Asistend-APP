@@ -22,7 +22,9 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         ui.waitForIdle()
     }
     private fun visibleError(text: String, scroll: Boolean = false, tag: String? = null) {
-        val node = if (tag == null) ui.onNodeWithText(text) else ui.onNodeWithTag(tag)
+        // Measure the actual error Text, not the merged editable-field semantics/layout.
+        val node = if (tag == null) ui.onNodeWithText(text, useUnmergedTree = true)
+            else ui.onNodeWithTag(tag, useUnmergedTree = true)
         if (scroll) node.performScrollTo()
         node.assertIsDisplayed()
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
