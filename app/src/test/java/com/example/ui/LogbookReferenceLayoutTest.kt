@@ -69,15 +69,17 @@ class LogbookReferenceLayoutTest {
     }
 
     @Test fun referenceScreensRenderInsideTheActualAppFrame() {
-        val viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(
-            ApplicationProvider.getApplicationContext<Application>()))[ReceiptViewModel::class.java]
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        val database = com.example.data.AppDatabase.getDatabase(application, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+        var viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
         viewModel.setScreen(AppScreen.LOGBOOK)
-        viewModel.updatePropertyMetadata(PropertyMetadata(
-            wohnort = "Dornstetten", adresse = "Sulzerstraße 32, Dornstetten"
-        ))
-        viewModel.insertReceiptQuietly(Receipt(id = 1001, aussteller = "Bauhaus", datum = LocalDate.now().toString(),
-            uhrzeit = "", bruttobetrag = 0.0, hauptkategorie = "Sanierung", unterkategorie = "", kontoNr = "",
-            beschreibung = "Besichtigung / Instandhaltung"))
+        runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            database.propertyDao().insertPropertyMetadata(PropertyMetadata(
+                wohnort = "Dornstetten", adresse = "Sulzerstraße 32, Dornstetten"))
+            database.receiptDao().insertReceipt(Receipt(id = 1001, aussteller = "Bauhaus", datum = LocalDate.now().toString(),
+                uhrzeit = "", bruttobetrag = 0.0, hauptkategorie = "Sanierung", unterkategorie = "", kontoNr = "",
+                beschreibung = "Besichtigung / Instandhaltung"))
+        }
         runBlocking {
             val route = TripRouteNormalizer.normalize("Dornstetten", listOf(TripStop("Bauhaus", "Zwischenstopp 1", 0)),
                 "Sulzerstraße 32, Dornstetten", TripRouteMode.HIN_UND_RUECKFAHRT, true)
@@ -97,6 +99,11 @@ class LogbookReferenceLayoutTest {
                 ).getOrThrow()
             }
         }
+        // This layout/navigation test opens a complete stored fixture. Do not race
+        // asynchronous fixture writes with its WhileSubscribed UI-reader snapshot.
+        models.clear()
+        viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
+        viewModel.setScreen(AppScreen.LOGBOOK)
         lateinit var backDispatcher: OnBackPressedDispatcher
         ui.setContent {
             backDispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
