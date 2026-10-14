@@ -359,6 +359,8 @@ class DrivePersistenceRepository(
                     mietvertragsstart = obj.optString("mietvertragsstart", ""),
                     unitId = obj.optString("unitId", StableDocumentIdentity.legacyUnitId(StableDocumentIdentity.LEGACY_PROPERTY_ID, obj.getString("name")))
                 ).also { unit ->
+                    NumericWriteBoundary.float(unit.kaltmiete)
+                    NumericWriteBoundary.float(unit.wohnflaeche)
                     require(com.example.ui.PropertyWizardInput.unitArea(com.example.ui.GermanNumberInput.formatForInput(unit.wohnflaeche)) != null) { "Gesicherte Einheitsfläche ist ungültig. Bitte prüfen." }
                     require(unit.kaltmiete.isFinite() && unit.kaltmiete >= 0.0) { "Gesicherte Miete ist ungültig. Bitte prüfen." }
                 }
@@ -483,8 +485,8 @@ class DrivePersistenceRepository(
             putString("unit_status_${u.name}", u.status)
             putString("unit_label_${u.name}", u.label)
             putString("unit_mieter_${u.name}", u.mieter)
-            putFloat("unit_rent_${u.name}", u.kaltmiete.toFloat())
-            putFloat("unit_area_${u.name}", u.wohnflaeche.toFloat())
+            putFloat("unit_rent_${u.name}", com.example.data.NumericWriteBoundary.float(u.kaltmiete))
+            putFloat("unit_area_${u.name}", com.example.data.NumericWriteBoundary.float(u.wohnflaeche))
             putString("unit_start_${u.name}", u.mietvertragsstart)
             val stableId = u.unitId.ifBlank { StableDocumentIdentity.legacyUnitId(StableDocumentIdentity.LEGACY_PROPERTY_ID, u.name) }
             putString("unit_id_${u.name}", stableId)

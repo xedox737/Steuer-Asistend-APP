@@ -52,6 +52,26 @@ internal object GermanNumberInput {
     }
 }
 
+/** Small field adapter on the shared grammar. Optional means genuinely blank, not invalid. */
+internal object NumberFieldInput {
+    data class Result(val value: Double? = null, val error: String? = null)
+    fun nonNegative(raw: String, optional: Boolean = false, positive: Boolean = false, floatTarget: Boolean = false): Result {
+        if (raw.isBlank()) return if (optional) Result() else Result(error = "Bitte einen Wert eingeben.")
+        val parsed = GermanNumberInput.parseResult(raw)
+        val value = parsed.value ?: return Result(error = if (parsed.status == GermanNumberInput.Status.NON_FINITE)
+            "Der Wert ist zu groß oder ungültig." else "Bitte eine gültige Zahl eingeben.")
+        if (value < 0.0) return Result(error = "Der Wert darf nicht negativ sein.")
+        if (positive && value <= 0.0) return Result(error = "Der Wert muss größer als null sein.")
+        if (floatTarget) runCatching { com.example.data.NumericWriteBoundary.float(value) }.exceptionOrNull()?.let {
+            return Result(error = it.message ?: "Bitte den Wert prüfen.")
+        }
+        return Result(value)
+    }
+    fun prefill(value: Double): String = if (value.isFinite())
+        GermanNumberInput.formatForInput(value, maxOf(2, value.toBigDecimal().scale()))
+        else LoanInputValidation.INVALID_STORED_TEXT
+}
+
 internal object CalendarInput {
     fun parseIsoDate(value: String): LocalDate? = com.example.util.DateFormatUtils.parseIso(value)
 
@@ -121,7 +141,9 @@ internal object PropertyWizardInput {
         val land = optionalNonNegative(landArea, LAND_AREA, area = true)
         val building = optionalNonNegative(buildingValue, BUILDING_VALUE)
         val landPart = optionalNonNegative(landValue, LAND_VALUE)
-        val loan = if (loanAmount.isBlank()) null else optionalNonNegative(loanAmount, LOAN_AMOUNT)
+        val loanResult = if (loanAmount.isBlank()) null else LoanInputValidation.parse(loanAmount, LoanInputValidation.Field.AMOUNT)
+        loanResult?.error?.let { errors[LOAN_AMOUNT] = it }
+        val loan = loanResult?.value
 
         if (purchaseDate.isNotBlank() && !CalendarInput.isValidIsoDate(purchaseDate)) {
             errors[PURCHASE_DATE] = "Bitte ein gültiges Datum eingeben."
@@ -152,7 +174,7 @@ internal object PropertyWizardInput {
 
     fun unitArea(value: String): Double? {
         if (value.isBlank()) return 0.0
-        return GermanNumberInput.parse(value)?.takeIf { it >= 0.0 }
+        return NumberFieldInput.nonNegative(value, floatTarget = true).value
     }
 }
 

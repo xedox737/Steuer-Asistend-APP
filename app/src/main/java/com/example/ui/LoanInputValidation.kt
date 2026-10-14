@@ -56,6 +56,16 @@ internal object LoanInputValidation {
         Field.MONTHLY to loan.monatlicheRate, Field.RENTED to loan.vermietungsanteilProzent
     )
 
+    fun validateWrite(loan: Loan) {
+        numbers(loan).forEach { (field, value) ->
+            val error = parse(prefill(value), field).error
+            require(error == null) { "${field.label}: $error" }
+        }
+        require(dateErrors(loan.startDatum, loan.zinsbindungBis, loan.laufzeitBis).isEmpty()) {
+            "Bitte die Darlehensdaten prüfen. Das Ende darf nicht vor dem Beginn liegen."
+        }
+    }
+
     fun dateWarning(bindingEnd: String, termEnd: String): String? {
         val binding = CalendarInput.parseIsoDate(bindingEnd) ?: return null
         val term = CalendarInput.parseIsoDate(termEnd) ?: return null

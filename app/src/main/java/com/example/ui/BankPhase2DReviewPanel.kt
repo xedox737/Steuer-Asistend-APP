@@ -337,10 +337,11 @@ fun BankPhase2DReviewPanel(viewModel: ReceiptViewModel) {
         AlertDialog(
             onDismissRequest = { editLinkId = null },
             title = { Text("Teilbetrag ändern") },
-            text = { OutlinedTextField(value = editAmount, onValueChange = { editAmount = it }, label = { Text("Allocation in €") }, singleLine = true) },
+            text = { OutlinedTextField(value = editAmount, onValueChange = { editAmount = it }, isError = NumberFieldInput.nonNegative(editAmount, positive = true).error != null, supportingText = { NumberFieldInput.nonNegative(editAmount, positive = true).error?.let { Text(it) } }, label = { Text("Allocation in €") }, singleLine = true) },
             confirmButton = {
                 Button(onClick = {
-                    editAmount.replace(',', '.').toDoubleOrNull()?.let { viewModel.changePhase2DAllocation(linkId, it) }
+                    val amount = NumberFieldInput.nonNegative(editAmount, positive = true).value ?: return@Button
+                    viewModel.changePhase2DAllocation(linkId, amount)
                     editLinkId = null
                 }) { Text("Übernehmen") }
             },

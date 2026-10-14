@@ -136,7 +136,7 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
     var action by remember { mutableStateOf<String?>(null) }
     var date by remember(trip.updatedAt) { mutableStateOf(trip.date) }
     var purpose by remember(trip.updatedAt) { mutableStateOf(trip.purpose) }
-    var km by remember(trip.updatedAt) { mutableStateOf(trip.taxDistanceKm.toString().replace('.', ',')) }
+    var km by remember(trip.updatedAt) { mutableStateOf(NumberFieldInput.prefill(trip.taxDistanceKm)) }
     var reason by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -174,7 +174,7 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
                 busy = true
                 scope.launch {
                     val result = if (currentAction == "Stornieren") viewModel.cancelLogbookTrip(trip.id, reason.trim())
-                        else viewModel.correctLogbookTrip(trip.id, date.trim(), purpose.trim(), km.replace(',', '.').toDoubleOrNull() ?: Double.NaN, reason.trim())
+                        else viewModel.correctLogbookTrip(trip.id, date.trim(), purpose.trim(), NumberFieldInput.nonNegative(km, positive = true).value ?: Double.NaN, reason.trim())
                     busy = false
                     result.fold({ message = null; action = null }, { message = it.message ?: "Änderung fehlgeschlagen." })
                 }

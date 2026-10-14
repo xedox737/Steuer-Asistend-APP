@@ -1,5 +1,8 @@
 package com.example.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+
 import com.example.util.DateFormatUtils
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -387,29 +390,24 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
 }
 
 @Composable
-private fun ConfirmedAfaValuesDialog(
+internal fun ConfirmedAfaValuesDialog(
     current: ConfirmedAfaValues?,
     onDismiss: () -> Unit,
     onSave: (ConfirmedAfaValues) -> Unit
 ) {
     val dateFields = rememberDateFieldValidation()
     var cutoff by remember(current) { mutableStateOf(current?.cutoffDate.orEmpty()) }
-    var depreciation by remember(current) { mutableStateOf(current?.cumulativeAfa?.toString().orEmpty()) }
-    var bookValue by remember(current) { mutableStateOf(current?.remainingBookValue?.toString().orEmpty()) }
+    var depreciation by remember(current) { mutableStateOf(current?.cumulativeAfa?.let(NumberFieldInput::prefill).orEmpty()) }
+    var bookValue by remember(current) { mutableStateOf(current?.remainingBookValue?.let(NumberFieldInput::prefill).orEmpty()) }
     var source by remember(current) { mutableStateOf(current?.source.orEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
-    fun amount(raw: String): Double? = raw.trim().replace("€", "").replace(" ", "").let { text ->
-        when {
-            text.contains(',') -> text.replace(".", "").replace(",", ".")
-            Regex("""\d{1,3}(\.\d{3})+""").matches(text) -> text.replace(".", "")
-            else -> text
-        }
-    }.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+    fun amount(raw: String): Double? = GermanNumberInput.parseNonNegative(raw)
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bestätigte AfA-Vorjahreswerte") },
         text = {
-            Column(Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Nur nach Steuerberaterunterlagen oder Steuerbescheid übernehmen. ImmoPilot-Planwerte bleiben unverändert.")
                 AppDateField(value = cutoff, onValueChange = { cutoff = it }, label = "Stichtag", modifier = Modifier.fillMaxWidth(), required = true, onValidityChange = { dateFields.update("cutoff", it) })
                 OutlinedTextField(depreciation, { depreciation = it }, label = { Text("Bisherige AfA kumuliert (€)") }, modifier = Modifier.fillMaxWidth())
