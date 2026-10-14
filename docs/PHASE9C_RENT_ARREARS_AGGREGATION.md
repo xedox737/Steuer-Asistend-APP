@@ -59,6 +59,13 @@ Dezemberzahlung mit Januarbankdatum über expliziten rentMonth; Aprilbeginn,
 Vertragsende/Leerstand, Mietänderung, Mieterwechsel-Monatsgrenze und negative
 Mietkorrektur unverändert vor dem Einheits-Clamp.
 
+Der erste CI-Lauf bestand 995 von 996 Tests einschließlich aller neun neuen
+N03-Projektionsfälle. Die neue Compose-Fixture wartete auf eine Property-Flow-
+Aktualisierung in einer geteilten Datenbank. Der separate neue Compose-Test nutzt
+nun die vorhandene IsolatedAppDatabaseRule vor Activitystart und prüft auch den
+DAO-Bestand. Bestehende Compose-Tests bleiben unverändert; keine Assertions oder
+Zeitlimits abgeschwächt.
+
 Zusätzlicher Robolectric-Compose-Test öffnet die produktive Objektkarte und
 UnifiedUnits und prüft jeweils 980 € offen. Android-E2E verwendet MainActivity,
 Room und Preferences: Objektkarte, Jahres-/Einheitenkarte, Jahresdetails,
