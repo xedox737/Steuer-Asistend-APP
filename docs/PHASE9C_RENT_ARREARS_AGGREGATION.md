@@ -59,7 +59,7 @@ Dezemberzahlung mit Januarbankdatum über expliziten rentMonth; Aprilbeginn,
 Vertragsende/Leerstand, Mietänderung, Mieterwechsel-Monatsgrenze und negative
 Mietkorrektur unverändert vor dem Einheits-Clamp.
 
-Der erste CI-Lauf bestand 995 von 996 Tests einschließlich aller neun neuen
+Der erste CI-Lauf bestand alle Tests bis auf eine neue Compose-Fixture einschließlich aller neun neuen
 N03-Projektionsfälle. Die neue Compose-Fixture wartete auf eine Property-Flow-
 Aktualisierung in einer geteilten Datenbank. Der separate neue Compose-Test nutzt
 nun die vorhandene IsolatedAppDatabaseRule und vollständig gespeicherte Daten vor
@@ -117,7 +117,7 @@ abweichender Wert akzeptiert und keine Konfiguration künstlich ersetzt.
 
 [Run 38611341496](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38611341496)
 bestand lintDebug, testDebugUnitTest und assembleDebug. Die vollständige JVM-Suite
-enthält 996 Fälle einschließlich der neuen N03-Projektions-/Composeprüfungen und
+enthält 1001 Fälle einschließlich der neuen N03-Projektions-/Composeprüfungen und
 Phase-9A-/9B-Regressionsfälle. assembleDebugAndroidTest bestand ebenfalls.
 Der vollständige Emulatorlauf führte 64 Fälle aus; N03 mit beiden Karten,
 Jahresdetails, Recreate und erhaltenen Daten bestand. 61 Fälle bestanden insgesamt;
@@ -132,7 +132,7 @@ Unit-/Build-/Emulatorfolgejobs dieses Laufs wurden nicht ausgeführt.
 Keine Timeouts erhöhen oder Prüfungen deaktivieren. Maßgeblich für die finale
 Abnahme ist ein vollständig grüner aktueller PR-Lauf; kein Merge davor.
 
-Run 38637212486 bestand Verify mit allen 996 JVM-Fällen, Lint und beiden APK-
+Run 38637212486 bestand Verify mit allen 1001 JVM-Fällen, Lint und beiden APK-
 Builds. Android führte 64 Fälle aus: 63 bestanden, einschließlich N03 und der
 drei FontScale-Matrizen. Ein bestehender Phase-6B-Workflow scheiterte beim
 Schließen der Tastatur im Sanierungsdialog: Espresso wählte das absichtlich
@@ -152,3 +152,10 @@ wurden nicht als bestanden gewertet. input und selectCalendarDate nutzen nun
 denselben privaten dialogbewussten Tastaturhelfer. Keine Darlehens-/Produkt-
 änderung, keine weggefangenen Ausnahmen, Wiederholungen oder schwächeren
 Assertions. Die vollständige aktuelle Abnahme bleibt offen.
+
+Die zuvor vorläufig genannte Suitezahl 996 wird durch die tatsächliche JUnit-XML-
+Auswertung korrigiert: Artefakt 11931861397 von Head f98168c5 enthält 168 eindeutige
+Suites, 1001 Testfälle, 0 failures, 0 errors und 0 skipped. N03: neun Projektions-
+fälle und ein Composefall. Der Android-Logcat bestätigt die erste Fehlerstelle
+input, EmulatorTestSupport.kt:235, aufgerufen in LoanDateComponentEmulatorTest.kt:46.
+Die endgültigen Zahlen des aktuellen Heads bleiben im PR/Abschlussbericht.
