@@ -120,7 +120,7 @@ internal data class ValidRentPlan(
 internal object RentPlanInput {
     fun amount(value: String): Double? {
         if (value.isBlank()) return 0.0
-        return GermanNumberInput.parseNonNegative(value)?.takeIf { it.toFloat().isFinite() }
+        return NumberFieldInput.nonNegative(value, floatTarget = true).value
     }
     fun error(
         kalt: String,

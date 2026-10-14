@@ -188,6 +188,12 @@ internal object TenantHistoryStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
         if (read(context, propertyId, stableUnitId, unitName).damaged) return@synchronized false
+        if (runCatching { periods.forEach { period ->
+            listOf(period.kaltmiete, period.nebenkosten, period.sonstige).forEach { com.example.data.NumericWriteBoundary.float(it) }
+            period.rentChanges.forEach { change ->
+                listOf(change.kaltmiete, change.nebenkosten, change.sonstige).forEach { com.example.data.NumericWriteBoundary.float(it) }
+            }
+        } }.isFailure) return@synchronized false
         val raw = encode(periods)
         prefs.edit().putString(scopedKey(propertyId, stableUnitId), raw).apply()
         // Keep historical readers compatible for property-1, but never create a
@@ -323,7 +329,7 @@ internal object TenantHistoryStore {
 }
 
 internal fun parseTenantNumber(value: String): Double? =
-    GermanNumberInput.parseNonNegative(value)
+    NumberFieldInput.nonNegative(value, floatTarget = true).value
 
 @Composable
 internal fun TenantHistoryDialog(

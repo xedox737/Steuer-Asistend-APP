@@ -884,12 +884,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
             if (unitPrefs.contains(namePrefix + field)) {
                 val value = unitPrefs.getFloat(namePrefix + field, 0f)
-                unitPrefs.edit().putFloat(idPrefix + field, value).apply()
+                if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
                 return value.toDouble()
             }
             if (legacyAllowed && unitPrefs.contains(legacyKey)) {
                 val value = unitPrefs.getFloat(legacyKey, 0f)
-                unitPrefs.edit().putFloat(idPrefix + field, value).apply()
+                if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
                 return value.toDouble()
             }
             return 0.0
@@ -989,6 +989,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateWohneinheit(updated: WohneinheitStatus, correctCurrentContract: Boolean = false) {
+        if (runCatching { com.example.data.NumericWriteBoundary.float(updated.kaltmiete); com.example.data.NumericWriteBoundary.float(updated.wohnflaeche) }.isFailure) {
+            _driveSyncStatus.value = "Bitte gültige Miet- und Flächenwerte eingeben. Der Wert ist möglicherweise zu groß."
+            return
+        }
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
             properties.value.firstOrNull { property ->
                 getWohneinheitenForProperty(property).any { it.unitId == stableId }
@@ -1005,6 +1009,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun updateWohneinheitForProperty(updated: WohneinheitStatus, targetProperty: PropertyMetadata) {
+        com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
+        com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val unitNames = targetProperty.wohneinheiten.split(",").map(String::trim).filter(String::isNotBlank)
         val unitIndex = unitNames.indexOfFirst { it.equals(updated.name, ignoreCase = true) }
@@ -1018,8 +1024,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             putString(idPrefix + "status", updated.status)
             putString(idPrefix + "label", updated.label)
             putString(idPrefix + "mieter", updated.mieter)
-            putFloat(idPrefix + "rent", updated.kaltmiete.toFloat())
-            putFloat(idPrefix + "area", updated.wohnflaeche.toFloat())
+            putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
+            putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
             putString(idPrefix + "start", updated.mietvertragsstart)
             putString(namePrefix + "id", stableId)
             if (unitIndex >= 0) putString("property_${targetProperty.propertyId}_unit_id_index_$unitIndex", stableId)
@@ -1028,8 +1034,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 putString("unit_status_${updated.name}", updated.status)
                 putString("unit_label_${updated.name}", updated.label)
                 putString("unit_mieter_${updated.name}", updated.mieter)
-                putFloat("unit_rent_${updated.name}", updated.kaltmiete.toFloat())
-                putFloat("unit_area_${updated.name}", updated.wohnflaeche.toFloat())
+                putFloat("unit_rent_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
+                putFloat("unit_area_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
                 putString("unit_start_${updated.name}", updated.mietvertragsstart)
                 putString("unit_id_${updated.name}", stableId)
                 if (unitIndex >= 0) putString("unit_id_index_$unitIndex", stableId)
@@ -2410,7 +2416,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _bankImportStatus.value = "Buchung wird in dieser Prüfung nicht als Miete vorgeschlagen."
     }
 
-    fun saveBankRule(rule: com.example.data.BankLearningRule) { viewModelScope.launch(Dispatchers.IO) { database.bankLearningRuleDao().upsertRule(rule) } }
+    fun saveBankRule(rule: com.example.data.BankLearningRule): Boolean {
+        runCatching { com.example.data.NumericWriteBoundary.bankRule(rule) }.exceptionOrNull()?.let {
+            _driveSyncStatus.value = it.message ?: "Bitte die Betragsgrenzen prüfen."; return false
+        }
+        viewModelScope.launch(Dispatchers.IO) { database.bankLearningRuleDao().upsertRule(rule) }
+        return true
+    }
     fun acceptBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).accept(ruleId) } }
     fun rejectBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).reject(ruleId) } }
     fun setBankRuleEnabled(ruleId: String, enabled: Boolean) { viewModelScope.launch(Dispatchers.IO) { val dao=database.bankLearningRuleDao(); val r=dao.getRule(ruleId)?:return@launch; dao.upsertRule(r.copy(enabled=enabled, state=com.example.data.BankRuleState.ACTIVE, updatedAt=java.time.Instant.now().toString())) } }
@@ -3556,7 +3568,15 @@ data class AiSearchUiState(
         sharedPrefs.edit().putString("selected_property_id", propertyId).apply()
     }
 
+    private fun validateLoanWrite(loan: com.example.data.Loan) = LoanInputValidation.validateWrite(loan)
+
     fun createProperty(metadata: PropertyMetadata, units: List<WohneinheitStatus>, loan: com.example.data.Loan? = null) {
+        val validation = runCatching {
+            com.example.data.validateBackupProperty(metadata)
+            units.forEach { com.example.data.NumericWriteBoundary.float(it.kaltmiete); com.example.data.NumericWriteBoundary.float(it.wohnflaeche) }
+            loan?.let(::validateLoanWrite)
+        }
+        if (validation.isFailure) { _driveSyncStatus.value = validation.exceptionOrNull()?.message ?: "Bitte Eingaben prüfen."; return }
         viewModelScope.launch(Dispatchers.IO) {
             val propertyId = metadata.propertyId.ifBlank { java.util.UUID.randomUUID().toString() }
             val stored = metadata.copy(id = repository.nextPropertyId(), propertyId = propertyId)
@@ -3571,8 +3591,8 @@ data class AiSearchUiState(
                     .putString(prefix + "label", unit.label)
                     .putString(prefix + "status", unit.status)
                     .putString(prefix + "mieter", unit.mieter)
-                    .putFloat(prefix + "rent", unit.kaltmiete.toFloat())
-                    .putFloat(prefix + "area", unit.wohnflaeche.toFloat())
+                    .putFloat(prefix + "rent", com.example.data.NumericWriteBoundary.float(unit.kaltmiete))
+                    .putFloat(prefix + "area", com.example.data.NumericWriteBoundary.float(unit.wohnflaeche))
                     .putString(prefix + "start", unit.mietvertragsstart)
                     .putString("property_${propertyId}_unit_id_index_$index", stableId)
                     .apply()
@@ -3919,6 +3939,7 @@ data class AiSearchUiState(
                 }
                 val confirmedUnitId = contextValidation.confirmedUnitId
                 val accepted = com.example.data.DocumentReviewPolicy.confirmedValues(proposals)
+                applyConfirmedDocumentValues(document.copy(documentType = type.name, unitId = confirmedUnitId), accepted, validateOnly = true)
                 val json = org.json.JSONObject().apply { accepted.forEach { (key, value) -> put(key, value) } }.toString()
                 val updated = managedDocumentService.confirmReview(document, type, date, confirmedUnitId, json)
                 applyConfirmedDocumentValues(updated, accepted)
@@ -3943,6 +3964,8 @@ data class AiSearchUiState(
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: IllegalArgumentException) {
+                documentReviewMessage(documentId, e.message ?: "Bitte die bestätigten Zahlenwerte prüfen.")
             } catch (_: Exception) {
                 documentReviewMessage(documentId, "Die Dokumentprüfung konnte nicht gespeichert werden. Bitte erneut versuchen.")
             } finally {
@@ -3951,24 +3974,9 @@ data class AiSearchUiState(
         }
     }
 
-    private suspend fun applyConfirmedDocumentValues(document: com.example.data.ManagedDocument, values: Map<String, String>) {
-        fun number(key: String): Double? {
-            val raw = values[key]?.trim()?.filter { it.isDigit() || it == '.' || it == ',' || it == '-' } ?: return null
-            val decimalSeparator = when {
-                raw.contains(',') -> ','
-                raw.count { it == '.' } == 1 && raw.substringAfter('.').length <= 2 -> '.'
-                else -> null
-            }
-            return raw.filterNot { it == '.' || it == ',' }
-                .let { digits ->
-                    if (decimalSeparator == null) digits
-                    else {
-                        val fraction = raw.substringAfterLast(decimalSeparator).filter(Char::isDigit)
-                        val whole = raw.substringBeforeLast(decimalSeparator).filter { it.isDigit() || it == '-' }
-                        "$whole.$fraction"
-                    }
-                }.toDoubleOrNull()
-        }
+    private suspend fun applyConfirmedDocumentValues(document: com.example.data.ManagedDocument, values: Map<String, String>, validateOnly: Boolean = false) {
+        val parsed = DocumentNumberInput.validate(values)
+        fun number(key: String): Double? = parsed[key]
         val currentProperty = repository.getPropertyByPropertyId(document.propertyId)
             ?: throw IllegalStateException("Die zugehörige Immobilie ist nicht mehr verfügbar.")
         var property = currentProperty
@@ -3978,6 +3986,28 @@ data class AiSearchUiState(
         values["nutzen_lasten"]?.let { property = property.copy(uebergangNutzenLasten = it) }
         number("grundstuecksflaeche")?.let { property = property.copy(grundstuecksgroesse = it) }
         number("baujahr")?.toInt()?.let { property = property.copy(baujahr = it) }
+        if (property != currentProperty) com.example.data.validateBackupProperty(property)
+        val selectedUnit = getWohneinheitenForProperty(property).firstOrNull {
+            PropertyUnitScopedData.stableUnitId(document.propertyId, it) == document.unitId
+        }
+        val updatedUnit = selectedUnit?.takeIf { document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name }?.let { unit ->
+            unit.copy(mieter = values["mieter"] ?: unit.mieter,
+                kaltmiete = number("kaltmiete") ?: unit.kaltmiete,
+                wohnflaeche = number("wohnflaeche") ?: unit.wohnflaeche,
+                mietvertragsstart = values["vertragsbeginn"] ?: unit.mietvertragsstart)
+        }
+        updatedUnit?.let {
+            com.example.data.NumericWriteBoundary.float(it.kaltmiete)
+            com.example.data.NumericWriteBoundary.float(it.wohnflaeche)
+            require(it.mietvertragsstart.isBlank() || CalendarInput.isValidIsoDate(it.mietvertragsstart)) { "Bitte ein gültiges Vertragsdatum eingeben." }
+        }
+        val updatedExtras = selectedUnit?.takeIf { number("nebenkosten") != null || number("sonstige") != null }?.let { unit ->
+            val nk = number("nebenkosten") ?: PropertyUnitScopedData.rentValue(getApplication(), property.propertyId, unit, "nk")
+            val other = number("sonstige") ?: PropertyUnitScopedData.rentValue(getApplication(), property.propertyId, unit, "other")
+            com.example.data.NumericWriteBoundary.float(nk)
+            com.example.data.NumericWriteBoundary.float(other)
+            nk to other
+        }
         if (document.documentType == com.example.data.ManagedDocumentType.DARLEHENSVERTRAG.name) {
             val existing = document.loanId?.let { id -> database.loanDao().getAllLoans().firstOrNull { it.id == id } }
             val loan = (existing ?: com.example.data.Loan(propertyId = document.propertyId)).copy(
@@ -3987,32 +4017,29 @@ data class AiSearchUiState(
                 sollzinsProzent = number("sollzins") ?: existing?.sollzinsProzent ?: 0.0,
                 tilgungProzent = number("tilgung") ?: existing?.tilgungProzent ?: 0.0,
                 monatlicheRate = number("monatsrate") ?: existing?.monatlicheRate ?: 0.0,
+                vermietungsanteilProzent = number("vermietungsanteil") ?: existing?.vermietungsanteilProzent ?: 100.0,
                 startDatum = values["startdatum"] ?: existing?.startDatum.orEmpty(),
                 zinsbindungBis = values["zinsbindung"] ?: existing?.zinsbindungBis.orEmpty(),
                 laufzeitBis = values["laufzeit"] ?: existing?.laufzeitBis.orEmpty()
             )
-            // This second existing write path must not introduce unsafe loan numbers either.
-            require(LoanInputValidation.numbers(loan).all { (field, value) ->
-                LoanInputValidation.parse(LoanInputValidation.prefill(value), field).error == null
-            }) { "Bitte die Darlehenswerte korrigieren." }
+            validateLoanWrite(loan)
+            if (validateOnly) return
             if (property != currentProperty) repository.updatePropertyMetadata(property)
             val loanId = database.loanDao().upsertLoan(loan).toInt()
             repository.updateManagedDocumentLoan(document, if (loan.id != 0) loan.id else loanId)
                 ?: throw IllegalStateException("Das Dokument ist nicht mehr verfügbar oder wurde neu zugeordnet.")
         } else if (property != currentProperty) {
+            if (validateOnly) return
             repository.updatePropertyMetadata(property)
         }
+        if (validateOnly) return
 
-        val unit = getWohneinheitenForProperty(property).firstOrNull {
-            PropertyUnitScopedData.stableUnitId(document.propertyId, it) == document.unitId
-        }
-        if (unit != null && document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name) {
-            updateWohneinheitForProperty(unit.copy(
-                mieter = values["mieter"] ?: unit.mieter,
-                kaltmiete = number("kaltmiete") ?: unit.kaltmiete,
-                wohnflaeche = number("wohnflaeche") ?: unit.wohnflaeche,
-                mietvertragsstart = values["vertragsbeginn"] ?: unit.mietvertragsstart
-            ), property)
+        updatedUnit?.let { updateWohneinheitForProperty(it, property) }
+        selectedUnit?.takeIf { document.documentType == com.example.data.ManagedDocumentType.MIETVERTRAG.name }?.let { unit ->
+            if (number("nebenkosten") != null || number("sonstige") != null) {
+                PropertyUnitScopedData.setRentValues(getApplication(), property.propertyId, unit,
+                    requireNotNull(updatedExtras).first, updatedExtras.second)
+            }
         }
     }
 
@@ -4960,12 +4987,13 @@ data class AiSearchUiState(
                 if (remoteUnits != null && remoteUnits.isNotEmpty()) {
                     val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
                     val editor = unitPrefs.edit()
+                    remoteUnits.forEach { u -> com.example.data.NumericWriteBoundary.float(u.kaltmiete); com.example.data.NumericWriteBoundary.float(u.wohnflaeche) }
                     remoteUnits.forEach { u ->
                         editor.putString("unit_status_${u.name}", u.status)
                         editor.putString("unit_label_${u.name}", u.label)
                         editor.putString("unit_mieter_${u.name}", u.mieter)
-                        editor.putFloat("unit_rent_${u.name}", u.kaltmiete.toFloat())
-                        editor.putFloat("unit_area_${u.name}", u.wohnflaeche.toFloat())
+                        editor.putFloat("unit_rent_${u.name}", com.example.data.NumericWriteBoundary.float(u.kaltmiete))
+                        editor.putFloat("unit_area_${u.name}", com.example.data.NumericWriteBoundary.float(u.wohnflaeche))
                     }
                     editor.apply()
                     _wohneinheitenStatus.value = remoteUnits
@@ -5072,7 +5100,17 @@ data class AiSearchUiState(
         viewModelScope.launch(Dispatchers.IO) {
             _isGeneratingUtilityStatement.value = true
             val currentList = receipts.value
+            if (!sqm.isFinite() || sqm <= 0.0 || (totalBuildingSqm != null && (!totalBuildingSqm.isFinite() || totalBuildingSqm < 0.0))) {
+                _driveSyncStatus.value = "Bitte eine gültige positive Fläche eingeben."
+                _isGeneratingUtilityStatement.value = false
+                return@launch
+            }
             val effectiveBuildingSqm = totalBuildingSqm ?: propertyMetadata.value?.wohnflaeche ?: 0.0
+            if (!effectiveBuildingSqm.isFinite() || effectiveBuildingSqm < 0.0) {
+                _driveSyncStatus.value = "Bitte die gespeicherte Gebäudefläche prüfen."
+                _isGeneratingUtilityStatement.value = false
+                return@launch
+            }
             val result = withGeminiKey { key -> com.example.api.GeminiClient.generateTenantUtilityStatement(
                 tenantName = tenantName,
                 unitName = unitName,
@@ -5196,11 +5234,14 @@ data class AiSearchUiState(
                 ).signature == routeSignature
             }.getOrDefault(false)
         } ?: return null
-        database.logbookDao().upsertStandardRoute(legacy.copy(routeSignature = routeSignature))
+        if (legacy.distanceKm.isFinite() && legacy.distanceKm > 0.0) {
+            database.logbookDao().upsertStandardRoute(legacy.copy(routeSignature = routeSignature))
+        }
         return legacy.copy(routeSignature = routeSignature)
     }
 
     suspend fun saveStandardRoute(route: com.example.data.StandardRoute): Long {
+        com.example.data.NumericWriteBoundary.distance(route.distanceKm)
         val existing = database.logbookDao().findStandardRoute(route.routeSignature)
         return database.logbookDao().upsertStandardRoute(
             if (existing == null) route else route.copy(id = existing.id, createdAt = existing.createdAt)

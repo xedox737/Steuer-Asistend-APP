@@ -756,8 +756,8 @@ fun WohneinheitenStatusSection(
         var editLabel by remember { mutableStateOf(unit.label) }
         var editStatus by remember { mutableStateOf(unit.status) }
         var editMieter by remember { mutableStateOf(unit.mieter) }
-        var editRentStr by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.kaltmiete)) }
-        var editAreaStr by remember { mutableStateOf(GermanNumberInput.formatForInput(unit.wohnflaeche)) }
+        var editRentStr by remember { mutableStateOf(NumberFieldInput.prefill(unit.kaltmiete)) }
+        var editAreaStr by remember { mutableStateOf(NumberFieldInput.prefill(unit.wohnflaeche)) }
         var unitInputError by remember { mutableStateOf<String?>(null) }
 
         var statusExpanded by remember { mutableStateOf(false) }
@@ -866,8 +866,8 @@ fun WohneinheitenStatusSection(
             confirmButton = {
                 Button(
                     onClick = {
-                        val rent = GermanNumberInput.parseNonNegative(editRentStr)
-                        val area = GermanNumberInput.parseNonNegative(editAreaStr)
+                        val rent = NumberFieldInput.nonNegative(editRentStr, floatTarget = true).value
+                        val area = NumberFieldInput.nonNegative(editAreaStr, floatTarget = true).value
                         unitInputError = when {
                             rent == null -> "Bitte einen gültigen Mietbetrag eingeben."
                             area == null -> "Bitte eine gültige, nicht negative Fläche eingeben."
@@ -9591,7 +9591,7 @@ fun KiPowerCenterDialog(
     // Inputs for Nebenkosten
     var tenantName by remember { mutableStateOf("Max Mustermann") }
     var unitName by remember { mutableStateOf("WE 01 (OG Links)") }
-    var sqmText by remember { mutableStateOf("75.0") }
+    var sqmText by remember { mutableStateOf("") }
 
     // Inputs for Mietpreis
     var locationText by remember { mutableStateOf("München / Deutschland") }
@@ -10069,6 +10069,8 @@ fun KiPowerCenterDialog(
                                         value = sqmText,
                                         onValueChange = { sqmText = it },
                                         label = { Text("Fläche (m²)") },
+                                        isError = sqmText.isNotBlank() && NumberFieldInput.nonNegative(sqmText, positive = true).error != null,
+                                        supportingText = { NumberFieldInput.nonNegative(sqmText, positive = true).error?.let { Text(it) } },
                                         modifier = Modifier.weight(1f),
                                         singleLine = true
                                     )
@@ -10076,10 +10078,10 @@ fun KiPowerCenterDialog(
 
                                 Button(
                                     onClick = {
-                                        val sqm = sqmText.toDoubleOrNull() ?: 75.0
+                                        val sqm = NumberFieldInput.nonNegative(sqmText, positive = true).value ?: return@Button
                                         viewModel.generateTenantUtilityStatement(tenantName, unitName, sqm)
                                     },
-                                    enabled = !isGeneratingUtility,
+                                    enabled = !isGeneratingUtility && NumberFieldInput.nonNegative(sqmText, positive = true).error == null,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                                     shape = RoundedCornerShape(8.dp)

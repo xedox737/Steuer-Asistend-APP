@@ -183,14 +183,16 @@ private fun LoanAssignmentCard(
             if (assignment.proposedInterest != null && assignment.proposedPrincipal != null) {
                 Text("Zins/Tilgung – nur Vorschlag", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                 if (assignment.interestBasis.isNotBlank()) Text(assignment.interestBasis, fontSize = 10.sp, color = SlateGray)
-                OutlinedTextField(value = interestText, onValueChange = { interestText = it }, label = { Text("Zins") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(value = principalText, onValueChange = { principalText = it }, label = { Text("Tilgung") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = interestText, onValueChange = { interestText = it }, isError = NumberFieldInput.nonNegative(interestText).error != null, supportingText = { NumberFieldInput.nonNegative(interestText).error?.let { Text(it) } }, label = { Text("Zins") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(value = principalText, onValueChange = { principalText = it }, isError = NumberFieldInput.nonNegative(principalText).error != null, supportingText = { NumberFieldInput.nonNegative(principalText).error?.let { Text(it) } }, label = { Text("Tilgung") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(onClick = {
+                        val interest = parseMoney(interestText) ?: return@TextButton
+                        val principal = parseMoney(principalText) ?: return@TextButton
                         viewModel.updateBankLoanSplit(
                             assignment.transactionId,
-                            parseMoney(interestText),
-                            parseMoney(principalText),
+                            interest,
+                            principal,
                             accept = true,
                             edited = assignment.splitStatus != BankLoanSplitStatus.PROPOSED
                         )
@@ -250,8 +252,4 @@ private fun cadenceLabel(value: String): String = when (value) {
     else -> value.ifBlank { "Rhythmus unklar" }
 }
 
-private fun parseMoney(value: String): Double? {
-    val raw = value.trim()
-    if (raw.isBlank()) return null
-    return if (raw.contains(',')) raw.replace(".", "").replace(',', '.').toDoubleOrNull() else raw.toDoubleOrNull()
-}
+private fun parseMoney(value: String): Double? = NumberFieldInput.nonNegative(value).value

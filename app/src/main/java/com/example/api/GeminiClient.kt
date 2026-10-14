@@ -704,9 +704,7 @@ object GeminiClient {
                     .removeSuffix("```")
                     .trim()
                 
-                val distanceRegex = """"distanceKm"\s*:\s*([0-9.]+)""".toRegex()
-                val match = distanceRegex.find(cleanedJson)
-                match?.groupValues?.get(1)?.toDoubleOrNull()
+                parseRouteDistanceProposal(cleanedJson)
             } else {
                 null
             }
@@ -717,6 +715,13 @@ object GeminiClient {
             apiKeyOverride?.fill('\u0000')
         }
     }
+
+    /** Transport JSON numbers are typed values, not German user-input strings. */
+    internal fun parseRouteDistanceProposal(json: String): Double? = runCatching {
+        val value = org.json.JSONObject(json).get("distanceKm") as? Number
+            ?: return@runCatching null
+        com.example.data.NumericWriteBoundary.distance(value.toDouble())
+    }.getOrNull()
 
     /**
      * Answers natural language search queries over the Room database receipts using Gemini 3.5 Flash.

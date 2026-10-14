@@ -804,7 +804,8 @@ private fun UnifiedUnitDetailScreen(
                             UnifiedDetailFact(
                                 Icons.Default.HomeWork,
                                 "Wohnfläche",
-                                "${unit.wohnflaeche.toInt()} m²"
+                                if (unit.wohnflaeche.isFinite() && unit.wohnflaeche >= 0.0) "${unit.wohnflaeche.toInt()} m²"
+                                else "Gespeicherte Fläche bitte korrigieren"
                             )
                             UnifiedDetailFact(Icons.Default.Apartment, "Zimmer", extraDetails.rooms.ifBlank { "Nicht hinterlegt" })
                         }
@@ -1361,7 +1362,7 @@ private fun UnitRentalDetailsDialog(
     )
 }
 
-private fun unifiedMoney(value: Double): String =
+private fun unifiedMoney(value: Double): String = if (!value.isFinite()) "Gespeicherten Betrag bitte korrigieren" else
     NumberFormatter.format(value).let { formatted ->
         if (formatted.contains("€")) formatted else "$formatted €"
     }

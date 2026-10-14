@@ -445,7 +445,7 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
         title = { Text("Erkannte Daten prüfen") },
         text = {
             Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                reviewState.messages[document.documentId]?.let { Text(it, color = SlateGray, fontSize = 11.sp, modifier = Modifier.testTag("document_review_message")) }
+                reviewState.messages[document.documentId]?.let { Text(it, color = SlateGray, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().testTag("document_review_message")) }
                 Text("KI-Vorschlag ${(result.confidence * 100).toInt()} %. Nichts wird ohne Auswahl übernommen.", fontSize = 11.sp, color = SlateGray)
                 OutlinedButton(onClick = { typeMenu = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) { Text("Dokumenttyp: ${typeLabel(selectedType)}") }
                 DropdownMenu(typeMenu, { typeMenu = false }) { ManagedDocumentType.entries.forEach { type -> DropdownMenuItem({ Text(typeLabel(type)) }, { selectedType = type; typeMenu = false }) } }

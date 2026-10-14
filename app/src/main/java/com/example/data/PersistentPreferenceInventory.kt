@@ -83,7 +83,8 @@ internal object PersistentPreferenceInventory {
                         }
                         "int" -> value.getInt("value")
                         "long" -> value.getLong("value")
-                        "float" -> require(value.getDouble("value").toFloat().isFinite())
+                        "float" -> NumericWriteBoundary.float(value.getDouble("value"),
+                            nonNegative = store.name in setOf("wohneinheiten_prefs", "rent_plan_prefs"))
                         "boolean" -> value.getBoolean("value")
                         "stringSet" -> value.getJSONArray("value").let { array ->
                             (0 until array.length()).forEach { array.getString(it) }
@@ -137,7 +138,8 @@ internal object PersistentPreferenceInventory {
                     "string" -> editor.putString(key, value.getString("value"))
                     "int" -> editor.putInt(key, value.getInt("value"))
                     "long" -> editor.putLong(key, value.getLong("value"))
-                    "float" -> editor.putFloat(key, value.getDouble("value").toFloat())
+                    "float" -> editor.putFloat(key, NumericWriteBoundary.float(value.getDouble("value"),
+                        nonNegative = store.name in setOf("wohneinheiten_prefs", "rent_plan_prefs")))
                     "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
                     "stringSet" -> {
                         val array = value.getJSONArray("value")

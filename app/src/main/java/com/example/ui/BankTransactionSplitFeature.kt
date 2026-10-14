@@ -175,10 +175,10 @@ fun BankTransactionSplitActions(
             titleContentColor = DarkNavy,
             textContentColor = SlateGray,
             title = { Text("Teilbetrag ändern", fontWeight = FontWeight.Bold) },
-            text = { OutlinedTextField(value = editAmount, onValueChange = { editAmount = it }, label = { Text("Betrag") }) },
+            text = { OutlinedTextField(value = editAmount, onValueChange = { editAmount = it }, isError = NumberFieldInput.nonNegative(editAmount, positive = true).error != null, supportingText = { NumberFieldInput.nonNegative(editAmount, positive = true).error?.let { Text(it) } }, label = { Text("Betrag") }) },
             confirmButton = {
                 Button(onClick = {
-                    val amount = editAmount.replace(',', '.').toDoubleOrNull()
+                    val amount = NumberFieldInput.nonNegative(editAmount, positive = true).value
                     if (amount != null) scope.launch {
                         val result = viewModel.bankPhase2DServiceForUi().changeManualSplitAssignment(assignment.assignmentId, amount, true)
                         if (result.success) editing = null
@@ -213,7 +213,7 @@ private fun BankTransactionSplitDialog(
     fun positions(): List<BankManualSplitPosition> = drafts.map { d ->
         BankManualSplitPosition(
             transactionId = transaction.transactionId,
-            amount = d.amount.replace(',', '.').toDoubleOrNull() ?: Double.NaN,
+            amount = NumberFieldInput.nonNegative(d.amount, positive = true).value ?: Double.NaN,
             paymentType = d.paymentType,
             propertyId = d.propertyId.trim(),
             unitId = d.unitId.trim(),
@@ -252,7 +252,7 @@ private fun BankTransactionSplitDialog(
                     ) {
                         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Text("Teilposition ${index + 1}", fontWeight = FontWeight.SemiBold)
-                            OutlinedTextField(value = draft.amount, onValueChange = { value -> drafts = drafts.toMutableList().also { it[index] = draft.copy(amount = value) } }, label = { Text("Betrag") }, enabled = !previewMode)
+                            OutlinedTextField(value = draft.amount, onValueChange = { value -> drafts = drafts.toMutableList().also { it[index] = draft.copy(amount = value) } }, isError = NumberFieldInput.nonNegative(draft.amount, positive = true).error != null, supportingText = { NumberFieldInput.nonNegative(draft.amount, positive = true).error?.let { Text(it) } }, label = { Text("Betrag") }, enabled = !previewMode)
                             OutlinedButton(onClick = { if (!previewMode) categoryMenu = index }, enabled = !previewMode) { Text("Kategorie: ${BankSplitPaymentType.label(draft.paymentType)}") }
                             DropdownMenu(expanded = categoryMenu == index, onDismissRequest = { categoryMenu = null }) {
                                 BankSplitPaymentType.all.filter { BankSplitPaymentType.directionAllowed(it, transaction) }.forEach { type ->

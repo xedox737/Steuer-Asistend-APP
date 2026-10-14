@@ -72,6 +72,7 @@ android {
 
 tasks.withType<Test>().configureEach {
   systemProperty("robolectric.enabledSdks", "35")
+  testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 }
 
 secrets {

@@ -106,7 +106,8 @@ private val LogbookCoins = ImageVector.Builder("LogbookCoins", 24.dp, 24.dp, 24f
     }
 }.build()
 
-private fun Double.germanKm(): String = String.format(Locale.GERMANY, "%.1f km", this)
+private fun Double.germanKm(): String = if (isFinite() && this >= 0.0) String.format(Locale.GERMANY, "%.1f km", this)
+    else "Gespeicherte Strecke bitte korrigieren"
 private fun String.logbookDate(): String = DateFormatUtils.safeFormat(this)
 
 private fun manualTripReceipt() = Receipt(
@@ -334,7 +335,7 @@ private fun StandardRoutesCard(routes: List<StandardRoute>, viewModel: ReceiptVi
 private fun EditableStandardRoute(route: StandardRoute, viewModel: ReceiptViewModel) {
     val scope = rememberCoroutineScope()
     var name by remember(route.id) { mutableStateOf(route.name) }
-    var distance by remember(route.id) { mutableStateOf(route.distanceKm.toString()) }
+    var distance by remember(route.id) { mutableStateOf(NumberFieldInput.prefill(route.distanceKm)) }
     var startAddress by remember(route.id) { mutableStateOf(route.startAddress) }
     var destinationAddress by remember(route.id) { mutableStateOf(route.destinationAddress) }
     var intermediate by remember(route.id) {
@@ -367,14 +368,14 @@ private fun EditableStandardRoute(route: StandardRoute, viewModel: ReceiptViewMo
         OutlinedButton(onClick = { intermediate = intermediate + "" }) { Text("+ Zwischenstopp") }
         OutlinedTextField(destinationAddress, { destinationAddress = it }, label = { Text("Ziel") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(
-            distance, { distance = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' } },
+            distance, { distance = it },
             label = { Text("Gesamtstrecke (km)") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             modifier = Modifier.fillMaxWidth()
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = {
-                val km = distance.replace(',', '.').toDoubleOrNull()
+                val km = NumberFieldInput.nonNegative(distance, positive = true).value
                 if (name.isBlank() || km == null || km <= 0.0) message = "Bezeichnung und positive Strecke erforderlich."
                 else scope.launch {
                     val mode = runCatching { TripRouteMode.valueOf(route.routeMode) }.getOrDefault(TripRouteMode.EINFACH)
@@ -523,13 +524,19 @@ private fun LogbookSuggestionCard(
     }
     val evidence = DistanceEvidence(
         aiEstimatedKm = aiKm, routedKm = routeResult?.distanceKm,
-        odometerStartKm = odometerStartText.replace(',', '.').toDoubleOrNull(),
-        odometerEndKm = odometerEndText.replace(',', '.').toDoubleOrNull(),
+        odometerStartKm = NumberFieldInput.nonNegative(odometerStartText, optional = true).value,
+        odometerEndKm = NumberFieldInput.nonNegative(odometerEndText, optional = true).value,
         standardRouteKm = matchedStandardRoute?.distanceKm?.takeIf { useStandardRoute },
-        manualKm = manualKmText.replace(',', '.').toDoubleOrNull(),
+        manualKm = NumberFieldInput.nonNegative(manualKmText, optional = true, positive = true).value,
         manuallyConfirmed = confirmed, correctionReason = correctionReason
     )
-    val decision = LogbookDistancePolicy.decide(evidence)
+    val distanceInputError = listOf(
+        NumberFieldInput.nonNegative(manualKmText, optional = true, positive = true),
+        NumberFieldInput.nonNegative(odometerStartText, optional = true),
+        NumberFieldInput.nonNegative(odometerEndText, optional = true)
+    ).firstNotNullOfOrNull { it.error }
+    val decision = if (distanceInputError == null) LogbookDistancePolicy.decide(evidence) else
+        com.example.data.DistanceDecision(null, null, com.example.data.TripPlausibilityStatus.PRUEFEN, listOf(distanceInputError), false)
     val stops = normalizedRoute?.stops.orEmpty()
     val draftJson = JSONObject().put("bookingKey", bookingKey).put("linkedReceiptId", linkedReceiptId)
         .put("propertyId", propertyId).put("unit", unit).put("start", start).put("destination", destination)
@@ -548,7 +555,7 @@ private fun LogbookSuggestionCard(
     }
     val validDate = runCatching { LocalDate.parse(tripDate) }.isSuccess
     val validTrip = start.isNotBlank() && destination.isNotBlank() && purpose.isNotBlank() && validDate && propertyId.isNotBlank()
-    val canSave = validTrip && confirmed && !busy && decision.taxDistanceKm != null &&
+    val canSave = distanceInputError == null && validTrip && confirmed && !busy && decision.taxDistanceKm != null &&
         decision.source != KilometerSource.KI_GESCHAETZT &&
         (!decision.correctionReasonRequired || correctionReason.isNotBlank()) &&
         (correctionReason != "Sonstiges" || correctionNote.isNotBlank())
@@ -699,20 +706,21 @@ private fun LogbookSuggestionCard(
                             }
                         }
                         OutlinedTextField(manualKmText,
-                            { manualKmText = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' }; confirmed = false },
+                            { manualKmText = it; confirmed = false },
                             label = { Text("Manuell bestätigte Strecke (km)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true, modifier = Modifier.fillMaxWidth())
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             OutlinedTextField(odometerStartText,
-                                { odometerStartText = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' }; confirmed = false },
+                                { odometerStartText = it; confirmed = false },
                                 label = { Text("Tacho Start") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true, modifier = Modifier.weight(1f))
                             OutlinedTextField(odometerEndText,
-                                { odometerEndText = it.filter { ch -> ch.isDigit() || ch == ',' || ch == '.' }; confirmed = false },
+                                { odometerEndText = it; confirmed = false },
                                 label = { Text("Tacho Ende") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true, modifier = Modifier.weight(1f))
                         }
+                        distanceInputError?.let { Text(it, modifier = Modifier.fillMaxWidth(), color = CrimsonRed) }
                         if (manualKmText.isNotBlank()) {
                             Box {
                                 OutlinedButton(onClick = { correctionMenuExpanded = true }) {

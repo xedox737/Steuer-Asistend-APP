@@ -125,6 +125,7 @@ object FirestoreService {
     }
 
     suspend fun saveWohneinheit(unit: WohneinheitStatus): Boolean {
+        if (runCatching { NumericWriteBoundary.float(unit.kaltmiete); NumericWriteBoundary.float(unit.wohnflaeche) }.isFailure) return false
         if (!isCloudActive()) return false
         val uid = getCurrentUser()?.uid ?: return false
         return try {

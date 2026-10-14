@@ -76,6 +76,32 @@ class LogbookBookingStoreTest {
         assertEquals("DELETE_PENDING", repository.getReceiptById(expenseId)!!.deletionStatus)
         assertTrue(store.correct(id, "2026-09-13", "X", 10.0, "X").isFailure)
     }
+
+    @Test fun invalidDistanceAndUnrepresentableGeneratedReceiptNeverMutateExistingTripOrExpense() = runBlocking {
+        repository.insert(source())
+        val id = save().getOrThrow()
+        val beforeTrip = db.logbookDao().getTrip(id)!!
+        val beforeReceipts = repository.getAllReceiptsIncludingDeletedList()
+        for (km in listOf(-12.5, Double.NaN, Double.POSITIVE_INFINITY, 1e200)) {
+            val result = store.saveLogbookTrip(source().copy(id = 0), "Besichtigung", "A", "B",
+                listOf(TripStop("A", "Start", 0), TripStop("B", "Ziel", 1)), TripRouteMode.EINFACH, false,
+                DistanceEvidence(manualKm = km, routedKm = 20.0, manuallyConfirmed = true),
+                correctionReason = "Geprüfte Quelle", tripDate = "2026-10-14", propertyId = source().propertyId, bookingKey = "unsafe")
+            assertTrue(result.isFailure)
+            assertEquals(beforeTrip, db.logbookDao().getTrip(id))
+            assertEquals(beforeReceipts, repository.getAllReceiptsIncludingDeletedList())
+        }
+        assertTrue(store.correct(id, "2026-10-14", "Besichtigung", 1e200, "Geprüft").isFailure)
+        assertEquals(beforeTrip, db.logbookDao().getTrip(id))
+        assertEquals(beforeReceipts, repository.getAllReceiptsIncludingDeletedList())
+        val nonfiniteCompanion = store.saveLogbookTrip(source().copy(id = 0), "Besichtigung", "A", "B",
+            listOf(TripStop("A", "Start", 0), TripStop("B", "Ziel", 1)), TripRouteMode.EINFACH, false,
+            DistanceEvidence(manualKm = 20.0, aiEstimatedKm = Double.NaN, manuallyConfirmed = true),
+            tripDate = "2026-10-14", propertyId = source().propertyId, bookingKey = "unsafe-companion")
+        assertTrue(nonfiniteCompanion.isFailure)
+        assertEquals(beforeTrip, db.logbookDao().getTrip(id))
+        assertEquals(beforeReceipts, repository.getAllReceiptsIncludingDeletedList())
+    }
     @Test fun exportedExpensesCannotBeChangedOrCancelled() = runBlocking {
         repository.insert(source())
         val id = save().getOrThrow()

@@ -188,15 +188,15 @@ private fun ConfirmedRentAssignmentCard(assignment: BankRentAssignment, onUnlink
 }
 
 @Composable
-private fun PartialRentDialog(suggestion: BankRentSuggestion, onDismiss: () -> Unit, onConfirm: (Double) -> Unit) {
-    var amount by remember(suggestion.transactionId) { mutableStateOf(minOf(suggestion.actualAmount, suggestion.expectedAmount).toString()) }
+internal fun PartialRentDialog(suggestion: BankRentSuggestion, onDismiss: () -> Unit, onConfirm: (Double) -> Unit) {
+    var amount by remember(suggestion.transactionId) { mutableStateOf(NumberFieldInput.prefill(minOf(suggestion.actualAmount, suggestion.expectedAmount))) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Teilzahlung bestätigen") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Offener Rest vor dieser Zahlung: ${NumberFormatter.format(suggestion.expectedAmount - (suggestion.expectedAmount - suggestion.remainingAmount - suggestion.actualAmount).coerceAtLeast(0.0))}", fontSize = 10.sp, color = SlateGray)
-                OutlinedTextField(amount, { amount = it }, label = { Text("Zuzuordnender Betrag €") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                OutlinedTextField(amount, { amount = it }, isError = NumberFieldInput.nonNegative(amount, positive = true).error != null, supportingText = { NumberFieldInput.nonNegative(amount, positive = true).error?.let { Text(it, modifier = Modifier.fillMaxWidth()) } }, label = { Text("Zuzuordnender Betrag €") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
             }
         },
         confirmButton = { Button(onClick = { parseMoney(amount)?.let(onConfirm) }) { Text("Bestätigen") } },
@@ -214,7 +214,7 @@ private fun ManualRentDialog(
     var unitId by remember { mutableStateOf(suggestion.unitId) }
     var month by remember { mutableStateOf(suggestion.rentMonth) }
     var tenantRef by remember { mutableStateOf(suggestion.tenantReference) }
-    var amount by remember { mutableStateOf(suggestion.actualAmount.toString()) }
+    var amount by remember { mutableStateOf(NumberFieldInput.prefill(suggestion.actualAmount)) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Mietzuordnung manuell prüfen") },
@@ -225,7 +225,7 @@ private fun ManualRentDialog(
                 OutlinedTextField(unitId, { unitId = it }, label = { Text("Einheit-ID") }, singleLine = true)
                 OutlinedTextField(month, { month = it }, label = { Text("Mietmonat YYYY-MM") }, singleLine = true)
                 OutlinedTextField(tenantRef, { tenantRef = it }, label = { Text("Mietverhältnis-Referenz") }, singleLine = true)
-                OutlinedTextField(amount, { amount = it }, label = { Text("Betrag €") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
+                OutlinedTextField(amount, { amount = it }, isError = NumberFieldInput.nonNegative(amount, positive = true).error != null, supportingText = { NumberFieldInput.nonNegative(amount, positive = true).error?.let { Text(it, modifier = Modifier.fillMaxWidth()) } }, label = { Text("Betrag €") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
             }
         },
         confirmButton = { Button(onClick = { parseMoney(amount)?.let { onConfirm(propertyId.trim(), unitId.trim(), month.trim(), tenantRef.trim(), it) } }) { Text("Bestätigen") } },
@@ -233,4 +233,4 @@ private fun ManualRentDialog(
     )
 }
 
-private fun parseMoney(value: String): Double? = value.trim().replace(".", "").replace(',', '.').toDoubleOrNull()?.takeIf { it > 0.0 }
+private fun parseMoney(value: String): Double? = NumberFieldInput.nonNegative(value, positive = true).value

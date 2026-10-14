@@ -32,6 +32,11 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.Before
+import org.junit.After
+import org.junit.rules.RuleChain
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelProvider
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -42,7 +47,18 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class LogbookReferenceLayoutTest {
-    @get:Rule val ui = createComposeRule()
+    private val databaseIsolation = IsolatedAppDatabaseRule()
+    val ui = createComposeRule()
+    @get:Rule val rules: RuleChain = RuleChain.outerRule(databaseIsolation).around(ui)
+    private val models = ViewModelStore()
+
+    @Before fun prepareOwnedState() {
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        listOf("google_drive_prefs", "wohneinheiten_prefs", "rent_plan_prefs", "tenant_history_prefs", "logbook_drafts")
+            .forEach { application.getSharedPreferences(it, 0).edit().clear().commit() }
+    }
+
+    @After fun releaseOwnedState() { models.clear() }
 
     private fun capture(name: String) {
         ui.mainClock.advanceTimeBy(300)
@@ -53,14 +69,17 @@ class LogbookReferenceLayoutTest {
     }
 
     @Test fun referenceScreensRenderInsideTheActualAppFrame() {
-        val viewModel = ReceiptViewModel(ApplicationProvider.getApplicationContext<Application>())
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        val database = com.example.data.AppDatabase.getDatabase(application, kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+        var viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
         viewModel.setScreen(AppScreen.LOGBOOK)
-        viewModel.updatePropertyMetadata(PropertyMetadata(
-            wohnort = "Dornstetten", adresse = "Sulzerstraße 32, Dornstetten"
-        ))
-        viewModel.insertReceiptQuietly(Receipt(id = 1001, aussteller = "Bauhaus", datum = LocalDate.now().toString(),
-            uhrzeit = "", bruttobetrag = 0.0, hauptkategorie = "Sanierung", unterkategorie = "", kontoNr = "",
-            beschreibung = "Besichtigung / Instandhaltung"))
+        runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+            database.propertyDao().insertPropertyMetadata(PropertyMetadata(
+                wohnort = "Dornstetten", adresse = "Sulzerstraße 32, Dornstetten"))
+            database.receiptDao().insertReceipt(Receipt(id = 1001, aussteller = "Bauhaus", datum = LocalDate.now().toString(),
+                uhrzeit = "", bruttobetrag = 0.0, hauptkategorie = "Sanierung", unterkategorie = "", kontoNr = "",
+                beschreibung = "Besichtigung / Instandhaltung"))
+        }
         runBlocking {
             val route = TripRouteNormalizer.normalize("Dornstetten", listOf(TripStop("Bauhaus", "Zwischenstopp 1", 0)),
                 "Sulzerstraße 32, Dornstetten", TripRouteMode.HIN_UND_RUECKFAHRT, true)
@@ -80,6 +99,11 @@ class LogbookReferenceLayoutTest {
                 ).getOrThrow()
             }
         }
+        // This layout/navigation test opens a complete stored fixture. Do not race
+        // asynchronous fixture writes with its WhileSubscribed UI-reader snapshot.
+        models.clear()
+        viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
+        viewModel.setScreen(AppScreen.LOGBOOK)
         lateinit var backDispatcher: OnBackPressedDispatcher
         ui.setContent {
             backDispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
@@ -94,7 +118,15 @@ class LogbookReferenceLayoutTest {
             ui.waitForIdle()
             assertEquals(AppScreen.LOGBOOK, viewModel.currentScreen.value)
         }
-        ui.waitUntil(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
+        try {
+            ui.waitUntil(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
+        } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+            val stored = runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                val db = com.example.data.AppDatabase.getDatabase(viewModel.getApplication<Application>(), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+                "trips=${db.logbookDao().getAllTrips().size}, receipts=${db.receiptDao().getAllReceiptsList().map { it.id }}, properties=${db.propertyDao().getAllProperties()}"
+            }
+            throw AssertionError("Fixture store: $stored; flows: trips=${viewModel.logbookTrips.value.size}, receipts=${viewModel.receipts.value.map { it.id }}, property=${viewModel.propertyMetadata.value}, screen=${viewModel.currentScreen.value}", failure)
+        }
         ui.onNodeWithTag("bottom_navigation").assertIsDisplayed()
         ui.onNodeWithText("ImmoPilot").assertIsDisplayed()
         ui.onNodeWithText("Letzte Fahrten").assertIsDisplayed()

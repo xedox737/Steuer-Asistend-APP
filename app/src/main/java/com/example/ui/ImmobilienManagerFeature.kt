@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -1046,7 +1047,7 @@ private fun MoreMenuItem(
 }
 
 @Composable
-private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetadata, List<WohneinheitStatus>, Loan?) -> Unit) {
+internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetadata, List<WohneinheitStatus>, Loan?) -> Unit) {
     val dateFields = rememberDateFieldValidation()
     var step by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -1074,7 +1075,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
             },
             label = { Text(label) },
             isError = message != null,
-            supportingText = { message?.let { Text(it) } },
+            supportingText = { message?.let { Text(it, modifier = Modifier.fillMaxWidth()) } },
             modifier = Modifier.fillMaxWidth(),
             enabled = !preparingUnits,
             singleLine = true
@@ -1084,7 +1085,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
         onDismissRequest = onDismiss,
         title = { Text("Immobilie anlegen · ${step + 1}/5", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (step) {
                     0 -> {
                         field(name, "Objektname") { name = it }
@@ -1248,7 +1249,7 @@ private fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMetad
                             "Leerstand",
                             "",
                             0.0,
-                            PropertyWizardInput.unitArea(unitAreas[index]) ?: 0.0,
+                            requireNotNull(PropertyWizardInput.unitArea(unitAreas[index])),
                             unitId = java.util.UUID.randomUUID().toString()
                         )
                     }

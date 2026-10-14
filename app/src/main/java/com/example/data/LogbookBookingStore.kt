@@ -38,6 +38,9 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             require(sourceReceipt.propertyId == propertyId) { "Beleg und Fahrt müssen derselben Immobilie zugeordnet sein." }
         }
         require(purpose.isNotBlank()) { "Fahrtzweck erforderlich." }
+        require(listOfNotNull(evidence.aiEstimatedKm, evidence.routedKm, evidence.manualKm,
+            evidence.gpsMeasuredKm, evidence.odometerStartKm, evidence.odometerEndKm, evidence.standardRouteKm)
+            .all { it.isFinite() && it >= 0.0 }) { "Bitte gültige Kilometerquellen eingeben." }
         java.time.LocalDate.parse(tripDate)
         require(propertyId.isNotBlank()) { "Immobilie erforderlich." }
         require(evidence.manuallyConfirmed) { "Route, Fahrtzweck und Kilometer müssen vor dem Einbuchen bestätigt werden." }
@@ -60,6 +63,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             "Für den Korrekturgrund Sonstiges ist eine kurze Beschreibung erforderlich."
         }
         val now = java.time.Instant.now().toString()
+        ReceiptMoney.toCent(distance * 0.30) // The generated receipt must fit its existing backup amount contract.
         val expenseId = repository.insert(
             Receipt(
                 aussteller = "Fahrtkosten: ${originalReceipt.aussteller}",
@@ -118,6 +122,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
         database.withTransaction {
             java.time.LocalDate.parse(date)
             require(purpose.isNotBlank() && reason.isNotBlank() && km.isFinite() && km > 0) { "Datum, Zweck, positive Kilometer und Änderungsgrund erforderlich." }
+            ReceiptMoney.toCent(km * 0.30)
             val trip = requireNotNull(database.logbookDao().getTrip(id))
             require(trip.cancelledAt.isBlank()) { "Die Fahrt ist storniert." }
             val expense = editableExpense(trip)

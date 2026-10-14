@@ -38,11 +38,11 @@ internal object ReceiptMoney {
 
 internal fun validateBackupProperty(property: PropertyMetadata) {
     val input = com.example.ui.PropertyWizardInput.validate(
-        com.example.ui.GermanNumberInput.formatForInput(property.gesamtKaufpreis),
-        com.example.ui.GermanNumberInput.formatForInput(property.wohnflaeche),
-        com.example.ui.GermanNumberInput.formatForInput(property.grundstuecksgroesse),
+        com.example.ui.NumberFieldInput.prefill(property.gesamtKaufpreis),
+        com.example.ui.NumberFieldInput.prefill(property.wohnflaeche),
+        com.example.ui.NumberFieldInput.prefill(property.grundstuecksgroesse),
         property.notariellesKaufdatum, property.baujahr.toString(),
-        com.example.ui.GermanNumberInput.formatForInput(property.gebaeudewert),
-        com.example.ui.GermanNumberInput.formatForInput(property.grundUndBodenWert), "")
+        com.example.ui.NumberFieldInput.prefill(property.gebaeudewert),
+        com.example.ui.NumberFieldInput.prefill(property.grundUndBodenWert), "")
     require(input.errors.isEmpty()) { "Gesicherte Immobilienwerte sind ungültig. Bitte prüfen." }
 }
