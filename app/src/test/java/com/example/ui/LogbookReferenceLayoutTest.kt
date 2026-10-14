@@ -29,6 +29,11 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -51,6 +56,7 @@ class LogbookReferenceLayoutTest {
     val ui = createComposeRule()
     @get:Rule val rules: RuleChain = RuleChain.outerRule(databaseIsolation).around(ui)
     private val models = ViewModelStore()
+    private var fixtureSubscription: Job? = null
 
     @Before fun prepareOwnedState() {
         val application = ApplicationProvider.getApplicationContext<Application>()
@@ -58,7 +64,7 @@ class LogbookReferenceLayoutTest {
             .forEach { application.getSharedPreferences(it, 0).edit().clear().commit() }
     }
 
-    @After fun releaseOwnedState() { models.clear() }
+    @After fun releaseOwnedState() { fixtureSubscription?.cancel(); models.clear() }
 
     private fun capture(name: String) {
         ui.mainClock.advanceTimeBy(300)
@@ -104,6 +110,9 @@ class LogbookReferenceLayoutTest {
         models.clear()
         viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(application))[ReceiptViewModel::class.java]
         viewModel.setScreen(AppScreen.LOGBOOK)
+        // Own the WhileSubscribed fixture reader throughout this headless layout test.
+        // The real Android E2E separately verifies lifecycle-driven screen subscriptions.
+        fixtureSubscription = CoroutineScope(Dispatchers.Unconfined).launch { viewModel.logbookTrips.collect {} }
         lateinit var backDispatcher: OnBackPressedDispatcher
         ui.setContent {
             backDispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher

@@ -62,9 +62,14 @@ Mietkorrektur unverändert vor dem Einheits-Clamp.
 Der erste CI-Lauf bestand 995 von 996 Tests einschließlich aller neun neuen
 N03-Projektionsfälle. Die neue Compose-Fixture wartete auf eine Property-Flow-
 Aktualisierung in einer geteilten Datenbank. Der separate neue Compose-Test nutzt
-nun die vorhandene IsolatedAppDatabaseRule vor Activitystart und prüft auch den
-DAO-Bestand. Bestehende Compose-Tests bleiben unverändert; keine Assertions oder
-Zeitlimits abgeschwächt.
+nun die vorhandene IsolatedAppDatabaseRule und vollständig gespeicherte Daten vor
+Activity-/ViewModelstart; der DAO-Bestand wird zusätzlich geprüft. Der zweite volle
+Lauf belegte erneut den initialen Flow-Wartefehler sowie einen bestehenden
+Fahrtenbuch-Layoutfixturefehler (Store: drei Fahrten, WhileSubscribed-Leser: null
+Fahrten). Dieser headless Layouttest besitzt nun einen über die Testdauer explizit
+abonnierten echten Produktionsflow und beendet dessen Subscription im Teardown.
+Keine Ersatzflows, Produktivänderung, Assertion-/Zeitlimitänderung oder Retries.
+Die echte Lifecycle-/Recreate-Prüfung bleibt im vollständigen Android-E2E.
 
 Zusätzlicher Robolectric-Compose-Test öffnet die produktive Objektkarte und
 UnifiedUnits und prüft jeweils 980 € offen. Android-E2E verwendet MainActivity,
