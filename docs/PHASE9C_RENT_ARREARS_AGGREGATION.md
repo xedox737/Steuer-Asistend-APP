@@ -112,3 +112,22 @@ Ressourcen-Konfiguration nach dem asynchron propagierten settings-put. Die
 ursprüngliche strikte FontScaleassertion bleibt anschließend erhalten. Der
 fehlgeschlagene Lauf hatte für 1,5 zunächst noch 1,0 gelesen; es wird kein
 abweichender Wert akzeptiert und keine Konfiguration künstlich ersetzt.
+
+## Verifizierter Prüfstand und CI-Grenze
+
+[Run 38611341496](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38611341496)
+bestand lintDebug, testDebugUnitTest und assembleDebug. Die vollständige JVM-Suite
+enthält 996 Fälle einschließlich der neuen N03-Projektions-/Composeprüfungen und
+Phase-9A-/9B-Regressionsfälle. assembleDebugAndroidTest bestand ebenfalls.
+Der vollständige Emulatorlauf führte 64 Fälle aus; N03 mit beiden Karten,
+Jahresdetails, Recreate und erhaltenen Daten bestand. 61 Fälle bestanden insgesamt;
+die drei oben dokumentierten FontScale-Matrixfehler verhinderten die Abnahme.
+
+[Run 38617207967](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38617207967)
+auf dem anschließend korrigierten Test-Head 0b5f19acdf2abd5f0c26215e5dcaad6157dd2c7c
+wurde beim unveränderten Zehn-Minuten-Limit von Run lint abgebrochen. Die
+Produktionskompilierung war abgeschlossen; zuletzt liefen die drei Lint-Analysen.
+Es wurde kein Lint-Befund ausgegeben. Das ist kein erfolgreicher Prüfabschluss;
+Unit-/Build-/Emulatorfolgejobs dieses Laufs wurden nicht ausgeführt.
+Keine Timeouts erhöhen oder Prüfungen deaktivieren. Maßgeblich für die finale
+Abnahme ist ein vollständig grüner aktueller PR-Lauf; kein Merge davor.
