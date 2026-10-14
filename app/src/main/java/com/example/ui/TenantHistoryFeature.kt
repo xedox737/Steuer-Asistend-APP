@@ -189,9 +189,9 @@ internal object TenantHistoryStore {
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
         if (read(context, propertyId, stableUnitId, unitName).damaged) return@synchronized false
         if (runCatching { periods.forEach { period ->
-            listOf(period.kaltmiete, period.nebenkosten, period.sonstige).forEach(com.example.data.NumericWriteBoundary::float)
+            listOf(period.kaltmiete, period.nebenkosten, period.sonstige).forEach { com.example.data.NumericWriteBoundary.float(it) }
             period.rentChanges.forEach { change ->
-                listOf(change.kaltmiete, change.nebenkosten, change.sonstige).forEach(com.example.data.NumericWriteBoundary::float)
+                listOf(change.kaltmiete, change.nebenkosten, change.sonstige).forEach { com.example.data.NumericWriteBoundary.float(it) }
             }
         } }.isFailure) return@synchronized false
         val raw = encode(periods)

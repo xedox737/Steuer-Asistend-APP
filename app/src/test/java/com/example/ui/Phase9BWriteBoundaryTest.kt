@@ -91,4 +91,19 @@ class Phase9BWriteBoundaryTest {
         assertEquals(listOf(property), db.propertyDao().getAllProperties())
         assertTrue(db.loanDao().getAllLoans().isEmpty())
     }
+
+    @Test fun supplementalFloatPreflightUsesSameTargetBoundaryBeforeAnyPreferenceMutation() = runBlocking {
+        val root = SupplementalDriveBackup.createPayload(app, db)
+        val prefs = app.getSharedPreferences("wohneinheiten_prefs", 0)
+        prefs.edit().putFloat("unit_area_WE 01", 72.5f).commit()
+        val payload = SupplementalDriveBackup.createPayload(app, db)
+        val raw = payload.toString()
+        // Replace only the numeric value of the known typed preference entry.
+        for (value in listOf("1e200", "1e-100", "-72.5")) {
+            val malformed = JSONObject(raw.replace("72.5", value))
+            assertTrue(runCatching { SupplementalDriveBackup.restorePayload(app, db, malformed) }.isFailure)
+            assertEquals(72.5f, prefs.getFloat("unit_area_WE 01", 0f))
+        }
+        assertNotNull(root)
+    }
 }

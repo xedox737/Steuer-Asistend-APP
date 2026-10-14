@@ -2,8 +2,8 @@ package com.example.data
 
 /** Target-type checks at the persistence boundary; never repairs an existing value. */
 internal object NumericWriteBoundary {
-    fun float(value: Double): Float {
-        require(value.isFinite() && value >= 0.0) { "Bitte eine gültige, nicht negative Zahl eingeben." }
+    fun float(value: Double, nonNegative: Boolean = true): Float {
+        require(value.isFinite() && (!nonNegative || value >= 0.0)) { "Bitte eine gültige, nicht negative Zahl eingeben." }
         return value.toFloat().also {
             require(it.isFinite()) { "Der Wert ist zu groß." }
             require(value == 0.0 || it != 0f) { "Der Wert ist zu klein." }
