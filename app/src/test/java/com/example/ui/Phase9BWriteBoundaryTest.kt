@@ -23,6 +23,17 @@ class Phase9BWriteBoundaryTest {
     @Before fun clear() { PersistentPreferenceInventory.stores.forEach { app.getSharedPreferences(it.name, 0).edit().clear().commit() } }
     @After fun cleanup() { models.clear(); clear() }
 
+    @Test fun routeProposalJsonCannotTruncateExponentOrSendInfinityIntoDraftSerialization() {
+        assertEquals(24.5, com.example.api.GeminiClient.parseRouteDistanceProposal("{\"distanceKm\":24.5}")!!, 0.0)
+        assertEquals(12.345, com.example.api.GeminiClient.parseRouteDistanceProposal("{\"distanceKm\":12.345}")!!, 0.0)
+        assertEquals(1000.0, com.example.api.GeminiClient.parseRouteDistanceProposal("{\"distanceKm\":1e3}")!!, 0.0)
+        for (raw in listOf("{}", "{\"distanceKm\":1e309}", "{\"distanceKm\":-12.5}", "{\"distanceKm\":0}",
+            "{\"distanceKm\":\"24,5\"}", "{\"distanceKm\":\"Infinity\"}", "{\"distanceKm\":1.2.3}",
+            "{\"distanceKm\":" + "9".repeat(400) + "}")) {
+            assertNull(raw, com.example.api.GeminiClient.parseRouteDistanceProposal(raw))
+        }
+    }
+
     @Test fun invalidRuleCannotReplaceExistingAndValidRuleCanBeBackedUp() = runBlocking {
         val rule = BankLearningRule("9b-rule", "Bestand", amountMin = 98.0, amountMax = 1234.56)
         db.bankLearningRuleDao().upsertRule(rule)

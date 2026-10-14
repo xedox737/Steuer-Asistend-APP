@@ -1075,7 +1075,7 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
             },
             label = { Text(label) },
             isError = message != null,
-            supportingText = { message?.let { Text(it) } },
+            supportingText = { message?.let { Text(it, modifier = Modifier.fillMaxWidth()) } },
             modifier = Modifier.fillMaxWidth(),
             enabled = !preparingUnits,
             singleLine = true

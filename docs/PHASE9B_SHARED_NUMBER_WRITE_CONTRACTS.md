@@ -43,6 +43,10 @@ Ungültige Altwerte erhalten einen sichtbaren deutschen Korrekturtext.
   Auch Legacy-Indexierung und Standardroute-Restore prüfen diesen Vertrag. Alle
   gespeicherten numerischen DistanceEvidence-Quellen werden vor dem Booking geprüft;
   der erzeugte Kostenbeleg muss in den bestehenden 9A-Centvertrag passen.
+  KI-Routenantworten werden als echte JSON-Zahlen gelesen und vor Übergabe an den
+  Draft mit derselben positiven, endlichen Distanzgrenze geprüft. Kein Regex-Präfix
+  macht 1e3 zu 1; technische JSON-Zahlen bleiben vom deutschen Texteingabevertrag
+  getrennt. Prompts, Auth und Requestklassifizierung bleiben unverändert.
 - N02 NumericWriteBoundary prüft den tatsächlichen Float-Zielwert unmittelbar vor
   Persistenz. Endlicher Double mit Float-Infinity sowie Nicht-nullwert mit Float-Null
   werden blockiert. Keine erfundene fachliche Obergrenze. Betroffen: Anlageassistent,
@@ -80,6 +84,11 @@ Wizard extreme Loan-/Floatwerte und bestätigter ungültiger Dokumentrohwert.
 Screenshots liegen im bestehenden Emulator-Diagnoseartefakt. UI-Fehlertexte werden
 auf Textüberlauf geprüft; betroffene Dialoginhalte sind bei Bedarf scrollbar.
 Keine globale Navigation oder Designsystemänderung.
+Fehlertexte verwenden die volle Feldbreite wie der bestehende Darlehenseditor,
+damit Compose-Paragraph- und Textboxbreite übereinstimmen. Typografie bleibt gleich.
+Die Fahrtenbuch-Layoutfixture wird vollständig gespeichert, bevor ein frischer
+ViewModel-Leser startet. Dialog-Testcallbacks bilden das produktive Schließen nach
+Bestätigung nach; sämtliche Assertions und Zeitlimits bleiben erhalten.
 
 Vollständiger vorhandener Workflow prüft testDebugUnitTest, lintDebug, assembleDebug,
 assembleDebugAndroidTest und connectedDebugAndroidTest. Alle 9A-/8A-/8B-/7A-/7B- und

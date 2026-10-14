@@ -720,7 +720,7 @@ private fun LogbookSuggestionCard(
                                 label = { Text("Tacho Ende") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 singleLine = true, modifier = Modifier.weight(1f))
                         }
-                        distanceInputError?.let { Text(it, color = CrimsonRed) }
+                        distanceInputError?.let { Text(it, modifier = Modifier.fillMaxWidth(), color = CrimsonRed) }
                         if (manualKmText.isNotBlank()) {
                             Box {
                                 OutlinedButton(onClick = { correctionMenuExpanded = true }) {
