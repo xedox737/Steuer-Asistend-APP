@@ -31,7 +31,10 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertTrue(layouts.isNotEmpty())
         layouts.forEach {
-            assertFalse(it.didOverflowWidth); assertFalse(it.didOverflowHeight); assertFalse(it.multiParagraph.didExceedMaxLines)
+            val measured = "$text at $fontScale: size=${it.size}, paragraph=${it.multiParagraph.width} x ${it.multiParagraph.height}, constraints=${it.layoutInput.constraints}, layoutText=${it.layoutInput.text}"
+            assertFalse("Width overflow: $measured", it.didOverflowWidth)
+            assertFalse("Height overflow: $measured", it.didOverflowHeight)
+            assertFalse("Line truncation: $measured", it.multiParagraph.didExceedMaxLines)
             assertEquals(text.length, it.getLineEnd(it.lineCount - 1, visibleEnd = true))
         }
     }
