@@ -32,6 +32,11 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.Before
+import org.junit.After
+import org.junit.rules.RuleChain
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelProvider
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -42,7 +47,18 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class LogbookReferenceLayoutTest {
-    @get:Rule val ui = createComposeRule()
+    private val databaseIsolation = IsolatedAppDatabaseRule()
+    val ui = createComposeRule()
+    @get:Rule val rules: RuleChain = RuleChain.outerRule(databaseIsolation).around(ui)
+    private val models = ViewModelStore()
+
+    @Before fun prepareOwnedState() {
+        val application = ApplicationProvider.getApplicationContext<Application>()
+        listOf("google_drive_prefs", "wohneinheiten_prefs", "rent_plan_prefs", "tenant_history_prefs", "logbook_drafts")
+            .forEach { application.getSharedPreferences(it, 0).edit().clear().commit() }
+    }
+
+    @After fun releaseOwnedState() { models.clear() }
 
     private fun capture(name: String) {
         ui.mainClock.advanceTimeBy(300)
@@ -53,7 +69,8 @@ class LogbookReferenceLayoutTest {
     }
 
     @Test fun referenceScreensRenderInsideTheActualAppFrame() {
-        val viewModel = ReceiptViewModel(ApplicationProvider.getApplicationContext<Application>())
+        val viewModel = ViewModelProvider(models, ViewModelProvider.AndroidViewModelFactory(
+            ApplicationProvider.getApplicationContext<Application>()))[ReceiptViewModel::class.java]
         viewModel.setScreen(AppScreen.LOGBOOK)
         viewModel.updatePropertyMetadata(PropertyMetadata(
             wohnort = "Dornstetten", adresse = "Sulzerstraße 32, Dornstetten"
