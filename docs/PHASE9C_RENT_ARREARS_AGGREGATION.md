@@ -1,0 +1,161 @@
+# Phase 9C – Mietrückstände pro Einheit
+
+Base: 041d64b03169c0a73d8d16439d752d64f6bdd781.
+Branch: fix/phase9c-rent-arrears-aggregation. Kein Merge.
+Scope ausschließlich N03. Keine Mahnverwaltung oder Guthabenumbuchung.
+
+## Ursache und Korrektur
+
+UnifiedPropertyUnitsScreen bildete den Jahresrückstand als
+max(GesamtSoll − GesamtIst, 0). PropertyManagerSummary berechnete „Offen“ ebenfalls
+erst aus bereits summiertem Monatssoll/-ist. So verdeckte A mit 980 Soll / 1960 Ist
+die Schulden von B mit 980 Soll / 0 Ist: GesamtSoll und GesamtIst jeweils 1960,
+aber fälschlich 0 offen statt 980.
+
+RentTrackingLogic.outstanding erhält die vorhandene Formel max(Soll − Ist, 0).
+Die aktive Objektprojektion summiert nun die vorhandenen RentMonthProjection.missing
+je Einheit. RentYearProjection.outstanding bietet den jährlichen Einheitensaldo;
+UnifiedUnits und die bereits robuste RentOverviewUnit verwenden diesen selben Wert.
+PropertyManagerSummary erhält den unabhängig berechneten Rückstand explizit;
+es kann ihn nicht mehr aus GesamtSoll/GesamtIst rekonstruieren.
+
+Guthaben ist max(Ist − Soll, 0) je Einheit, Rückstand max(Soll − Ist, 0) je Einheit.
+Die beiden Werte dürfen unabhängig bestehen. Kein neues Guthabenfeld/keine neue
+Karte notwendig. Die vorhandenen Soll-/Istwerte und legitimen Salden bleiben gleich.
+
+## Scope und bestehende Projektionen
+
+PropertyOverviewCard zeigt den aktuellen Monat. UnifiedUnits und RentOverviewYear
+zeigen das ausgewählte Kalenderjahr. Keine Änderung der Zeitfilter, Mietperioden,
+datierter Mietänderungen, Leerstandserwartung oder bestehenden PaymentProjection.
+RentPaymentProjection bleibt die Quelle für bestätigte Bank-/Receiptzahlungen,
+Teilzahlungen, rentMonth und Dedup. Stabile propertyId/unitId bleiben maßgeblich;
+die Aggregation gruppiert nicht über sichtbare Namen. LedgerPaymentPresentation
+und BankAllocation-/Splitregeln sind unverändert. Keine neuen DB-Abfragen.
+
+RentYearProjection.missing summiert weiterhin explizit offene Mietmonate; dieser
+Monatskontrollwert unterscheidet sich bewusst vom vorhandenen jährlichen
+Einheitensaldo. Ein Septemberguthaben tilgt damit nicht automatisch die offene
+Oktoberforderung in der Monatsprüfung. Es wird keine neue Mietkonto-/Tenancy-
+Verrechnung eingeführt. Bereits bestehende Jahressaldierung innerhalb derselben
+Einheit bleibt wie RentOverviewYear. „Offen“ über unabhängige Einheiten wird
+an keiner aktiven betroffenen Karte aus einer Gesamtdifferenz abgeleitet.
+
+Suchlauf: RentTenantWrapper summiert bereits Einheits-Monatswerte; AnnualRentRow
+im Jahresassistenten begrenzt je Einheit vor Summierung. Beide unverändert.
+PropertyDashboard und dessen RENT_MATRIX-Einstieg haben keinen aktiven Aufrufer;
+die alte contextlose summary-Überladung wird noch von einem bestehenden Test
+verwendet. Ihr notwendiger Summary-Konstruktoraufruf erhält ebenfalls einen
+pro Einheit ermittelten Rückstand. Die aktive Monats-/Jahresprojektion wird dadurch
+nicht ersetzt. Alte Monatsmatrixwerte bleiben unverändert.
+
+## Prüfungen
+
+Neue Phase9CRentArrearsTest-Fälle: verbindliches A/B-Beispiel mit Soll/Ist jeweils
+1960 und Rückstand 980; bezahlte/teilbezahlte/gemischte/einzelne/leere Bestände;
+300+680 mit Bank-/Receipt-Dedup; Kaution/Privat/Transfer/REVIEW ausgeschlossen;
+gleichnamige Einheiten mit getrennten stabilen IDs in verschiedenen Objekten;
+Dezemberzahlung mit Januarbankdatum über expliziten rentMonth; Aprilbeginn,
+Vertragsende/Leerstand, Mietänderung, Mieterwechsel-Monatsgrenze und negative
+Mietkorrektur unverändert vor dem Einheits-Clamp.
+
+Der erste CI-Lauf bestand alle Tests bis auf eine neue Compose-Fixture einschließlich aller neun neuen
+N03-Projektionsfälle. Die neue Compose-Fixture wartete auf eine Property-Flow-
+Aktualisierung in einer geteilten Datenbank. Der separate neue Compose-Test nutzt
+nun die vorhandene IsolatedAppDatabaseRule und vollständig gespeicherte Daten vor
+Activity-/ViewModelstart; der DAO-Bestand wird zusätzlich geprüft. Der zweite volle
+Lauf belegte erneut den initialen Flow-Wartefehler sowie einen bestehenden
+Fahrtenbuch-Layoutfixturefehler (Store: drei Fahrten, WhileSubscribed-Leser: null
+Fahrten). Dieser headless Layouttest besitzt nun einen über die Testdauer explizit
+abonnierten echten Produktionsflow und beendet dessen Subscription im Teardown.
+Keine Ersatzflows, Produktivänderung, Assertion-/Zeitlimitänderung oder Retries.
+Die echte Lifecycle-/Recreate-Prüfung bleibt im vollständigen Android-E2E.
+
+Zusätzlicher Robolectric-Compose-Test öffnet die produktive Objektkarte und
+UnifiedUnits und prüft jeweils 980 € offen. Android-E2E verwendet MainActivity,
+Room und Preferences: Objektkarte, Jahres-/Einheitenkarte, Jahresdetails,
+Activity recreate sowie Android-Zurück. Der Mietvertrag besteht in genau einem
+Monat, damit die verglichenen Monats-/Jahresscopes bewusst dasselbe Soll haben.
+Erhaltene Receipt-/Historienwerte werden nach Navigation erneut geprüft.
+Screenshots: phase9c-property-open-980 und phase9c-unit-year-open-980.
+
+Der vollständige vorhandene CI-Workflow prüft lintDebug, testDebugUnitTest,
+assembleDebug, assembleDebugAndroidTest und den vollständigen Emulator-E2E-Job
+einschließlich Phase 9A/9B, 6A/7A/7B/8B und FontScale-Regressionen.
+Tatsächliche Ergebnisse werden nach Ausführung im PR/Abschlussbericht dokumentiert.
+Lokaler Gradle/SDK/adb fehlen. Keine physische Geräteabnahme behauptet.
+
+## Unverändert
+
+Room 34, keine Migration/Entity/Tabelle. Supplemental 15 und Receipt-Backupvertrag 2
+unverändert. Keine Persistenz-/Datenbereinigung, keine IDs geändert. Bankliste,
+DATEV-Export, Backup-/Restorevertrag, Parser/Float-Schreibgrenzen, Fahrtenbuch,
+Darlehen, AfA, globale Navigation/Design unverändert. N04/A11 bleiben Phase 9D.
+
+Git fetch origin scheiterte am lokalen Proxy. main wurde frisch über den
+GitHub-Connector abgerufen; signierter Originalcommit und identischer Baum
+12090fa73b1ad4114d618f45c295d963034efcd7 wurden lokal verifiziert.
+Nur eigener Branch/PR; nicht mergen.
+
+Der erste vollständige Emulatorlauf auf dem korrigierten JVM-Head führte alle 64
+Fälle aus: 61 bestanden, einschließlich N03 mit beiden Karten/Jahresdetails und
+Recreate. Drei bestehende Phase-6B-FontScalefälle scheiterten; der erste an einem
+nicht sichtbaren Text nach Child-Scroll, danach Lifecycle-/Konfigurationsfehler.
+Die Matrix scrollt nun wie der bestehende Workflowtest die ganze klickbare
+Sanierungszeile, prüft deren Sichtbarkeit zusätzlich und wählt für sämtliche
+ursprünglichen Layout-/Wortassertions den sichtbaren Textknoten. Keine Änderung
+an Sanierung, Produktivlayout oder FontScaleassertions, keine pauschalen Retries.
+Der abschließende vollständige Lauf bleibt Pflicht.
+
+Die FontScale-Matrix wartet außerdem vor Messung auf die tatsächliche Android-
+Ressourcen-Konfiguration nach dem asynchron propagierten settings-put. Die
+ursprüngliche strikte FontScaleassertion bleibt anschließend erhalten. Der
+fehlgeschlagene Lauf hatte für 1,5 zunächst noch 1,0 gelesen; es wird kein
+abweichender Wert akzeptiert und keine Konfiguration künstlich ersetzt.
+
+## Verifizierter Prüfstand und CI-Grenze
+
+[Run 38611341496](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38611341496)
+bestand lintDebug, testDebugUnitTest und assembleDebug. Die vollständige JVM-Suite
+enthält 1001 Fälle einschließlich der neuen N03-Projektions-/Composeprüfungen und
+Phase-9A-/9B-Regressionsfälle. assembleDebugAndroidTest bestand ebenfalls.
+Der vollständige Emulatorlauf führte 64 Fälle aus; N03 mit beiden Karten,
+Jahresdetails, Recreate und erhaltenen Daten bestand. 61 Fälle bestanden insgesamt;
+die drei oben dokumentierten FontScale-Matrixfehler verhinderten die Abnahme.
+
+[Run 38617207967](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38617207967)
+auf dem anschließend korrigierten Test-Head 0b5f19acdf2abd5f0c26215e5dcaad6157dd2c7c
+wurde beim unveränderten Zehn-Minuten-Limit von Run lint abgebrochen. Die
+Produktionskompilierung war abgeschlossen; zuletzt liefen die drei Lint-Analysen.
+Es wurde kein Lint-Befund ausgegeben. Das ist kein erfolgreicher Prüfabschluss;
+Unit-/Build-/Emulatorfolgejobs dieses Laufs wurden nicht ausgeführt.
+Keine Timeouts erhöhen oder Prüfungen deaktivieren. Maßgeblich für die finale
+Abnahme ist ein vollständig grüner aktueller PR-Lauf; kein Merge davor.
+
+Run 38637212486 bestand Verify mit allen 1001 JVM-Fällen, Lint und beiden APK-
+Builds. Android führte 64 Fälle aus: 63 bestanden, einschließlich N03 und der
+drei FontScale-Matrizen. Ein bestehender Phase-6B-Workflow scheiterte beim
+Schließen der Tastatur im Sanierungsdialog: Espresso wählte das absichtlich
+unfokussierte Activity-Fenster. Der gemeinsame Kalender-Testhelfer schließt die
+Tastatur nun ausdrücklich im Dialog-Root, wenn das Feld in einem Dialog liegt;
+außerhalb bleibt der bisherige Activity-Pfad. Produktcode, reale Datumsauswahl,
+Back-Navigation, Assertions und Zeitlimits bleiben unverändert. Der finale
+vollständige Lauf muss auch diesen Workflow bestehen.
+
+Run 38642983924 bestand Verify (Lint 6m1s, Unit-Suite 2m20s, Debug-APK 1m46s)
+und den Instrumentierungsbuild. Android scheiterte zuerst im bestehenden
+LoanDateComponentEmulatorTest; dessen input("Start", ...) nutzte noch den
+Activity-Root zum Tastaturschließen im Darlehensdialog. Danach fehlte vielen
+Folgefällen der Fensterfokus. Nach 43 abgeschlossenen Fällen/28 Fehlern wurde
+der Schritt am unveränderten 20-Minuten-Limit beendet; die restlichen 21 Fälle
+wurden nicht als bestanden gewertet. input und selectCalendarDate nutzen nun
+denselben privaten dialogbewussten Tastaturhelfer. Keine Darlehens-/Produkt-
+änderung, keine weggefangenen Ausnahmen, Wiederholungen oder schwächeren
+Assertions. Die vollständige aktuelle Abnahme bleibt offen.
+
+Die zuvor vorläufig genannte Suitezahl 996 wird durch die tatsächliche JUnit-XML-
+Auswertung korrigiert: Artefakt 11931861397 von Head f98168c5 enthält 168 eindeutige
+Suites, 1001 Testfälle, 0 failures, 0 errors und 0 skipped. N03: neun Projektions-
+fälle und ein Composefall. Der Android-Logcat bestätigt die erste Fehlerstelle
+input, EmulatorTestSupport.kt:235, aufgerufen in LoanDateComponentEmulatorTest.kt:46.
+Die endgültigen Zahlen des aktuellen Heads bleiben im PR/Abschlussbericht.

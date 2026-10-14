@@ -150,7 +150,7 @@ internal fun UnifiedPropertyUnitsScreen(
     }
     val totalExpected = yearRows.sumOf { it.expected }
     val totalActual = yearRows.sumOf { it.actual }
-    val totalMissing = (totalExpected - totalActual).coerceAtLeast(0.0)
+    val totalMissing = yearRows.sumOf { it.outstanding }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().testTag("property_units_overview"),
@@ -262,7 +262,7 @@ internal fun UnifiedPropertyUnitsScreen(
                             Icons.Default.Assessment,
                             CrimsonRed,
                             Color(0xFFFFF3F3),
-                            Modifier.fillMaxWidth()
+                            Modifier.fillMaxWidth().testTag("unit_annual_outstanding")
                         )
                     }
 

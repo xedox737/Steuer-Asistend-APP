@@ -16,6 +16,13 @@ import org.junit.runner.RunWith
 abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
     @Test fun fullScreenMatrixPreservesWordsButtonsAndBackNavigation() {
         assertTrue("CI-Gerätebreite nahe 393 dp", context.resources.configuration.screenWidthDp in 385..405)
+        // settings put completes before Android propagates the new resource configuration.
+        // Await the actual device configuration, then keep the original strict assertion.
+        ui.waitUntil(10_000) {
+            var actualScale = 0f
+            scenario.onActivity { actualScale = it.resources.configuration.fontScale }
+            kotlin.math.abs(actualScale - fontScale) < .01f
+        }
         scenario.onActivity { assertEquals(fontScale, it.resources.configuration.fontScale, .01f) }
         completeText("Immobilien. Finanzen. Steuern.")
         completeText("Schön, dass du da bist!")
@@ -36,9 +43,12 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
         ui.waitUntil(10_000) { model.renovationReview.value.measures.any { it.id == "font-bath" } }
         clickTab(AppScreen.PROPERTIES)
         ui.onNodeWithTag("property_card_${property.propertyId}").performScrollTo().performClick()
-        completeText("Sanierung & 15%-Prüfung", scroll = true)
+        val renovationEntry = ui.onNode(hasText("Sanierung & 15%-Prüfung") and hasClickAction())
+        // Scroll the complete clickable row, not a child text inside the oversized lazy item.
+        renovationEntry.performScrollTo().assertIsDisplayed().assertIsEnabled()
+        completeText("Sanierung & 15%-Prüfung")
         capture("phase6b-property-font-$fontScale")
-        ui.onNode(hasText("Sanierung & 15%-Prüfung") and hasClickAction()).performClick()
+        renovationEntry.performClick()
         ui.waitUntil(10_000) { ui.onAllNodesWithTag("renovation_overview").fetchSemanticsNodes().isNotEmpty() }
         completeText("Sanierung & 15%-Prüfung")
         completeText("Sanierungs- & 15%-Prüfung", scroll = true)
@@ -67,8 +77,12 @@ abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
     }
 
     private fun completeText(text: String, scroll: Boolean = false) {
-        val node = ui.onAllNodesWithText(text, useUnmergedTree = true).onFirst()
-        if (scroll) node.performScrollTo()
+        val matches = ui.onAllNodesWithText(text, useUnmergedTree = true)
+        if (scroll) matches.onFirst().performScrollTo()
+        // Navigation can retain an off-screen copy of the same label during composition.
+        // Validate the visible screen text with all original layout/word assertions.
+        ui.waitUntil(10_000) { matches.fetchSemanticsNodes().indices.any { matches[it].isDisplayed() } }
+        val node = matches[matches.fetchSemanticsNodes().indices.first { matches[it].isDisplayed() }]
         node.assertIsDisplayed()
         val results = mutableListOf<TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { assertTrue(it(results)) }
