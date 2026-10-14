@@ -666,7 +666,7 @@ object SupplementalDriveBackup {
         id = backupLong("id", 0L), name = optString("name", ""), startAddress = optString("startAddress", ""),
         destinationAddress = optString("destinationAddress", ""), stopsJson = optString("stopsJson", ""),
         routeMode = optString("routeMode", TripRouteMode.EINFACH.name), sameReturnRoute = optBoolean("sameReturnRoute", false),
-        distanceKm = backupDouble("distanceKm", 0.0), active = optBoolean("active", true),
+        distanceKm = NumericWriteBoundary.distance(backupDouble("distanceKm", 0.0)), active = optBoolean("active", true),
         routeSignature = optString("routeSignature", ""), sourceProvider = optString("sourceProvider", ""),
         createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")
     )

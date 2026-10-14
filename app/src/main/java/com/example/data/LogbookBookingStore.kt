@@ -38,6 +38,9 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             require(sourceReceipt.propertyId == propertyId) { "Beleg und Fahrt müssen derselben Immobilie zugeordnet sein." }
         }
         require(purpose.isNotBlank()) { "Fahrtzweck erforderlich." }
+        require(listOfNotNull(evidence.aiEstimatedKm, evidence.routedKm, evidence.manualKm,
+            evidence.gpsMeasuredKm, evidence.odometerStartKm, evidence.odometerEndKm, evidence.standardRouteKm)
+            .all { it.isFinite() && it >= 0.0 }) { "Bitte gültige Kilometerquellen eingeben." }
         java.time.LocalDate.parse(tripDate)
         require(propertyId.isNotBlank()) { "Immobilie erforderlich." }
         require(evidence.manuallyConfirmed) { "Route, Fahrtzweck und Kilometer müssen vor dem Einbuchen bestätigt werden." }

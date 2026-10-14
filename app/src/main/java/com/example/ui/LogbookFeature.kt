@@ -106,7 +106,8 @@ private val LogbookCoins = ImageVector.Builder("LogbookCoins", 24.dp, 24.dp, 24f
     }
 }.build()
 
-private fun Double.germanKm(): String = String.format(Locale.GERMANY, "%.1f km", this)
+private fun Double.germanKm(): String = if (isFinite() && this >= 0.0) String.format(Locale.GERMANY, "%.1f km", this)
+    else "Gespeicherte Strecke bitte korrigieren"
 private fun String.logbookDate(): String = DateFormatUtils.safeFormat(this)
 
 private fun manualTripReceipt() = Receipt(

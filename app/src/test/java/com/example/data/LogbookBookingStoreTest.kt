@@ -94,6 +94,13 @@ class LogbookBookingStoreTest {
         assertTrue(store.correct(id, "2026-10-14", "Besichtigung", 1e200, "Geprüft").isFailure)
         assertEquals(beforeTrip, db.logbookDao().getTrip(id))
         assertEquals(beforeReceipts, repository.getAllReceiptsIncludingDeletedList())
+        val nonfiniteCompanion = store.saveLogbookTrip(source().copy(id = 0), "Besichtigung", "A", "B",
+            listOf(TripStop("A", "Start", 0), TripStop("B", "Ziel", 1)), TripRouteMode.EINFACH, false,
+            DistanceEvidence(manualKm = 20.0, aiEstimatedKm = Double.NaN, manuallyConfirmed = true),
+            tripDate = "2026-10-14", propertyId = source().propertyId, bookingKey = "unsafe-companion")
+        assertTrue(nonfiniteCompanion.isFailure)
+        assertEquals(beforeTrip, db.logbookDao().getTrip(id))
+        assertEquals(beforeReceipts, repository.getAllReceiptsIncludingDeletedList())
     }
     @Test fun exportedExpensesCannotBeChangedOrCancelled() = runBlocking {
         repository.insert(source())

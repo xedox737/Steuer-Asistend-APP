@@ -67,9 +67,7 @@ internal object NumberFieldInput {
         }
         return Result(value)
     }
-    fun prefill(value: Double): String = if (value.isFinite())
-        GermanNumberInput.formatForInput(value, maxOf(2, value.toBigDecimal().scale()))
-        else LoanInputValidation.INVALID_STORED_TEXT
+    fun prefill(value: Double): String = LoanInputValidation.prefill(value)
 }
 
 internal object CalendarInput {

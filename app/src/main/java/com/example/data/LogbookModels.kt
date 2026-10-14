@@ -303,6 +303,10 @@ object LogbookDistancePolicy {
     private const val RELATIVE_TOLERANCE = 0.15
 
     fun decide(evidence: DistanceEvidence): DistanceDecision {
+        if (evidence.odometerStartKm != null && evidence.odometerEndKm != null && evidence.odometerEndKm < evidence.odometerStartKm) {
+            return DistanceDecision(null, null, TripPlausibilityStatus.PRUEFEN,
+                listOf("Der Endtachostand darf nicht vor dem Starttachostand liegen."), false)
+        }
         if ((evidence.manualKm != null && (!evidence.manualKm.isFinite() || evidence.manualKm <= 0.0)) ||
             listOfNotNull(evidence.odometerStartKm, evidence.odometerEndKm).any { !it.isFinite() || it < 0.0 }) {
             return DistanceDecision(null, null, TripPlausibilityStatus.PRUEFEN,

@@ -38,6 +38,9 @@ Ungültige Altwerte erhalten einen sichtbaren deutschen Korrekturtext.
   Eingabe blockiert auch bei vorhandener Route. Bestehende Quellenpriorität bleibt für
   valide Werte unverändert; direkte ungültige manuelle DistanceEvidence wird abgelehnt.
   saveStandardRoute akzeptiert ausschließlich endliche positive Kilometer.
+  Auch Legacy-Indexierung und Standardroute-Restore prüfen diesen Vertrag. Alle
+  gespeicherten numerischen DistanceEvidence-Quellen werden vor dem Booking geprüft;
+  der erzeugte Kostenbeleg muss in den bestehenden 9A-Centvertrag passen.
 - N02 NumericWriteBoundary prüft den tatsächlichen Float-Zielwert unmittelbar vor
   Persistenz. Endlicher Double mit Float-Infinity sowie Nicht-nullwert mit Float-Null
   werden blockiert. Keine erfundene fachliche Obergrenze. Betroffen: Anlageassistent,

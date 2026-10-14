@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.data.*
 import com.example.ui.*
+import com.example.ui.BankRentSuggestion
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking

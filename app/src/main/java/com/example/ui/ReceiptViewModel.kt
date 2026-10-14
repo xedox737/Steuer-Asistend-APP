@@ -5234,12 +5234,14 @@ data class AiSearchUiState(
                 ).signature == routeSignature
             }.getOrDefault(false)
         } ?: return null
-        database.logbookDao().upsertStandardRoute(legacy.copy(routeSignature = routeSignature))
+        if (legacy.distanceKm.isFinite() && legacy.distanceKm > 0.0) {
+            database.logbookDao().upsertStandardRoute(legacy.copy(routeSignature = routeSignature))
+        }
         return legacy.copy(routeSignature = routeSignature)
     }
 
     suspend fun saveStandardRoute(route: com.example.data.StandardRoute): Long {
-        require(route.distanceKm.isFinite() && route.distanceKm > 0.0) { "Bitte eine gültige positive Strecke eingeben." }
+        com.example.data.NumericWriteBoundary.distance(route.distanceKm)
         val existing = database.logbookDao().findStandardRoute(route.routeSignature)
         return database.logbookDao().upsertStandardRoute(
             if (existing == null) route else route.copy(id = existing.id, createdAt = existing.createdAt)

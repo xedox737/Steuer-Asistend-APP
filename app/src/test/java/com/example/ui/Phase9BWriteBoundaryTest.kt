@@ -74,6 +74,10 @@ class Phase9BWriteBoundaryTest {
         assertNull(db.logbookDao().findStandardRoute("9b"))
         vm.saveStandardRoute(StandardRoute(name = "9B", startAddress = "A", destinationAddress = "B", distanceKm = 20.0, routeSignature = "9b", createdAt = "2026-10-14", updatedAt = "2026-10-14"))
         assertEquals(20.0, db.logbookDao().findStandardRoute("9b")!!.distanceKm, 0.0)
+        val malformedRoute = JSONObject().put("schemaVersion", 15).put("standardRoutes", JSONArray().put(JSONObject()
+            .put("id", 999).put("name", "Alt").put("distanceKm", -12.5)))
+        assertTrue(runCatching { SupplementalDriveBackup.restorePayload(app, db, malformedRoute) }.isFailure)
+        assertEquals(20.0, db.logbookDao().findStandardRoute("9b")!!.distanceKm, 0.0)
     }
 
     @Test fun unitEditAndWizardRejectFloatOverflowBeforeAnyOtherFieldWrite() = runBlocking {

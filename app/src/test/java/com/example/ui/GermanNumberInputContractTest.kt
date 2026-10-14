@@ -41,6 +41,7 @@ class GermanNumberInputContractTest {
         assertEquals(20.0, LogbookDistancePolicy.decide(odo).taxDistanceKm!!, 0.0)
         assertNull(LogbookDistancePolicy.decide(DistanceEvidence(manualKm = Double.NaN, routedKm = 20.0)).taxDistanceKm)
         assertNull(LogbookDistancePolicy.decide(DistanceEvidence(manualKm = -12.5, routedKm = 20.0)).taxDistanceKm)
+        assertNull(LogbookDistancePolicy.decide(DistanceEvidence(odometerStartKm = 12365.0, odometerEndKm = 12345.0, routedKm = 20.0)).taxDistanceKm)
     }
 
     @Test fun targetTypeAndLoanBoundariesAgreeWithTextAdapters() {
@@ -59,5 +60,7 @@ class GermanNumberInputContractTest {
         assertTrue(runCatching { LoanInputValidation.validateWrite(Loan(darlehensbetrag = 1e200)) }.isFailure)
         assertTrue(runCatching { LoanInputValidation.validateWrite(Loan(startDatum = "2026-10-01", laufzeitBis = "2026-09-01")) }.isFailure)
         LoanInputValidation.validateWrite(Loan(darlehensbetrag = 100000.0, restschuld = 80000.0, sollzinsProzent = 3.125))
+        assertTrue(runCatching { validateBackupProperty(PropertyMetadata(gesamtKaufpreis = -0.001)) }.isFailure)
+        validateBackupProperty(PropertyMetadata(gesamtKaufpreis = 0.001))
     }
 }

@@ -2,6 +2,11 @@ package com.example.data
 
 /** Target-type checks at the persistence boundary; never repairs an existing value. */
 internal object NumericWriteBoundary {
+    fun distance(value: Double): Double {
+        require(value.isFinite() && value > 0.0) { "Bitte eine gültige positive Strecke eingeben." }
+        return value
+    }
+
     fun float(value: Double, nonNegative: Boolean = true): Float {
         require(value.isFinite() && (!nonNegative || value >= 0.0)) { "Bitte eine gültige, nicht negative Zahl eingeben." }
         return value.toFloat().also {
