@@ -2,6 +2,7 @@ package com.example.e2e
 
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -44,7 +45,8 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         var amount: Double? = null
         val suggestion = BankRentSuggestion("9b-tx", "9b-property", "9b-unit", "9b-tenant", "Mieter", "2026-10",
             98.0, 980.0, 882.0, 90, "HOCH", emptyList(), "MIETE", "NONE", 98.0)
-        show { PartialRentDialog(suggestion, {}, { amount = it }) }
+        val bankOpen = mutableStateOf(true)
+        show { if (bankOpen.value) PartialRentDialog(suggestion, { bankOpen.value = false }, { amount = it; bankOpen.value = false }) }
         input("Zuzuordnender Betrag €", "1.2.3,45", scroll = false)
         ui.onNodeWithText("Bestätigen").performClick()
         assertNull(amount)
@@ -53,9 +55,11 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         input("Zuzuordnender Betrag €", "98.0", scroll = false)
         ui.onNodeWithText("Bestätigen").performClick()
         assertEquals(98.0, amount!!, 0.0)
+        ui.onNode(isDialog()).assertDoesNotExist()
 
         var saved: ConfirmedAfaValues? = null
-        show { ConfirmedAfaValuesDialog(ConfirmedAfaValues("2026-10-01", 20000.0, 80000.0, "Testbericht"), {}, { saved = it }) }
+        val afaOpen = mutableStateOf(true)
+        show { if (afaOpen.value) ConfirmedAfaValuesDialog(ConfirmedAfaValues("2026-10-01", 20000.0, 80000.0, "Testbericht"), { afaOpen.value = false }, { saved = it; afaOpen.value = false }) }
         input("Bisherige AfA kumuliert (€)", "1.2.3,45")
         ui.onNodeWithText("Bestätigte Werte speichern").performClick()
         assertNull(saved)
@@ -64,6 +68,7 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         input("Bisherige AfA kumuliert (€)", "1.234,56")
         ui.onNodeWithText("Bestätigte Werte speichern").performClick()
         assertEquals(1234.56, saved!!.cumulativeAfa, 0.0)
+        ui.onNode(isDialog()).assertDoesNotExist()
     }
 
     @Test fun logbookRetainsInvalidMinusThenOdometerThousandsSaveAndReopenConsistently() {
@@ -103,7 +108,8 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
 
     @Test fun wizardAndDocumentRejectExtremeOrMalformedRawNumbersBeforeMutation() {
         var created = false
-        show { PropertyCreationWizard({}, { _, _, _ -> created = true }) }
+        val wizardOpen = mutableStateOf(true)
+        show { if (wizardOpen.value) PropertyCreationWizard({ wizardOpen.value = false }, { _, _, _ -> created = true; wizardOpen.value = false }) }
         input("Objektname", "9B Haus")
         input("Straße und Hausnummer", "Musterstraße 1")
         ui.onNodeWithTag("property_wizard_next").performClick()
@@ -121,6 +127,8 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         visibleError("Bitte für Einheit 1 eine gültige, nicht negative Wohnfläche eingeben.", scroll = true)
         ui.onNodeWithText("Immobilie anlegen · 4/5").assertIsDisplayed()
         capture("9b-wizard-float-error-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
+        ui.onNode(hasText("Abbrechen") and hasAnyAncestor(isDialog())).performClick()
+        ui.onNode(isDialog()).assertDoesNotExist()
 
         val property = seedProperty("9b-document", "Dokumenthaus")
         val doc = ManagedDocument("9b-raw-doc", property.propertyId, title = "9B Dokument", documentDate = "2026-10-14",
