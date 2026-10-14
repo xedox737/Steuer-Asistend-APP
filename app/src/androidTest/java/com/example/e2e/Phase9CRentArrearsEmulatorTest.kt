@@ -46,12 +46,12 @@ class Phase9CRentArrearsEmulatorTest : EmulatorTestSupport() {
         clickTab(AppScreen.PROPERTIES)
         fun propertyAmount() {
             ui.onNodeWithTag("property_card_$propertyId").performScrollTo().assertIsDisplayed()
-            ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("property_outstanding"))).assertIsDisplayed()
+            ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("property_outstanding")), useUnmergedTree = true).assertIsDisplayed()
         }
         fun annualAmount() {
             ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag("unit_annual_outstanding"))
-            ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding"))).assertIsDisplayed()
-            ui.onNode(hasText("0,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding"))).assertDoesNotExist()
+            ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding")), useUnmergedTree = true).assertIsDisplayed()
+            ui.onNode(hasText("0,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding")), useUnmergedTree = true).assertDoesNotExist()
         }
         propertyAmount(); capture("phase9c-property-open-980")
         scenario.recreate(); propertyAmount()
@@ -60,7 +60,7 @@ class Phase9CRentArrearsEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag("unit_annual_details"))
         ui.onNodeWithTag("unit_annual_details").performClick()
         ui.onNodeWithTag("rent_overview").performScrollToNode(hasTestTag("rent_metric_missing"))
-        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("rent_metric_missing"))).assertIsDisplayed()
+        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("rent_metric_missing")), useUnmergedTree = true).assertIsDisplayed()
         systemBack(); annualAmount()
         assertEquals(receipt, runBlocking(Dispatchers.IO) { db.receiptDao().getReceiptById(receipt.id) })
         units.forEachIndexed { i, unit -> assertEquals(listOf(periods[i]), TenantHistoryStore.load(context, propertyId, unit.unitId, unit.name)) }

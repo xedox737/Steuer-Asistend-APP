@@ -57,11 +57,11 @@ class Phase9CRentArrearsComposeTest {
         ui.waitUntil(10_000) { model.receipts.value.any { it.id == 991 } }
         ui.onNodeWithTag("nav_item_properties").performClick()
         ui.onNodeWithTag("property_card_${property.propertyId}").performScrollTo()
-        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("property_outstanding"))).assertIsDisplayed()
+        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("property_outstanding")), useUnmergedTree = true).assertIsDisplayed()
         ui.onNodeWithTag("property_card_${property.propertyId}").performClick()
         ui.onNode(hasText("Einheiten") and hasClickAction()).performScrollTo().performClick()
         ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag("unit_annual_outstanding"))
-        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding"))).assertIsDisplayed()
+        ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding")), useUnmergedTree = true).assertIsDisplayed()
         shell()
     }
 }
