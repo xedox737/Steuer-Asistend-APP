@@ -3127,13 +3127,22 @@ fun ReceiptPositionenEditor(
                             return@Button
                         }
                         val gesamtpreisVal = mengeVal * einzelpreisVal
+                        if (!gesamtpreisVal.isFinite()) {
+                            itemInputError = "Der eingegebene Wert ist zu groß."
+                            return@Button
+                        }
                         val newItem = com.example.data.ReceiptItem(
                             bezeichnung = newItemBezeichnung,
                             menge = mengeVal,
                             einzelpreis = einzelpreisVal,
                             gesamtpreis = gesamtpreisVal
                         )
-                        onPositionenChanged(positionen + newItem)
+                        val updatedItems = positionen + newItem
+                        if (com.example.data.ReceiptItemConverter.serialize(updatedItems).isFailure) {
+                            itemInputError = "Der eingegebene Wert ist zu groß."
+                            return@Button
+                        }
+                        onPositionenChanged(updatedItems)
                         newItemBezeichnung = ""
                         newItemMenge = "1,00"
                         newItemEinzelpreis = ""
@@ -3186,6 +3195,10 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
     var editMieter by remember(receipt) { mutableStateOf(receipt.mieter) }
     var editZahlungsart by remember(receipt) { mutableStateOf(receipt.zahlungsart) }
     var editPositionen by remember(receipt) { mutableStateOf(receipt.getPositionenList()) }
+    val storedPositionsReadable = remember(receipt) {
+        runCatching { com.example.data.ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson) }.isSuccess
+    }
+    var positionWriteError by remember(receipt) { mutableStateOf(if (storedPositionsReadable) null else com.example.data.ReceiptItemConverter.WRITE_ERROR) }
 
     var mainCategoryExpanded by remember { mutableStateOf(false) }
     var subCategoryExpanded by remember { mutableStateOf(false) }
@@ -3397,6 +3410,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
+                    positionWriteError?.let { Text(it, color = CrimsonRed) }
                     ReceiptPositionenEditor(
                         positionen = editPositionen,
                         onPositionenChanged = { editPositionen = it }
@@ -3421,6 +3435,14 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                             amountError = parsedBetrag == null
                             dateError = parsedDate == null
                             if (amountError || dateError) return@Button
+                            if (!storedPositionsReadable) {
+                                positionWriteError = com.example.data.ReceiptItemConverter.WRITE_ERROR
+                                return@Button
+                            }
+                            val positionsJson = com.example.data.ReceiptItemConverter.serialize(editPositionen).getOrElse {
+                                positionWriteError = com.example.data.ReceiptItemConverter.WRITE_ERROR
+                                return@Button
+                            }
                             val updatedReceipt = receipt.copy(
                                 aussteller = editAussteller,
                                 propertyId = editPropertyId,
@@ -3438,7 +3460,7 @@ internal fun ReceiptInlineEditor(receipt: Receipt, viewModel: ReceiptViewModel, 
                                 zahlungsart = editZahlungsart,
                                 zahlungsartQuelle = if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartQuelle else if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) "UNBEKANNT" else "MANUELL",
                                 zahlungsartConfidence = if (editZahlungsart.trim().equals("Unbekannt", ignoreCase = true) || editZahlungsart.isBlank()) 0.0 else if (editZahlungsart.trim().equals(receipt.zahlungsart.trim(), ignoreCase = true)) receipt.zahlungsartConfidence else 1.0,
-                                positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen)
+                                positionenJson = positionsJson
                             )
                             viewModel.updateReceipt(updatedReceipt, selectedUnitId = unitSelection.unitId)
                             onDone()
@@ -5263,6 +5285,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
     var editMieter by remember { mutableStateOf("") }
     var editZahlungsart by remember { mutableStateOf("Unbekannt") }
     var editPositionen by remember { mutableStateOf<List<com.example.data.ReceiptItem>>(emptyList()) }
+    var positionWriteError by remember { mutableStateOf<String?>(null) }
     var wohneinheitExpanded by remember { mutableStateOf(false) }
     var receiptAmountError by remember { mutableStateOf(false) }
     var receiptDateError by remember { mutableStateOf(false) }
@@ -6166,6 +6189,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
             )
 
             // Positionen Editor Section
+            positionWriteError?.let { Text(it, color = CrimsonRed) }
             ReceiptPositionenEditor(
                 positionen = editPositionen,
                 onPositionenChanged = { editPositionen = it }
@@ -6212,6 +6236,10 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                         receiptAmountError = amount == null
                         receiptDateError = date == null
                         if (receiptAmountError || receiptDateError) return@Button
+                        val positionsJson = com.example.data.ReceiptItemConverter.serialize(editPositionen).getOrElse {
+                            positionWriteError = com.example.data.ReceiptItemConverter.WRITE_ERROR
+                            return@Button
+                        }
                         viewModel.saveReceipt(
                             aussteller = editAussteller,
                             datum = editDatum,
@@ -6227,7 +6255,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             wohneinheit = editWohneinheit,
                             mieter = editMieter,
                             zahlungsart = editZahlungsart,
-                            positionenJson = com.example.data.ReceiptItemConverter.toJson(editPositionen),
+                            positionenJson = positionsJson,
                             propertyId = editPropertyId,
                             selectedUnitId = editUnitId
                         )

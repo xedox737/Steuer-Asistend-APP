@@ -7,6 +7,28 @@ import com.example.api.GoogleDriveClient
 
 /** Narrow seam for exercising the production ManagedDocument sync without a real Drive account. */
 interface ManagedDocumentDriveGateway {
+    // The existing Drive seam also covers receipt JSON contracts and restore reads.
+    suspend fun findJsonFile(accessToken: String, folderId: String, entityType: String): com.example.api.DriveFile? =
+        GoogleDriveClient.findFileByAppProperty(accessToken, folderId, entityType)
+
+    suspend fun downloadJson(accessToken: String, fileId: String): String =
+        GoogleDriveClient.downloadJson(accessToken, fileId)
+
+    suspend fun findReceiptJsonFile(accessToken: String, folderId: String, internalId: String): String? =
+        GoogleDriveClient.findMetadataFileByProperties(accessToken, folderId, internalId)?.id
+            ?: GoogleDriveClient.findFileByName(accessToken, folderId, "$internalId.json")
+
+    suspend fun writeReceiptJson(accessToken: String, fileId: String?, folderId: String,
+        filename: String, json: String, appProperties: Map<String, String>): DriveFileResult =
+        if (fileId != null) GoogleDriveClient.updateJson(accessToken, fileId, json)
+        else GoogleDriveClient.uploadJson(accessToken, folderId, filename, json, appProperties)
+
+    suspend fun tombstoneJsonFiles(accessToken: String, systemFolderId: String): List<String> {
+        val folder = GoogleDriveClient.getOrCreateFolder(accessToken, "deletions", systemFolderId) ?: return emptyList()
+        return GoogleDriveClient.searchFiles(accessToken, "'$folder' in parents and mimeType = 'application/json' and trashed = false")
+            .mapNotNull { runCatching { GoogleDriveClient.downloadJson(accessToken, it.id) }.getOrNull() }
+    }
+
     suspend fun getOrCreateFolder(
         accessToken: String,
         folderName: String,

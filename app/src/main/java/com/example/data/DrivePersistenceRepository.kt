@@ -297,29 +297,29 @@ class DrivePersistenceRepository(
     fun parsePropertyMetadata(jsonStr: String): PropertyMetadata {
         val json = JSONObject(jsonStr)
         return PropertyMetadata(
-            id = json.optInt("id", 1),
+            id = json.backupInt("id", 1),
             propertyId = json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
             name = json.optString("name", ""),
             adresse = json.optString("adresse", ""),
             wohnort = json.optString("wohnort", ""),
-            baujahr = json.optInt("baujahr", 1985),
-            wohnflaeche = json.optDouble("wohnflaeche", 0.0),
-            grundstuecksgroesse = json.optDouble("grundstuecksgroesse", 0.0),
+            baujahr = json.backupInt("baujahr", 1985),
+            wohnflaeche = json.backupDouble("wohnflaeche", 0.0),
+            grundstuecksgroesse = json.backupDouble("grundstuecksgroesse", 0.0),
             notariellesKaufdatum = json.optString("notariellesKaufdatum", ""),
             uebergangNutzenLasten = json.optString("uebergangNutzenLasten", ""),
             wohneinheiten = json.optString("wohneinheiten", ""),
-            gesamtKaufpreis = json.optDouble("gesamtKaufpreis", 0.0),
-            gebaeudewert = json.optDouble("gebaeudewert", 0.0),
-            grundUndBodenWert = if (json.has("grundUndBodenWert")) json.optDouble("grundUndBodenWert", 0.0) else (json.optDouble("gesamtKaufpreis", 0.0) - json.optDouble("gebaeudewert", 0.0)).coerceAtLeast(0.0),
+            gesamtKaufpreis = json.backupDouble("gesamtKaufpreis", 0.0),
+            gebaeudewert = json.backupDouble("gebaeudewert", 0.0),
+            grundUndBodenWert = if (json.has("grundUndBodenWert")) json.backupDouble("grundUndBodenWert", 0.0) else (json.backupDouble("gesamtKaufpreis", 0.0) - json.backupDouble("gebaeudewert", 0.0)).coerceAtLeast(0.0),
             kaufpreisAufteilungQuelle = json.optString("kaufpreisAufteilungQuelle", "ABGELEITET"),
             bildPfad = json.optString("bildPfad", ""), objektart = json.optString("objektart", "Mehrfamilienhaus"),
             status = json.optString("status", "Aktiv"), notizen = json.optString("notizen", ""),
-            afaShorterYears = json.optInt("afaShorterYears", 0),
+            afaShorterYears = json.backupInt("afaShorterYears", 0),
             afaShorterStartDate = json.optString("afaShorterStartDate", ""),
             afaShorterReason = json.optString("afaShorterReason", ""),
             afaShorterDocumentId = json.optString("afaShorterDocumentId", ""),
             afaShorterConfirmed = json.optBoolean("afaShorterConfirmed", false)
-        )
+        ).also(::validateBackupProperty)
     }
 
     fun List<WohneinheitStatus>.toJson(): String {
@@ -354,11 +354,14 @@ class DrivePersistenceRepository(
                     label = obj.optString("label", ""),
                     status = obj.optString("status", "Vermietet"),
                     mieter = obj.optString("mieter", ""),
-                    kaltmiete = obj.optDouble("kaltmiete", 0.0),
-                    wohnflaeche = obj.optDouble("wohnflaeche", 0.0),
+                    kaltmiete = obj.backupDouble("kaltmiete", 0.0),
+                    wohnflaeche = obj.backupDouble("wohnflaeche", 0.0),
                     mietvertragsstart = obj.optString("mietvertragsstart", ""),
                     unitId = obj.optString("unitId", StableDocumentIdentity.legacyUnitId(StableDocumentIdentity.LEGACY_PROPERTY_ID, obj.getString("name")))
-                )
+                ).also { unit ->
+                    require(com.example.ui.PropertyWizardInput.unitArea(com.example.ui.GermanNumberInput.formatForInput(unit.wohnflaeche)) != null) { "Gesicherte Einheitsfläche ist ungültig. Bitte prüfen." }
+                    require(unit.kaltmiete.isFinite() && unit.kaltmiete >= 0.0) { "Gesicherte Miete ist ungültig. Bitte prüfen." }
+                }
             )
         }
         return list
@@ -730,20 +733,22 @@ class DrivePersistenceRepository(
         try {
             DiagnosticLog.d(TAG, "Restoring Stammdaten from Google Drive...")
 
+            val metaFilePreflight = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "propertyMetadata")
+            val metadataPreflight = metaFilePreflight?.let { parsePropertyMetadata(GoogleDriveClient.downloadJson(accessToken, it.id)) }
+            val unitsFilePreflight = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "units")
+            val unitsPreflight = unitsFilePreflight?.let { parseWohneinheiten(GoogleDriveClient.downloadJson(accessToken, it.id)) }
             // 1. PropertyMetadata
-            val metaFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "propertyMetadata")
+            val metaFile = metaFilePreflight
             if (metaFile != null) {
-                val json = GoogleDriveClient.downloadJson(accessToken, metaFile.id)
-                val metadata = parsePropertyMetadata(json)
+                val metadata = requireNotNull(metadataPreflight)
                 restorePropertyMetadata(metadata)
                 DiagnosticLog.d(TAG, "Restored PropertyMetadata successfully.")
             }
 
             // 2. Wohneinheiten
-            val unitsFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "units")
+            val unitsFile = unitsFilePreflight
             if (unitsFile != null) {
-                val json = GoogleDriveClient.downloadJson(accessToken, unitsFile.id)
-                val units = parseWohneinheiten(json)
+                val units = requireNotNull(unitsPreflight)
                 saveWohneinheitenToPrefs(units)
                 DiagnosticLog.d(TAG, "Restored Wohneinheiten successfully.")
             }
@@ -777,7 +782,7 @@ class DrivePersistenceRepository(
 
     // --- Core Drive Persistence Models (Step 3) ---
 
-    private fun Double.toCent(): Long = Math.round(this * 100.0)
+    private fun Double.toCent(): Long = ReceiptMoney.toCent(this)
     private fun Long.toEuro(): Double = this.toDouble() / 100.0
 
     fun List<ReceiptItem>.toPersistedItems(): List<PersistedReceiptItem> {
@@ -807,6 +812,14 @@ class DrivePersistenceRepository(
             put("schemaVersion", schemaVersion)
             put("revision", revision)
             put("internalId", internalId)
+            put("receiptId", receiptId ?: JSONObject.NULL)
+            put("unitId", unitId); put("exportlaufId", exportlaufId)
+            put("kontoNr", kontoNr ?: JSONObject.NULL)
+            put("isEigenleistungSanierung", isEigenleistungSanierung)
+            put("uhrzeit", uhrzeit); put("mieter", mieter)
+            put("deletionStatus", deletionStatus)
+            put("deletedAt", deletedAt ?: JSONObject.NULL); put("deletedBy", deletedBy ?: JSONObject.NULL)
+            put("deletionId", deletionId ?: JSONObject.NULL); put("deletionReason", deletionReason ?: JSONObject.NULL)
             put("displayId", displayId)
             
             put("driveFileId", driveFileId)
@@ -970,9 +983,16 @@ class DrivePersistenceRepository(
 
     fun parsePersistedReceipt(jsonStr: String): PersistedReceipt {
         val json = JSONObject(jsonStr)
+        val receiptSchema = json.backupInt("schemaVersion", 1)
+        require(receiptSchema in 1..2) { "Diese Belegsicherung benötigt eine neuere App-Version." }
+        if (receiptSchema >= 2) {
+            listOf("receiptId", "propertyId", "unitId", "exportlaufId", "kontoNr", "isEigenleistungSanierung", "uhrzeit", "mieter")
+                .forEach { require(json.has(it) && !json.isNull(it)) { "Belegsicherung ist unvollständig. Bitte prüfen." } }
+        }
+
         
         val docsList = mutableListOf<ReceiptDocumentReference>()
-        val docsArr = json.optJSONArray("documents") ?: JSONArray()
+        val docsArr = if (json.has("documents")) json.getJSONArray("documents") else JSONArray()
         for (i in 0 until docsArr.length()) {
             val d = docsArr.getJSONObject(i)
             docsList.add(
@@ -991,16 +1011,16 @@ class DrivePersistenceRepository(
         }
         
         val posList = mutableListOf<PersistedReceiptItem>()
-        val posArr = json.optJSONArray("positionen") ?: JSONArray()
+        val posArr = if (json.has("positionen")) json.getJSONArray("positionen") else JSONArray()
         for (i in 0 until posArr.length()) {
             val p = posArr.getJSONObject(i)
             posList.add(
                 PersistedReceiptItem(
                     id = p.getString("id"),
                     bezeichnung = p.getString("bezeichnung"),
-                    menge = p.optDouble("menge", 1.0),
-                    einzelpreisCent = p.getLong("einzelpreisCent"),
-                    gesamtpreisCent = p.getLong("gesamtpreisCent"),
+                    menge = p.backupDouble("menge", 1.0),
+                    einzelpreisCent = p.backupLong("einzelpreisCent"),
+                    gesamtpreisCent = p.backupLong("gesamtpreisCent"),
                     hauptkategorie = p.getString("hauptkategorie"),
                     unterkategorie = p.getString("unterkategorie"),
                     wohneinheit = p.optString("wohneinheit", ""),
@@ -1008,8 +1028,8 @@ class DrivePersistenceRepository(
                     konto = p.getString("konto"),
                     gegenkonto = p.optString("gegenkonto", ""),
                     buSchluessel = p.optString("buSchluessel", ""),
-                    steuersatz = p.optDouble("steuersatz", 19.0),
-                    privatanteilProzent = p.optDouble("privatanteilProzent", 0.0),
+                    steuersatz = p.backupDouble("steuersatz", 19.0),
+                    privatanteilProzent = p.backupDouble("privatanteilProzent", 0.0),
                     zuordnungsstatus = p.optString("zuordnungsstatus", "ZUGEORDNET")
                 )
             )
@@ -1078,12 +1098,24 @@ class DrivePersistenceRepository(
         } else null
         
         return PersistedReceipt(
-            schemaVersion = json.optInt("schemaVersion", 1),
+            schemaVersion = receiptSchema,
+            receiptId = if (!json.has("receiptId") || json.isNull("receiptId")) null else json.backupInt("receiptId").also { require(it > 0) },
+            unitId = if (json.has("unitId")) json.getString("unitId") else "",
+            exportlaufId = if (json.has("exportlaufId")) json.getString("exportlaufId") else "",
+            kontoNr = if (!json.has("kontoNr") || json.isNull("kontoNr")) null else json.getString("kontoNr"),
+            isEigenleistungSanierung = if (json.has("isEigenleistungSanierung")) json.getBoolean("isEigenleistungSanierung") else false,
+            uhrzeit = if (json.has("uhrzeit")) json.getString("uhrzeit") else "",
+            mieter = if (json.has("mieter")) json.getString("mieter") else "",
+            deletionStatus = json.optString("deletionStatus", "ACTIVE"),
+            deletedAt = if (!json.has("deletedAt") || json.isNull("deletedAt")) null else json.getString("deletedAt"),
+            deletedBy = if (!json.has("deletedBy") || json.isNull("deletedBy")) null else json.getString("deletedBy"),
+            deletionId = if (!json.has("deletionId") || json.isNull("deletionId")) null else json.getString("deletionId"),
+            deletionReason = if (!json.has("deletionReason") || json.isNull("deletionReason")) null else json.getString("deletionReason"),
             revision = json.optLong("revision", 1L),
             internalId = json.getString("internalId"),
             displayId = if (json.isNull("displayId")) null else json.getString("displayId"),
             documents = docsList,
-            originalDocuments = ReceiptOriginalChain.parseMetadata(json.optJSONArray("originalDocuments") ?: JSONArray(),
+            originalDocuments = ReceiptOriginalChain.parseMetadata(if (json.has("originalDocuments")) json.getJSONArray("originalDocuments") else JSONArray(),
                 json.getString("internalId"), json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID)),
             metadataFileId = json.optString("metadataFileId", ""),
             driveFileId = json.optString("driveFileId", ""),
@@ -1097,14 +1129,14 @@ class DrivePersistenceRepository(
             leistungsdatum = if (json.isNull("leistungsdatum")) null else json.getString("leistungsdatum"),
             leistungszeitraumVon = if (json.isNull("leistungszeitraumVon")) null else json.getString("leistungszeitraumVon"),
             leistungszeitraumBis = if (json.isNull("leistungszeitraumBis")) null else json.getString("leistungszeitraumBis"),
-            nettobetragCent = if (json.isNull("nettobetragCent") || !json.has("nettobetragCent")) null else json.getLong("nettobetragCent"),
-            steuerbetragCent = if (json.isNull("steuerbetragCent") || !json.has("steuerbetragCent")) null else json.getLong("steuerbetragCent"),
-            bruttobetragCent = if (json.isNull("bruttobetragCent") || !json.has("bruttobetragCent")) null else json.getLong("bruttobetragCent"),
+            nettobetragCent = if (json.isNull("nettobetragCent") || !json.has("nettobetragCent")) null else json.backupLong("nettobetragCent"),
+            steuerbetragCent = if (json.isNull("steuerbetragCent") || !json.has("steuerbetragCent")) null else json.backupLong("steuerbetragCent"),
+            bruttobetragCent = if (json.isNull("bruttobetragCent") || !json.has("bruttobetragCent")) null else json.backupLong("bruttobetragCent"),
             waehrung = json.optString("waehrung", "EUR"),
             hauptkategorie = if (json.isNull("hauptkategorie")) null else json.getString("hauptkategorie"),
             unterkategorie = if (json.isNull("unterkategorie")) null else json.getString("unterkategorie"),
             wohneinheit = if (json.isNull("wohneinheit")) null else json.getString("wohneinheit"),
-            propertyId = json.optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
+            propertyId = (if (json.has("propertyId")) json.getString("propertyId") else StableDocumentIdentity.LEGACY_PROPERTY_ID).also { require(it.isNotBlank()) },
             massnahme = if (json.isNull("massnahme")) null else json.getString("massnahme"),
             positionen = posList,
             allocations = allocationsList,
@@ -1148,19 +1180,23 @@ class DrivePersistenceRepository(
         val mainDoc = documents.find { it.role == "MAIN_RECEIPT" }
         
         return Receipt(
+            id = receiptId ?: 0,
+            unitId = unitId,
+            deletionStatus = deletionStatus, deletedAt = deletedAt, deletedBy = deletedBy,
+            deletionId = deletionId, deletionReason = deletionReason,
             aussteller = aussteller ?: "",
             datum = datum ?: "",
-            uhrzeit = "",
+            uhrzeit = uhrzeit,
             bruttobetrag = (bruttobetragCent ?: 0L).toEuro(),
             hauptkategorie = hauptkategorie ?: "",
             unterkategorie = unterkategorie ?: "",
-            kontoNr = positionen.firstOrNull()?.konto ?: "",
+            kontoNr = kontoNr ?: positionen.firstOrNull()?.konto.orEmpty(),
             beschreibung = beschreibung ?: "",
-            isEigenleistungSanierung = false,
+            isEigenleistungSanierung = isEigenleistungSanierung,
             imageUrl = mainDoc?.filename ?: "",
             wohneinheit = wohneinheit ?: "",
             propertyId = propertyId,
-            mieter = "",
+            mieter = mieter,
             zahlungsart = zahlungsart,
             zahlungsartQuelle = zahlungsartQuelle,
             zahlungsartConfidence = zahlungsartConfidence,
@@ -1171,15 +1207,15 @@ class DrivePersistenceRepository(
             freigabestatus = freigabestatus ?: "OFFEN",
             exportStatus = exportstatus ?: "EXPORTBEREIT",
             pruefstatus = pruefstatus ?: "GEPRUEFT",
-            exportlaufId = "",
+            exportlaufId = exportlaufId,
             
             internalId = internalId,
             displayId = displayId,
             driveFileId = mainDoc?.driveFileId ?: driveFileId.takeIf(String::isNotBlank),
             driveFolderId = mainDoc?.driveFolderId ?: driveFolderId,
             driveMetadataFileId = metadataFileId,
-            storedFilename = mainDoc?.filename,
-            originalMimeType = mainDoc?.mimeType,
+            storedFilename = mainDoc?.filename ?: filename.takeIf(String::isNotBlank),
+            originalMimeType = mainDoc?.mimeType ?: mimeType.takeIf(String::isNotBlank),
             fileSizeBytes = mainDoc?.sizeBytes,
             syncStatus = "SYNCED",
             syncError = null,
@@ -1871,18 +1907,26 @@ class DrivePersistenceRepository(
             val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
 
             val persistedReceipt = PersistedReceipt(
-                schemaVersion = 1,
+                schemaVersion = 2,
+                receiptId = currentReceipt.id,
+                unitId = currentReceipt.unitId, exportlaufId = currentReceipt.exportlaufId,
+                kontoNr = currentReceipt.kontoNr, isEigenleistungSanierung = currentReceipt.isEigenleistungSanierung,
+                uhrzeit = currentReceipt.uhrzeit, mieter = currentReceipt.mieter,
+                deletionStatus = currentReceipt.deletionStatus, deletedAt = currentReceipt.deletedAt,
+                deletedBy = currentReceipt.deletedBy, deletionId = currentReceipt.deletionId,
+                deletionReason = currentReceipt.deletionReason,
+                beschreibung = currentReceipt.beschreibung,
                 revision = (currentReceipt.driveRevision ?: 0L) + 1L,
                 internalId = currentReceipt.internalId,
                 displayId = currentReceipt.displayId,
                 documents = allDocs,
+                originalDocuments = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == currentReceipt.internalId },
                 aussteller = currentReceipt.aussteller,
                 rechnungsnummer = "",
-                beschreibung = currentReceipt.beschreibung,
                 datum = currentReceipt.datum,
-                nettobetragCent = (currentReceipt.bruttobetrag * 100.0).toLong() - ((currentReceipt.bruttobetrag * 100.0) * 0.19).toLong(),
-                steuerbetragCent = ((currentReceipt.bruttobetrag * 100.0) * 0.19).toLong(),
-                bruttobetragCent = (currentReceipt.bruttobetrag * 100.0).toLong(),
+                nettobetragCent = currentReceipt.bruttobetrag.toCent() - (currentReceipt.bruttobetrag * 0.19).toCent(),
+                steuerbetragCent = (currentReceipt.bruttobetrag * 0.19).toCent(),
+                bruttobetragCent = currentReceipt.bruttobetrag.toCent(),
                 hauptkategorie = currentReceipt.hauptkategorie,
                 unterkategorie = currentReceipt.unterkategorie,
                 wohneinheit = currentReceipt.wohneinheit,
@@ -2278,57 +2322,24 @@ class DrivePersistenceRepository(
         }
     }
 
-    suspend fun getAllTombstonesFromDrive(
-        accessToken: String,
-        config: DriveAppConfig
-    ): Map<String, ReceiptTombstone> {
+    suspend fun getAllTombstonesFromDrive(accessToken: String, config: DriveAppConfig): Map<String, ReceiptTombstone> {
         val tombstones = mutableMapOf<String, ReceiptTombstone>()
         try {
-            val deletionsFolderId = getOrCreateDeletionsFolder(accessToken, config) ?: return tombstones
-            val query = "'$deletionsFolderId' in parents and mimeType = 'application/json' and trashed = false"
-            val encodedQ = java.net.URLEncoder.encode(query, "UTF-8")
-            val searchUrl = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
-
-            val client = okhttp3.OkHttpClient()
-            val request = okhttp3.Request.Builder()
-                .url(searchUrl)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = JSONObject(body)
-                    val files = json.optJSONArray("files") ?: JSONArray()
-                    for (i in 0 until files.length()) {
-                        val fileObj = files.getJSONObject(i)
-                        val fileId = fileObj.getString("id")
-                        try {
-                            val tombstoneJsonStr = GoogleDriveClient.downloadJson(accessToken, fileId)
-                            val tObj = JSONObject(tombstoneJsonStr)
-                            val tombstone = ReceiptTombstone(
-                                internalId = tObj.getString("internalId"),
-                                displayId = tObj.optString("displayId", ""),
-                                deletedAt = tObj.optString("deletedAt", ""),
-                                deletedBy = tObj.optString("deletedBy", "LocalUser"),
-                                deviceId = if (tObj.isNull("deviceId")) null else tObj.optString("deviceId"),
-                                deletionId = tObj.optString("deletionId", ""),
-                                previousMainDriveFileId = tObj.optString("previousMainDriveFileId", ""),
-                                previousMetadataFileId = tObj.optString("previousMetadataFileId", ""),
-                                deletionReason = if (tObj.isNull("deletionReason")) null else tObj.optString("deletionReason"),
-                                schemaVersion = tObj.optInt("schemaVersion", 1),
-                                status = tObj.optString("status", "DELETED")
-                            )
-                            tombstones[tombstone.internalId] = tombstone
-                        } catch (e: Exception) {
-                            DiagnosticLog.w(TAG, "Error downloading/parsing tombstone file")
-                        }
-                    }
-                }
+            managedDocumentDriveGateway.tombstoneJsonFiles(accessToken, config.systemFolderId).forEach { raw ->
+                runCatching {
+                    val o = JSONObject(raw)
+                    val tombstone = ReceiptTombstone(
+                        internalId = o.getString("internalId"), displayId = o.optString("displayId", ""),
+                        deletedAt = o.optString("deletedAt", ""), deletedBy = o.optString("deletedBy", "LocalUser"),
+                        deviceId = if (o.isNull("deviceId")) null else o.optString("deviceId"),
+                        deletionId = o.optString("deletionId", ""), previousMainDriveFileId = o.optString("previousMainDriveFileId", ""),
+                        previousMetadataFileId = o.optString("previousMetadataFileId", ""),
+                        deletionReason = if (o.isNull("deletionReason")) null else o.optString("deletionReason"),
+                        schemaVersion = o.optInt("schemaVersion", 1), status = o.optString("status", "DELETED"))
+                    tombstones[tombstone.internalId] = tombstone
+                }.onFailure { DiagnosticLog.w(TAG, "Error downloading/parsing tombstone file") }
             }
-        } catch (e: Exception) {
-            DiagnosticLog.e(TAG, "Error fetching tombstones from Drive")
-        }
+        } catch (e: Exception) { DiagnosticLog.w(TAG, "Error reading tombstones") }
         return tombstones
     }
 
@@ -2391,7 +2402,7 @@ class DrivePersistenceRepository(
                 aussteller = receipt.aussteller,
                 rechnungsnummer = "",
                 datum = receipt.datum,
-                bruttobetragCent = (receipt.bruttobetrag * 100).toLong(),
+                bruttobetragCent = receipt.bruttobetrag.toCent(),
                 hauptkategorie = receipt.hauptkategorie,
                 unterkategorie = receipt.unterkategorie,
                 wohneinheit = receipt.wohneinheit,
@@ -2494,7 +2505,7 @@ class DrivePersistenceRepository(
                     aussteller = receipt.aussteller,
                     rechnungsnummer = "",
                     datum = receipt.datum,
-                    bruttobetragCent = (receipt.bruttobetrag * 100).toLong(),
+                    bruttobetragCent = receipt.bruttobetrag.toCent(),
                     hauptkategorie = receipt.hauptkategorie,
                     unterkategorie = receipt.unterkategorie,
                     wohneinheit = receipt.wohneinheit,
@@ -2608,32 +2619,32 @@ class DrivePersistenceRepository(
         }
 
         var propertyMetadata: PropertyMetadata? = null
-        val metaFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "propertyMetadata")
+        val metaFile = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "propertyMetadata")
         if (metaFile != null) {
             try {
-                val json = GoogleDriveClient.downloadJson(accessToken, metaFile.id)
+                val json = managedDocumentDriveGateway.downloadJson(accessToken, metaFile.id)
                 propertyMetadata = parsePropertyMetadata(json)
             } catch (e: Exception) {
-                warnings.add(RestoreWarning("PROPERTY_META_READ_ERROR", "property-metadata.json unlesbar: ${e.message}"))
+                errors.add(RestoreError("PROPERTY_META_READ_ERROR", "Gesicherte Immobiliendaten sind beschädigt. Bitte prüfen.", isBlocking = true))
             }
         }
 
         var units = emptyList<WohneinheitStatus>()
-        val unitsFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "units")
+        val unitsFile = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "units")
         if (unitsFile != null) {
             try {
-                val json = GoogleDriveClient.downloadJson(accessToken, unitsFile.id)
+                val json = managedDocumentDriveGateway.downloadJson(accessToken, unitsFile.id)
                 units = parseWohneinheiten(json)
             } catch (e: Exception) {
-                warnings.add(RestoreWarning("UNITS_READ_ERROR", "wohneinheiten.json unlesbar: ${e.message}"))
+                errors.add(RestoreError("UNITS_READ_ERROR", "Gesicherte Einheitsdaten sind beschädigt. Bitte prüfen.", isBlocking = true))
             }
         }
 
         var datevProfiles = emptyList<DatevProfile>()
-        val datevFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "datevProfiles")
+        val datevFile = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "datevProfiles")
         if (datevFile != null) {
             try {
-                val json = GoogleDriveClient.downloadJson(accessToken, datevFile.id)
+                val json = managedDocumentDriveGateway.downloadJson(accessToken, datevFile.id)
                 val profile = deserializeDatevProfile(json)
                 if (profile != null) datevProfiles = listOf(profile)
             } catch (e: Exception) {
@@ -2642,10 +2653,10 @@ class DrivePersistenceRepository(
         }
 
         var aiLearnedRules = emptyList<LearnedVendorRule>()
-        val rulesFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "aiLearnedRules")
+        val rulesFile = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "aiLearnedRules")
         if (rulesFile != null) {
             try {
-                val json = GoogleDriveClient.downloadJson(accessToken, rulesFile.id)
+                val json = managedDocumentDriveGateway.downloadJson(accessToken, rulesFile.id)
                 aiLearnedRules = parseLearnedRules(json)
             } catch (e: Exception) {
                 warnings.add(RestoreWarning("AI_RULES_READ_ERROR", "aiLearnedRules unlesbar: ${e.message}"))
@@ -2653,10 +2664,10 @@ class DrivePersistenceRepository(
         }
 
         val receipts = mutableListOf<PersistedReceipt>()
-        val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex")
+        val indexFile = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "receiptIndex")
         if (indexFile != null) {
             try {
-                val jsonStr = GoogleDriveClient.downloadJson(accessToken, indexFile.id)
+                val jsonStr = managedDocumentDriveGateway.downloadJson(accessToken, indexFile.id)
                 val root = JSONObject(jsonStr)
                 val array = root.optJSONArray("entries") ?: JSONArray()
                 var indexEntries = mutableListOf<ReceiptIndexEntry>()
@@ -2716,10 +2727,15 @@ class DrivePersistenceRepository(
                     }
 
                     try {
-                        val metaJson = GoogleDriveClient.downloadJson(accessToken, entry.metadataFileId)
+                        val metaJson = managedDocumentDriveGateway.downloadJson(accessToken, entry.metadataFileId)
                         val persisted = parsePersistedReceipt(metaJson)
 
-                        if ((persisted.bruttobetragCent ?: -1L) < 0L) {
+                        val candidate = persisted.toLocalReceipt(entry.metadataFileId)
+                        val amountValid = persisted.bruttobetragCent != null &&
+                            com.example.ui.ReceiptInputValidation.amount(
+                                com.example.ui.GermanNumberInput.formatForInput(candidate.bruttobetrag)) != null &&
+                            (candidate.bruttobetrag >= 0.0 || com.example.util.DatevMappingService.isCreditNote(candidate))
+                        if (!amountValid) {
                             errors.add(RestoreError("INVALID_AMOUNT", "Ungültiger Bruttobetrag (${persisted.bruttobetragCent}) in Beleg '${persisted.displayId ?: persisted.internalId}'", targetId = persisted.internalId, isBlocking = true))
                         }
 
@@ -2734,7 +2750,7 @@ class DrivePersistenceRepository(
                             )
                         )
                     } catch (e: Exception) {
-                        errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Metadaten-JSON für Beleg '${entry.displayId ?: entry.internalId}' nicht lesbar: ${e.message}", targetId = entry.internalId, isBlocking = true))
+                        errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Die gesicherten Daten für Beleg '${entry.displayId ?: entry.internalId}' sind unvollständig oder ungültig. Bitte prüfen.", targetId = entry.internalId, isBlocking = true))
                     }
                 }
 
@@ -2810,6 +2826,15 @@ class DrivePersistenceRepository(
             )
         }
 
+        val sourceIds = snapshot.receipts.mapNotNull { it.receiptId }
+        if (sourceIds.distinct().size != sourceIds.size || (mode == RestoreMode.MERGE && snapshot.receipts.any { incoming ->
+            val occupied = incoming.receiptId?.let { localRepository.getReceiptById(it) }
+            occupied != null && occupied.internalId != incoming.internalId &&
+                !(incoming.driveFileId.isNotBlank() && occupied.driveFileId == incoming.driveFileId)
+        })) {
+            return DriveRestoreReport(timestamp = nowStr, errorCount = 1,
+                errors = listOf("Gesicherte Beleg-IDs stehen im Konflikt mit vorhandenen Daten. Bitte prüfen; es wurden keine Daten übernommen."), isSuccess = false)
+        }
         journal = journal.copy(phase = FullRestorePhase.CORE_IMPORT.name)
         saveRestoreJournal(journal)
 
@@ -2841,7 +2866,7 @@ class DrivePersistenceRepository(
                         lastSyncedAt = nowStr,
                         isArchivedToDrive = true
                     )
-                    val resolution = localRepository.upsertRestoredReceipt(restoredReceipt, mode)
+                    val resolution = localRepository.upsertRestoredReceipt(restoredReceipt, mode, preserveIncomingId = persisted.receiptId != null)
                     receiptsRestored++
 
                     if (!restoredReceipt.driveFileId.isNullOrBlank()) {
@@ -3538,7 +3563,15 @@ class DrivePersistenceRepository(
                 val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
                 val originals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == currentReceipt.internalId }
                 val persistedReceipt = PersistedReceipt(
-                    schemaVersion = 1,
+                    schemaVersion = 2,
+                    receiptId = currentReceipt.id,
+                    unitId = currentReceipt.unitId, exportlaufId = currentReceipt.exportlaufId,
+                    kontoNr = currentReceipt.kontoNr, isEigenleistungSanierung = currentReceipt.isEigenleistungSanierung,
+                    uhrzeit = currentReceipt.uhrzeit, mieter = currentReceipt.mieter,
+                    deletionStatus = currentReceipt.deletionStatus, deletedAt = currentReceipt.deletedAt,
+                    deletedBy = currentReceipt.deletedBy, deletionId = currentReceipt.deletionId,
+                    deletionReason = currentReceipt.deletionReason,
+                    beschreibung = currentReceipt.beschreibung,
                     revision = (currentReceipt.driveRevision ?: 0L) + 1L,
                     internalId = currentReceipt.internalId,
                     displayId = currentReceipt.displayId,
@@ -3551,9 +3584,9 @@ class DrivePersistenceRepository(
                     aussteller = currentReceipt.aussteller,
                     rechnungsnummer = "",
                     datum = currentReceipt.datum,
-                    nettobetragCent = (currentReceipt.bruttobetrag * 100.0).toLong() - ((currentReceipt.bruttobetrag * 100.0) * 0.19).toLong(),
-                    steuerbetragCent = ((currentReceipt.bruttobetrag * 100.0) * 0.19).toLong(),
-                    bruttobetragCent = (currentReceipt.bruttobetrag * 100.0).toLong(),
+                    nettobetragCent = currentReceipt.bruttobetrag.toCent() - (currentReceipt.bruttobetrag * 0.19).toCent(),
+                    steuerbetragCent = (currentReceipt.bruttobetrag * 0.19).toCent(),
+                    bruttobetragCent = currentReceipt.bruttobetrag.toCent(),
                     hauptkategorie = currentReceipt.hauptkategorie,
                     unterkategorie = currentReceipt.unterkategorie,
                     wohneinheit = currentReceipt.wohneinheit,
@@ -3577,42 +3610,12 @@ class DrivePersistenceRepository(
 
                 // 3. Search on Drive if ID is not known locally
                 if (driveMetadataFileId.isNullOrEmpty()) {
-                    // a) Search by properties: receiptInternalId + entityType=receiptMetadata
-                    val foundFileByProps = GoogleDriveClient.findMetadataFileByProperties(
-                        accessToken, config.receiptsFolderId, currentReceipt.internalId
-                    )
-                    if (foundFileByProps != null) {
-                        driveMetadataFileId = foundFileByProps.id
-                        DiagnosticLog.d(TAG, "Metadata found on Drive via properties query")
-                    } else {
-                        // b) Fallback: search by exact filename: {internalId}.json
-                        val foundFileIdByName = GoogleDriveClient.findFileByName(
-                            accessToken, config.receiptsFolderId, metadataFilename
-                        )
-                        if (foundFileIdByName != null) {
-                            driveMetadataFileId = foundFileIdByName
-                            DiagnosticLog.d(TAG, "Metadata found on Drive via filename fallback")
-                        }
-                    }
+                    driveMetadataFileId = managedDocumentDriveGateway.findReceiptJsonFile(accessToken, config.receiptsFolderId, currentReceipt.internalId)
                 }
-
-                // 4. Update existing or create a new file
-                val uploadRes = if (!driveMetadataFileId.isNullOrEmpty()) {
-                    // Update existing
-                    GoogleDriveClient.updateJson(accessToken, driveMetadataFileId, persistedReceipt.toJson())
-                } else {
-                    // Create new
-                    val appProperties = mapOf(
-                        "appName" to "ImmobilienBelegApp",
-                        "entityType" to "receiptMetadata",
-                        "receiptInternalId" to persistedReceipt.internalId,
-                        "displayId" to (persistedReceipt.displayId ?: ""),
-                        "schemaVersion" to "1"
-                    )
-                    GoogleDriveClient.uploadJson(
-                        accessToken, config.receiptsFolderId, metadataFilename, persistedReceipt.toJson(), appProperties
-                    )
-                }
+                val uploadRes = managedDocumentDriveGateway.writeReceiptJson(
+                    accessToken, driveMetadataFileId, config.receiptsFolderId, metadataFilename,
+                    persistedReceipt.toJson(), mapOf("appName" to "ImmobilienBelegApp", "entityType" to "receiptMetadata",
+                        "receiptInternalId" to persistedReceipt.internalId, "displayId" to persistedReceipt.displayId.orEmpty(), "schemaVersion" to "2"))
 
                 if (uploadRes.success) {
                     val finalFileId = uploadRes.fileId ?: driveMetadataFileId
@@ -3774,7 +3777,7 @@ class DrivePersistenceRepository(
                 aussteller = updatedReceipt.aussteller,
                 rechnungsnummer = null,
                 datum = updatedReceipt.datum,
-                bruttobetragCent = (updatedReceipt.bruttobetrag * 100).toLong(),
+                bruttobetragCent = updatedReceipt.bruttobetrag.toCent(),
                 hauptkategorie = updatedReceipt.hauptkategorie,
                 unterkategorie = updatedReceipt.unterkategorie,
                 wohneinheit = updatedReceipt.wohneinheit,
@@ -4409,6 +4412,18 @@ data class RepairResult(
 data class PersistedReceipt(
     val schemaVersion: Int = 1,
     val revision: Long = 1L,
+    val receiptId: Int? = null,
+    val unitId: String = "",
+    val exportlaufId: String = "",
+    val kontoNr: String? = null,
+    val isEigenleistungSanierung: Boolean = false,
+    val uhrzeit: String = "",
+    val mieter: String = "",
+    val deletionStatus: String = "ACTIVE",
+    val deletedAt: String? = null,
+    val deletedBy: String? = null,
+    val deletionId: String? = null,
+    val deletionReason: String? = null,
     val internalId: String,
     val displayId: String?,
     val documents: List<ReceiptDocumentReference> = emptyList(),

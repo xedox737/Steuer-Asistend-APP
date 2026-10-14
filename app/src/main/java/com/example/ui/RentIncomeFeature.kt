@@ -114,6 +114,7 @@ fun RentIncomeOverviewScreen(
     var editing by remember { mutableStateOf<RentOverviewUnit?>(null) }
     var originalProperty by remember { mutableStateOf<String?>(null) }
     var pendingPlan by remember { mutableStateOf<ValidRentPlan?>(null) }
+    var storeError by remember { mutableStateOf<String?>(null) }
     fun dismissEditor() {
         editing = null
         pendingPlan = null
@@ -128,6 +129,11 @@ fun RentIncomeOverviewScreen(
         if (row != null && plan != null && metadata?.propertyId == row.property.propertyId) {
             val propertyId = row.property.propertyId
             val unitId = PropertyUnitScopedData.stableUnitId(propertyId, row.unit)
+            if (TenantHistoryStore.read(context, propertyId, unitId, row.unit.name).damaged) {
+                storeError = StoredListRead.ERROR
+                pendingPlan = null
+                return@LaunchedEffect
+            }
             val stored = TenantHistoryStore.ensureCurrentPeriod(
                 context, row.unit, row.nebenkosten, row.sonstige, propertyId
             )
@@ -153,7 +159,11 @@ fun RentIncomeOverviewScreen(
                 }
             }
             if (active != null) {
-                TenantHistoryStore.save(context, propertyId, unitId, row.unit.name, updated)
+                if (!TenantHistoryStore.save(context, propertyId, unitId, row.unit.name, updated)) {
+                    storeError = StoredListRead.ERROR
+                    pendingPlan = null
+                    return@LaunchedEffect
+                }
             }
 
             val currentPeriod = updated.lastOrNull { it.active && it.tenantName == row.unit.mieter }
@@ -176,6 +186,7 @@ fun RentIncomeOverviewScreen(
 
     LazyColumn(Modifier.fillMaxSize().testTag("rent_overview"), contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        storeError?.let { error -> item { Text(error, color = CrimsonRed) } }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Mieteingänge", fontSize = 23.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold, color = DarkNavy)

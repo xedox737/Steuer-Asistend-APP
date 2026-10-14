@@ -81,7 +81,7 @@ object SupplementalDriveBackup {
         replaceManagedDocuments: Boolean = false,
         restoreMode: RestoreMode = if (replaceManagedDocuments) RestoreMode.REPLACE_FULL else RestoreMode.MERGE
     ) {
-        require(root.optInt("schemaVersion", 1) <= SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
+        require(root.backupInt("schemaVersion", 1) in 1..SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
         PersistentPreferenceInventory.validatePayload(root)
         // A malformed/null array is not an intentional empty snapshot, especially for replace.
         listOf("loans", "properties", "logbookTrips", "standardRoutes", "exportAuditRuns", "managedDocuments",
@@ -89,6 +89,7 @@ object SupplementalDriveBackup {
             "bankRentAssignments", "bankLoanAssignments", "bankRecurringPatterns").forEach { key ->
             if (root.has(key)) root.getJSONArray(key)
         }
+        validatePayload(root)
         // Validate/decode photos before touching Room; filenames depend on content, never a supplied path.
         val propertyArray = root.optJSONArray("properties") ?: JSONArray()
         val restoredProperties = (0 until propertyArray.length()).map { index ->
@@ -263,6 +264,48 @@ object SupplementalDriveBackup {
         PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
     }
 
+    internal fun validatePayload(root: JSONObject) {
+        require(root.backupInt("schemaVersion", 1) in 1..SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
+        PersistentPreferenceInventory.validatePayload(root)
+        val readers: Map<String, (JSONObject) -> Any> = mapOf(
+            "loans" to { it.toLoan() }, "properties" to { it.toPropertyMetadata() },
+            "logbookTrips" to { it.toTrip() }, "standardRoutes" to { it.toStandardRoute() },
+            "exportAuditRuns" to { it.toExportAuditRun() }, "managedDocuments" to { it.toManagedDocument() },
+            "bankAccounts" to { it.toBankAccount() }, "bankTransactions" to { it.toBankTransaction() },
+            "bankReceiptLinks" to { it.toBankReceiptLink() }, "bankLearningRules" to { it.toBankLearningRule() },
+            "bankRuleEvidence" to { it.toBankRuleEvidence() }, "bankRentAssignments" to { it.toBankRentAssignment() },
+            "bankLoanAssignments" to { it.toBankLoanAssignment() }, "bankRecurringPatterns" to { it.toBankRecurringPattern() }
+        )
+        readers.forEach { (key, reader) ->
+            if (root.has(key)) {
+                val array = root.getJSONArray(key)
+                for (index in 0 until array.length()) {
+                    val json = array.getJSONObject(index)
+                    val identity = listOf("id", "propertyId", "transactionId", "documentId", "exportlaufId")
+                        .firstNotNullOfOrNull { field -> json.opt(field)?.takeUnless { it == JSONObject.NULL }?.toString() }
+                        ?: (index + 1).toString()
+                    try {
+                        reader(json)
+                        if (key == "properties" && json.optString("imageBase64", "").isNotBlank()) {
+                            require(Base64.decode(json.getString("imageBase64"), Base64.NO_WRAP).isNotEmpty())
+                        }
+                    } catch (e: Exception) {
+                        throw BackupPreflightException("Gesicherter Datensatz $identity (${when (key) {
+                            "loans" -> "Darlehen"
+                            "properties" -> "Immobilie"
+                            else -> "Zusatzdaten"
+                        }}): gespeicherte Werte sind ungültig. Bitte prüfen. Es wurden keine Daten übernommen.", e)
+                    }
+                }
+            }
+        }
+    }
+
+    internal suspend fun loadValidatedPayload(accessToken: String, systemFolderId: String): JSONObject? {
+        val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE) ?: return null
+        return JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)).also(::validatePayload)
+    }
+
     private fun ExportAuditRun.toBackupJson() = JSONObject().apply {
         put("exportlaufId", exportlaufId); put("timestamp", timestamp); put("user", user)
         put("propertyName", propertyName); put("periodStart", periodStart); put("periodEnd", periodEnd)
@@ -281,9 +324,9 @@ object SupplementalDriveBackup {
         exportierteReceiptIdsJson = optString("exportierteReceiptIdsJson", "[]"),
         ausgeschlosseneReceiptIdsJson = optString("ausgeschlosseneReceiptIdsJson", "[]"),
         kanzleiprofilNameVersion = optString("kanzleiprofilNameVersion", ""), zipFileName = optString("zipFileName", ""),
-        zipFileSizeBytes = optLong("zipFileSizeBytes", 0L), zipSha256 = optString("zipSha256", ""),
-        status = optString("status", "SUCCESS"), totalAmount = optDouble("totalAmount", 0.0),
-        bookingCount = optInt("bookingCount", 0), warningsCount = optInt("warningsCount", 0), logMessage = optString("logMessage", "")
+        zipFileSizeBytes = backupLong("zipFileSizeBytes", 0L), zipSha256 = optString("zipSha256", ""),
+        status = optString("status", "SUCCESS"), totalAmount = backupDouble("totalAmount", 0.0),
+        bookingCount = backupInt("bookingCount", 0), warningsCount = backupInt("warningsCount", 0), logMessage = optString("logMessage", "")
     )
 
     private fun BankAccount.toBackupJson() = JSONObject().apply {
@@ -317,7 +360,7 @@ object SupplementalDriveBackup {
     private fun JSONObject.toBankTransaction() = BankTransaction(
         transactionId = optString("transactionId", ""), accountId = optString("accountId", ""),
         bookingDate = optString("bookingDate", ""), valueDate = optString("valueDate", ""),
-        amount = optDouble("amount", 0.0), currency = optString("currency", "EUR"),
+        amount = backupDouble("amount", 0.0), currency = optString("currency", "EUR"),
         counterparty = optString("counterparty", ""), counterpartyIban = optString("counterpartyIban", ""),
         purpose = optString("purpose", ""), bankReference = optString("bankReference", ""),
         source = optString("source", "CSV"), propertyId = optString("propertyId", ""),
@@ -336,9 +379,9 @@ object SupplementalDriveBackup {
     private fun BankLearningRule.toBackupJson() = JSONObject().apply {
         put("ruleId",ruleId); put("displayName",displayName); put("enabled",enabled); put("state",state); put("ruleType",ruleType); put("transactionDirection",transactionDirection); put("counterpartyPattern",counterpartyPattern); put("counterpartyIbanPattern",counterpartyIbanPattern); put("purposeTerms",purposeTerms); amountMin?.let{put("amountMin",it)}; amountMax?.let{put("amountMax",it)}; put("currency",currency); put("accountId",accountId); put("propertyId",propertyId); put("unitId",unitId); put("receiptVendorTarget",receiptVendorTarget); put("receiptCategoryTarget",receiptCategoryTarget); put("receiptSubcategoryTarget",receiptSubcategoryTarget); put("paymentMethodTarget",paymentMethodTarget); put("evidenceCount",evidenceCount); put("successCount",successCount); put("rejectionCount",rejectionCount); put("confidence",confidence); put("source",source); put("createdAt",createdAt); put("updatedAt",updatedAt); put("lastMatchedAt",lastMatchedAt)
     }
-    private fun JSONObject.toBankLearningRule() = BankLearningRule(ruleId=optString("ruleId",""),displayName=optString("displayName","Bankregel"),enabled=optBoolean("enabled",false),state=optString("state",BankRuleState.PROPOSED),ruleType=optString("ruleType",BankRuleType.COMBINED),transactionDirection=optString("transactionDirection",BankRuleDirection.ANY),counterpartyPattern=optString("counterpartyPattern",""),counterpartyIbanPattern=optString("counterpartyIbanPattern",""),purposeTerms=optString("purposeTerms",""),amountMin=if(has("amountMin"))optDouble("amountMin") else null,amountMax=if(has("amountMax"))optDouble("amountMax") else null,currency=optString("currency","EUR"),accountId=optString("accountId",""),propertyId=optString("propertyId",""),unitId=optString("unitId",""),receiptVendorTarget=optString("receiptVendorTarget",""),receiptCategoryTarget=optString("receiptCategoryTarget",""),receiptSubcategoryTarget=optString("receiptSubcategoryTarget",""),paymentMethodTarget=optString("paymentMethodTarget",""),evidenceCount=optInt("evidenceCount",0),successCount=optInt("successCount",0),rejectionCount=optInt("rejectionCount",0),confidence=optInt("confidence",0),source=optString("source",BankRuleSource.LEARNED_FROM_CONFIRMATIONS),createdAt=optString("createdAt",""),updatedAt=optString("updatedAt",""),lastMatchedAt=optString("lastMatchedAt",""))
+    private fun JSONObject.toBankLearningRule() = BankLearningRule(ruleId=optString("ruleId",""),displayName=optString("displayName","Bankregel"),enabled=optBoolean("enabled",false),state=optString("state",BankRuleState.PROPOSED),ruleType=optString("ruleType",BankRuleType.COMBINED),transactionDirection=optString("transactionDirection",BankRuleDirection.ANY),counterpartyPattern=optString("counterpartyPattern",""),counterpartyIbanPattern=optString("counterpartyIbanPattern",""),purposeTerms=optString("purposeTerms",""),amountMin=if(has("amountMin"))backupDouble("amountMin") else null,amountMax=if(has("amountMax"))backupDouble("amountMax") else null,currency=optString("currency","EUR"),accountId=optString("accountId",""),propertyId=optString("propertyId",""),unitId=optString("unitId",""),receiptVendorTarget=optString("receiptVendorTarget",""),receiptCategoryTarget=optString("receiptCategoryTarget",""),receiptSubcategoryTarget=optString("receiptSubcategoryTarget",""),paymentMethodTarget=optString("paymentMethodTarget",""),evidenceCount=backupInt("evidenceCount",0),successCount=backupInt("successCount",0),rejectionCount=backupInt("rejectionCount",0),confidence=backupInt("confidence",0),source=optString("source",BankRuleSource.LEARNED_FROM_CONFIRMATIONS),createdAt=optString("createdAt",""),updatedAt=optString("updatedAt",""),lastMatchedAt=optString("lastMatchedAt",""))
     private fun BankRuleEvidence.toBackupJson() = JSONObject().apply { put("evidenceId",evidenceId);put("candidateKey",candidateKey);put("ruleId",ruleId);put("transactionId",transactionId);put("receiptId",receiptId);put("confirmed",confirmed);put("counterparty",counterparty);put("direction",direction);put("purposeTerms",purposeTerms);put("accountId",accountId);put("propertyId",propertyId);put("unitId",unitId);put("vendorTarget",vendorTarget);put("categoryTarget",categoryTarget);put("subcategoryTarget",subcategoryTarget);put("paymentMethodTarget",paymentMethodTarget);put("createdAt",createdAt) }
-    private fun JSONObject.toBankRuleEvidence() = BankRuleEvidence(evidenceId=optString("evidenceId",""),candidateKey=optString("candidateKey",""),ruleId=optString("ruleId",""),transactionId=optString("transactionId",""),receiptId=optInt("receiptId",0),confirmed=optBoolean("confirmed",true),counterparty=optString("counterparty",""),direction=optString("direction",BankRuleDirection.ANY),purposeTerms=optString("purposeTerms",""),accountId=optString("accountId",""),propertyId=optString("propertyId",""),unitId=optString("unitId",""),vendorTarget=optString("vendorTarget",""),categoryTarget=optString("categoryTarget",""),subcategoryTarget=optString("subcategoryTarget",""),paymentMethodTarget=optString("paymentMethodTarget",""),createdAt=optString("createdAt",""))
+    private fun JSONObject.toBankRuleEvidence() = BankRuleEvidence(evidenceId=optString("evidenceId",""),candidateKey=optString("candidateKey",""),ruleId=optString("ruleId",""),transactionId=optString("transactionId",""),receiptId=backupInt("receiptId",0),confirmed=optBoolean("confirmed",true),counterparty=optString("counterparty",""),direction=optString("direction",BankRuleDirection.ANY),purposeTerms=optString("purposeTerms",""),accountId=optString("accountId",""),propertyId=optString("propertyId",""),unitId=optString("unitId",""),vendorTarget=optString("vendorTarget",""),categoryTarget=optString("categoryTarget",""),subcategoryTarget=optString("subcategoryTarget",""),paymentMethodTarget=optString("paymentMethodTarget",""),createdAt=optString("createdAt",""))
 
     private fun BankRentAssignment.toBackupJson() = JSONObject().apply {
         put("assignmentId", assignmentId); put("transactionId", transactionId); put("propertyId", propertyId)
@@ -350,10 +393,10 @@ object SupplementalDriveBackup {
     private fun JSONObject.toBankRentAssignment() = BankRentAssignment(
         assignmentId = optString("assignmentId", ""), transactionId = optString("transactionId", ""),
         propertyId = optString("propertyId", ""), unitId = optString("unitId", ""), rentMonth = optString("rentMonth", ""),
-        tenantReference = optString("tenantReference", ""), allocatedAmount = optDouble("allocatedAmount", 0.0),
+        tenantReference = optString("tenantReference", ""), allocatedAmount = backupDouble("allocatedAmount", 0.0),
         paymentType = optString("paymentType", "UNKLAR"), status = optString("status", BankRentAssignmentStatus.CONFIRMED),
         source = optString("source", BankRentAssignmentSource.USER_CONFIRMED),
-        receiptId = if (has("receiptId") && !isNull("receiptId")) optInt("receiptId") else null,
+        receiptId = if (has("receiptId") && !isNull("receiptId")) backupInt("receiptId") else null,
         createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", ""), note = optString("note", "")
     )
 
@@ -365,11 +408,11 @@ object SupplementalDriveBackup {
         put("interestBasis", interestBasis); put("createdAt", createdAt); put("updatedAt", updatedAt)
     }
     private fun JSONObject.toBankLoanAssignment() = BankLoanAssignment(
-        assignmentId=optString("assignmentId",""), transactionId=optString("transactionId",""), loanId=optInt("loanId",0), propertyId=optString("propertyId",""),
-        allocatedAmount=optDouble("allocatedAmount",0.0), paymentType=optString("paymentType",BankLoanPaymentType.UNKLAR), period=optString("period",""),
+        assignmentId=optString("assignmentId",""), transactionId=optString("transactionId",""), loanId=backupInt("loanId",0), propertyId=optString("propertyId",""),
+        allocatedAmount=backupDouble("allocatedAmount",0.0), paymentType=optString("paymentType",BankLoanPaymentType.UNKLAR), period=optString("period",""),
         status=optString("status",BankLoanAssignmentStatus.CONFIRMED), source=optString("source",BankLoanAssignmentSource.USER_CONFIRMED),
-        splitStatus=optString("splitStatus",BankLoanSplitStatus.NONE), proposedInterest=if(has("proposedInterest")&&!isNull("proposedInterest"))optDouble("proposedInterest") else null,
-        proposedPrincipal=if(has("proposedPrincipal")&&!isNull("proposedPrincipal"))optDouble("proposedPrincipal") else null,
+        splitStatus=optString("splitStatus",BankLoanSplitStatus.NONE), proposedInterest=if(has("proposedInterest")&&!isNull("proposedInterest"))backupDouble("proposedInterest") else null,
+        proposedPrincipal=if(has("proposedPrincipal")&&!isNull("proposedPrincipal"))backupDouble("proposedPrincipal") else null,
         interestBasis=optString("interestBasis",""), createdAt=optString("createdAt",""), updatedAt=optString("updatedAt","")
     )
 
@@ -381,9 +424,9 @@ object SupplementalDriveBackup {
     }
     private fun JSONObject.toBankRecurringPattern() = BankRecurringPattern(
         patternId=optString("patternId",""),enabled=optBoolean("enabled",true),direction=optString("direction",RecurringDirection.EXPENSE),
-        normalizedCounterparty=optString("normalizedCounterparty",""),purposeFingerprint=optString("purposeFingerprint",""),typicalAmount=optDouble("typicalAmount",0.0),
-        amountTolerance=optDouble("amountTolerance",0.0),cadence=optString("cadence",RecurringCadence.IRREGULAR),typicalDay=optInt("typicalDay",1),
-        accountId=optString("accountId",""),propertyId=optString("propertyId",""),occurrenceCount=optInt("occurrenceCount",0),confidence=optInt("confidence",0),
+        normalizedCounterparty=optString("normalizedCounterparty",""),purposeFingerprint=optString("purposeFingerprint",""),typicalAmount=backupDouble("typicalAmount",0.0),
+        amountTolerance=backupDouble("amountTolerance",0.0),cadence=optString("cadence",RecurringCadence.IRREGULAR),typicalDay=backupInt("typicalDay",1),
+        accountId=optString("accountId",""),propertyId=optString("propertyId",""),occurrenceCount=backupInt("occurrenceCount",0),confidence=backupInt("confidence",0),
         lastOccurrence=optString("lastOccurrence",""),nextExpectedStart=optString("nextExpectedStart",""),nextExpectedEnd=optString("nextExpectedEnd",""),
         reasonsText=optString("reasonsText",""),createdAt=optString("createdAt",""),updatedAt=optString("updatedAt","")
     )
@@ -396,8 +439,8 @@ object SupplementalDriveBackup {
 
     private fun JSONObject.toBankReceiptLink() = BankReceiptLink(
         linkId = optString("linkId", ""), transactionId = optString("transactionId", ""),
-        receiptId = optInt("receiptId", 0), receiptInternalId = optString("receiptInternalId", ""),
-        allocatedAmount = optDouble("allocatedAmount", 0.0),
+        receiptId = backupInt("receiptId", 0), receiptInternalId = optString("receiptInternalId", ""),
+        allocatedAmount = backupDouble("allocatedAmount", 0.0),
         status = optString("status", BankLinkStatus.CONFIRMED),
         source = optString("source", BankLinkSource.NUTZER_BESTAETIGT), createdAt = optString("createdAt", "")
     )
@@ -413,15 +456,22 @@ object SupplementalDriveBackup {
     }
 
     private fun JSONObject.toLoan() = Loan(
-        id = optInt("id", 0), bezeichnung = optString("bezeichnung", ""), bank = optString("bank", ""),
-        darlehensbetrag = optDouble("darlehensbetrag", 0.0), restschuld = optDouble("restschuld", 0.0),
-        sollzinsProzent = optDouble("sollzinsProzent", 0.0), tilgungProzent = optDouble("tilgungProzent", 0.0),
-        monatlicheRate = optDouble("monatlicheRate", 0.0), startDatum = optString("startDatum", ""),
+        id = backupInt("id", 0), bezeichnung = optString("bezeichnung", ""), bank = optString("bank", ""),
+        darlehensbetrag = backupDouble("darlehensbetrag", 0.0), restschuld = backupDouble("restschuld", 0.0),
+        sollzinsProzent = backupDouble("sollzinsProzent", 0.0), tilgungProzent = backupDouble("tilgungProzent", 0.0),
+        monatlicheRate = backupDouble("monatlicheRate", 0.0), startDatum = optString("startDatum", ""),
         zinsbindungBis = optString("zinsbindungBis", ""), laufzeitBis = optString("laufzeitBis", ""),
-        vermietungsanteilProzent = optDouble("vermietungsanteilProzent", 100.0),
+        vermietungsanteilProzent = backupDouble("vermietungsanteilProzent", 100.0),
         notiz = optString("notiz", ""), aktiv = optBoolean("aktiv", true),
         propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID)
-    )
+    ).also { loan ->
+        require(com.example.ui.LoanInputValidation.numbers(loan).all { (field, number) ->
+            com.example.ui.LoanInputValidation.parse(com.example.ui.LoanInputValidation.prefill(number), field).error == null
+        }) { "Gesicherte Darlehenswerte sind ungültig. Bitte prüfen." }
+        require(com.example.ui.LoanInputValidation.dateErrors(loan.startDatum, loan.zinsbindungBis, loan.laufzeitBis).isEmpty()) {
+            "Gesicherte Darlehensdaten sind ungültig. Bitte prüfen."
+        }
+    }
 
     private fun PropertyMetadata.toBackupJson() = JSONObject().apply {
         put("id", id); put("propertyId", propertyId); put("name", name); put("adresse", adresse)
@@ -442,23 +492,23 @@ object SupplementalDriveBackup {
     }
 
     private fun JSONObject.toPropertyMetadata() = PropertyMetadata(
-        id = optInt("id", 1), propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
+        id = backupInt("id", 1), propertyId = optString("propertyId", StableDocumentIdentity.LEGACY_PROPERTY_ID),
         name = optString("name", ""), adresse = optString("adresse", ""), wohnort = optString("wohnort", ""),
-        baujahr = optInt("baujahr", 0), wohnflaeche = optDouble("wohnflaeche", 0.0),
-        grundstuecksgroesse = optDouble("grundstuecksgroesse", 0.0),
+        baujahr = backupInt("baujahr", 0), wohnflaeche = backupDouble("wohnflaeche", 0.0),
+        grundstuecksgroesse = backupDouble("grundstuecksgroesse", 0.0),
         notariellesKaufdatum = optString("notariellesKaufdatum", ""),
         uebergangNutzenLasten = optString("uebergangNutzenLasten", ""),
-        wohneinheiten = optString("wohneinheiten", ""), gesamtKaufpreis = optDouble("gesamtKaufpreis", 0.0),
-        gebaeudewert = optDouble("gebaeudewert", 0.0), grundUndBodenWert = optDouble("grundUndBodenWert", 0.0),
+        wohneinheiten = optString("wohneinheiten", ""), gesamtKaufpreis = backupDouble("gesamtKaufpreis", 0.0),
+        gebaeudewert = backupDouble("gebaeudewert", 0.0), grundUndBodenWert = backupDouble("grundUndBodenWert", 0.0),
         kaufpreisAufteilungQuelle = optString("kaufpreisAufteilungQuelle", "MANUELL"),
         bildPfad = optString("bildPfad", ""), objektart = optString("objektart", "Mehrfamilienhaus"),
         status = optString("status", "Aktiv"), notizen = optString("notizen", ""),
-        afaShorterYears = optInt("afaShorterYears", 0),
+        afaShorterYears = backupInt("afaShorterYears", 0),
         afaShorterStartDate = optString("afaShorterStartDate", ""),
         afaShorterReason = optString("afaShorterReason", ""),
         afaShorterDocumentId = optString("afaShorterDocumentId", ""),
         afaShorterConfirmed = optBoolean("afaShorterConfirmed", false)
-    )
+    ).also(::validateBackupProperty)
 
     private fun LogbookTrip.toJson() = JSONObject().apply {
         put("id", id); put("date", date); put("time", time); put("purpose", purpose)
@@ -479,11 +529,11 @@ object SupplementalDriveBackup {
     }
 
     private fun JSONObject.toTrip() = LogbookTrip(
-        id = optLong("id", 0L), date = optString("date", ""), time = optString("time", ""),
+        id = backupLong("id", 0L), date = optString("date", ""), time = optString("time", ""),
         purpose = optString("purpose", ""), propertyReference = optString("propertyReference", ""),
         startAddress = optString("startAddress", ""), destinationAddress = optString("destinationAddress", ""),
         stopsJson = optString("stopsJson", ""), routeMode = optString("routeMode", TripRouteMode.EINFACH.name),
-        sameReturnRoute = optBoolean("sameReturnRoute", false), taxDistanceKm = optDouble("taxDistanceKm", 0.0),
+        sameReturnRoute = optBoolean("sameReturnRoute", false), taxDistanceKm = backupDouble("taxDistanceKm", 0.0),
         kilometerSource = optString("kilometerSource", KilometerSource.MANUELL.name),
         aiEstimatedKm = nullableDouble("aiEstimatedKm"), routedKm = nullableDouble("routedKm"),
         gpsMeasuredKm = nullableDouble("gpsMeasuredKm"), manualKm = nullableDouble("manualKm"),
@@ -608,11 +658,11 @@ object SupplementalDriveBackup {
         originalFilename = optString("originalFilename", ""), storedFilename = optString("storedFilename", ""),
         mimeType = optString("mimeType", "application/octet-stream"), localUri = "",
         driveFileId = nullableString("driveFileId"), driveFolderId = nullableString("driveFolderId"),
-        sha256 = optString("sha256", ""), fileSizeBytes = optLong("fileSizeBytes", 0L),
+        sha256 = optString("sha256", ""), fileSizeBytes = backupLong("fileSizeBytes", 0L),
         createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", ""),
         ocrStatus = DocumentProcessingStatus.AUSSTEHEND.name, ocrText = "",
         aiAnalysisStatus = optString("aiAnalysisStatus", DocumentProcessingStatus.AUSSTEHEND.name),
-        aiConfidence = optDouble("aiConfidence", 0.0), reviewStatus = optString("reviewStatus", DocumentReviewStatus.PRUEFEN.name),
+        aiConfidence = backupDouble("aiConfidence", 0.0), reviewStatus = optString("reviewStatus", DocumentReviewStatus.PRUEFEN.name),
         source = optString("source", DocumentSource.DRIVE_RESTORE.name), extractedFieldsJson = optString("extractedFieldsJson", ""),
         loanId = nullableInt("loanId"), tenantReference = nullableString("tenantReference"),
         renovationReference = nullableString("renovationReference"), migrationStatus = optString("migrationStatus", ""),
@@ -620,18 +670,18 @@ object SupplementalDriveBackup {
     )
 
     private fun JSONObject.toStandardRoute() = StandardRoute(
-        id = optLong("id", 0L), name = optString("name", ""), startAddress = optString("startAddress", ""),
+        id = backupLong("id", 0L), name = optString("name", ""), startAddress = optString("startAddress", ""),
         destinationAddress = optString("destinationAddress", ""), stopsJson = optString("stopsJson", ""),
         routeMode = optString("routeMode", TripRouteMode.EINFACH.name), sameReturnRoute = optBoolean("sameReturnRoute", false),
-        distanceKm = optDouble("distanceKm", 0.0), active = optBoolean("active", true),
+        distanceKm = backupDouble("distanceKm", 0.0), active = optBoolean("active", true),
         routeSignature = optString("routeSignature", ""), sourceProvider = optString("sourceProvider", ""),
         createdAt = optString("createdAt", ""), updatedAt = optString("updatedAt", "")
     )
 
     private fun JSONObject.putNullable(name: String, value: Any?) { put(name, value ?: JSONObject.NULL) }
-    private fun JSONObject.nullableDouble(name: String): Double? = if (!has(name) || isNull(name)) null else optDouble(name)
-    private fun JSONObject.nullableLong(name: String): Long? = if (!has(name) || isNull(name)) null else optLong(name)
-    private fun JSONObject.nullableInt(name: String): Int? = if (!has(name) || isNull(name)) null else optInt(name)
+    private fun JSONObject.nullableDouble(name: String): Double? = if (!has(name) || isNull(name)) null else backupDouble(name)
+    private fun JSONObject.nullableLong(name: String): Long? = if (!has(name) || isNull(name)) null else backupLong(name)
+    private fun JSONObject.nullableInt(name: String): Int? = if (!has(name) || isNull(name)) null else backupInt(name)
     private fun JSONObject.nullableString(name: String): String? = if (!has(name) || isNull(name)) null else optString(name).takeIf(String::isNotBlank)
 
 }

@@ -15,7 +15,7 @@ data class ReceiptUpsertResolution(
  * internalId first, then the shared Drive main file id, otherwise a new local row.
  */
 object ReceiptRestoreUpsertResolver {
-    fun resolve(incoming: Receipt, existing: List<Receipt>, mode: RestoreMode = RestoreMode.REPLACE_FULL): ReceiptUpsertResolution {
+    fun resolve(incoming: Receipt, existing: List<Receipt>, mode: RestoreMode = RestoreMode.REPLACE_FULL, preserveIncomingId: Boolean = false): ReceiptUpsertResolution {
         val byInternalId = incoming.internalId
             .takeIf { it.isNotBlank() }
             ?.let { id -> existing.firstOrNull { it.internalId == id } }
@@ -45,7 +45,10 @@ object ReceiptRestoreUpsertResolver {
             )
         }
 
-        return ReceiptUpsertResolution(incoming.copy(id = 0), ReceiptUpsertResolution.Match.NEW)
+        require(!preserveIncomingId || existing.none { it.id == incoming.id && it.internalId != incoming.internalId }) {
+            "Die gesicherte Beleg-ID gehört bereits zu einem anderen Beleg. Bitte prüfen."
+        }
+        return ReceiptUpsertResolution(if (preserveIncomingId) incoming else incoming.copy(id = 0), ReceiptUpsertResolution.Match.NEW)
     }
 
     private fun preferredReceipt(incoming: Receipt, local: Receipt, mode: RestoreMode): Receipt =
@@ -66,7 +69,7 @@ object ReceiptRestoreUpsertResolver {
  * Safe entry point for restore code. Repeating the same restore updates the existing Room row
  * instead of inserting another record. Existing production insert behaviour remains untouched.
  */
-suspend fun ReceiptRepository.upsertRestoredReceipt(receipt: Receipt, mode: RestoreMode = RestoreMode.MERGE): ReceiptUpsertResolution {
+suspend fun ReceiptRepository.upsertRestoredReceipt(receipt: Receipt, mode: RestoreMode = RestoreMode.MERGE, preserveIncomingId: Boolean = false): ReceiptUpsertResolution {
     val byInternalId = receipt.internalId
         .takeIf(String::isNotBlank)
         ?.let { getReceiptByInternalId(it) }
@@ -77,8 +80,8 @@ suspend fun ReceiptRepository.upsertRestoredReceipt(receipt: Receipt, mode: Rest
     }
     val resolution = ReceiptRestoreUpsertResolver.resolve(
         incoming = receipt,
-        existing = listOfNotNull(byInternalId, byMainDriveFileId),
-        mode = mode
+        existing = listOfNotNull(byInternalId, byMainDriveFileId, if (preserveIncomingId && receipt.id > 0) getReceiptById(receipt.id) else null),
+        mode = mode, preserveIncomingId = preserveIncomingId
     )
     if (mode != RestoreMode.MERGE || resolution.receipt != (byInternalId ?: byMainDriveFileId)) {
         insert(resolution.receipt)

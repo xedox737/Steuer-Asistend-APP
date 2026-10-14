@@ -58,16 +58,48 @@ object ReceiptItemConverter {
         }
     }
 
-    fun toJson(items: List<ReceiptItem>?): String {
-        if (items.isNullOrEmpty()) return ""
-        return try {
-            val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, ReceiptItem::class.java)
-            val adapter = moshi.adapter<List<ReceiptItem>>(type)
-            adapter.toJson(items)
-        } catch (e: Exception) {
-            ""
+    const val WRITE_ERROR = "Die Positionen konnten nicht gespeichert werden. Bitte Eingaben prüfen."
+
+    fun validate(items: List<ReceiptItem>) {
+        var sum = 0.0
+        var netSum = 0.0
+        var taxSum = 0.0
+        items.forEach { item ->
+            require(listOf(item.menge, item.einzelpreis, item.gesamtpreis, item.steuersatz,
+                item.privatanteilProzent).all { it.isFinite() }) { WRITE_ERROR }
+            require((item.menge * item.einzelpreis).isFinite()) { WRITE_ERROR }
+            val net = item.gesamtpreis / (1.0 + item.steuersatz / 100.0)
+            val tax = item.gesamtpreis - net
+            require(net.isFinite() && tax.isFinite()) { WRITE_ERROR }
+            sum += item.gesamtpreis
+            netSum += net
+            taxSum += tax
+            require(sum.isFinite() && netSum.isFinite() && taxSum.isFinite()) { WRITE_ERROR }
         }
     }
+
+    /** Empty is intentional; malformed and non-finite values are write errors. */
+    fun validateJsonForWrite(json: String) {
+        if (json.isBlank()) return
+        val items = runCatching {
+            val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, ReceiptItem::class.java)
+            requireNotNull(moshi.adapter<List<ReceiptItem>>(type).fromJson(json))
+        }.getOrElse { throw IllegalArgumentException(WRITE_ERROR, it) }
+        validate(items)
+    }
+
+    fun serialize(items: List<ReceiptItem>?): Result<String> = runCatching {
+        if (items.isNullOrEmpty()) "" else {
+            validate(items)
+            val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, ReceiptItem::class.java)
+            moshi.adapter<List<ReceiptItem>>(type).toJson(items)
+        }
+    }
+
+    fun toJson(items: List<ReceiptItem>?): String = serialize(items).getOrElse {
+        throw IllegalArgumentException(WRITE_ERROR, it)
+    }
+
 }
 
 @Entity(
@@ -913,6 +945,13 @@ class ReceiptRepository(
         metadataFileId.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptsByMetadataFileId(it) }.orEmpty()
 
     suspend fun insert(receipt: Receipt): Long {
+        ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson)
+        if (receipt.id > 0) {
+            val existing = receiptDao.getReceiptById(receipt.id)
+            if (existing != null && existing.positionenJson != receipt.positionenJson) {
+                ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+            }
+        }
         val preparedInternalId = if (receipt.internalId.isBlank()) java.util.UUID.randomUUID().toString() else receipt.internalId
         val year = try { receipt.datum.split("-").firstOrNull()?.trim() ?: "2026" } catch (e: Exception) { "2026" }
         val preparedDisplayId = receipt.displayId ?: "BLG-$year-${String.format("%06d", if (receipt.id != 0) receipt.id else 0)}"
@@ -955,6 +994,12 @@ class ReceiptRepository(
     }
 
     suspend fun insertAll(receipts: List<Receipt>) {
+        receipts.forEach { candidate ->
+            ReceiptItemConverter.validateJsonForWrite(candidate.positionenJson)
+            if (candidate.id > 0) receiptDao.getReceiptById(candidate.id)?.let { existing ->
+                if (existing.positionenJson != candidate.positionenJson) ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+            }
+        }
         receiptDao.insertAll(receipts)
         receipts.forEach { receipt ->
             receiptEntityDao?.insert(
