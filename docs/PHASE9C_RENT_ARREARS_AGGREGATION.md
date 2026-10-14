@@ -141,3 +141,14 @@ Tastatur nun ausdrücklich im Dialog-Root, wenn das Feld in einem Dialog liegt;
 außerhalb bleibt der bisherige Activity-Pfad. Produktcode, reale Datumsauswahl,
 Back-Navigation, Assertions und Zeitlimits bleiben unverändert. Der finale
 vollständige Lauf muss auch diesen Workflow bestehen.
+
+Run 38642983924 bestand Verify (Lint 6m1s, Unit-Suite 2m20s, Debug-APK 1m46s)
+und den Instrumentierungsbuild. Android scheiterte zuerst im bestehenden
+LoanDateComponentEmulatorTest; dessen input("Start", ...) nutzte noch den
+Activity-Root zum Tastaturschließen im Darlehensdialog. Danach fehlte vielen
+Folgefällen der Fensterfokus. Nach 43 abgeschlossenen Fällen/28 Fehlern wurde
+der Schritt am unveränderten 20-Minuten-Limit beendet; die restlichen 21 Fälle
+wurden nicht als bestanden gewertet. input und selectCalendarDate nutzen nun
+denselben privaten dialogbewussten Tastaturhelfer. Keine Darlehens-/Produkt-
+änderung, keine weggefangenen Ausnahmen, Wiederholungen oder schwächeren
+Assertions. Die vollständige aktuelle Abnahme bleibt offen.
