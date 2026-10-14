@@ -106,8 +106,9 @@ internal data class PropertyManagerSummary(
     val rentedCount: Int,
     val vacantCount: Int,
     val expectedRent: Double,
-    val actualRent: Double
-) { val outstandingRent: Double get() = (expectedRent - actualRent).coerceAtLeast(0.0) }
+    val actualRent: Double,
+    val outstandingRent: Double
+)
 
 internal object ImmobilienManagerProjection {
     fun receipts(property: PropertyMetadata, units: List<WohneinheitStatus>, all: List<Receipt>): List<Receipt> {
@@ -140,7 +141,15 @@ internal object ImmobilienManagerProjection {
             rentedCount = active.size,
             vacantCount = units.count { it.status != "Vermietet" },
             expectedRent = active.sumOf { it.kaltmiete },
-            actualRent = actual
+            actualRent = actual,
+            outstandingRent = units.sumOf { unit ->
+                val unitActual = receipts.filter { receipt ->
+                    receipt.datum.startsWith(month.toString()) && isRentalIncomeReceipt(receipt) &&
+                        (receipt.unitId == unit.unitId && unit.unitId.isNotBlank() ||
+                            receipt.unitId.isBlank() && receipt.wohneinheit == unit.name)
+                }.sumOf { it.bruttobetrag }
+                RentTrackingLogic.outstanding(if (unit.status == "Vermietet") unit.kaltmiete else 0.0, unitActual)
+            }
         )
     }
 
@@ -165,7 +174,8 @@ internal object ImmobilienManagerProjection {
             rentedCount = units.count { it.status == "Vermietet" },
             vacantCount = units.count { it.status != "Vermietet" },
             expectedRent = rows.sumOf { it.expected },
-            actualRent = rows.sumOf { it.actual }
+            actualRent = rows.sumOf { it.actual },
+            outstandingRent = rows.sumOf { it.missing }
         )
     }
 }
@@ -277,7 +287,7 @@ private fun PropertyOverviewCard(property: PropertyMetadata, summary: PropertyMa
                 VerticalDivider(Modifier.height(52.dp), color = BorderColor)
                 PropertyOverviewMetric("Ist", NumberFormatter.format(summary.actualRent), EmeraldGreen, Modifier.weight(1f).padding(horizontal = 12.dp))
                 VerticalDivider(Modifier.height(52.dp), color = BorderColor)
-                PropertyOverviewMetric("Offen", NumberFormatter.format(summary.outstandingRent), if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen, Modifier.weight(1f).padding(start = 12.dp))
+                PropertyOverviewMetric("Offen", NumberFormatter.format(summary.outstandingRent), if (summary.outstandingRent > 0) CrimsonRed else EmeraldGreen, Modifier.weight(1f).padding(start = 12.dp).testTag("property_outstanding"))
             }
         }
     }

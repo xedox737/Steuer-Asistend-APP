@@ -88,7 +88,7 @@ internal data class RentMonthProjection(
     val tenantNames: String,
     val tenantChangeInMonth: Boolean
 ) {
-    val missing: Double get() = (expected - actual).coerceAtLeast(0.0)
+    val missing: Double get() = RentTrackingLogic.outstanding(expected, actual)
     val status: RentPaymentStatus get() = when {
         expected <= 0.01 -> RentPaymentStatus.NO_EXPECTATION
         actual + 0.01 >= expected -> RentPaymentStatus.PAID
@@ -105,11 +105,16 @@ internal data class RentYearProjection(
 ) {
     val expected: Double get() = months.sumOf { it.expected }
     val actual: Double get() = months.sumOf { it.actual }
+    // Monthly arrears remain tied to their explicit rentMonth.
     val missing: Double get() = months.sumOf { it.missing }
+    // Annual account balance, matching RentOverviewYear; never net across units.
+    val outstanding: Double get() = RentTrackingLogic.outstanding(expected, actual)
     val suspiciousMonths: Int get() = months.count { it.status == RentPaymentStatus.MISSING || it.status == RentPaymentStatus.PARTIAL }
 }
 
 internal object RentTrackingLogic {
+    fun outstanding(expected: Double, actual: Double): Double = (expected - actual).coerceAtLeast(0.0)
+
     private fun receiptMonth(receipt: Receipt): YearMonth? =
         runCatching { YearMonth.from(LocalDate.parse(receipt.datum)) }.getOrNull()
 

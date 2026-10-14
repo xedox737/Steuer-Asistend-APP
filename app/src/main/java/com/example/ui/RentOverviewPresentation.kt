@@ -25,7 +25,7 @@ internal data class RentOverviewUnit(
     val expected get() = projection.expected
     val actual get() = projection.actual
     // A surplus in one unit must never hide another unit's arrears.
-    val missing get() = (expected - actual).coerceAtLeast(0.0)
+    val missing get() = projection.outstanding
     val monthly get() = if (unit.status == "Vermietet") unit.kaltmiete + nebenkosten + sonstige else 0.0
 }
 internal data class RentOverviewYear(val year: Int, val rows: List<RentOverviewUnit>, val unassigned: List<Receipt>, val utilities: Double, val reviews: List<RentReviewPayment> = emptyList()) {
