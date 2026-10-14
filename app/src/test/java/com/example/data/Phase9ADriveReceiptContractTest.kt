@@ -131,11 +131,12 @@ class Phase9ADriveReceiptContractTest {
         assertEquals(before, repository.getReceiptById(71))
         fake.putJson("bad-property", "system", "propertyMetadata", """{"id":1,"propertyId":"a"}""")
         val metadata = JSONObject().put("internalId", "bad").put("bruttobetragCent", JSONObject.NULL)
+            .put("createdAt", "2026-10-13T12:00:00Z").put("updatedAt", "2026-10-13T12:00:00Z")
         fake.putJson("bad-meta", "receipts", "receiptMetadata", metadata.toString())
         fake.putJson("index", "system", "receiptIndex", JSONObject().put("entries", JSONArray().put(JSONObject()
             .put("internalId", "bad").put("metadataFileId", "bad-meta").put("mainDriveFileId", "main").put("syncStatus", "SYNCED"))).toString())
         val snapshot = drive.buildRestoreSnapshot("test-token", config)
-        assertTrue(snapshot.errors.any { it.code == "INVALID_AMOUNT" && it.isBlocking })
+        assertTrue(snapshot.errors.toString(), snapshot.errors.any { it.code == "INVALID_AMOUNT" && it.isBlocking })
         assertFalse(drive.executeFullDriveRestore("test-token", config, RestoreMode.REPLACE_FULL).isSuccess)
         assertEquals(before, repository.getReceiptById(71))
     }
@@ -143,6 +144,7 @@ class Phase9ADriveReceiptContractTest {
     @Test fun schemaOneFallbackDoesNotGuessIdsAndMalformedSchemaTwoDoesNotDefault() {
         val legacy = JSONObject().put("schemaVersion", 1).put("internalId", "old")
             .put("bruttobetragCent", 113).put("positionen", JSONArray())
+            .put("createdAt", "2026-10-13T12:00:00Z").put("updatedAt", "2026-10-13T12:00:00Z")
         val old = with(drive) { parsePersistedReceipt(legacy.toString()).toLocalReceipt("meta-old") }
         assertEquals(1.13, old.bruttobetrag, 0.0); assertEquals("", old.unitId); assertEquals("", old.exportlaufId)
         val current = JSONObject(legacy.toString()).put("schemaVersion", 2).put("receiptId", 41)
