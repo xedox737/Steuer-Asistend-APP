@@ -131,3 +131,13 @@ Es wurde kein Lint-Befund ausgegeben. Das ist kein erfolgreicher Prüfabschluss;
 Unit-/Build-/Emulatorfolgejobs dieses Laufs wurden nicht ausgeführt.
 Keine Timeouts erhöhen oder Prüfungen deaktivieren. Maßgeblich für die finale
 Abnahme ist ein vollständig grüner aktueller PR-Lauf; kein Merge davor.
+
+Run 38637212486 bestand Verify mit allen 996 JVM-Fällen, Lint und beiden APK-
+Builds. Android führte 64 Fälle aus: 63 bestanden, einschließlich N03 und der
+drei FontScale-Matrizen. Ein bestehender Phase-6B-Workflow scheiterte beim
+Schließen der Tastatur im Sanierungsdialog: Espresso wählte das absichtlich
+unfokussierte Activity-Fenster. Der gemeinsame Kalender-Testhelfer schließt die
+Tastatur nun ausdrücklich im Dialog-Root, wenn das Feld in einem Dialog liegt;
+außerhalb bleibt der bisherige Activity-Pfad. Produktcode, reale Datumsauswahl,
+Back-Navigation, Assertions und Zeitlimits bleiben unverändert. Der finale
+vollständige Lauf muss auch diesen Workflow bestehen.

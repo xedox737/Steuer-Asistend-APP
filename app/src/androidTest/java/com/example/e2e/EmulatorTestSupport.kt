@@ -238,7 +238,15 @@ abstract class EmulatorTestSupport {
         val field = ui.onNodeWithTag(tag)
         if (scroll) field.performScrollTo()
         field.assertIsDisplayed().performTextReplacement(german)
-        Espresso.closeSoftKeyboard()
+        // A date field can be inside a Compose dialog. Its window owns the IME;
+        // the activity root deliberately has no focus in that case.
+        if (ui.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) {
+            Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                .perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
+        } else {
+            Espresso.closeSoftKeyboard()
+        }
         ui.onNodeWithTag(tag).performClick()
         ui.onNodeWithTag("app_date_picker").assertExists()
         ui.onNode(SemanticsMatcher("Kalendertag $day") { node ->
