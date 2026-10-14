@@ -20,14 +20,17 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         scenario.onActivity { it.setContent { MyApplicationTheme(darkTheme = false) { content() } } }
         ui.waitForIdle()
     }
-    private fun visibleError(text: String, scroll: Boolean = false) {
-        val node = ui.onNodeWithText(text)
+    private fun visibleError(text: String, scroll: Boolean = false, tag: String? = null) {
+        val node = if (tag == null) ui.onNodeWithText(text) else ui.onNodeWithTag(tag)
         if (scroll) node.performScrollTo()
         node.assertIsDisplayed()
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
         assertTrue(layouts.isNotEmpty())
-        layouts.forEach { assertFalse(it.didOverflowWidth); assertFalse(it.didOverflowHeight); assertFalse(it.multiParagraph.didExceedMaxLines) }
+        layouts.forEach {
+            assertFalse(it.didOverflowWidth); assertFalse(it.didOverflowHeight); assertFalse(it.multiParagraph.didExceedMaxLines)
+            assertEquals(text.length, it.getLineEnd(it.lineCount - 1, visibleEnd = true))
+        }
     }
 
     @Test fun bankAndAfaUseSharedGrammarWithoutClosingOnInvalidInputAndErrorsFit() {
@@ -66,7 +69,8 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         model.saveLogbookDraft("0", draft.toString())
         val receipt = Receipt(aussteller = "Manuelle Fahrt", datum = "2026-10-14", uhrzeit = "", bruttobetrag = 0.0,
             hauptkategorie = "", unterkategorie = "", kontoNr = "", beschreibung = "", propertyId = property.propertyId)
-        show { LogbookEntryScreen(receipt, property, model, {}, {}) }
+        var saved = false
+        show { LogbookEntryScreen(receipt, property, model, {}, { saved = true }) }
         visibleError("Der Wert darf nicht negativ sein.", scroll = true)
         capture("9b-logbook-error-font-$fontScale")
         assertTrue(JSONObject(model.logbookDrafts.value.getValue("0")).getString("manualKmText") == "-12,5")
@@ -76,12 +80,13 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         val evidence = DistanceEvidence(odometerStartKm = GermanNumberInput.parse("12.345"),
             odometerEndKm = GermanNumberInput.parse("12.365"), manuallyConfirmed = true)
         assertEquals(20.0, LogbookDistancePolicy.decide(evidence).taxDistanceKm!!, 0.0)
-        // Persist through the production booking boundary; reopen both Room records.
+        ui.onNodeWithText("Weiter zur Prüfung").performScrollTo().performClick()
+        ui.onAllNodes(hasText("20,0 km", substring = true)).onFirst().performScrollTo().assertIsDisplayed()
+        ui.onNode(isToggleable()).performScrollTo().performClick()
+        ui.onNodeWithText("Fahrt speichern").performScrollTo().assertIsEnabled().performClick()
+        ui.waitUntil(10_000) { saved }
+        // Reopen the records saved by the production UI/VM/booking path.
         runBlocking(Dispatchers.IO) {
-            val result = model.saveLogbookTrip(receipt, "Besichtigung", "Dornstetten", "Mietobjekt",
-                listOf(TripStop("Dornstetten", "Start", 0), TripStop("Mietobjekt", "Ziel", 1)), TripRouteMode.EINFACH,
-                false, evidence, bookingKey = "9b-trip", tripDate = "2026-10-14", propertyId = property.propertyId)
-            assertTrue(result.isSuccess)
             val trip = db.logbookDao().getAllTrips().single()
             assertEquals(20.0, trip.taxDistanceKm, 0.0)
             assertEquals(6.0, db.receiptDao().getReceiptById(trip.expenseReceiptId!!)!!.bruttobetrag, 0.0)
@@ -100,7 +105,7 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         input("Darlehensbetrag €", "1" + "0".repeat(200))
         ui.onNodeWithTag("property_wizard_next").performClick()
         assertFalse(created)
-        ui.onNodeWithText("Der Wert ist für die Berechnung zu groß.").performScrollTo().assertIsDisplayed()
+        visibleError("Der Wert ist für die Berechnung zu groß.", scroll = true)
         capture("9b-wizard-error-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
         input("Darlehensbetrag €", "100000")
         ui.onNodeWithTag("property_wizard_next").performClick()
@@ -116,7 +121,6 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
             ocrStatus = "ERFOLGREICH", ocrText = "Testvertrag")
         runBlocking(Dispatchers.IO) { db.managedDocumentDao().upsert(doc) }
         val model = vm
-        ui.waitUntil(10_000) { model.managedDocuments.value.any { it.documentId == doc.documentId } }
         ui.runOnIdle {
             model.selectProperty(property.propertyId)
             model.documentAiReviewStore.offer(doc, com.example.api.ManagedDocumentAiResult(documentDate = doc.documentDate,
@@ -124,12 +128,13 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
             model.documentAiReviewStore.dismiss(doc.documentId)
         }
         show { DocumentManagementScreen(model) }
+        ui.waitUntil(10_000) { model.managedDocuments.value.any { it.documentId == doc.documentId } }
         ui.onNodeWithText("9B Dokument").performScrollTo().performClick()
         ui.onNodeWithTag("review_managed_document_ai").performScrollTo().performClick()
         ui.onNode(isToggleable()).performScrollTo().performClick()
         ui.onNodeWithTag("confirm_document_ai_review").performClick()
         ui.waitUntil(10_000) { model.documentAiReviewState.value.messages[doc.documentId]?.contains("Bitte eine gültige Zahl") == true }
-        ui.onNodeWithTag("document_review_message").performScrollTo().assertIsDisplayed()
+        visibleError(model.documentAiReviewState.value.messages.getValue(doc.documentId), scroll = true, tag = "document_review_message")
         capture("9b-document-error-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
         assertEquals(doc, runBlocking(Dispatchers.IO) { db.managedDocumentDao().getById(doc.documentId) })
         assertTrue(doc.documentId in model.documentAiReviewState.value.pending)
