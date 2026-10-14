@@ -43,11 +43,20 @@ class Phase9BWriteBoundaryTest {
             assertFalse(vm.saveBankRule(bad))
             assertEquals(rule, db.bankLearningRuleDao().getRule(rule.ruleId))
         }
-        assertTrue(SupplementalDriveBackup.createPayload(app, db).getJSONArray("bankLearningRules").length() == 1)
+        val savedRule = rule.copy(amountMin = GermanNumberInput.parse("0,29"), amountMax = GermanNumberInput.parse("1.234,56"))
+        assertTrue(vm.saveBankRule(savedRule))
+        // Await the one asynchronous save; never retry the write.
+        kotlinx.coroutines.withTimeout(10_000) {
+            while (db.bankLearningRuleDao().getRule(rule.ruleId) != savedRule) kotlinx.coroutines.delay(10)
+        }
+        val backedUp = SupplementalDriveBackup.createPayload(app, db).getJSONArray("bankLearningRules")
+        assertEquals(1, backedUp.length())
+        assertEquals(0.29, backedUp.getJSONObject(0).getDouble("amountMin"), 0.0)
+        assertEquals(1234.56, backedUp.getJSONObject(0).getDouble("amountMax"), 0.0)
         val malformed = JSONObject().put("schemaVersion", 15).put("bankLearningRules", JSONArray().put(JSONObject()
             .put("ruleId", rule.ruleId).put("amountMin", 2000).put("amountMax", 1000)))
         assertTrue(runCatching { SupplementalDriveBackup.restorePayload(app, db, malformed) }.isFailure)
-        assertEquals(rule, db.bankLearningRuleDao().getRule(rule.ruleId))
+        assertEquals(savedRule, db.bankLearningRuleDao().getRule(rule.ruleId))
     }
 
     @Test fun sharedRentWriterIsAtomicAndOldInfinityIsRetainedUntilExplicitRepair() = runBlocking {

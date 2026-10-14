@@ -91,10 +91,10 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         val evidence = DistanceEvidence(odometerStartKm = GermanNumberInput.parse("12.345"),
             odometerEndKm = GermanNumberInput.parse("12.365"), manuallyConfirmed = true)
         assertEquals(20.0, LogbookDistancePolicy.decide(evidence).taxDistanceKm!!, 0.0)
-        ui.onNodeWithText("Weiter zur Prüfung").performScrollTo().performClick()
+        ui.onNodeWithText("Weiter zur Prüfung").assertIsDisplayed().assertIsEnabled().performClick()
         ui.onAllNodes(hasText("20,0 km", substring = true)).onFirst().performScrollTo().assertIsDisplayed()
         ui.onNode(isToggleable()).performScrollTo().performClick()
-        ui.onNodeWithText("Fahrt speichern").performScrollTo().assertIsEnabled().performClick()
+        ui.onNodeWithText("Fahrt speichern").assertIsDisplayed().assertIsEnabled().performClick()
         ui.waitUntil(10_000) { saved }
         // Reopen the records saved by the production UI/VM/booking path.
         runBlocking(Dispatchers.IO) {
