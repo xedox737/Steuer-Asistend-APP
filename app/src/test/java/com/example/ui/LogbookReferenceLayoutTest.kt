@@ -111,7 +111,15 @@ class LogbookReferenceLayoutTest {
             ui.waitForIdle()
             assertEquals(AppScreen.LOGBOOK, viewModel.currentScreen.value)
         }
-        ui.waitUntil(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
+        try {
+            ui.waitUntil(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
+        } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+            val stored = runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                val db = com.example.data.AppDatabase.getDatabase(viewModel.getApplication<Application>(), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
+                "trips=${db.logbookDao().getAllTrips().size}, receipts=${db.receiptDao().getAllReceiptsList().map { it.id }}, properties=${db.propertyDao().getAllProperties()}"
+            }
+            throw AssertionError("Fixture store: $stored; flows: trips=${viewModel.logbookTrips.value.size}, receipts=${viewModel.receipts.value.map { it.id }}, property=${viewModel.propertyMetadata.value}, screen=${viewModel.currentScreen.value}", failure)
+        }
         ui.onNodeWithTag("bottom_navigation").assertIsDisplayed()
         ui.onNodeWithText("ImmoPilot").assertIsDisplayed()
         ui.onNodeWithText("Letzte Fahrten").assertIsDisplayed()

@@ -117,7 +117,12 @@ class Phase5BComposeWorkflowTest {
             db.bankRentAssignmentDao().upsert(BankRentAssignment("a", "tx", "phase5b-a", "u-1", "2026-10", "tenant", 980.0,
                 BankSplitPaymentType.RENT, createdAt = "2026-10-03", updatedAt = "2026-10-03"))
         }
-        ui.waitUntil(10000) { vm.receipts.value.size == 2 && vm.bankRentAssignments.value.size == 1 }
+        try {
+            ui.waitUntil(10000) { vm.receipts.value.size == 2 && vm.bankRentAssignments.value.size == 1 }
+        } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+            val storedReceipts = runBlocking(Dispatchers.IO) { db.receiptDao().getAllReceiptsList().map { it.id } }
+            throw AssertionError("Fixture store receipts=$storedReceipts; flows: receipts=${vm.receipts.value.map { it.id }}, assignments=${vm.bankRentAssignments.value.size}, screen=${vm.currentScreen.value}", failure)
+        }
         ui.runOnIdle { vm.setScreen(AppScreen.LEDGER) }; ui.waitForIdle()
         ui.onNode(hasText(LedgerPresentation.money(3000.0)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
         ledgerScroll("ledger_property"); ui.onNodeWithTag("ledger_property").performClick()
