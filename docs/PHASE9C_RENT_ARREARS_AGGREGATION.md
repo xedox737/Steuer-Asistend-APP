@@ -96,3 +96,13 @@ Git fetch origin scheiterte am lokalen Proxy. main wurde frisch über den
 GitHub-Connector abgerufen; signierter Originalcommit und identischer Baum
 12090fa73b1ad4114d618f45c295d963034efcd7 wurden lokal verifiziert.
 Nur eigener Branch/PR; nicht mergen.
+
+Der erste vollständige Emulatorlauf auf dem korrigierten JVM-Head führte alle 64
+Fälle aus: 61 bestanden, einschließlich N03 mit beiden Karten/Jahresdetails und
+Recreate. Drei bestehende Phase-6B-FontScalefälle scheiterten; der erste an einem
+nicht sichtbaren Text nach Child-Scroll, danach Lifecycle-/Konfigurationsfehler.
+Die Matrix scrollt nun wie der bestehende Workflowtest die ganze klickbare
+Sanierungszeile, prüft deren Sichtbarkeit zusätzlich und wählt für sämtliche
+ursprünglichen Layout-/Wortassertions den sichtbaren Textknoten. Keine Änderung
+an Sanierung, Produktivlayout oder FontScaleassertions, keine pauschalen Retries.
+Der abschließende vollständige Lauf bleibt Pflicht.
