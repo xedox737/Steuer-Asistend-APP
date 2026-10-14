@@ -60,6 +60,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             "Für den Korrekturgrund Sonstiges ist eine kurze Beschreibung erforderlich."
         }
         val now = java.time.Instant.now().toString()
+        ReceiptMoney.toCent(distance * 0.30) // The generated receipt must fit its existing backup amount contract.
         val expenseId = repository.insert(
             Receipt(
                 aussteller = "Fahrtkosten: ${originalReceipt.aussteller}",
@@ -118,6 +119,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
         database.withTransaction {
             java.time.LocalDate.parse(date)
             require(purpose.isNotBlank() && reason.isNotBlank() && km.isFinite() && km > 0) { "Datum, Zweck, positive Kilometer und Änderungsgrund erforderlich." }
+            ReceiptMoney.toCent(km * 0.30)
             val trip = requireNotNull(database.logbookDao().getTrip(id))
             require(trip.cancelledAt.isBlank()) { "Die Fahrt ist storniert." }
             val expense = editableExpense(trip)
