@@ -9,7 +9,9 @@ Scope: A03/A04/A05/A10, N01/N02/N06 und ausschließlich Parseranteil N05.
 GermanNumberInput bleibt der einzige Textparser. Gültige deutsche Gruppierung und
 technische Dezimalpunktnotation werden nach dessen bestehender Grammatik gelesen:
 98.0 → 98, 12.345 → 12345, 1.234,56 → 1234,56. Falsche Gruppierungen, wissenschaftliche
-Notation und nichtendliche Werte sind Fehler. Minus wird nie aus Eingaben gefiltert.
+Notation und nichtendliche Werte sind Fehler. Nicht-nullige ausgeschriebene Kleinstwerte,
+die technisch zu Double-null unterlaufen würden, werden ebenfalls abgelehnt.
+Minus wird nie aus Eingaben gefiltert.
 NumberFieldInput ist ein kleiner Feldadapter darauf: wirklich blank kann optional
 sein; nonblank invalid niemals. Vorzeichen, positive Distanz/Fläche und Float-Zieltyp
 sind Feldentscheidungen. Vorbefüllung mit deutscher Dezimalnotation erhält alle

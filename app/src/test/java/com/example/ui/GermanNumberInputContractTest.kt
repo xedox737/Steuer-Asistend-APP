@@ -17,7 +17,7 @@ class GermanNumberInputContractTest {
             assertEquals(raw, value, LoanInputValidation.parse(raw, LoanInputValidation.Field.AMOUNT).value!!, 0.0)
             assertEquals(raw, value, DocumentNumberInput.validate(mapOf("kaufpreis" to raw)).getValue("kaufpreis"), 0.0)
         }
-        listOf("abc", "1,2,3", "1.2.3,45", "1.234.56,78", "NaN", "Infinity", "-Infinity", "1e3", "1e309", "9".repeat(310)).forEach { raw ->
+        listOf("abc", "1,2,3", "1.2.3,45", "1.234.56,78", "NaN", "Infinity", "-Infinity", "1e3", "1e309", "9".repeat(310), "0," + "0".repeat(400) + "1").forEach { raw ->
             assertNull(raw, GermanNumberInput.parse(raw))
             assertNotNull(raw, NumberFieldInput.nonNegative(raw, optional = true).error)
             assertNull(raw, PropertyWizardInput.unitArea(raw)); assertNull(raw, parseTenantNumber(raw))

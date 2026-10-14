@@ -36,6 +36,8 @@ internal object GermanNumberInput {
             else -> return Result(Status.INVALID_FORMAT)
         }
         val number = normalized.toDoubleOrNull() ?: return Result(Status.INVALID_FORMAT)
+        // A nonzero decimal outside Double's smallest magnitude must not silently become zero.
+        if (number == 0.0 && normalized.any { it in '1'..'9' }) return Result(Status.INVALID_FORMAT)
         return if (number.isFinite()) Result(Status.VALID, number) else Result(Status.NON_FINITE)
     }
 
