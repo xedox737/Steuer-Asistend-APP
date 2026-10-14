@@ -106,3 +106,9 @@ Sanierungszeile, prüft deren Sichtbarkeit zusätzlich und wählt für sämtlich
 ursprünglichen Layout-/Wortassertions den sichtbaren Textknoten. Keine Änderung
 an Sanierung, Produktivlayout oder FontScaleassertions, keine pauschalen Retries.
 Der abschließende vollständige Lauf bleibt Pflicht.
+
+Die FontScale-Matrix wartet außerdem vor Messung auf die tatsächliche Android-
+Ressourcen-Konfiguration nach dem asynchron propagierten settings-put. Die
+ursprüngliche strikte FontScaleassertion bleibt anschließend erhalten. Der
+fehlgeschlagene Lauf hatte für 1,5 zunächst noch 1,0 gelesen; es wird kein
+abweichender Wert akzeptiert und keine Konfiguration künstlich ersetzt.

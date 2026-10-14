@@ -16,6 +16,13 @@ import org.junit.runner.RunWith
 abstract class Phase6BFontScaleMatrix : EmulatorTestSupport() {
     @Test fun fullScreenMatrixPreservesWordsButtonsAndBackNavigation() {
         assertTrue("CI-Gerätebreite nahe 393 dp", context.resources.configuration.screenWidthDp in 385..405)
+        // settings put completes before Android propagates the new resource configuration.
+        // Await the actual device configuration, then keep the original strict assertion.
+        ui.waitUntil(10_000) {
+            var actualScale = 0f
+            scenario.onActivity { actualScale = it.resources.configuration.fontScale }
+            kotlin.math.abs(actualScale - fontScale) < .01f
+        }
         scenario.onActivity { assertEquals(fontScale, it.resources.configuration.fontScale, .01f) }
         completeText("Immobilien. Finanzen. Steuern.")
         completeText("Schön, dass du da bist!")
