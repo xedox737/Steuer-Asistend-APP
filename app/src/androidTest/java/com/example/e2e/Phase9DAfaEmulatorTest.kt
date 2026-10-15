@@ -63,7 +63,10 @@ abstract class Phase9DAfaMatrix : EmulatorTestSupport() {
         completeText(AFA_CUTOFF_MONTH_NOTE)
         capture("9d-afa-stichtag-hinweis-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
         ui.onNodeWithText("Abbrechen").performClick()
-        ui.onNodeWithContentDescription("Zurück").performScrollTo().performClick()
+        // The LazyColumn header was recycled while scrolling to the forecast.
+        // Bring its item back into composition before finding the real app arrow.
+        ui.onNodeWithTag("afa_portfolio").performScrollToNode(hasContentDescription("Zurück"))
+        ui.onNodeWithContentDescription("Zurück").assertIsDisplayed().performClick()
         ui.onNodeWithTag("afa_property_${property.propertyId}").performScrollTo().assertIsDisplayed()
         systemBack()
         assertEquals(AppScreen.MORE, vm.currentScreen.value)
