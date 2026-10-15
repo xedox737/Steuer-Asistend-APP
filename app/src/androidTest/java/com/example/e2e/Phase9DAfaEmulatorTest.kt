@@ -38,8 +38,9 @@ abstract class Phase9DAfaMatrix : EmulatorTestSupport() {
             db.receiptDao().insertReceipt(credit)
         }
         val originalRaw = context.getSharedPreferences("afa_confirmed_values_prefs", 0).getString(property.propertyId, null)
-        ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == property.propertyId && it.gebaeudewert == 200_000.0 } && model.receipts.value.size == 2 }
         clickMore("AfA Gebäude")
+        // Let the real destination start the WhileSubscribed receipt collection.
+        ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == property.propertyId && it.gebaeudewert == 200_000.0 } && model.receipts.value.size == 2 }
         ui.onNodeWithTag("afa_property_${property.propertyId}").performScrollTo().performClick()
         ui.onNodeWithText("AfA Berechnung").performScrollTo().performClick()
         ui.onNodeWithText("209.000,00 €").performScrollTo().assertIsDisplayed()
