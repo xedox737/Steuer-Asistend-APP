@@ -40,7 +40,7 @@ class PrimaryNavigationComposeTest {
     private fun clearFixture() {
         ui.runOnIdle { vm.navigateToPrimaryDestination(AppScreen.DASHBOARD) }
         runBlocking(Dispatchers.IO) { db.clearAllTables() }
-        ui.waitUntil(10000) { vm.properties.value.isEmpty() && vm.receipts.value.isEmpty() }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.isEmpty() && vm.receipts.value.isEmpty() }
         ui.waitForIdle()
         prefs.forEach { fixtureContext.getSharedPreferences(it, 0).edit().clear().commit() }
     }
@@ -67,9 +67,9 @@ class PrimaryNavigationComposeTest {
                 mimeType = "text/plain", localUri = file.absolutePath, ocrText = "Erhaltene Unterlage")
             db.managedDocumentDao().upsert(storedDocument)
         }
-        ui.waitUntil(10000) { vm.properties.value.any { it.propertyId == propertyId } && vm.receipts.value.any { it.id == 980 } }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.propertyId == propertyId } && vm.receipts.value.any { it.id == 980 } }
         ui.runOnIdle { vm.selectProperty(propertyId) }
-        ui.waitUntil(10000) { vm.propertyMetadata.value?.propertyId == propertyId && vm.wohneinheitenStatus.value.isNotEmpty() }
+        ui.waitUntilAndroidState(10000) { vm.propertyMetadata.value?.propertyId == propertyId && vm.wohneinheitenStatus.value.isNotEmpty() }
         ui.runOnIdle {
             val unit = vm.wohneinheitenStatus.value.single().copy(status = "Vermietet", mieter = "Primär-Mieter",
                 kaltmiete = 600.0, mietvertragsstart = "2026-01-01")
@@ -98,8 +98,8 @@ class PrimaryNavigationComposeTest {
         val property = PropertyMetadata(propertyId = newId, name = "Testhaus 25 Einheiten",
             wohneinheiten = units.joinToString(", ") { it.name })
         ui.runOnIdle { vm.createProperty(property, units) }
-        ui.waitUntil(15000) { vm.properties.value.any { it.propertyId == newId } }
-        ui.waitUntil(15000) {
+        ui.waitUntilAndroidState(15000) { vm.properties.value.any { it.propertyId == newId } }
+        ui.waitUntilAndroidState(15000) {
             vm.properties.value.firstOrNull { it.propertyId == newId }?.let { saved ->
                 val restored = vm.getWohneinheitenForProperty(saved)
                 restored.size == 25 && restored.map { it.unitId } == units.map { it.unitId }
@@ -196,14 +196,14 @@ class PrimaryNavigationComposeTest {
     @Test fun bankDetailToEveryPrimaryRoot() = matrix {
         clickTab(AppScreen.MORE)
         clickMore("Bank & Kontoauszüge")
-        ui.waitUntil(10000) { vm.bankTransactions.value.any { it.transactionId == "primary-transaction" } }
+        ui.waitUntilAndroidState(10000) { vm.bankTransactions.value.any { it.transactionId == "primary-transaction" } }
         ui.onNodeWithText("Primär-Buchung").performScrollTo().performClick()
         ui.onNodeWithText("Buchungsdetails").assertExists()
     }
     @Test fun documentDetailToEveryPrimaryRoot() = matrix {
         clickTab(AppScreen.MORE)
         clickMore("Dokumentenakte")
-        ui.waitUntil(10000) { vm.managedDocuments.value.any { it.documentId == "primary-document" } }
+        ui.waitUntilAndroidState(10000) { vm.managedDocuments.value.any { it.documentId == "primary-document" } }
         ui.onNodeWithText("Primär-Dokument").performScrollTo().performClick()
         ui.onNodeWithText("Dokumentendetail").assertExists()
     }
@@ -272,8 +272,16 @@ class PrimaryNavigationComposeTest {
                 "Miete, Nebenkosten & Kaution", "Kaltmiete", "8100", "Speichertest", false)
             vm.navigateToPrimaryDestination(AppScreen.PROPERTIES)
         }
-        ui.waitUntil(10000) { vm.receipts.value.any { it.aussteller == "Speichern läuft" } }
-        ui.waitUntil(10000) { vm.bankReceiptLinks.value.any { it.transactionId == storedTransaction.transactionId } }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.any { it.aussteller == "Speichern läuft" } }
+        try {
+            ui.waitUntilAndroidState(10000) { vm.bankReceiptLinks.value.any { it.transactionId == storedTransaction.transactionId } }
+        } catch (failure: Throwable) {
+            runCatching {
+                val persisted = runBlocking(Dispatchers.IO) { db.bankDao().getAllLinks() }
+                System.err.println("Banklink-Wartebedingung: persisted=$persisted; observed=${vm.bankReceiptLinks.value}; screen=${vm.currentScreen.value}")
+            }.onFailure(failure::addSuppressed)
+            throw failure
+        }
         assertRoot(AppScreen.PROPERTIES)
         assertEquals(propertyId, vm.propertyMetadata.value?.propertyId)
         assertEquals(storedUnits, vm.wohneinheitenStatus.value)
