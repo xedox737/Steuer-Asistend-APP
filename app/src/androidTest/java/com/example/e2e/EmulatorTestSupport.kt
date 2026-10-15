@@ -60,10 +60,9 @@ class EmulatorEnvironmentRule(private val fontScale: () -> Float) : ExternalReso
         originalFontScale = shell("settings get system font_scale")
         shell("settings put system font_scale ${fontScale()}")
         shell("mkdir -p $DEVICE_ARTIFACTS")
-        // The API-35 Pixel Launcher can leave an ANR system dialog over the app.
-        // Stop only that unrelated launcher on this gated disposable emulator;
-        // app crashes/ANRs and all assertions remain observable.
-        shell("am force-stop com.google.android.apps.nexuslauncher")
+        // CI initializes the system launcher once before instrumentation starts.
+        // Never kill Quickstep during ActivityScenario's return-to-home transition:
+        // API 35 can retain its recents input consumer and stop delivering focus.
     }
 
     override fun after() {
@@ -137,6 +136,10 @@ abstract class EmulatorTestSupport {
     private fun saveWindowState(name: String) {
         val windows = shell("dumpsys window")
         saveText("$name-windows.txt", windows)
+        val input = shell("dumpsys input")
+        saveText("$name-input.txt", input)
+        input.lineSequence().filter { "Focused" in it || "InputConsumer" in it }
+            .forEach { android.util.Log.e("EmulatorInput", it) }
         windows.lineSequence().filter { line ->
             listOf("mCurrentFocus", "mFocusedApp", "mTopFocusedDisplayId", "mKeyguard", "Window #")
                 .any(line::contains)

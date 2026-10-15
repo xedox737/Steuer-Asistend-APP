@@ -16,6 +16,8 @@ collect_diagnostics() {
   # including on Gradle/test failure, rather than in a later workflow step.
   adb pull "$device_artifact_dir/." "$artifact_dir/device" > "$artifact_dir/adb-pull.txt" 2>&1
   adb logcat -d -b crash -v threadtime > "$artifact_dir/logcat-crash.txt" 2>&1
+  adb shell dumpsys window > "$artifact_dir/window-state.txt" 2>&1
+  adb shell dumpsys input > "$artifact_dir/input-state.txt" 2>&1
   adb logcat -d -v threadtime -t 12000 \
     AndroidRuntime:V ActivityManager:I ActivityTaskManager:I SQLiteLog:V \
     SQLiteDatabase:V Room:V TestRunner:V System.err:W '*:S' \
@@ -39,6 +41,16 @@ adb logcat -c
 adb shell settings put system font_scale 1.0
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 0
+# Keep launcher cleanup outside ActivityScenario's per-test home transitions.
+# Repeated force-stop of Quickstep left recents input consumers behind on API 35,
+# despite WindowManager reporting the app focused. Prepare HOME once instead.
+case "$(adb shell getprop ro.hardware | tr -d '\r')" in
+  ranchu|goldfish) ;;
+  *) echo "Launcher-Testvorbereitung ist nur auf einem isolierten Emulator erlaubt." >&2; exit 1 ;;
+esac
+adb shell am force-stop com.google.android.apps.nexuslauncher
+adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME \
+  > "$artifact_dir/launcher-startup.txt" 2>&1
 {
   echo "profile=pixel_5"
   echo "boot_completed=$(adb shell getprop sys.boot_completed | tr -d '\r')"
