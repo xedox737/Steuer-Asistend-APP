@@ -105,4 +105,3 @@ Workflow-Review: lint, Unit-Test, Build und Emulator-Test haben kein continue-on
 ## Verbleibende Risiken
 
 Die Wirkung des ergänzten Logbook-Wartens und des vereinheitlichten Caches ist noch nicht durch fünf Läufe belegt. Ein grüner Einzellauf beweist keine dauerhafte Stabilität. Emulator-Fokusfehler können trotz bestehender Fixes wiederkehren und müssen dann anhand der gesicherten Window-/Input-Diagnostik weiter untersucht werden. Vorläufige fachliche/Layout-Klassifikationen sind keine Entwarnung. PR bis zum Abschluss der offenen Prüfungen als Draft behandeln. Kein Merge nach main.
-

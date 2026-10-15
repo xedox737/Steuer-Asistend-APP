@@ -226,4 +226,3 @@ jobs:
             app/build/emulator-e2e/**
           if-no-files-found: warn
           retention-days: 14
-

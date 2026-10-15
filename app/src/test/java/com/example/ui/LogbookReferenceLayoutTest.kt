@@ -195,4 +195,3 @@ class LogbookReferenceLayoutTest {
         assertEquals(AppScreen.DASHBOARD, viewModel.currentScreen.value)
     }
 }
-
