@@ -1,8 +1,11 @@
 package com.example.data
 
+import com.example.util.DatevMappingService
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.time.LocalDate
+import java.time.YearMonth
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -13,6 +16,9 @@ data class AcquisitionCostDetail(
     val grossAmount: Double,
     val buildingAllocatedAmount: Double
 )
+
+/** Monthly planning values only; never persisted as confirmed depreciation. */
+data class AfaForecastYear(val year: Int, val months: Int, val amount: Double, val remainingBookValue: Double)
 
 data class ModernizationMonitorDetail(
     val displayId: String,
@@ -51,18 +57,36 @@ data class TaxPhase1Summary(
     val candidateReceiptCount: Int,
     val estimatedNetCount: Int,
     val heuristicallyExcludedCount: Int,
-    val monitorDetails: List<ModernizationMonitorDetail>
+    val monitorDetails: List<ModernizationMonitorDetail>,
+    val acquisitionBasisError: String? = null
 ) {
     val limitUsagePercent: Double
         get() = if (limit15Percent > 0.0) relevantModernizationNet / limit15Percent * 100.0 else 0.0
     val is15PercentExceeded: Boolean
         get() = limit15Percent > 0.0 && relevantModernizationNet > limit15Percent
     val allocationNeedsReview: Boolean
-        get() = purchasePrice > 0.0 && abs(allocationDifference) > 1.0
+        get() = acquisitionBasisError != null || (purchasePrice > 0.0 && abs(allocationDifference) > 1.0)
 }
 
 object TaxPropertyCalculator {
     private val germanDate = SimpleDateFormat("yyyy-MM-dd", Locale.GERMANY).apply { isLenient = false }
+
+    /** The caller supplies the first unconfirmed month; acquisition month remains inclusive. */
+    fun forecast(summary: TaxPhase1Summary, firstMonth: YearMonth? = null,
+        remainingBookValue: Double? = null): List<AfaForecastYear> {
+        val acquisition = runCatching { LocalDate.parse(summary.afaStartDate) }.getOrNull() ?: return emptyList()
+        if (summary.acquisitionBasisError != null || !summary.buildingAcquisitionCosts.isFinite() ||
+            summary.buildingAcquisitionCosts <= 0.0 || !summary.annualAfa.isFinite() || summary.annualAfa <= 0.0) return emptyList()
+        var remaining = remainingBookValue ?: summary.buildingAcquisitionCosts
+        if (!remaining.isFinite() || remaining < 0.0) return emptyList()
+        val start = maxOf(YearMonth.from(acquisition), firstMonth ?: YearMonth.from(acquisition))
+        return (0 until 10).map { index ->
+            val months = if (index == 0) 13 - start.monthValue else 12
+            val amount = (summary.annualAfa * (months / 12.0)).coerceIn(0.0, remaining)
+            remaining = (remaining - amount).coerceAtLeast(0.0)
+            AfaForecastYear(start.year + index, months, amount, remaining)
+        }
+    }
 
     fun calculate(metadata: PropertyMetadata, receipts: List<Receipt>): TaxPhase1Summary {
         val purchasePrice = metadata.gesamtKaufpreis.coerceAtLeast(0.0)
@@ -85,17 +109,32 @@ object TaxPropertyCalculator {
         val activeReceipts = receipts.filter { it.deletionStatus == "ACTIVE" || it.deletionStatus.isBlank() }
         val acquisitionReceipts = activeReceipts.filter { it.hauptkategorie == "Anschaffungskosten" }
         val acquisitionDetails = acquisitionReceipts.map { receipt ->
+            // Classified acquisition receipts follow the existing DATEV/renovation
+            // credit-note convention, including positive amounts marked as credits.
+            val signedGross = abs(receipt.bruttobetrag) * if (DatevMappingService.isCreditNote(receipt)) -1.0 else 1.0
             AcquisitionCostDetail(
                 displayId = receipt.getEffectiveDisplayId(),
                 datum = receipt.datum,
                 description = receipt.beschreibung.ifBlank { receipt.aussteller },
-                grossAmount = receipt.bruttobetrag.coerceAtLeast(0.0),
-                buildingAllocatedAmount = receipt.bruttobetrag.coerceAtLeast(0.0) * buildingRatio
+                grossAmount = signedGross,
+                buildingAllocatedAmount = signedGross * buildingRatio
             )
         }
         val ancillaryGross = acquisitionDetails.sumOf { it.grossAmount }
         val buildingAncillary = acquisitionDetails.sumOf { it.buildingAllocatedAmount }
-        val buildingAcquisitionCosts = buildingShare + buildingAncillary
+        val calculatedBasis = buildingShare + buildingAncillary
+        val acquisitionBasisError = when {
+            listOf(metadata.gesamtKaufpreis, metadata.gebaeudewert, metadata.grundUndBodenWert)
+                .any { !it.isFinite() || it < 0.0 } -> "Die Anschaffungswerte sind ungültig. Bitte die Kaufpreisaufteilung prüfen."
+            acquisitionDetails.any { !it.grossAmount.isFinite() || !it.buildingAllocatedAmount.isFinite() } ->
+                "Ein Anschaffungsbeleg enthält einen ungültigen Betrag. Bitte prüfen."
+            !ancillaryGross.isFinite() || !buildingAncillary.isFinite() || !calculatedBasis.isFinite() || calculatedBasis < 0.0 ->
+                "Die Anschaffungsbasis ist ungültig. Bitte Rechnungen und Gutschriften prüfen."
+            else -> null
+        }
+        // A blocked calculation is not a repair of metadata or receipt amounts.
+        // Signed details remain available; no negative/invalid depreciation is derived.
+        val buildingAcquisitionCosts = if (acquisitionBasisError == null) calculatedBasis else 0.0
 
         val afaRate = when {
             metadata.baujahr <= 0 -> 0.0
@@ -190,7 +229,8 @@ object TaxPropertyCalculator {
             candidateReceiptCount = includedDetails.size,
             estimatedNetCount = includedDetails.count { it.estimatedNet },
             heuristicallyExcludedCount = monitorDetails.count { !it.included },
-            monitorDetails = monitorDetails
+            monitorDetails = monitorDetails,
+            acquisitionBasisError = acquisitionBasisError
         )
     }
 

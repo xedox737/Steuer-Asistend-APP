@@ -95,7 +95,8 @@ object RenovationReviewCalculator {
         return RenovationReviewSummary(property, basis,
             if (property.uebergangNutzenLasten.isNotBlank()) "Besitz / Nutzen / Lasten"
             else if (property.notariellesKaufdatum.isNotBlank()) "Notarielles Kaufdatum (Ersatz; wirtschaftlichen Übergang prüfen)"
-            else "Anschaffungsdatum fehlt", measures, lines, snapshot.errors + evidenceErrors)
+            else "Anschaffungsdatum fehlt", measures, lines,
+            snapshot.errors + evidenceErrors + listOfNotNull(basis.acquisitionBasisError))
     }
 
     fun periodLabel(receipt: Receipt, basis: TaxPhase1Summary): String {
