@@ -68,8 +68,21 @@ import com.example.data.ManagedDocument
 import com.example.data.PropertyMetadata
 import com.example.data.TaxPhase1Summary
 import com.example.data.TaxPropertyCalculator
+import com.example.data.AfaForecastYear
 import java.io.File
 import java.time.LocalDate
+import java.time.YearMonth
+import androidx.compose.ui.platform.testTag
+
+internal const val AFA_CUTOFF_MONTH_NOTE = "Der Stichtagsmonat gilt als abgeschlossen. Die Monatsprognose beginnt im Folgemonat."
+
+/** Confirmed history includes the cutoff month; planning starts in the next month. */
+internal fun afaForecast(summary: TaxPhase1Summary, confirmed: ConfirmedAfaValues?): List<AfaForecastYear> {
+    val firstMonth = if (confirmed == null) null else (runCatching {
+        YearMonth.from(LocalDate.parse(confirmed.cutoffDate)).plusMonths(1)
+    }.getOrNull() ?: return emptyList())
+    return TaxPropertyCalculator.forecast(summary, firstMonth, confirmed?.remainingBookValue)
+}
 
 /** AfA navigation uses the existing property records. It never creates a second building. */
 @Composable
@@ -124,7 +137,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
             }, confirmButton = { TextButton(onClick = { showBreakdown = false }) { Text("Schließen") } })
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(Ui2.padding),
+    LazyColumn(modifier = Modifier.fillMaxSize().testTag("afa_portfolio"), contentPadding = androidx.compose.foundation.layout.PaddingValues(Ui2.padding),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -149,7 +162,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                 items(properties, key = { it.propertyId }) { building ->
                     val data = TaxPropertyCalculator.calculate(building,
                         ImmobilienManagerProjection.receipts(building, viewModel.getWohneinheitenForProperty(building), receipts))
-                    Card(onClick = { propertyId = building.propertyId; tab = 0 }, modifier = Modifier.fillMaxWidth(), shape = Ui2.shape,
+                    Card(onClick = { propertyId = building.propertyId; tab = 0 }, modifier = Modifier.fillMaxWidth().testTag("afa_property_${building.propertyId}"), shape = Ui2.shape,
                         colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -162,6 +175,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                                 Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = SlateGray)
                             }
                             HorizontalDivider(color = BorderColor)
+                            data.acquisitionBasisError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp) }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 AfaMetric("Baujahr", building.baujahr.takeIf { it > 0 }?.toString() ?: "–", Modifier.weight(1f))
                                 AfaMetric("AfA-Satz", if (data.afaRatePercent > 0) "${"%.1f".format(data.afaRatePercent)} %" else "–", Modifier.weight(1f))
@@ -185,6 +199,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     }
                 }
                 HorizontalDivider(color = BorderColor)
+                summary.acquisitionBasisError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AfaMetric("Einheiten", viewModel.getWohneinheitenForProperty(property).size.toString(), Modifier.weight(1f))
                     AfaMetric("Wohnfläche", "${property.wohnflaeche.toInt()} m²", Modifier.weight(1f))
@@ -257,21 +272,14 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                         AfaValueRow("Quelle", confirmedAfa.source)
                     }
                     Text("Prognose für 10 Jahre · keine verbuchten Steuerwerte", fontSize = 11.sp, color = SlateGray)
-                    val start = runCatching { LocalDate.parse(property.uebergangNutzenLasten.ifBlank { property.notariellesKaufdatum }) }.getOrNull()
-                    if ((start == null && confirmedAfa == null) || summary.buildingAcquisitionCosts <= 0.0 || summary.annualAfa <= 0.0) {
+                    val forecast = afaForecast(summary, confirmedAfa)
+                    if (forecast.isEmpty()) {
                         Text("Für die Prognose fehlen AfA-Beginn oder Bemessungsgrundlage.", color = SlateGray)
                     } else {
-                        var remaining = confirmedAfa?.remainingBookValue ?: summary.buildingAcquisitionCosts
-                        val forecast = (0 until 10).map { index ->
-                            val amount = (if (confirmedAfa == null && index == 0) summary.firstYearAfa else summary.annualAfa)
-                                .coerceIn(0.0, remaining)
-                            remaining = (remaining - amount).coerceAtLeast(0.0)
-                            ((confirmedAfa?.cutoffDate?.let { LocalDate.parse(it).year + 1 } ?: start!!.year) + index) to amount
-                        }
-                        val chartMax = forecast.maxOf { it.second }.coerceAtLeast(1.0)
+                        val chartMax = forecast.maxOf { it.amount }.coerceAtLeast(1.0)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp),
                             verticalAlignment = Alignment.Bottom) {
-                            forecast.forEach { (year, amount) ->
+                            forecast.forEach { (year, _, amount) ->
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Box(Modifier.fillMaxWidth().height(94.dp), contentAlignment = Alignment.BottomCenter) {
@@ -284,8 +292,9 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                             }
                         }
                         Text("Jahreswerte", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = DarkNavy)
-                        forecast.forEach { (year, amount) ->
-                            AfaValueRow(year.toString(), NumberFormatter.format(amount))
+                        forecast.forEach { (year, months, amount) ->
+                            AfaValueRow(if (months == 12) year.toString() else "$year ($months Monate)",
+                                NumberFormatter.format(amount), modifier = Modifier.testTag("afa_forecast_$year"))
                         }
                     }
                     HorizontalDivider()
@@ -314,8 +323,8 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
     }
 }
 
-@Composable private fun AfaValueRow(label: String, value: String, emphasized: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+@Composable private fun AfaValueRow(label: String, value: String, emphasized: Boolean = false, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1.25f), fontSize = 11.sp, color = if (emphasized) DarkNavy else SlateGray)
         Text(value.ifBlank { "–" }, Modifier.weight(0.85f), fontSize = 11.sp, textAlign = TextAlign.End,
             fontWeight = if (emphasized) FontWeight.Bold else FontWeight.Normal, color = DarkNavy)
@@ -409,6 +418,7 @@ internal fun ConfirmedAfaValuesDialog(
         text = {
             Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Nur nach Steuerberaterunterlagen oder Steuerbescheid übernehmen. ImmoPilot-Planwerte bleiben unverändert.")
+                Text(AFA_CUTOFF_MONTH_NOTE)
                 AppDateField(value = cutoff, onValueChange = { cutoff = it }, label = "Stichtag", modifier = Modifier.fillMaxWidth(), required = true, onValidityChange = { dateFields.update("cutoff", it) })
                 OutlinedTextField(depreciation, { depreciation = it }, label = { Text("Bisherige AfA kumuliert (€)") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(bookValue, { bookValue = it }, label = { Text("Bestätigter Restbuchwert (€)") }, modifier = Modifier.fillMaxWidth())
