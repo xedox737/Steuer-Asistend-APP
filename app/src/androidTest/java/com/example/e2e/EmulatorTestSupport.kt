@@ -94,6 +94,18 @@ abstract class EmulatorTestSupport {
         override fun before() {
             scenario = ActivityScenario.launch(MainActivity::class.java)
             ui.onNodeWithText("Willkommen bei ImmoPilot").assertIsDisplayed()
+            // Semantics can remain readable behind another Android window. Real key
+            // input requires the launched activity to own focus, not just Compose roots.
+            try {
+                ui.waitUntil(10_000) {
+                    var focused = false
+                    scenario.onActivity { focused = it.window.decorView.hasWindowFocus() }
+                    focused
+                }
+            } catch (failure: Throwable) {
+                runCatching { saveWindowState("activity-start-font-$fontScale-failure") }
+                throw failure
+            }
             val resources = context.resources
             saveText("environment-font-${fontScale}.txt", buildString {
                 appendLine("api=${Build.VERSION.SDK_INT}; android=${Build.VERSION.RELEASE}")
@@ -108,6 +120,7 @@ abstract class EmulatorTestSupport {
     @get:Rule(order = 3) val failureDiagnostics = object : TestWatcher() {
         override fun failed(error: Throwable, description: Description) {
             val name = "${description.testClass.simpleName}-${description.methodName}-failure"
+            runCatching { saveWindowState(name) }
             // Diagnostics must not replace the original assertion/exception.
             runCatching { capture(name) }.onFailure {
                 // A failing popup/missing Compose root still gets a device image.
@@ -117,6 +130,15 @@ abstract class EmulatorTestSupport {
             }
             runCatching { saveText("$name.txt", ui.onRoot(useUnmergedTree = true).printToString()) }
         }
+    }
+
+    private fun saveWindowState(name: String) {
+        val windows = shell("dumpsys window")
+        saveText("$name-windows.txt", windows)
+        windows.lineSequence().filter { line ->
+            listOf("mCurrentFocus", "mFocusedApp", "mTopFocusedDisplayId", "mKeyguard", "Window #")
+                .any(line::contains)
+        }.forEach { android.util.Log.e("EmulatorWindow", it) }
     }
 
     protected fun capture(name: String) {
@@ -180,13 +202,14 @@ abstract class EmulatorTestSupport {
     protected fun systemBack() {
         // Keep Espresso's real key injection and main-thread synchronization, but select
         // the actually focused window instead of a cached Activity behind a modal dialog.
-        val focusedWindow = object : org.hamcrest.TypeSafeMatcher<androidx.test.espresso.Root>() {
-            override fun matchesSafely(root: androidx.test.espresso.Root): Boolean = root.decorView.hasWindowFocus()
-            override fun describeTo(description: org.hamcrest.Description) { description.appendText("focused Android window") }
-        }
-        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot()).inRoot(focusedWindow)
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot()).inRoot(focusedAndroidWindow())
             .perform(androidx.test.espresso.action.ViewActions.pressBack())
         ui.waitForIdle()
+    }
+
+    private fun focusedAndroidWindow() = object : org.hamcrest.TypeSafeMatcher<androidx.test.espresso.Root>() {
+            override fun matchesSafely(root: androidx.test.espresso.Root): Boolean = root.decorView.hasWindowFocus()
+            override fun describeTo(description: org.hamcrest.Description) { description.appendText("focused Android window") }
     }
 
     protected fun seedProperty(id: String = "e2e-property", name: String = "Testobjekt", rented: Boolean = false): PropertyMetadata {
@@ -252,15 +275,11 @@ abstract class EmulatorTestSupport {
     }
 
     private fun closeFocusedSoftKeyboard() {
-        // An input field can be inside a Compose dialog. Its window owns the IME;
-        // the activity root deliberately has no focus in that case.
-        if (ui.onAllNodes(isDialog()).fetchSemanticsNodes().isNotEmpty()) {
-            Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
-                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
-                .perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
-        } else {
-            Espresso.closeSoftKeyboard()
-        }
+        // Being a dialog does not imply current Android focus: an older editor
+        // or a calendar window can remain registered during a window transition.
+        Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.isRoot())
+            .inRoot(focusedAndroidWindow())
+            .perform(androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
     }
 
 }
