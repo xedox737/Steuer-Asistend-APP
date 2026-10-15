@@ -33,7 +33,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
@@ -227,3 +226,4 @@ jobs:
             app/build/emulator-e2e/**
           if-no-files-found: warn
           retention-days: 14
+

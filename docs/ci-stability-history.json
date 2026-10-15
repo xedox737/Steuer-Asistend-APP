@@ -1,0 +1,1078 @@
+[
+  {
+    "id": 38721934233,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38721934233",
+    "workflow": "Android CI",
+    "sha": "234bce3ed2fb654e78b020e0485fa616d3572d86",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 116378350751,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116381553725,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38721934157,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38721934157",
+    "workflow": "Publish verified APK",
+    "sha": "234bce3ed2fb654e78b020e0485fa616d3572d86",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "Nur APK-Publish; kein vollständiger CI-Beleg",
+    "jobs": [
+      {
+        "id": 116378350779,
+        "name": "publish",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38712643562,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38712643562",
+    "workflow": "Android CI",
+    "sha": "0a464e342f3d9543e375c143e9ed2e645ccc5940",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 116347563196,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116351111967,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38709266454,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38709266454",
+    "workflow": "Android CI",
+    "sha": "a60408d8746cf43500361f372abe9253822a7529",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "AfA: Zurück-Node nach Navigation nicht gefunden; im Base durch 0a464e3 korrigiert.",
+    "jobs": [
+      {
+        "id": 116336306053,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116341532596,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38705263745,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38705263745",
+    "workflow": "Android CI",
+    "sha": "317eab9aefecfdab18c66883fb0efa110fe6f696",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "failure",
+    "classification": "Emulator",
+    "reason": "Viele Start-Fokus-Timeouts; vor HOME-Fix a60408d.",
+    "jobs": [
+      {
+        "id": 116322999600,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116326901669,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38703606308,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38703606308",
+    "workflow": "Android CI",
+    "sha": "6a99a4f9dbef76c5e1163b281379016944ebf4d6",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "PrimaryNavigationComposeTest: Main-Looper/Banklink-Wartebedingung; AndroidStateAwait folgt in 317eab9.",
+    "jobs": [
+      {
+        "id": 116317577704,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 116321622152,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38703182457,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38703182457",
+    "workflow": "Android CI",
+    "sha": "a58735dc11c9fa92473821e8051866c5f6047045",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 116316067121,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 116317576875,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38698492878,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38698492878",
+    "workflow": "Android CI",
+    "sha": "1828d3e57e5d4f758f4ba432dc2ff81daccbd988",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "failure",
+    "classification": "Emulator",
+    "reason": "RootViewWithoutFocus / NoMatchingRoot; vor HOME-Fix a60408d.",
+    "jobs": [
+      {
+        "id": 116300659208,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116305165999,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38697175580,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38697175580",
+    "workflow": "Android CI",
+    "sha": "cffa0392d74b7a1261d8358a229d018e900be440",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Phase9C-Compose: Room-State-Wartebedingung; AndroidStateAwait folgt in 317eab9.",
+    "jobs": [
+      {
+        "id": 116296397108,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 116299523242,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38695962375,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38695962375",
+    "workflow": "Android CI",
+    "sha": "1afc246a09b56af11d9946181f98e6e588488e3c",
+    "branch": "fix/phase9d-afa-basis-cutoff-forecast",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Phase9D-Compose: Room-State-Wartebedingung; AndroidStateAwait folgt in 317eab9.",
+    "jobs": [
+      {
+        "id": 116292468750,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 116295935044,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38653039878,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38653039878",
+    "workflow": "Publish verified APK",
+    "sha": "e61520cf798484c34f6bf2dbec55bea01280b934",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "Nur APK-Publish; kein vollständiger CI-Beleg",
+    "jobs": [
+      {
+        "id": 116156165269,
+        "name": "publish",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38653039874,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38653039874",
+    "workflow": "Android CI",
+    "sha": "e61520cf798484c34f6bf2dbec55bea01280b934",
+    "branch": "main",
+    "result": "failure",
+    "classification": "Emulator",
+    "reason": "Fokusverlust ab Phase8ALoan15; danach klassenübergreifende NoMatchingRoot-Fehler.",
+    "jobs": [
+      {
+        "id": 116156165514,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116160770267,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38648154217,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38648154217",
+    "workflow": "Android CI",
+    "sha": "44813133e4abc10a42731debce84def81064a15c",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 116140139202,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116143482525,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38647378181,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38647378181",
+    "workflow": "Android CI",
+    "sha": "d1a791bcf31e477c5578de769ea86c03eb6937b1",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 116137487424,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 116140138736,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38642983924,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38642983924",
+    "workflow": "Android CI",
+    "sha": "f98168c5a091f89801703a95583ec85cfdb6a1ec",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "failure",
+    "classification": "Emulator",
+    "reason": "RootViewWithoutFocus ab LoanDateComponent, danach klassenübergreifend.",
+    "jobs": [
+      {
+        "id": 116122846979,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116127234646,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38637212486,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38637212486",
+    "workflow": "Android CI",
+    "sha": "e1a13af14f14504e014b45f7955f636a41f83540",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "failure",
+    "classification": "Emulator",
+    "reason": "Phase6BWorkflow: RootViewWithoutFocus.",
+    "jobs": [
+      {
+        "id": 116103305976,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116107051802,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38617207967,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38617207967",
+    "workflow": "Android CI",
+    "sha": "0b5f19acdf2abd5f0c26215e5dcaad6157dd2c7c",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "failure",
+    "classification": "Infrastruktur",
+    "reason": "Lint-Schritt nach 10 Minuten abgebrochen; Ressourcen-/Cacheursache nicht abschließend bewiesen.",
+    "jobs": [
+      {
+        "id": 116035937336,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 116041159288,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38616654443,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38616654443",
+    "workflow": "Android CI",
+    "sha": "59ede04f1cfb874f73fa4e174f0395f114976793",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 116033345420,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 116035932543,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38611341496,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38611341496",
+    "workflow": "Android CI",
+    "sha": "29f7430c43c55133f8435034538d78ca8fddb360",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "failure",
+    "classification": "Testfehler (vorläufig)",
+    "reason": "Font-Matrix: nicht angezeigte Komponente und expected 1.5 / actual 1.0; Produkt-/Konfigurationsanteil offen.",
+    "jobs": [
+      {
+        "id": 116015196984,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 116020773773,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38608852058,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38608852058",
+    "workflow": "Android CI",
+    "sha": "6902af6f0b3960a675bf5027566089f8238ae7b2",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Logbook: DB trips=3, Flow trips=0; zusätzlich Phase9C-Wartebedingung.",
+    "jobs": [
+      {
+        "id": 116006913782,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 116011977247,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38608694203,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38608694203",
+    "workflow": "Android CI",
+    "sha": "06458fd7987a3e0868b5d95e00acaa6be54ecb78",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 116006133553,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 116006908727,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38607325406,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38607325406",
+    "workflow": "Android CI",
+    "sha": "6a9e35c6796f776e93489d58d04bc43f3a20259e",
+    "branch": "fix/phase9c-rent-arrears-aggregation",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "RentOverviewComposeTest: Timeout bei Fixture/Flow-Synchronisierung.",
+    "jobs": [
+      {
+        "id": 116001433994,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 116004973688,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38599646305,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38599646305",
+    "workflow": "Publish verified APK",
+    "sha": "041d64b03169c0a73d8d16439d752d64f6bdd781",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "Nur APK-Publish; kein vollständiger CI-Beleg",
+    "jobs": [
+      {
+        "id": 115975264014,
+        "name": "publish",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38599646293,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38599646293",
+    "workflow": "Android CI",
+    "sha": "041d64b03169c0a73d8d16439d752d64f6bdd781",
+    "branch": "main",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Logbook: DB trips=3, Flow trips=0.",
+    "jobs": [
+      {
+        "id": 115975265403,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 115978260440,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38568159698,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38568159698",
+    "workflow": "Android CI",
+    "sha": "845a9b422ebbc0a8a56b1e5d54250cfd66ed7ff3",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 115866083660,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115869428922,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38563347144,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38563347144",
+    "workflow": "Android CI",
+    "sha": "6904f6e71daa6bc0c4ef207410b93061cad71aa2",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler (vorläufig)",
+    "reason": "Textlayout: Width overflow, unterschiedliche Messbreiten; Produkt-/Messfehler anhand Log allein nicht trennbar.",
+    "jobs": [
+      {
+        "id": 115849711600,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115852486197,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38560260394,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38560260394",
+    "workflow": "Android CI",
+    "sha": "099f01615739d2a99dcf5c83553b530192d98b8b",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler (vorläufig)",
+    "reason": "Textlayout: Width overflow; Produkt-/Messfehler anhand Log allein nicht trennbar.",
+    "jobs": [
+      {
+        "id": 115839726085,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115840435069,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38559056345,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38559056345",
+    "workflow": "Android CI",
+    "sha": "f410ce2533b3cfe9d5fbb16248113bf89b91e7d9",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115835298960,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115839109303,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38557649548,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38557649548",
+    "workflow": "Android CI",
+    "sha": "64523bc0f3da67bced94c6ef4b097ec29b6a9387",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Logbook: DB trips=3, Flow trips=0; Fixture-Isolation und Synchronisierung.",
+    "jobs": [
+      {
+        "id": 115830657454,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 115834203311,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38556127865,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38556127865",
+    "workflow": "Android CI",
+    "sha": "993b8143d6ccaac027415e704e24c37ed3e90e7c",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Logbook/Phase5B-Compose: Timeouts.",
+    "jobs": [
+      {
+        "id": 115825598182,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 115828421721,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38542874481,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38542874481",
+    "workflow": "Android CI",
+    "sha": "12dcac75617a93e77a5da0bf5809e5459a3f6155",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler (vorläufig)",
+    "reason": "Popup-WE-Node fehlt; Phase9B Assertions. Produktanteil ohne Artefaktprüfung offen.",
+    "jobs": [
+      {
+        "id": 115781680884,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115786499895,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38540347930,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38540347930",
+    "workflow": "Android CI",
+    "sha": "f19e6abcccea2be1be4cc780290882befbfe9ea3",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "LogbookReferenceLayoutTest: wiederkehrender Fixture-Timeout.",
+    "jobs": [
+      {
+        "id": 115773769315,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 115778163919,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38539875800,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38539875800",
+    "workflow": "Android CI",
+    "sha": "fe87229eae995c696b4f5386a5f2699a582236fc",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115772141875,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 115773769007,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38538184071,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38538184071",
+    "workflow": "Android CI",
+    "sha": "3dd4053663b57340b6db45b516fe3f8d405c4aba",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115766126661,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115770989834,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38535878397,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38535878397",
+    "workflow": "Android CI",
+    "sha": "13023f68cd2ef0c690233e00621c5209331c9411",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Instrumentation kompiliert nicht: Unresolved reference BankRentSuggestion.",
+    "jobs": [
+      {
+        "id": 115759047174,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115762276622,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38534941340,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38534941340",
+    "workflow": "Android CI",
+    "sha": "3bfb2ca2064fd51969dc3dbb85d0dfb39b3a8ee4",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115755466263,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 115759046760,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38533479870,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38533479870",
+    "workflow": "Android CI",
+    "sha": "998dfad082e080cb8e0b9c7ed3e66c469b56e1bc",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115750911746,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 115755464939,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38532819058,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38532819058",
+    "workflow": "Android CI",
+    "sha": "fb4de056808934f0c35995fb26a18a17c5b47b67",
+    "branch": "fix/phase9b-shared-number-write-contracts",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115748471711,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 115750911019,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38525090063,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38525090063",
+    "workflow": "Android CI",
+    "sha": "d52dd3d1d711bbebdb0c89cc177b371582b70fb9",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 115723457465,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115726419730,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38525090008,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38525090008",
+    "workflow": "Publish verified APK",
+    "sha": "d52dd3d1d711bbebdb0c89cc177b371582b70fb9",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "Nur APK-Publish; kein vollständiger CI-Beleg",
+    "jobs": [
+      {
+        "id": 115723456929,
+        "name": "publish",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38488177862,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38488177862",
+    "workflow": "Android CI",
+    "sha": "af402c6204bf367c2d21d3d593e60cd26e2f3bab",
+    "branch": "fix/phase9a-data-preservation-backup-restore",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 115607062662,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115610993666,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38488104989,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38488104989",
+    "workflow": "Android CI",
+    "sha": "736887ce0c06f37c02e0f0e6f5515e43f5ea48e3",
+    "branch": "fix/phase9a-data-preservation-backup-restore",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115606549947,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 115607062108,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38483993683,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38483993683",
+    "workflow": "Android CI",
+    "sha": "ac482dc790f06582c9dd92befce7e0d58c60f701",
+    "branch": "fix/phase9a-data-preservation-backup-restore",
+    "result": "failure",
+    "classification": "Produktfehler (Verdacht)",
+    "reason": "Backup-Vertrag: Assertion/JSONException; darf nicht als Infrastruktur-Flake abgetan werden.",
+    "jobs": [
+      {
+        "id": 115593167781,
+        "name": "verify",
+        "result": "failure"
+      },
+      {
+        "id": 115596388884,
+        "name": "android-emulator-e2e",
+        "result": "skipped"
+      }
+    ]
+  },
+  {
+    "id": 38481150712,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38481150712",
+    "workflow": "Android CI",
+    "sha": "1c5aa2aaa35108be0de5b30472523dfb8f00b53d",
+    "branch": "fix/phase9a-data-preservation-backup-restore",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115583775115,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115587925700,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  },
+  {
+    "id": 38387403810,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38387403810",
+    "workflow": "Publish verified APK",
+    "sha": "5a58bc948daf50477c4578675abeebd237010491",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "Nur APK-Publish; kein vollständiger CI-Beleg",
+    "jobs": [
+      {
+        "id": 115262457257,
+        "name": "publish",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38387403709,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38387403709",
+    "workflow": "Android CI",
+    "sha": "5a58bc948daf50477c4578675abeebd237010491",
+    "branch": "main",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 115262456313,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115265478698,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38370165531,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38370165531",
+    "workflow": "Android CI",
+    "sha": "e6dcc1194842ddab81dc430d2da7cbc3b81df539",
+    "branch": "fix/phase8b-payment-history-datev-audit",
+    "result": "success",
+    "classification": "Erfolg",
+    "reason": "verify und Emulator erfolgreich",
+    "jobs": [
+      {
+        "id": 115204885883,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115209544571,
+        "name": "android-emulator-e2e",
+        "result": "success"
+      }
+    ]
+  },
+  {
+    "id": 38366835907,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38366835907",
+    "workflow": "Android CI",
+    "sha": "3fb96ba8e2ea7a75da450863da59dafbfa7318c7",
+    "branch": "fix/phase8b-payment-history-datev-audit",
+    "result": "failure",
+    "classification": "Testfehler (vorläufig)",
+    "reason": "Phase8B-History Assertions bei allen Font-Skalen; Produktanteil ohne Artefaktprüfung offen.",
+    "jobs": [
+      {
+        "id": 115193868579,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115197141356,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38364827809,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38364827809",
+    "workflow": "Android CI",
+    "sha": "d5c0ee98d26a093eadaa294ed82bda4393dc65c6",
+    "branch": "fix/phase8b-payment-history-datev-audit",
+    "result": "failure",
+    "classification": "Testfehler",
+    "reason": "Instrumentation: Syntaxfehler und nicht auflösbare Referenzen in Phase8BHistoryEmulatorTest.",
+    "jobs": [
+      {
+        "id": 115187437464,
+        "name": "verify",
+        "result": "success"
+      },
+      {
+        "id": 115191683094,
+        "name": "android-emulator-e2e",
+        "result": "failure"
+      }
+    ]
+  },
+  {
+    "id": 38364458583,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38364458583",
+    "workflow": "Android CI",
+    "sha": "2931ed450382fedc69c968558cd8fc03ef3d4373",
+    "branch": "fix/phase8b-payment-history-datev-audit",
+    "result": "cancelled",
+    "classification": "Abbruch",
+    "reason": "Lauf abgebrochen; neuere Commits/Concurrency vorhanden, genauer Auslöser aus Joblogs allein nicht bewiesen.",
+    "jobs": [
+      {
+        "id": 115186256338,
+        "name": "verify",
+        "result": "cancelled"
+      },
+      {
+        "id": 115187432193,
+        "name": "android-emulator-e2e",
+        "result": "cancelled"
+      }
+    ]
+  }
+]
+
