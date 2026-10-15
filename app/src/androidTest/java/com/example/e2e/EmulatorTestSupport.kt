@@ -104,6 +104,8 @@ abstract class EmulatorTestSupport {
                 }
             } catch (failure: Throwable) {
                 runCatching { saveWindowState("activity-start-font-$fontScale-failure") }
+                // ExternalResource.after is not called when before throws.
+                runCatching { scenario.close() }.exceptionOrNull()?.let(failure::addSuppressed)
                 throw failure
             }
             val resources = context.resources
