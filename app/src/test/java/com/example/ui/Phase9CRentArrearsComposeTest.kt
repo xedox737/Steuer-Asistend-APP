@@ -63,13 +63,19 @@ class Phase9CRentArrearsComposeTest {
     @get:Rule(order = 3) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
     @Test fun propertyAndUnitsShowUnpaidUnitDespiteAnotherUnitsSurplus() {
-        val model = vm
+        val model = ui.runOnIdle { vm }
         ui.onNodeWithTag("nav_item_properties").performClick()
-        ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == property.propertyId } && model.receipts.value.any { it.id == 991 } }
+        // Room resumes collectors on Android's main looper, not Compose's frame clock.
+        // Drain that looper while awaiting the unchanged production-flow condition.
+        ui.waitUntil(10_000) { ui.runOnIdle {
+            model.properties.value.any { it.propertyId == property.propertyId } && model.receipts.value.any { it.id == 991 }
+        } }
         ui.onNodeWithTag("property_card_${property.propertyId}").performScrollTo()
         ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("property_outstanding")), useUnmergedTree = true).assertIsDisplayed()
         ui.onNodeWithTag("property_card_${property.propertyId}").performClick()
-        ui.waitUntil(10_000) { model.propertyMetadata.value?.propertyId == property.propertyId && model.wohneinheitenStatus.value.size == 2 }
+        ui.waitUntil(10_000) { ui.runOnIdle {
+            model.propertyMetadata.value?.propertyId == property.propertyId && model.wohneinheitenStatus.value.size == 2
+        } }
         ui.onNode(hasText("Einheiten") and hasClickAction()).performScrollTo().performClick()
         ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag("unit_annual_outstanding"))
         ui.onNode(hasText("980,00 €") and hasAnyAncestor(hasTestTag("unit_annual_outstanding")), useUnmergedTree = true).assertIsDisplayed()

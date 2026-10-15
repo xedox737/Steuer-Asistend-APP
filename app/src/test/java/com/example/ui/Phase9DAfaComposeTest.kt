@@ -51,12 +51,14 @@ class Phase9DAfaComposeTest {
     @get:Rule(order = 3) val ui = createAndroidComposeRule<MainActivity>()
 
     @Test fun productionAfaShowsCorrectedBasisAndTheCutoffYearInsteadOf2027Only() {
-        val model = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
+        val model = ui.runOnIdle { ViewModelProvider(ui.activity)[ReceiptViewModel::class.java] }
         ui.onNodeWithTag("nav_item_more").performClick()
         ui.onNode(hasText("AfA Gebäude") and hasClickAction()).performScrollTo().performClick()
         // The production destination subscribes to the WhileSubscribed receipt flow.
         // Opening it is part of the workflow; reading .value alone does not start it.
-        ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == property.propertyId } && model.receipts.value.size == 2 }
+        ui.waitUntil(10_000) { ui.runOnIdle {
+            model.properties.value.any { it.propertyId == property.propertyId } && model.receipts.value.size == 2
+        } }
         ui.onNodeWithTag("afa_property_${property.propertyId}").performScrollTo().performClick()
         ui.onNodeWithText("AfA Berechnung").performScrollTo().performClick()
         ui.onNodeWithText("209.000,00 €").performScrollTo().assertIsDisplayed()
