@@ -1,0 +1,290 @@
+[
+  {
+    "run": 38709266454,
+    "job": 116341532596,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38709266454/job/116341532596",
+    "excerpt": [
+      "2026-10-15T09:21:16.4365458Z com.example.e2e.Phase9DAfa10EmulatorTest > signedBasisAndRemainingCutoffYearSurviveRecreateAndBothBackActions[emulator-5554 - 15] FAILED ",
+      "2026-10-15T09:21:16.4366544Z \tjava.lang.AssertionError: Action performScrollTo() failed.",
+      "2026-10-15T09:21:16.4447255Z \tReason: Expected exactly '1' node but could not find any node that satisfies: (ContentDescription = 'Zurück' (ignoreCase: false))",
+      "2026-10-15T09:21:20.9149295Z emulator-5554 - 15 Tests 63/67 completed. (0 skipped) (1 failed)",
+      "2026-10-15T09:21:21.4187121Z "
+    ]
+  },
+  {
+    "run": 38705263745,
+    "job": 116326901669,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38705263745/job/116326901669",
+    "excerpt": [
+      "2026-10-15T08:40:04.2185820Z com.example.e2e.ImmoPilotEmulatorSmokeTest > appStartsWithDashboardAndAllFivePrimaryDestinationsAreUsable[emulator-5554 - 15] FAILED ",
+      "2026-10-15T08:40:04.2187556Z \tandroidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 10000 ms",
+      "2026-10-15T08:40:04.2188902Z \tat androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:441)",
+      "2026-10-15T08:40:04.5150731Z emulator-5554 - 15 Tests 11/67 completed. (0 skipped) (1 failed)",
+      "2026-10-15T08:40:15.8163645Z "
+    ]
+  },
+  {
+    "run": 38703606308,
+    "job": 116317577704,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38703606308/job/116317577704",
+    "excerpt": [
+      "2026-10-15T08:19:19.2355723Z PrimaryNavigationComposeTest > committedSaveFinishesWithoutOverridingANewerPrimaryDestination FAILED",
+      "2026-10-15T08:19:19.2357149Z     androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 10000 ms",
+      "2026-10-15T08:19:19.2358554Z         at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:441)",
+      "2026-10-15T08:19:19.2360165Z         at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:306)",
+      "2026-10-15T08:19:19.2362025Z         at com.example.ui.PrimaryNavigationComposeTest.committedSaveFinishesWithoutOverridingANewerPrimaryDestination(PrimaryNavigationComposeTest.kt:276)"
+    ]
+  },
+  {
+    "run": 38698492878,
+    "job": 116305165999,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38698492878/job/116305165999",
+    "excerpt": [
+      "2026-10-15T07:45:06.8009070Z com.example.e2e.LoanDateComponentEmulatorTest > productionLoanEditorShowsGermanDatesAndCalendarPersistsIso[emulator-5554 - 15] FAILED ",
+      "2026-10-15T07:45:06.8029685Z \tandroidx.test.espresso.base.RootViewPicker$RootViewWithoutFocusException: Waited for the root of the view hierarchy to have window focus and not request layout for 10 seconds. If you specified a non default root matcher, it may be picking a root that never takes focus. Root:",
+      "2026-10-15T07:45:06.8032846Z \tRoot{application-window-token=android.view.ViewRootImpl$W@eb0a8b8, window-token=android.view.ViewRootImpl$W@eb0a8b8, has-window-focus=false, layout-params-type=2, layout-params-string={(0,0)(wrapxwrap) gr=CENTER sim={adjust=pan} ty=APPLICATION fmt=TRANSPARENT wanim=0x103030a",
+      "2026-10-15T07:45:08.0044866Z emulator-5554 - 15 Tests 12/67 completed. (0 skipped) (1 failed)",
+      "2026-10-15T07:46:12.7964084Z "
+    ]
+  },
+  {
+    "run": 38697175580,
+    "job": 116296397108,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38697175580/job/116296397108",
+    "excerpt": [
+      "2026-10-15T07:20:36.8178065Z Phase9CRentArrearsComposeTest > propertyAndUnitsShowUnpaidUnitDespiteAnotherUnitsSurplus FAILED",
+      "2026-10-15T07:20:36.8179105Z     androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 10000 ms",
+      "2026-10-15T07:20:36.8180153Z         at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:441)",
+      "2026-10-15T07:20:36.8181361Z         at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:306)",
+      "2026-10-15T07:20:36.8183082Z         at com.example.ui.Phase9CRentArrearsComposeTest.propertyAndUnitsShowUnpaidUnitDespiteAnotherUnitsSurplus(Phase9CRentArrearsComposeTest.kt:68)"
+    ]
+  },
+  {
+    "run": 38695962375,
+    "job": 116292468750,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38695962375/job/116292468750",
+    "excerpt": [
+      "2026-10-15T07:10:35.0118980Z Phase9DAfaComposeTest > productionAfaShowsCorrectedBasisAndTheCutoffYearInsteadOf2027Only FAILED",
+      "2026-10-15T07:10:35.0121224Z     androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 10000 ms",
+      "2026-10-15T07:10:35.0122389Z         at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:441)",
+      "2026-10-15T07:10:35.0123500Z         at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:306)",
+      "2026-10-15T07:10:35.0124689Z         at com.example.ui.Phase9DAfaComposeTest.productionAfaShowsCorrectedBasisAndTheCutoffYearInsteadOf2027Only(Phase9DAfaComposeTest.kt:55)"
+    ]
+  },
+  {
+    "run": 38653039874,
+    "job": 116160770267,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38653039874/job/116160770267",
+    "excerpt": [
+      "2026-10-14T23:42:26.3230021Z com.example.e2e.Phase8ALoan15EmulatorTest > restoredInfinityOpensWithoutCrashAndCanBeCancelledOrRepaired[emulator-5554 - 15] FAILED ",
+      "2026-10-14T23:42:26.3231261Z \tandroidx.test.espresso.base.RootViewPicker$RootViewWithoutFocusException: Waited for the root of the view hierarchy to have window focus and not request layout for 10 seconds. If you specified a non default root matcher, it may be picking a root that never takes focus. Root:",
+      "2026-10-14T23:42:26.3232568Z \tRoot{application-window-token=android.view.ViewRootImpl$W@3a35087, window-token=android.view.ViewRootImpl$W@3a35087, has-window-focus=false, layout-params-type=1, layout-params-string={(0,0)(fillxfill) layoutInDisplayCutoutMode=always ty=BASE_APPLICATION wanim=0x1030309",
+      "2026-10-14T23:42:34.5228303Z emulator-5554 - 15 Tests 43/64 completed. (0 skipped) (1 failed)",
+      "2026-10-14T23:43:31.3301399Z "
+    ]
+  },
+  {
+    "run": 38642983924,
+    "job": 116127234646,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38642983924/job/116127234646",
+    "excerpt": [
+      "2026-10-14T22:06:48.5288501Z com.example.e2e.LoanDateComponentEmulatorTest > productionLoanEditorShowsGermanDatesAndCalendarPersistsIso[emulator-5554 - 15] FAILED ",
+      "2026-10-14T22:06:48.5292519Z \tandroidx.test.espresso.base.RootViewPicker$RootViewWithoutFocusException: Waited for the root of the view hierarchy to have window focus and not request layout for 10 seconds. If you specified a non default root matcher, it may be picking a root that never takes focus. Root:",
+      "2026-10-14T22:06:48.5296832Z \tRoot{application-window-token=android.view.ViewRootImpl$W@54dcea1, window-token=android.view.ViewRootImpl$W@54dcea1, has-window-focus=false, layout-params-type=1, layout-params-string={(0,0)(fillxfill) layoutInDisplayCutoutMode=always ty=BASE_APPLICATION wanim=0x1030309",
+      "2026-10-14T22:06:53.9268966Z emulator-5554 - 15 Tests 12/64 completed. (0 skipped) (1 failed)",
+      "2026-10-14T22:07:53.8275219Z "
+    ]
+  },
+  {
+    "run": 38637212486,
+    "job": 116107051802,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38637212486/job/116107051802",
+    "excerpt": [
+      "2026-10-14T21:20:09.0742925Z com.example.e2e.Phase6BWorkflowEmulatorTest > realMeasureCreationReceiptAssignmentAdvisorMarkAndBackNavigation[emulator-5554 - 15] FAILED ",
+      "2026-10-14T21:20:09.0771740Z \tandroidx.test.espresso.base.RootViewPicker$RootViewWithoutFocusException: Waited for the root of the view hierarchy to have window focus and not request layout for 10 seconds. If you specified a non default root matcher, it may be picking a root that never takes focus. Root:",
+      "2026-10-14T21:20:09.0798590Z \tRoot{application-window-token=android.view.ViewRootImpl$W@151a643, window-token=android.view.ViewRootImpl$W@151a643, has-window-focus=false, layout-params-type=1, layout-params-string={(0,0)(fillxfill) layoutInDisplayCutoutMode=always ty=BASE_APPLICATION wanim=0x1030309",
+      "2026-10-14T21:20:15.7777165Z emulator-5554 - 15 Tests 21/64 completed. (0 skipped) (1 failed)",
+      "2026-10-14T21:20:25.7712739Z emulator-5554 - 15 Tests 23/64 completed. (0 skipped) (1 failed)"
+    ]
+  },
+  {
+    "run": 38617207967,
+    "job": 116035937336,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38617207967/job/116035937336",
+    "excerpt": [
+      "2026-10-14T18:53:00.9987719Z ##[error]The action 'Run lint' has timed out after 10 minutes.",
+      "2026-10-14T18:53:01.0223748Z ##[group]Run actions/upload-artifact@v4",
+      "2026-10-14T18:53:01.0227179Z with:",
+      "2026-10-14T18:53:01.0227546Z   name: android-reports",
+      "2026-10-14T18:53:01.0228074Z   path: app/build/reports/**"
+    ]
+  },
+  {
+    "run": 38611341496,
+    "job": 116020773773,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38611341496/job/116020773773",
+    "excerpt": [
+      "2026-10-14T18:21:21.7055394Z com.example.e2e.Phase6BFontScale10EmulatorTest > fullScreenMatrixPreservesWordsButtonsAndBackNavigation[emulator-5554 - 15] FAILED ",
+      "2026-10-14T18:21:21.7090943Z \tjava.lang.AssertionError: Assert failed: The component is not displayed!",
+      "2026-10-14T18:21:21.7109932Z \tat androidx.compose.ui.test.AssertionsKt.assertIsDisplayed(Assertions.kt:34)",
+      "2026-10-14T18:21:25.1069442Z emulator-5554 - 15 Tests 17/64 completed. (0 skipped) (1 failed)",
+      "2026-10-14T18:21:27.5057307Z "
+    ]
+  },
+  {
+    "run": 38608852058,
+    "job": 116006913782,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38608852058/job/116006913782",
+    "excerpt": [
+      "2026-10-14T17:52:03.5897307Z LogbookReferenceLayoutTest > referenceScreensRenderInsideTheActualAppFrame FAILED",
+      "2026-10-14T17:52:03.5956666Z     java.lang.AssertionError: Fixture store: trips=3, receipts=[1001, 1002, 1003, 1004], properties=[PropertyMetadata(id=1, propertyId=property-1, name=, adresse=Sulzerstraße 32, Dornstetten, wohnort=Dornstetten, baujahr=0, wohnflaeche=0.0, grundstuecksgroesse=0.0, notariellesKaufdatum=, uebergangNutzenLasten=, wohneinheiten=, gesamtKaufpreis=0.0, gebaeudewert=0.0, grundUndBodenWert=0.0, kaufpreisAufteilungQuelle=MANUELL, bildPfad=, objektart=Mehrfamilienhaus, status=Aktiv, notizen=, afaShorterYears=0, afaShorterStartDate=, afaShorterReason=, afaShorterDocumentId=, afaShorterConfirmed=false)]; flows: trips=0, receipts=[1001, 1002, 1003, 1004], property=PropertyMetadata(id=1, propertyId=property-1, name=, adresse=Sulzerstraße 32, Dornstetten, wohnort=Dornstetten, baujahr=0, wohnflaeche=0.0, grundstuecksgroesse=0.0, notariellesKaufdatum=, uebergangNutzenLasten=, wohneinheiten=, gesamtKaufpreis=0.0, gebaeudewert=0.0, grundUndBodenWert=0.0, kaufpreisAufteilungQuelle=MANUELL, bildPfad=, objektart=Mehrfamilienhaus, status=Aktiv, notizen=, afaShorterYears=0, afaShorterStartDate=, afaShorterReason=, afaShorterDocumentId=, afaShorterConfirmed=false), screen=LOGBOOK",
+      "2026-10-14T17:52:03.5963984Z         at com.example.ui.LogbookReferenceLayoutTest.referenceScreensRenderInsideTheActualAppFrame(LogbookReferenceLayoutTest.kt:128)",
+      "2026-10-14T17:52:03.5965078Z ",
+      "2026-10-14T17:52:03.5965278Z         Caused by:"
+    ]
+  },
+  {
+    "run": 38607325406,
+    "job": 116001433994,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38607325406/job/116001433994",
+    "excerpt": [
+      "2026-10-14T17:38:13.9160929Z RentOverviewComposeTest > propertyAndUnitsShowUnpaidUnitDespiteAnotherUnitsSurplus FAILED",
+      "2026-10-14T17:38:13.9167363Z     androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 10000 ms",
+      "2026-10-14T17:38:13.9168174Z         at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:441)",
+      "2026-10-14T17:38:13.9169140Z         at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:306)",
+      "2026-10-14T17:38:13.9170179Z         at com.example.ui.RentOverviewComposeTest.propertyAndUnitsShowUnpaidUnitDespiteAnotherUnitsSurplus(RentOverviewComposeTest.kt:269)"
+    ]
+  },
+  {
+    "run": 38599646293,
+    "job": 115975265403,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38599646293/job/115975265403",
+    "excerpt": [
+      "2026-10-14T16:43:01.1674719Z LogbookReferenceLayoutTest > referenceScreensRenderInsideTheActualAppFrame FAILED",
+      "2026-10-14T16:43:01.1681284Z     java.lang.AssertionError: Fixture store: trips=3, receipts=[1001, 1002, 1003, 1004], properties=[PropertyMetadata(id=1, propertyId=property-1, name=, adresse=Sulzerstraße 32, Dornstetten, wohnort=Dornstetten, baujahr=0, wohnflaeche=0.0, grundstuecksgroesse=0.0, notariellesKaufdatum=, uebergangNutzenLasten=, wohneinheiten=, gesamtKaufpreis=0.0, gebaeudewert=0.0, grundUndBodenWert=0.0, kaufpreisAufteilungQuelle=MANUELL, bildPfad=, objektart=Mehrfamilienhaus, status=Aktiv, notizen=, afaShorterYears=0, afaShorterStartDate=, afaShorterReason=, afaShorterDocumentId=, afaShorterConfirmed=false)]; flows: trips=0, receipts=[1001, 1002, 1003, 1004], property=PropertyMetadata(id=1, propertyId=property-1, name=, adresse=Sulzerstraße 32, Dornstetten, wohnort=Dornstetten, baujahr=0, wohnflaeche=0.0, grundstuecksgroesse=0.0, notariellesKaufdatum=, uebergangNutzenLasten=, wohneinheiten=, gesamtKaufpreis=0.0, gebaeudewert=0.0, grundUndBodenWert=0.0, kaufpreisAufteilungQuelle=MANUELL, bildPfad=, objektart=Mehrfamilienhaus, status=Aktiv, notizen=, afaShorterYears=0, afaShorterStartDate=, afaShorterReason=, afaShorterDocumentId=, afaShorterConfirmed=false), screen=LOGBOOK",
+      "2026-10-14T16:43:01.1685477Z         at com.example.ui.LogbookReferenceLayoutTest.referenceScreensRenderInsideTheActualAppFrame(LogbookReferenceLayoutTest.kt:128)",
+      "2026-10-14T16:43:01.1686047Z ",
+      "2026-10-14T16:43:01.1686148Z         Caused by:"
+    ]
+  },
+  {
+    "run": 38563347144,
+    "job": 115852486197,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38563347144/job/115852486197",
+    "excerpt": [
+      "2026-10-14T12:47:08.1306149Z com.example.e2e.Phase9BNumber10EmulatorTest > wizardAndDocumentRejectExtremeOrMalformedRawNumbersBeforeMutation[emulator-5554 - 15] FAILED ",
+      "2026-10-14T12:47:08.1310988Z \tjava.lang.AssertionError: Width overflow: kaufpreis: Bitte eine gültige Zahl eingeben. at 1.0: size=588 x 55, paragraph=748.0 x 55.0, constraints=Constraints(minWidth = 0, maxWidth = 748, minHeight = 0, maxHeight = Infinity), layoutText=kaufpreis: Bitte eine gültige Zahl eingeben.",
+      "2026-10-14T12:47:08.1313669Z \tat org.junit.Assert.fail(Assert.java:89)",
+      "2026-10-14T12:47:15.9316182Z emulator-5554 - 15 Tests 53/63 completed. (0 skipped) (1 failed)",
+      "2026-10-14T12:47:22.2300252Z "
+    ]
+  },
+  {
+    "run": 38560260394,
+    "job": 115840435069,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38560260394/job/115840435069",
+    "excerpt": [
+      "2026-10-14T12:16:00.6386007Z com.example.e2e.Phase9BNumber10EmulatorTest > wizardAndDocumentRejectExtremeOrMalformedRawNumbersBeforeMutation[emulator-5554 - 15] FAILED ",
+      "2026-10-14T12:16:00.6389039Z \tjava.lang.AssertionError: Width overflow: Der Wert ist für die Berechnung zu groß. at 1.0: size=608 x 47, paragraph=660.0 x 47.0, constraints=Constraints(minWidth = 0, maxWidth = 660, minHeight = 0, maxHeight = Infinity), layoutText=Der Wert ist für die Berechnung zu groß.",
+      "2026-10-14T12:16:00.6391415Z \tat org.junit.Assert.fail(Assert.java:89)",
+      "2026-10-14T12:16:04.2257660Z ",
+      "2026-10-14T12:16:04.2271398Z com.example.e2e.Phase9BNumber10EmulatorTest > bankAndAfaUseSharedGrammarWithoutClosingOnInvalidInputAndErrorsFit[emulator-5554 - 15] FAILED "
+    ]
+  },
+  {
+    "run": 38557649548,
+    "job": 115830657454,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38557649548/job/115830657454",
+    "excerpt": [
+      "2026-10-14T11:44:00.4936942Z LogbookReferenceLayoutTest > referenceScreensRenderInsideTheActualAppFrame FAILED",
+      "2026-10-14T11:44:00.5007369Z     java.lang.AssertionError: Fixture store: trips=3, receipts=[1, 2, 3, 1001], properties=[PropertyMetadata(id=1, propertyId=property-1, name=, adresse=Sulzerstraße 32, Dornstetten, wohnort=Dornstetten, baujahr=0, wohnflaeche=0.0, grundstuecksgroesse=0.0, notariellesKaufdatum=, uebergangNutzenLasten=, wohneinheiten=, gesamtKaufpreis=0.0, gebaeudewert=0.0, grundUndBodenWert=0.0, kaufpreisAufteilungQuelle=MANUELL, bildPfad=, objektart=Mehrfamilienhaus, status=Aktiv, notizen=, afaShorterYears=0, afaShorterStartDate=, afaShorterReason=, afaShorterDocumentId=, afaShorterConfirmed=false)]; flows: trips=0, receipts=[1, 2, 3], property=PropertyMetadata(id=1, propertyId=property-1, name=, adresse=Sulzerstraße 32, Dornstetten, wohnort=Dornstetten, baujahr=0, wohnflaeche=0.0, grundstuecksgroesse=0.0, notariellesKaufdatum=, uebergangNutzenLasten=, wohneinheiten=, gesamtKaufpreis=0.0, gebaeudewert=0.0, grundUndBodenWert=0.0, kaufpreisAufteilungQuelle=MANUELL, bildPfad=, objektart=Mehrfamilienhaus, status=Aktiv, notizen=, afaShorterYears=0, afaShorterStartDate=, afaShorterReason=, afaShorterDocumentId=, afaShorterConfirmed=false), screen=LOGBOOK",
+      "2026-10-14T11:44:00.5016285Z         at com.example.ui.LogbookReferenceLayoutTest.referenceScreensRenderInsideTheActualAppFrame(LogbookReferenceLayoutTest.kt:121)",
+      "2026-10-14T11:44:00.5046759Z ",
+      "2026-10-14T11:44:00.5047193Z         Caused by:"
+    ]
+  },
+  {
+    "run": 38556127865,
+    "job": 115825598182,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38556127865/job/115825598182",
+    "excerpt": [
+      "2026-10-14T11:29:15.7829929Z LogbookReferenceLayoutTest > referenceScreensRenderInsideTheActualAppFrame FAILED",
+      "2026-10-14T11:29:15.7831087Z     androidx.compose.ui.test.ComposeTimeoutException at LogbookReferenceLayoutTest.kt:114",
+      "2026-10-14T11:29:30.6817862Z ",
+      "2026-10-14T11:29:30.6820115Z Phase5BComposeWorkflowTest > objectFilterUpdatesMetricsAndBankDetailReturnsToFilteredLedger FAILED",
+      "2026-10-14T11:29:30.6821036Z     androidx.compose.ui.test.ComposeTimeoutException at Phase5BComposeWorkflowTest.kt:120"
+    ]
+  },
+  {
+    "run": 38542874481,
+    "job": 115786499895,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38542874481/job/115786499895",
+    "excerpt": [
+      "2026-10-14T09:51:49.0995350Z com.example.e2e.Phase6BWorkflowEmulatorTest > globalReceiptSelectsObjectAndStableUnitThenSurvivesReopen[emulator-5554 - 15] FAILED ",
+      "2026-10-14T09:51:49.0997620Z \tjava.lang.AssertionError: Failed to inject touch input.",
+      "2026-10-14T09:51:49.0999540Z \tReason: Expected exactly '1' node but could not find any node that satisfies: ((Text + EditableText contains 'WE 01' (ignoreCase: false)) && (hasAnyAncestorThat(IsPopup is defined)))",
+      "2026-10-14T09:51:52.7993672Z emulator-5554 - 15 Tests 20/63 completed. (0 skipped) (1 failed)",
+      "2026-10-14T09:52:12.7992827Z emulator-5554 - 15 Tests 21/63 completed. (0 skipped) (1 failed)"
+    ]
+  },
+  {
+    "run": 38540347930,
+    "job": 115773769315,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38540347930/job/115773769315",
+    "excerpt": [
+      "2026-10-14T09:21:27.3044593Z LogbookReferenceLayoutTest > referenceScreensRenderInsideTheActualAppFrame FAILED",
+      "2026-10-14T09:21:27.3046172Z     androidx.compose.ui.test.ComposeTimeoutException at LogbookReferenceLayoutTest.kt:97",
+      "2026-10-14T09:22:00.0007456Z ",
+      "2026-10-14T09:22:00.0008270Z 985 tests completed, 1 failed",
+      "2026-10-14T09:22:00.3013846Z "
+    ]
+  },
+  {
+    "run": 38535878397,
+    "job": 115762276622,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38535878397/job/115762276622",
+    "excerpt": [
+      "2026-10-14T08:44:21.5401549Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase9BNumberContractEmulatorTest.kt:39:26 Unresolved reference 'BankRentSuggestion'.",
+      "2026-10-14T08:44:21.5402963Z ",
+      "2026-10-14T08:44:21.5418083Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase9BNumberContractEmulatorTest.kt:40:45 Cannot infer type for this parameter. Specify it explicitly.",
+      "2026-10-14T08:44:21.5437421Z > Task :app:compileDebugAndroidTestKotlin FAILED",
+      "2026-10-14T08:44:29.5399072Z "
+    ]
+  },
+  {
+    "run": 38483993683,
+    "job": 115593167781,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38483993683/job/115593167781",
+    "excerpt": [
+      "2026-10-13T23:32:31.9875596Z Phase9ADriveReceiptContractTest > malformedPrimaryStammdatenAndMissingAmountBlockReplaceBeforeMutatingLocalData FAILED",
+      "2026-10-13T23:32:31.9888902Z     java.lang.AssertionError at Phase9ADriveReceiptContractTest.kt:125",
+      "2026-10-13T23:32:32.2809079Z ",
+      "2026-10-13T23:32:32.2833505Z Phase9ADriveReceiptContractTest > schemaOneFallbackDoesNotGuessIdsAndMalformedSchemaTwoDoesNotDefault FAILED",
+      "2026-10-13T23:32:32.2834734Z     org.json.JSONException at Phase9ADriveReceiptContractTest.kt:146"
+    ]
+  },
+  {
+    "run": 38366835907,
+    "job": 115197141356,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38366835907/job/115197141356",
+    "excerpt": [
+      "2026-10-13T08:29:33.3869340Z com.example.e2e.Phase8BHistory10EmulatorTest > vacantUnitLastBankPaymentSurvivesRecreateAndCurrentTenantKeepsMonthlyDedup[emulator-5554 - 15] FAILED ",
+      "2026-10-13T08:29:33.3918478Z \tjava.lang.AssertionError",
+      "2026-10-13T08:29:33.3961732Z \tat org.junit.Assert.fail(Assert.java:87)",
+      "2026-10-13T08:29:35.4846712Z emulator-5554 - 15 Tests 44/51 completed. (0 skipped) (1 failed)",
+      "2026-10-13T08:29:36.4868446Z "
+    ]
+  },
+  {
+    "run": 38364827809,
+    "job": 115191683094,
+    "url": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/38364827809/job/115191683094",
+    "excerpt": [
+      "2026-10-13T08:02:03.3663785Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase8BHistoryEmulatorTest.kt:33:24 Unresolved reference 'bank'.",
+      "2026-10-13T08:02:03.3695930Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase8BHistoryEmulatorTest.kt:34:25 Unresolved reference 'bank'.",
+      "2026-10-13T08:02:03.3699340Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase8BHistoryEmulatorTest.kt:35:21 Unresolved reference 'bank'.",
+      "2026-10-13T08:02:03.3707114Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase8BHistoryEmulatorTest.kt:38:13 Cannot infer type for this parameter. Specify it explicitly.",
+      "2026-10-13T08:02:03.3711019Z e: file:///home/runner/work/Steuer-Asistend-APP/Steuer-Asistend-APP/app/src/androidTest/java/com/example/e2e/Phase8BHistoryEmulatorTest.kt:38:48 Cannot infer type for this parameter. Specify it explicitly."
+    ]
+  }
+]

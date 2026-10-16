@@ -128,7 +128,7 @@ class LogbookReferenceLayoutTest {
             assertEquals(AppScreen.LOGBOOK, viewModel.currentScreen.value)
         }
         try {
-            ui.waitUntil(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
+            ui.waitUntilAndroidState(30000) { viewModel.logbookTrips.value.size >= 3 && viewModel.propertyMetadata.value?.wohnort == "Dornstetten" && viewModel.receipts.value.any { it.id == 1001 } }
         } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
             val stored = runBlocking(kotlinx.coroutines.Dispatchers.IO) {
                 val db = com.example.data.AppDatabase.getDatabase(viewModel.getApplication<Application>(), kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO))
