@@ -1,0 +1,66 @@
+name: Focused CI stabilization validation
+
+on:
+  pull_request:
+    branches: [fix/ci-stabilisierung]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focused-ci-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  focused-logbook-regression:
+    if: github.head_ref == 'verify/ci-stabilisierung-fokustest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the already validated source commit
+        uses: actions/checkout@v4
+        with:
+          ref: 1d66598db31c0021c4b503350dddeab5dea44930
+
+      - name: Verify source identity
+        run: test "$(git rev-parse HEAD)" = "1d66598db31c0021c4b503350dddeab5dea44930"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+          cache-read-only: true
+
+      - name: Create local debug keystore
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore debug.keystore -storepass android \
+              -alias androiddebugkey -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Run the affected logbook regression test
+        timeout-minutes: 10
+        run: |
+          gradle testDebugUnitTest \
+            --tests com.example.ui.LogbookReferenceLayoutTest \
+            -Proborazzi.test.record=true --stacktrace --no-daemon
+
+      - name: Upload focused regression reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-logbook-regression
+          path: |
+            app/build/reports/tests/testDebugUnitTest/**
+            app/build/test-results/testDebugUnitTest/**
+            app/build/reports/logbook-reference/**
+          if-no-files-found: warn
