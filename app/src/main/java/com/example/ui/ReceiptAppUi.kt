@@ -8999,7 +8999,7 @@ fun PropertyMetadataFormDialog(
                     Pair("Übergang Nutzen/Lasten", editUebergangNutzenLasten.isNotBlank()),
                     Pair("Wohnfläche", GermanNumberInput.parseNonNegative(editWohnflaeche)?.let { it > 0.0 } == true),
                     Pair("Grundstücksgröße", GermanNumberInput.parseNonNegative(editGrundstuecksgroesse)?.let { it > 0.0 } == true),
-                    Pair("Wohneinheiten", editWohneinheiten.isNotBlank()),
+                    Pair("Wohneinheiten", editedUnitNames.isNotEmpty() && editedUnitNames.all { it.isNotBlank() }),
                     Pair("Gesamtkaufpreis", GermanNumberInput.parseNonNegative(editGesamtKaufpreis)?.let { it > 0.0 } == true),
                     Pair("Gebäudewert", GermanNumberInput.parseNonNegative(editGebaeudewert)?.let { it > 0.0 } == true),
                     Pair("Grund und Boden", GermanNumberInput.parseNonNegative(editGrundUndBodenWert) != null)

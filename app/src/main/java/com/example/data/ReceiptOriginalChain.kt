@@ -17,7 +17,22 @@ internal object ReceiptOriginalChain {
         }
         // An existing original with a comma in its filename is one original, never two pages.
         if (File(raw).isFile) return listOf(raw)
-        return raw.split(',').map(String::trim).filter(String::isNotBlank)
+        val solutions = mutableListOf<List<String>>()
+        fun visit(offset: Int, found: List<String>) {
+            if (solutions.size > 1) return
+            if (offset == raw.length) { solutions.add(found); return }
+            var end = raw.indexOf(',', offset)
+            while (end >= 0) {
+                val path = raw.substring(offset, end).trim()
+                if (File(path).isFile) visit(end + 1, found + path)
+                end = raw.indexOf(',', end + 1)
+            }
+            val path = raw.substring(offset).trim()
+            if (File(path).isFile) visit(raw.length, found + path)
+        }
+        visit(0, emptyList())
+        // No original is renamed/deleted and no guessed fragment becomes a new attachment.
+        return solutions.singleOrNull() ?: listOf(raw)
     }
 
     fun metadataJson(documents: List<ManagedDocument>): JSONArray = JSONArray().apply {

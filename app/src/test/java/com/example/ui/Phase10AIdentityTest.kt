@@ -160,6 +160,11 @@ class Phase10AIdentityTest {
             assertEquals(listOf(file.absolutePath), ReceiptOriginalChain.paths(file.absolutePath))
             val paths = listOf(file.absolutePath, "/another.pdf")
             assertEquals(paths, ReceiptOriginalChain.paths(ReceiptOriginalChain.encodePaths(paths)))
+            val second = File(app.filesDir, "second.pdf").apply { writeText("second") }
+            try {
+                assertEquals(listOf(file.absolutePath, second.absolutePath), ReceiptOriginalChain.paths(file.absolutePath + "," + second.absolutePath))
+            } finally { second.delete() }
+            assertEquals(listOf("unresolved, original.pdf"), ReceiptOriginalChain.paths("unresolved, original.pdf"))
         } finally { file.delete() }
     }
     @Test fun tenantLabelArrowDoesNotBecomeAnotherTenantOnAnnualProjection() {
