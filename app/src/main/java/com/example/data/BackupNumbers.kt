@@ -37,6 +37,7 @@ internal object ReceiptMoney {
 }
 
 internal fun validateBackupProperty(property: PropertyMetadata) {
+    if (property.wohneinheiten.trimStart().startsWith("[")) UnitIdentity.decode(property.wohneinheiten)
     val input = com.example.ui.PropertyWizardInput.validate(
         com.example.ui.NumberFieldInput.prefill(property.gesamtKaufpreis),
         com.example.ui.NumberFieldInput.prefill(property.wohnflaeche),

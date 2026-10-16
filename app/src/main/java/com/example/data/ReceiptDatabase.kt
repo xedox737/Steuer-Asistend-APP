@@ -1033,7 +1033,7 @@ class ReceiptRepository(
             ?: dao.getByReceiptId(receipt.internalId)
         val now = java.time.Instant.now().toString()
         val propertyId = receipt.propertyId
-        val localPath = receipt.imageUrl.substringBefore(',').removePrefix("file://")
+        val localPath = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull().orEmpty().removePrefix("file://")
         val localFile = java.io.File(localPath)
         val localBytes = if (existing?.sha256.isNullOrBlank() && localFile.isFile) runCatching { localFile.readBytes() }.getOrNull() else null
         val document = (existing ?: ManagedDocument(
@@ -1052,10 +1052,10 @@ class ReceiptRepository(
             documentDate = receipt.datum,
             title = receipt.aussteller,
             originalFilename = existing?.originalFilename?.takeIf(String::isNotBlank)
-                ?: receipt.imageUrl.substringBefore(',').substringAfterLast('/'),
+                ?: com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull().orEmpty().substringAfterLast('/'),
             storedFilename = receipt.storedFilename ?: existing?.storedFilename.orEmpty(),
             mimeType = receipt.originalMimeType ?: existing?.mimeType ?: "application/octet-stream",
-            localUri = receipt.imageUrl.substringBefore(',').ifBlank { existing?.localUri.orEmpty() },
+            localUri = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull().orEmpty().ifBlank { existing?.localUri.orEmpty() },
             driveFileId = receipt.driveFileId ?: existing?.driveFileId,
             driveFolderId = receipt.driveFolderId ?: existing?.driveFolderId,
             sha256 = existing?.sha256?.takeIf(String::isNotBlank) ?: localBytes?.let(StableDocumentIdentity::sha256).orEmpty(),
@@ -1066,7 +1066,7 @@ class ReceiptRepository(
         dao.deleteSearchEntry(document.documentId)
         dao.insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, receipt)))
         val attached = dao.getAllByReceiptId(receipt.internalId)
-        receipt.imageUrl.split(',').map(String::trim).filter(String::isNotBlank).distinct().drop(1).forEachIndexed { index, path ->
+        com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).map(String::trim).filter(String::isNotBlank).distinct().drop(1).forEachIndexed { index, path ->
             val file = java.io.File(path.removePrefix("file://"))
             val current = attached.firstOrNull { it.localUri == path }
             if (current == null && !file.isFile) return@forEachIndexed

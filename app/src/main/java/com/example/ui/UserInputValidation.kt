@@ -41,6 +41,18 @@ internal object GermanNumberInput {
         return if (number.isFinite()) Result(Status.VALID, number) else Result(Status.NON_FINITE)
     }
 
+    /** Shared German presentation for non-currency decimal quantities, without integer truncation. */
+    fun formatQuantity(value: Double): String {
+        if (!value.isFinite() || value < 0.0) return "Gespeicherten Wert bitte korrigieren"
+        // Preferences store Float; do not expose widening noise (41.99f -> 41.990001678...).
+        val decimal = if (value.toFloat().isFinite() && value.toFloat().toDouble() == value)
+            value.toFloat().toString().toBigDecimal() else value.toBigDecimal()
+        return NumberFormat.getNumberInstance(Locale.GERMANY).apply {
+            minimumFractionDigits = 0
+            maximumFractionDigits = decimal.scale().coerceAtLeast(0)
+        }.format(decimal)
+    }
+
     fun parseNonNegative(value: String): Double? =
         parse(value)?.takeIf { it >= 0.0 }
 

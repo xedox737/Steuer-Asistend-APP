@@ -82,7 +82,8 @@ private data class UnitAnnualSummary(
     val label: String,
     val income: Double,
     val expenses: Double,
-    val receipts: List<Receipt>
+    val receipts: List<Receipt>,
+    val unitId: String
 ) {
     val result: Double get() = income - expenses
 }
@@ -230,16 +231,17 @@ private fun classifyGenericExpense(r: Receipt): String {
 private fun buildUnitAnnualSummaries(
     year: Int,
     all: List<Receipt>,
-    units: List<WohneinheitStatus>
+    units: List<WohneinheitStatus>,
+    propertyId: String
 ): List<UnitAnnualSummary> {
     val yearReceipts = all.filter { it.yearOrNull() == year }
     return units.map { unit ->
-        val direct = yearReceipts.filter { it.wohneinheit == unit.name }
+        val direct = yearReceipts.filter { ReceiptUnitResolver.belongs(it, propertyId, unit, units) }
         val income = direct.filter(::isRentalIncome).sumOf { it.bruttobetrag }
         val expenses = direct.filter {
             !isRentalIncome(it) && it.hauptkategorie != "Anschaffungskosten" && !isPrincipalOrLoanFlow(it)
         }.sumOf { it.bruttobetrag }
-        UnitAnnualSummary(unit.name, unit.label, income, expenses, direct)
+        UnitAnnualSummary(unit.name, unit.label, income, expenses, direct, unit.unitId)
     }.filter { it.receipts.isNotEmpty() || it.income != 0.0 || it.expenses != 0.0 }
 }
 
@@ -247,7 +249,7 @@ private fun fallbackTenantPeriod(unit: WohneinheitStatus, nk: Double, other: Dou
     if (unit.status != "Vermietet") return null
     if (unit.mieter.isBlank() && unit.kaltmiete <= 0.0 && nk <= 0.0 && other <= 0.0) return null
     return TenantPeriod(
-        -unit.name.hashCode().toLong(),
+        -unit.unitId.ifBlank { unit.name }.hashCode().toLong(),
         unit.name,
         unit.mieter,
         unit.mietvertragsstart,
@@ -284,7 +286,7 @@ private fun buildAnnualRentRows(
         val expected = TenantHistoryStore.expectedForYear(periods, year)
         val unitReceipts = all.filter {
             it.yearOrNull() == year &&
-                it.wohneinheit == unit.name &&
+                ReceiptUnitResolver.belongs(it, propertyId, unit, units) &&
                 isRentalIncome(it) &&
                 com.example.util.DatevReceiptEligibility.isAccountingApproved(it)
         }
@@ -721,7 +723,7 @@ internal fun buildAdvisorAnnualSummary(
         if (metadata.adresse.isNotBlank()) add("Adresse: ${metadata.adresse}")
         if (metadata.baujahr > 0) add("Baujahr: ${metadata.baujahr}")
         if (metadata.wohneinheiten.isNotBlank()) {
-            add("Wohneinheiten: ${metadata.wohneinheiten}")
+            add("Wohneinheiten: ${com.example.data.UnitIdentity.display(metadata.wohneinheiten)}")
         }
         if (metadata.wohnflaeche > 0.0) add("Wohnfläche: ${area(metadata.wohnflaeche)}")
         if (metadata.grundstuecksgroesse > 0.0) {
@@ -971,8 +973,8 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val previous = remember(context, year, receipts, metadata, loans) {
         buildAnnualTaxSummary(context, year - 1, receipts, metadata, loans)
     }
-    val unitSummaries = remember(year, receipts, units) {
-        buildUnitAnnualSummaries(year, receipts, units)
+    val unitSummaries = remember(year, receipts, units, metadata.propertyId) {
+        buildUnitAnnualSummaries(year, receipts, units, metadata.propertyId)
     }
     val rentRows = remember(context, year, receipts, units, metadata.propertyId) {
         buildAnnualRentRows(context, year, receipts, units, metadata.propertyId)
@@ -1071,7 +1073,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
         item { AnnualRentCheckCard(rentRows, year) }
         items(
             rentRows.filter { abs(it.difference) > 0.01 || it.missingMonths.isNotEmpty() },
-            key = { "rent_${it.unit.name}" }
+            key = { "rent_${metadata.propertyId}_${it.unit.unitId}" }
         ) { row ->
             AnnualRentRowCard(row) { rentDetails = row }
         }
@@ -1085,7 +1087,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
                     color = SlateGray
                 )
             }
-            items(unitSummaries, key = { "unit_${it.name}" }) {
+            items(unitSummaries, key = { "unit_${metadata.propertyId}_${it.unitId}" }) {
                 AnnualUnitCard(it) { unitDetails = it }
             }
         }

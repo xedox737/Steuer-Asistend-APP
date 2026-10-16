@@ -267,7 +267,7 @@ private fun BankTransactionSplitDialog(
                                 OutlinedButton(onClick = { if (!previewMode) unitMenu = index }, enabled = !previewMode) { Text("Wohneinheit: ${draft.unitId.ifBlank { "auswählen" }}") }
                                 DropdownMenu(expanded = unitMenu == index, onDismissRequest = { unitMenu = null }) {
                                     units.forEach { unit -> DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = {
-                                        drafts = drafts.toMutableList().also { it[index] = draft.copy(unitId = unit.unitId.ifBlank { unit.name }) }
+                                        drafts = drafts.toMutableList().also { it[index] = draft.copy(unitId = unit.unitId) }
                                         unitMenu = null
                                     }) }
                                 }

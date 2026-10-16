@@ -124,14 +124,18 @@ object FirestoreService {
         }
     }
 
-    suspend fun saveWohneinheit(unit: WohneinheitStatus): Boolean {
+    internal fun unitDocumentKey(propertyId: String, unitId: String): String =
+        StableDocumentIdentity.sha256(org.json.JSONArray(listOf(propertyId, unitId)).toString().toByteArray(Charsets.UTF_8))
+
+    suspend fun saveWohneinheit(unit: WohneinheitStatus, propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID): Boolean {
+        if (unit.unitId.isBlank() || propertyId.isBlank()) return false
         if (runCatching { NumericWriteBoundary.float(unit.kaltmiete); NumericWriteBoundary.float(unit.wohnflaeche) }.isFailure) return false
         if (!isCloudActive()) return false
         val uid = getCurrentUser()?.uid ?: return false
         return try {
             val col = getWohneinheitenCollection(uid) ?: return false
-            val data = wohneinheitToMap(unit)
-            col.document(unit.name)
+            val data = wohneinheitToMap(unit) + ("propertyId" to propertyId)
+            col.document(unitDocumentKey(propertyId, unit.unitId))
                 .set(data)
                 .await()
             true
@@ -141,7 +145,7 @@ object FirestoreService {
         }
     }
 
-    suspend fun getWohneinheiten(): List<WohneinheitStatus>? {
+    suspend fun getWohneinheiten(propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID): List<WohneinheitStatus>? {
         if (!isCloudActive()) return null
         val uid = getCurrentUser()?.uid ?: return null
         return try {
@@ -149,6 +153,7 @@ object FirestoreService {
             val snapshot = col.get().await()
             snapshot.documents.mapNotNull { doc ->
                 val data = doc.data ?: return@mapNotNull null
+                if ((data["propertyId"] as? String ?: StableDocumentIdentity.LEGACY_PROPERTY_ID) != propertyId) return@mapNotNull null
                 mapToWohneinheit(data)
             }
         } catch (e: Exception) {

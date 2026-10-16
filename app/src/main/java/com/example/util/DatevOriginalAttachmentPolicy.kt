@@ -23,7 +23,7 @@ object DatevOriginalAttachmentPolicy {
         if (receipt.internalId.isBlank()) return emptyList()
         val originals = documents.filter { it.receiptInternalId == receipt.internalId }
         if (originals.any { it.localUri.isBlank() }) return emptyList()
-        val paths = (receipt.imageUrl.split(",").map(String::trim).filter(String::isNotBlank) +
+        val paths = (com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).map(String::trim).filter(String::isNotBlank) +
             com.example.data.ReceiptOriginalChain.ordered(originals).map { it.localUri }).distinct()
         if (paths.isEmpty()) return emptyList()
         return try {

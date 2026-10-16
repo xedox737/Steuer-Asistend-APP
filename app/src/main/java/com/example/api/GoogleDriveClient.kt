@@ -416,7 +416,7 @@ object GoogleDriveClient {
         var successPdf = true
         if (receipt.imageUrl.isNotEmpty()) {
             val pdfFilename = "Beleg_${formattedDate}_${sanitizedAussteller}_${receipt.bruttobetrag}.pdf"
-            val pdfContent = generatePdfFromReceiptImages(receipt.imageUrl.split(","))
+            val pdfContent = generatePdfFromReceiptImages(com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl))
             if (pdfContent != null) {
                 successPdf = uploadFileToDrive(accessToken, targetFolderId, pdfFilename, "application/pdf", pdfContent)
             }

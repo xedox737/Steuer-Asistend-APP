@@ -729,19 +729,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             val allPrefs = learnedRulesPrefs.all
             for ((key, value) in allPrefs) {
                 if (key.startsWith("rule_") && value is String) {
-                    val parts = value.split("|||")
-                    if (parts.size >= 5) {
-                        rulesList.add(
-                            LearnedVendorRule(
-                                aussteller = parts[0],
-                                hauptkategorie = parts[1],
-                                unterkategorie = parts[2],
-                                kontoNr = parts[3],
-                                wohneinheit = parts[4],
-                                count = parts.getOrNull(5)?.toIntOrNull() ?: 1
-                            )
-                        )
-                    }
+                    runCatching { com.example.data.LearnedVendorRuleCodec.decode(value) }
+                        .onSuccess { rulesList.add(it) }
+                        .onFailure { _driveSyncStatus.value = it.message }
+
                 }
             }
             _learnedRules.value = rulesList.sortedByDescending { it.count }
@@ -761,15 +752,17 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             val normalizedKey = "rule_" + cleanAussteller.lowercase().replace(Regex("[^a-z0-9]"), "_")
             val existingString = learnedRulesPrefs.getString(normalizedKey, null)
-            var currentCount = 1
-            if (existingString != null) {
-                val parts = existingString.split("|||")
-                if (parts.size >= 6) {
-                    currentCount = (parts[5].toIntOrNull() ?: 1) + 1
+            val previous = existingString?.let { raw ->
+                runCatching { com.example.data.LearnedVendorRuleCodec.decode(raw) }.getOrElse {
+                    _driveSyncStatus.value = it.message; return@launch
                 }
             }
-
-            val serialized = "$cleanAussteller|||$hauptkategorie|||$unterkategorie|||$kontoNr|||$wohneinheit|||$currentCount"
+            if (previous != null && !previous.aussteller.equals(cleanAussteller, true)) {
+                _driveSyncStatus.value = "Der Händlername kollidiert mit einer vorhandenen Regel. Die bestehende Regel bleibt erhalten."
+                return@launch
+            }
+            val serialized = com.example.data.LearnedVendorRuleCodec.encode(LearnedVendorRule(cleanAussteller,
+                hauptkategorie, unterkategorie, kontoNr, wohneinheit, (previous?.count ?: 0) + 1))
             learnedRulesPrefs.edit().putString(normalizedKey, serialized).apply()
 
             loadLearnedRules()
@@ -839,19 +832,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         index: Int,
         name: String
     ): String {
-        val scopedNamePrefix = scopedUnitNamePrefix(propertyId, name)
-        val scopedIndexKey = "property_${propertyId}_unit_id_index_$index"
         val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
-        val storedId = unitPrefs.getString(scopedNamePrefix + "id", null)
-            ?: unitPrefs.getString(scopedIndexKey, null)
-            ?: if (legacyAllowed) unitPrefs.getString("unit_id_$name", null) else null
-            ?: if (legacyAllowed) unitPrefs.getString("unit_id_index_$index", null) else null
-        val stableId = storedId ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name)
-        unitPrefs.edit()
-            .putString(scopedNamePrefix + "id", stableId)
-            .putString(scopedIndexKey, stableId)
-            .apply()
-        return stableId
+        return unitPrefs.getString(scopedUnitNamePrefix(propertyId, name) + "id", null)
+            ?: (if (legacyAllowed) unitPrefs.getString("unit_id_$name", null) else null)
+            ?: com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, name)
     }
 
     private fun loadUnit(
@@ -860,7 +844,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         index: Int,
         name: String
     ): WohneinheitStatus {
-        val unitId = resolveUnitId(unitPrefs, propertyId, index, name)
+        return loadUnitById(unitPrefs, propertyId, resolveUnitId(unitPrefs, propertyId, index, name), name)
+    }
+
+    private fun loadUnitById(unitPrefs: android.content.SharedPreferences, propertyId: String, unitId: String, name: String): WohneinheitStatus {
         val idPrefix = scopedUnitPrefix(propertyId, unitId)
         val namePrefix = scopedUnitNamePrefix(propertyId, name)
         val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
@@ -920,8 +907,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     private fun loadUnits(metaUnitsStr: String, propertyId: String): List<WohneinheitStatus> {
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        return metaUnitsStr.split(",").map(String::trim).filter(String::isNotBlank)
-            .mapIndexed { index, name -> loadUnit(unitPrefs, propertyId, index, name) }
+        return com.example.data.UnitIdentity.read(metaUnitsStr, propertyId, unitPrefs).entries
+            .map { loadUnitById(unitPrefs, propertyId, it.unitId, it.name) }
     }
 
     fun getWohneinheitenFromPrefs(
@@ -933,6 +920,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun getWohneinheitenForProperty(metadata: PropertyMetadata): List<WohneinheitStatus> =
         loadUnits(metadata.wohneinheiten, metadata.propertyId)
+
+    internal fun unitIdentityError(metadata: PropertyMetadata): String? =
+        com.example.data.UnitIdentity.read(metadata.wohneinheiten, metadata.propertyId,
+            getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)).error
 
     private fun resolveReceiptUnitId(propertyId: String, unitName: String, existingUnitId: String = ""): String {
         val property = properties.value.firstOrNull { it.propertyId == propertyId }
@@ -994,12 +985,17 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
-            properties.value.firstOrNull { property ->
-                getWohneinheitenForProperty(property).any { it.unitId == stableId }
-            }
-        } ?: propertyMetadata.value ?: PropertyMetadata()
+            propertyMetadata.value?.takeIf { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
+                ?: properties.value.singleOrNull { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
+        } ?: propertyMetadata.value?.takeIf { updated.unitId.isBlank() } ?: run {
+            _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR
+            return
+        }
+        val existing = getWohneinheitenForProperty(targetProperty).singleOrNull {
+            if (updated.unitId.isNotBlank()) it.unitId == updated.unitId else it.name == updated.name
+        } ?: run { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
         if (correctCurrentContract) {
-            val unitId = PropertyUnitScopedData.stableUnitId(targetProperty.propertyId, updated)
+            val unitId = existing.unitId
             if (!TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)) {
                 _driveSyncStatus.value = StoredListRead.ERROR
                 return
@@ -1012,23 +1008,27 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
         com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
         val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val unitNames = targetProperty.wohneinheiten.split(",").map(String::trim).filter(String::isNotBlank)
-        val unitIndex = unitNames.indexOfFirst { it.equals(updated.name, ignoreCase = true) }
-        val stableId = updated.unitId.ifBlank {
-            resolveUnitId(unitPrefs, targetProperty.propertyId, unitIndex.coerceAtLeast(0), updated.name)
+        val identities = com.example.data.UnitIdentity.read(targetProperty.wohneinheiten, targetProperty.propertyId, unitPrefs)
+        if (identities.error != null) { _driveSyncStatus.value = identities.error; return }
+        val identity = if (updated.unitId.isNotBlank()) identities.entries.singleOrNull { it.unitId == updated.unitId }
+            else identities.entries.singleOrNull { it.name == updated.name }
+        if (identity == null) { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
+        val stableId = identity.unitId
+        val renamed = identities.entries.map { if (it.unitId == stableId) it.copy(name = updated.name) else it }
+        val encoded = runCatching { com.example.data.UnitIdentity.encode(renamed) }.getOrElse {
+            _driveSyncStatus.value = it.message; return
         }
         val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
         val namePrefix = scopedUnitNamePrefix(targetProperty.propertyId, updated.name)
 
         unitPrefs.edit().apply {
             putString(idPrefix + "status", updated.status)
-            putString(idPrefix + "label", updated.label)
+            putString(idPrefix + "label", if (updated.label == identity.name) updated.name else updated.label)
             putString(idPrefix + "mieter", updated.mieter)
             putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
             putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
             putString(idPrefix + "start", updated.mietvertragsstart)
             putString(namePrefix + "id", stableId)
-            if (unitIndex >= 0) putString("property_${targetProperty.propertyId}_unit_id_index_$unitIndex", stableId)
 
             if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID) {
                 putString("unit_status_${updated.name}", updated.status)
@@ -1038,17 +1038,20 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 putFloat("unit_area_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
                 putString("unit_start_${updated.name}", updated.mietvertragsstart)
                 putString("unit_id_${updated.name}", stableId)
-                if (unitIndex >= 0) putString("unit_id_index_$unitIndex", stableId)
             }
         }.apply()
 
+        val structuredProperty = targetProperty.copy(wohneinheiten = encoded)
+        if (targetProperty.wohneinheiten != encoded) viewModelScope.launch(Dispatchers.IO) {
+            repository.updatePropertyMetadata(structuredProperty)
+        }
         if (propertyMetadata.value?.propertyId == targetProperty.propertyId) {
-            _wohneinheitenStatus.value = getWohneinheitenForProperty(targetProperty)
+            _wohneinheitenStatus.value = getWohneinheitenForProperty(structuredProperty)
         }
 
         if (FirestoreService.isCloudActive()) {
             viewModelScope.launch {
-                FirestoreService.saveWohneinheit(updated.copy(unitId = stableId))
+                FirestoreService.saveWohneinheit(updated.copy(unitId = stableId), targetProperty.propertyId)
             }
         }
 
@@ -1393,7 +1396,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.CHECKING))
             
-            val paths = if (receipt.imageUrl.isNotEmpty()) receipt.imageUrl.split(",") else emptyList()
+            val paths = if (receipt.imageUrl.isNotEmpty()) com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl) else emptyList()
             val filesExist = paths.isNotEmpty() && paths.all { path -> 
                 val f = java.io.File(path)
                 val exists = f.exists()
@@ -1426,7 +1429,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             try {
                 // Delete existing local files if they exist to force redownload
                 if (!receipt.imageUrl.isNullOrEmpty()) {
-                    val paths = receipt.imageUrl.split(",")
+                    val paths = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl)
                     paths.forEach { path ->
                         val file = java.io.File(path)
                         if (file.exists()) {
@@ -2747,7 +2750,7 @@ data class AiSearchUiState(
         val currentYearMonth = "2026-07"
         units.map { unit ->
             val hasPaid = allReceipts.any {
-                it.wohneinheit == unit.name &&
+                ReceiptUnitResolver.belongs(it, propertyMetadata.value?.propertyId.orEmpty(), unit, units) &&
                 it.hauptkategorie == "Miete, Nebenkosten & Kaution" &&
                 it.datum.startsWith(currentYearMonth)
             }
@@ -2970,7 +2973,7 @@ data class AiSearchUiState(
                 val resolvedUnitId = receipt.unitId.ifBlank {
                     property?.let { metadata ->
                         getWohneinheitenForProperty(metadata)
-                            .firstOrNull { it.name == receipt.wohneinheit }
+                            .singleOrNull { it.name == receipt.wohneinheit }
                             ?.let { PropertyUnitScopedData.stableUnitId(metadata.propertyId, it) }
                     }.orEmpty()
                 }
@@ -3575,17 +3578,20 @@ data class AiSearchUiState(
             com.example.data.validateBackupProperty(metadata)
             units.forEach { com.example.data.NumericWriteBoundary.float(it.kaltmiete); com.example.data.NumericWriteBoundary.float(it.wohnflaeche) }
             loan?.let(::validateLoanWrite)
+            com.example.data.UnitIdentity.encode(units.map { com.example.data.UnitIdentity.Entry(
+                it.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(metadata.propertyId, it.name) }, it.name) })
         }
         if (validation.isFailure) { _driveSyncStatus.value = validation.exceptionOrNull()?.message ?: "Bitte Eingaben prüfen."; return }
         viewModelScope.launch(Dispatchers.IO) {
             val propertyId = metadata.propertyId.ifBlank { java.util.UUID.randomUUID().toString() }
-            val stored = metadata.copy(id = repository.nextPropertyId(), propertyId = propertyId)
-            repository.updatePropertyMetadata(stored)
-            loan?.let { database.loanDao().upsertLoan(it.copy(propertyId = propertyId)) }
+            val stored = metadata.copy(id = repository.nextPropertyId(), propertyId = propertyId,
+                wohneinheiten = com.example.data.UnitIdentity.encode(units.map {
+                    com.example.data.UnitIdentity.Entry(it.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, it.name) }, it.name)
+                }))
             val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
             units.forEachIndexed { index, unit ->
                 val stableId = unit.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, unit.name) }
-                val prefix = "property_${propertyId}_unit_${unit.name}_"
+                val prefix = scopedUnitPrefix(propertyId, stableId)
                 unitPrefs.edit()
                     .putString(prefix + "id", stableId)
                     .putString(prefix + "label", unit.label)
@@ -3597,6 +3603,8 @@ data class AiSearchUiState(
                     .putString("property_${propertyId}_unit_id_index_$index", stableId)
                     .apply()
             }
+            repository.updatePropertyMetadata(stored)
+            loan?.let { database.loanDao().upsertLoan(it.copy(propertyId = propertyId)) }
             selectProperty(propertyId)
         }
     }
@@ -4080,7 +4088,7 @@ data class AiSearchUiState(
                             DiagnosticLog.e("ReceiptViewModel", "Error saving bitmap")
                         }
                     }
-                    paths.joinToString(",")
+                    com.example.data.ReceiptOriginalChain.encodePaths(paths)
                 } else {
                     ""
                 }
@@ -4184,7 +4192,7 @@ data class AiSearchUiState(
     }
 
     private suspend fun loadDescriptionBackfillBitmaps(receipt: Receipt): List<Bitmap> {
-        var paths = receipt.imageUrl.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        var paths = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).map { it.trim() }.filter { it.isNotBlank() }
         val hasLocalOriginal = paths.any { path -> runCatching { File(path).exists() && File(path).isFile }.getOrDefault(false) }
 
         if (!hasLocalOriginal && !receipt.driveFileId.isNullOrBlank()) {
@@ -4372,7 +4380,7 @@ data class AiSearchUiState(
         val fromText = normalizePaymentMethod(text)
         if (fromText != "Unbekannt") return fromText to "TEXT_HEURISTIK"
 
-        val paths = receipt.imageUrl.split(',').map { it.trim() }.filter { it.isNotBlank() }
+        val paths = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).map { it.trim() }.filter { it.isNotBlank() }
         val bitmaps = kotlinx.coroutines.withContext(Dispatchers.IO) {
             paths.flatMap { path ->
                 runCatching {
@@ -4521,7 +4529,7 @@ data class AiSearchUiState(
                 kontoNr = kontoNr,
                 beschreibung = beschreibung,
                 isEigenleistungSanierung = isEigenleistung,
-                imageUrl = if (originals.isNotEmpty()) originals.joinToString(",") { it.localUri } else imageUrl,
+                imageUrl = if (originals.isNotEmpty()) com.example.data.ReceiptOriginalChain.encodePaths(originals.map { it.localUri }) else imageUrl,
                 originalMimeType = originals.firstOrNull()?.mimeType,
                 fileSizeBytes = originals.firstOrNull()?.fileSizeBytes,
                 storedFilename = originals.firstOrNull()?.storedFilename,
@@ -4641,8 +4649,29 @@ data class AiSearchUiState(
         }
     }
 
-    fun updatePropertyMetadata(metadata: PropertyMetadata) {
+    fun updatePropertyMetadata(metadata: PropertyMetadata, explicitUnitListEdit: Boolean = false) {
+        val prefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val previous = properties.value.singleOrNull { it.propertyId == metadata.propertyId }
+            ?: propertyMetadata.value?.takeIf { it.propertyId == metadata.propertyId }
+        if (previous != null && metadata.wohneinheiten != previous.wohneinheiten) {
+            val before = com.example.data.UnitIdentity.read(previous.wohneinheiten, metadata.propertyId, prefs)
+            val after = com.example.data.UnitIdentity.read(metadata.wohneinheiten, metadata.propertyId, prefs)
+            if (before.error != null || after.error != null || (!explicitUnitListEdit && before.entries.map { it.unitId }.toSet() != after.entries.map { it.unitId }.toSet())) {
+                _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR
+                return
+            }
+        }
         viewModelScope.launch(Dispatchers.IO) {
+            if (previous != null && previous.wohneinheiten != metadata.wohneinheiten) {
+                val before = getWohneinheitenForProperty(previous).associateBy { it.unitId }
+                val after = com.example.data.UnitIdentity.read(metadata.wohneinheiten, metadata.propertyId, prefs)
+                val editor = prefs.edit()
+                after.entries.forEach { entry ->
+                    val old = before[entry.unitId]
+                    if (old != null && old.label == old.name) editor.putString(scopedUnitPrefix(metadata.propertyId, entry.unitId) + "label", entry.name)
+                }
+                check(editor.commit())
+            }
             repository.updatePropertyMetadata(metadata)
             _wohneinheitenStatus.value = getWohneinheitenForProperty(metadata)
 
@@ -4983,27 +5012,24 @@ data class AiSearchUiState(
             _driveSyncStatus.value = "Synchronisiere mit Firestore..."
             try {
                 // 1. Sync Wohneinheiten
-                val remoteUnits = FirestoreService.getWohneinheiten()
-                if (remoteUnits != null && remoteUnits.isNotEmpty()) {
-                    val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-                    val editor = unitPrefs.edit()
-                    remoteUnits.forEach { u -> com.example.data.NumericWriteBoundary.float(u.kaltmiete); com.example.data.NumericWriteBoundary.float(u.wohnflaeche) }
-                    remoteUnits.forEach { u ->
-                        editor.putString("unit_status_${u.name}", u.status)
-                        editor.putString("unit_label_${u.name}", u.label)
-                        editor.putString("unit_mieter_${u.name}", u.mieter)
-                        editor.putFloat("unit_rent_${u.name}", com.example.data.NumericWriteBoundary.float(u.kaltmiete))
-                        editor.putFloat("unit_area_${u.name}", com.example.data.NumericWriteBoundary.float(u.wohnflaeche))
+                val property = propertyMetadata.value ?: error("Bitte zuerst eine Immobilie auswählen.")
+                val localUnits = getWohneinheitenForProperty(property)
+                check(unitIdentityError(property) == null) { com.example.data.UnitIdentity.ERROR }
+                val remoteUnits = FirestoreService.getWohneinheiten(property.propertyId)
+                if (!remoteUnits.isNullOrEmpty()) {
+                    val resolved = remoteUnits.map { remote ->
+                        com.example.data.NumericWriteBoundary.float(remote.kaltmiete)
+                        com.example.data.NumericWriteBoundary.float(remote.wohnflaeche)
+                        val local = if (remote.unitId.isNotBlank()) localUnits.singleOrNull { it.unitId == remote.unitId }
+                            else localUnits.singleOrNull { it.name == remote.name }
+                        check(local != null) { com.example.data.UnitIdentity.ERROR }
+                        remote.copy(unitId = local.unitId, name = local.name)
                     }
-                    editor.apply()
-                    _wohneinheitenStatus.value = remoteUnits
-                    DiagnosticLog.i("ReceiptViewModel", "Wohneinheiten aus Firestore geladen.")
+                    check(resolved.map { it.unitId }.distinct().size == resolved.size) { com.example.data.UnitIdentity.ERROR }
+                    resolved.forEach { updateWohneinheitForProperty(it, property) }
+                    _wohneinheitenStatus.value = getWohneinheitenForProperty(property)
                 } else {
-                    // Upload current local units to Firestore if remote is empty
-                    val localUnits = _wohneinheitenStatus.value
-                    localUnits.forEach { u ->
-                        FirestoreService.saveWohneinheit(u)
-                    }
+                    localUnits.forEach { FirestoreService.saveWohneinheit(it, property.propertyId) }
                 }
 
                 // 2. Sync Receipts

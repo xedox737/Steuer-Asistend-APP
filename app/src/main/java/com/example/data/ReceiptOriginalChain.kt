@@ -5,6 +5,21 @@ import org.json.JSONArray
 import java.io.File
 
 internal object ReceiptOriginalChain {
+    /** Keep the legacy representation for separator-free paths, escape complete paths otherwise. */
+    fun encodePaths(paths: List<String>): String = if (paths.any { ',' in it || it.trimStart().startsWith("[") })
+        JSONArray(paths).toString() else paths.joinToString(",")
+
+    fun paths(raw: String): List<String> {
+        if (raw.isBlank()) return emptyList()
+        if (raw.trimStart().startsWith("[")) {
+            val array = JSONArray(raw)
+            return (0 until array.length()).map { array.getString(it) }
+        }
+        // An existing original with a comma in its filename is one original, never two pages.
+        if (File(raw).isFile) return listOf(raw)
+        return raw.split(',').map(String::trim).filter(String::isNotBlank)
+    }
+
     fun metadataJson(documents: List<ManagedDocument>): JSONArray = JSONArray().apply {
         ordered(documents).forEachIndexed { order, document -> put(JSONObject().apply {
             put("documentId", document.documentId); put("originalFilename", document.originalFilename)
@@ -47,7 +62,7 @@ internal object ReceiptOriginalChain {
     fun localPaths(receipt: Receipt, documents: List<ManagedDocument>): String {
         val originals = ordered(documents.filter { it.receiptInternalId == receipt.internalId })
         if (originals.isEmpty() || originals.any { !File(it.localUri).isFile }) return receipt.imageUrl
-        val existing = receipt.imageUrl.split(',').map(String::trim).filter { File(it).isFile }
-        return (existing + originals.map { it.localUri }).distinct().joinToString(",")
+        val existing = paths(receipt.imageUrl).filter { File(it).isFile }
+        return encodePaths((existing + originals.map { it.localUri }).distinct())
     }
 }

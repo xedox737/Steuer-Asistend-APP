@@ -178,7 +178,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                             data.acquisitionBasisError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp) }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 AfaMetric("Baujahr", building.baujahr.takeIf { it > 0 }?.toString() ?: "–", Modifier.weight(1f))
-                                AfaMetric("AfA-Satz", if (data.afaRatePercent > 0) "${"%.1f".format(data.afaRatePercent)} %" else "–", Modifier.weight(1f))
+                                AfaMetric("AfA-Satz", if (data.afaRatePercent > 0) "${GermanNumberInput.formatQuantity(data.afaRatePercent)} %" else "–", Modifier.weight(1f))
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 AfaMetric("Grundlage", NumberFormatter.format(data.buildingAcquisitionCosts), Modifier.weight(1f))
@@ -202,8 +202,8 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                 summary.acquisitionBasisError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp) }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AfaMetric("Einheiten", viewModel.getWohneinheitenForProperty(property).size.toString(), Modifier.weight(1f))
-                    AfaMetric("Wohnfläche", "${property.wohnflaeche.toInt()} m²", Modifier.weight(1f))
-                    AfaMetric("Grundstück", "${property.grundstuecksgroesse.toInt()} m²", Modifier.weight(1f))
+                    AfaMetric("Wohnfläche", "${GermanNumberInput.formatQuantity(property.wohnflaeche)} m²", Modifier.weight(1f))
+                    AfaMetric("Grundstück", "${GermanNumberInput.formatQuantity(property.grundstuecksgroesse)} m²", Modifier.weight(1f))
                 }
             } }
             item {

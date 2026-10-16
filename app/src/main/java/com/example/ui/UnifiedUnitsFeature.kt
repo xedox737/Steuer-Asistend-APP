@@ -174,6 +174,7 @@ internal fun UnifiedPropertyUnitsScreen(
         }
 
         item {
+            viewModel.unitIdentityError(property)?.let { Text(it, color = CrimsonRed, modifier = Modifier.testTag("unit_identity_error")) }
             Text("Einheiten", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
             Text("Mietverhältnisse, Zahlungen und Nebenkosten im Überblick", fontSize = 12.sp, color = SlateGray)
             TextButton(onClick = { showInitialBatch = true }, modifier = Modifier.testTag("rent_batch_open")) { Text("Mietdaten gesammelt erfassen") }
@@ -366,7 +367,7 @@ private fun UnifiedUnitOverviewCard(
 ) {
     val rented = unit.status == "Vermietet"
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        modifier = Modifier.fillMaxWidth().testTag("unit_card_${unit.unitId}").clickable(onClick = onOpen),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
@@ -516,7 +517,8 @@ private fun UnifiedUnitDetailScreen(
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
     var historyReadError by remember(unitId, detailsVersion) { mutableStateOf(TenantHistoryStore.read(context, property.propertyId, unitId, unit.name).error) }
-    val unitReceipts = receipts.filter { it.wohneinheit == unit.name || it.wohneinheit == unit.label }
+    val propertyUnits = remember(property) { viewModel.getWohneinheitenForProperty(property) }
+    val unitReceipts = receipts.filter { ReceiptUnitResolver.belongs(it, property.propertyId, unit, propertyUnits) }
     val unitDocs = documents.filter { it.unitId == unitId }
     val periods = remember(unitId, unit, detailsVersion) {
         TenantHistoryStore.ensureCurrentPeriod(
@@ -804,7 +806,7 @@ private fun UnifiedUnitDetailScreen(
                             UnifiedDetailFact(
                                 Icons.Default.HomeWork,
                                 "Wohnfläche",
-                                if (unit.wohnflaeche.isFinite() && unit.wohnflaeche >= 0.0) "${unit.wohnflaeche.toInt()} m²"
+                                if (unit.wohnflaeche.isFinite() && unit.wohnflaeche >= 0.0) "${GermanNumberInput.formatQuantity(unit.wohnflaeche)} m²"
                                 else "Gespeicherte Fläche bitte korrigieren"
                             )
                             UnifiedDetailFact(Icons.Default.Apartment, "Zimmer", extraDetails.rooms.ifBlank { "Nicht hinterlegt" })
