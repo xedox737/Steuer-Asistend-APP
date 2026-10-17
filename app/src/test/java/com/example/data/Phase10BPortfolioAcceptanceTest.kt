@@ -46,10 +46,110 @@ class Phase10BPortfolioAcceptanceTest {
     @Test fun seventeenUnitPortfolioEmptyTargetMergeTwiceAndReplace() = runTest { exercise(0) }
     @Test fun twentyOneUnitStressPortfolioEmptyTargetMergeTwiceAndReplace() = runTest { exercise(4) }
 
+
+
+
+    @Test fun largeDatevBatchHasBomCrlfValidFormatAndAllOriginalHashesInActualProductZip() {
+        output = File("build/reports/phase10b/datev").apply { mkdirs() }
+        val formats = formatBytes().entries.toList()
+        val receipts = (1..120).map { n ->
+            val format = formats[(n - 1) % 5]
+            val file = File(context.cacheDir, "e10b-export-$n.${format.key}").apply { writeBytes(format.value) }
+            Receipt(id = n, internalId = "export-receipt-$n", displayId = "E10B-$n", aussteller = "Handwerk ÄÖÜ",
+                datum = "2026-10-01", uhrzeit = "12:00", bruttobetrag = 10.25, hauptkategorie = "Renovierung", unterkategorie = "Reparatur",
+                kontoNr = "4800", beschreibung = "Prüfung; \"Fenster\"", propertyId = "e10b-property-1", imageUrl = file.absolutePath,
+                originalMimeType = mime(format.key), freigabestatus = "FREIGEGEBEN")
+        }
+        val records = receipts.map { r -> BookingRecord(bookingId = "booking-${r.id}", receiptId = r.id,
+            belegnummer = r.displayId!!, belegdatum = r.datum, buchungsdatum = r.datum, zahlungspartner = r.aussteller,
+            beschreibung = r.beschreibung, bruttobetrag = r.bruttobetrag, sollHaben = "S", sachkonto = "4800", gegenkonto = "1200",
+            belegfeld1 = r.displayId!!, hauptkategorie = "Renovierung", objektId = r.propertyId, kost1 = r.propertyId, steuerlichesJahr = 2026) }
+        val profile = DatevProfile.createDefaultSkr03().copy(beraterNummer = "1111111", mandantenNummer = "11111")
+        val validation = com.example.util.BookingValidationService.validateRecords(records, profile)
+        val csv = com.example.util.DatevCsvOutput.create(context, records, profile, validation, "2026")
+        assertEquals("text/csv", csv.mimeType)
+        assertEquals("csv", csv.outputFile.extension)
+        val bytes = csv.outputFile.readBytes()
+        assertArrayEquals(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()), bytes.take(3).toByteArray())
+        val text = bytes.drop(3).toByteArray().toString(Charsets.UTF_8)
+        assertTrue(com.example.util.DatevFormatValidator.validate(text).isValid)
+        assertEquals(122, text.trimEnd().split("\r\n").size)
+        assertFalse(text.replace("\r\n", "").contains("\n"))
+        csv.outputFile.copyTo(File(output, "batch-120.csv"), overwrite = true)
+        val pkg = com.example.util.AdvisorPackageBuilder.buildPackage(context, records, receipts, emptyList(), true, profile, validation)
+        assertEquals("application/zip", pkg.mimeType)
+        java.util.zip.ZipFile(pkg.outputFile).use { zip ->
+            val entries = zip.entries().asSequence().toList()
+            val originals = entries.filter { !it.isDirectory && it.name.startsWith("02_Originalbelege/") }
+            assertEquals(120, originals.size)
+            assertEquals(entries.size, entries.map { it.name }.distinct().size)
+            assertTrue(entries.any { it.name.startsWith("01_DATEV/") && it.name.endsWith(".csv") })
+            assertNotNull(zip.getEntry("08_Pruefprotokoll/manifest.json"))
+            receipts.forEach { r ->
+                val entry = originals.single { it.name.contains("_${r.displayId}_Original.") }
+                assertEquals(StableDocumentIdentity.sha256(File(r.imageUrl).readBytes()),
+                    StableDocumentIdentity.sha256(zip.getInputStream(entry).use { it.readBytes() }))
+            }
+        }
+        pkg.outputFile.copyTo(File(output, "batch-120.zip"), overwrite = true)
+        File(output, "export-hashes.json").writeText(JSONObject().put("csv", StableDocumentIdentity.sha256(bytes))
+            .put("zip", StableDocumentIdentity.sha256(pkg.outputFile.readBytes())).toString(2))
+    }
+
+    @Test fun actualImportServiceReadsAppFileProviderAndRestoresFiveFormatMetadataTwice() = runTest {
+        output = File("build/reports/phase10b/file-formats").apply { mkdirs() }
+        val property = PropertyMetadata(id = 1, propertyId = "e10b-formats", name = "Dateitest")
+        repository.updatePropertyMetadata(property)
+        val service = ManagedDocumentService(context, repository)
+        val imports = formatBytes().map { (extension, bytes) ->
+            val source = File(context.cacheDir, "e10b-source.$extension").apply { writeBytes(bytes) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".provider", source)
+            val result = service.prepareImport(uri, property, "e10b-unit")
+            assertTrue(result.toString(), result is ManagedDocumentImportResult.Imported)
+            val doc = (result as ManagedDocumentImportResult.Imported).document
+            assertEquals(mime(extension), doc.mimeType)
+            assertEquals(source.name, doc.originalFilename)
+            assertEquals(StableDocumentIdentity.sha256(bytes), doc.sha256)
+            assertArrayEquals(bytes, File(doc.localUri).readBytes())
+            doc
+        }
+        val payload = SupplementalDriveBackup.createPayload(context, db)
+        File(output, "BEFORE.json").writeText(canonical(payload))
+        // This case tests metadata roundtrip with existing local originals; empty-target original
+        // download is independently checked by the portfolio cases above.
+        db.managedDocumentDao().deleteAllDocuments()
+        repeat(2) { n ->
+            SupplementalDriveBackup.restorePayload(context, db, payload)
+            val after = SupplementalDriveBackup.createPayload(context, db)
+            File(output, "AFTER_${n + 1}.json").writeText(canonical(after))
+            assertEquals(canonical(payload), canonical(after))
+            imports.forEach { before ->
+                val doc = repository.getManagedDocument(before.documentId)!!
+                assertEquals(before.mimeType, doc.mimeType)
+                assertEquals(before.originalFilename, doc.originalFilename)
+                assertEquals(before.unitId, doc.unitId)
+                assertEquals(before.sha256, StableDocumentIdentity.sha256(File(doc.localUri).readBytes()))
+            }
+        }
+        assertTrue(service.prepareImport(android.net.Uri.parse("content://missing-e10b-provider/invalid"), property) is ManagedDocumentImportResult.Error)
+    }
+
+    private fun mime(extension: String) = when (extension) {
+        "pdf" -> "application/pdf"; "jpg", "jpeg" -> "image/jpeg"; else -> "image/$extension"
+    }
+    // Valid synthetic fixtures, generated with Pillow/reportlab; no user data.
+    private fun formatBytes(): Map<String, ByteArray> = linkedMapOf(
+        "pdf" to java.util.Base64.getDecoder().decode("JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDcgMCBSIC9NZWRpYUJveCBbIDAgMCA1OTUuMjc1NiA4NDEuODg5OCBdIC9QYXJlbnQgNiAwIFIgL1Jlc291cmNlcyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRvYmoKNCAwIG9iago8PAovUGFnZU1vZGUgL1VzZU5vbmUgL1BhZ2VzIDYgMCBSIC9UeXBlIC9DYXRhbG9nCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9BdXRob3IgKGFub255bW91cykgL0NyZWF0aW9uRGF0ZSAoRDoyMDAwMDEwMTAwMDAwMCswMCcwMCcpIC9DcmVhdG9yIChhbm9ueW1vdXMpIC9LZXl3b3JkcyAoKSAvTW9kRGF0ZSAoRDoyMDAwMDEwMTAwMDAwMCswMCcwMCcpIC9Qcm9kdWNlciAoUmVwb3J0TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0ICh1bnNwZWNpZmllZCkgL1RpdGxlICh1bnRpdGxlZCkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago2IDAgb2JqCjw8Ci9Db3VudCAxIC9LaWRzIFsgMyAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjcgMCBvYmoKPDwKL0ZpbHRlciBbIC9BU0NJSTg1RGVjb2RlIC9GbGF0ZURlY29kZSBdIC9MZW5ndGggMTI1Cj4+CnN0cmVhbQpHYXBRaDBFPUYsMFVcSDNUXHBOWVReUUtrP3RjPklQLDtXI1UxXjIzaWhQRU1fP0NXNEtJU2k6OmJXLjZPQl9zS0o7aEcrPCE+VmstTyFlMGlsXG9zTjc9JDdBOzByVWJrMCxsYCNNTCpPPVoocy9XYixaL2Ngbl4pLVt+PmVuZHN0cmVhbQplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAwOTIgMDAwMDAgbiAKMDAwMDAwMDE5OSAwMDAwMCBuIAowMDAwMDAwNDAyIDAwMDAwIG4gCjAwMDAwMDA0NzAgMDAwMDAgbiAKMDAwMDAwMDczMSAwMDAwMCBuIAowMDAwMDAwNzkwIDAwMDAwIG4gCnRyYWlsZXIKPDwKL0lEIApbPDFjMTc4MTk4ZmJkZmE1MWIyNTk5NWQ4OWQ0MTAyMDQzPjwxYzE3ODE5OGZiZGZhNTFiMjU5OTVkODlkNDEwMjA0Mz5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQgLS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gNSAwIFIKL1Jvb3QgNCAwIFIKL1NpemUgOAo+PgpzdGFydHhyZWYKMTAwNQolJUVPRgo="),
+        "jpg" to java.util.Base64.getDecoder().decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDhaKKK+oPnwooooAKKKKACiiigD//Z"),
+        "jpeg" to java.util.Base64.getDecoder().decode("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDkaKKK+iOEKKKKACiiigAooooA/9k="),
+        "png" to java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAALUlEQVR4nGNMCZjGQEvARFPTRy0YtWDUglELRi0YtWDUglELRi0YtWDUAioCAC+ZAYopCJCbAAAAAElFTkSuQmCC"),
+        "webp" to java.util.Base64.getDecoder().decode("UklGRkQAAABXRUJQVlA4IDgAAAAwAwCdASogACAAPm00lkekIyIhKAgAgA2JZQDJAoAAQFBQAP7paR/alEFJal/UREFJXAny3AAAAA==")
+    )
+
     private suspend fun exercise(extraUnits: Int) {
         output = File("build/reports/phase10b/units-${17 + extraUnits}").apply { mkdirs() }
         val failures = mutableListOf<String>()
-        fun check(label: String, action: () -> Unit) {
+        suspend fun check(label: String, action: suspend () -> Unit) {
             try { action() } catch (failure: AssertionError) { failures += "$label: ${failure.message}" }
         }
         val counts = listOf(8, 6 + extraUnits, 1, 1, 1)
@@ -57,7 +157,7 @@ class Phase10BPortfolioAcceptanceTest {
         val properties = counts.mapIndexed { index, count ->
             val pid = "e10b-property-${index + 1}"
             val entries = (1..count).map { n -> UnitIdentity.Entry("$pid-unit-$n", when (n) {
-                1 -> "WE 01, EG links"; 2 -> "WE 02"; 3 -> "WE 03; rechts"; 4, 5 -> "Gleicher Name"; else -> "WE $n"
+                1 -> "WE 01, EG links"; 2 -> "WE 02"; 3 -> "WE 03; rechts"; 4 -> "WE 04"; 5 -> "WE 05"; else -> "WE $n"
             }) }
             val property = PropertyMetadata(id = index + 1, propertyId = pid, name = names[index], adresse = "Teststraße ${index + 1}",
                 baujahr = 1954, gesamtKaufpreis = 200_000.0, gebaeudewert = 200_000.0,
@@ -89,22 +189,23 @@ class Phase10BPortfolioAcceptanceTest {
         ConfirmedAfaValuesStore.write(context, properties[1].propertyId, ConfirmedAfaValues("2026-06-30", 25_000.0, 184_000.0, "Synthetischer Stand"))
         val renovation = RenovationReviewStore(context)
         renovation.saveMeasure(RenovationMeasure("e10b-measure", properties[1].propertyId, "", "Sanierung Bad"))
-        val fixtureBytes = SyntheticDocumentFixtureFactory.create().first().bytes
+        val formats = formatBytes().entries.toList()
         val originals = (1..60).map { n ->
             val p = properties[(n - 1) % 5]
             val unit = drive.getWohneinheitenFromPrefs(p).first()
-            val file = File(context.filesDir, "e10b-original-$n.pdf").apply { writeBytes(fixtureBytes + "\n% synthetisch $n".toByteArray()) }
+            val format = formats[(n - 1) % formats.size]
+            val file = File(context.filesDir, "e10b-original-$n.${format.key}").apply { writeBytes(format.value + "\n% synthetic $n".toByteArray()) }
             val r = Receipt(id = n, internalId = "e10b-receipt-$n", displayId = "E10B-$n", aussteller = "Testhandwerk ÄÖÜ $n",
                 datum = "2026-01-15", uhrzeit = "10:15", bruttobetrag = when(n) { 2 -> 10_000.0; 7 -> -1_000.0; else -> n + .25 },
                 hauptkategorie = if (n == 2 || n == 7) "Anschaffungskosten" else "Sonstige Ausgaben", unterkategorie = "Material",
                 kontoNr = "4800", beschreibung = if (n == 7) "Gutschrift" else "Testbeleg $n", propertyId = p.propertyId,
                 unitId = unit.unitId, wohneinheit = unit.name, imageUrl = file.absolutePath, driveFileId = "e10b-file-$n",
-                driveMetadataFileId = "meta-e10b-receipt-$n", originalMimeType = "application/pdf",
+                driveMetadataFileId = "meta-e10b-receipt-$n", originalMimeType = mime(format.key),
                 freigabestatus = if (n % 2 == 0) "FREIGEGEBEN" else "OFFEN")
             repository.insert(r)
             val doc = ManagedDocument(documentId = "receipt:${r.internalId}", propertyId = p.propertyId, unitId = unit.unitId,
-                receiptInternalId = r.internalId, originalFilename = "Beleg, $n.pdf", storedFilename = "Beleg, $n.pdf",
-                mimeType = "application/pdf", localUri = file.absolutePath, driveFileId = r.driveFileId,
+                receiptInternalId = r.internalId, originalFilename = "Beleg, $n.${format.key}", storedFilename = "Beleg, $n.${format.key}",
+                mimeType = mime(format.key), localUri = file.absolutePath, driveFileId = r.driveFileId,
                 sha256 = StableDocumentIdentity.sha256(file.readBytes()), fileSizeBytes = file.length())
             repository.upsertManagedDocument(doc)
             fake.put(r.driveFileId!!, "receipts", doc.storedFilename, file.readBytes())
@@ -166,7 +267,7 @@ class Phase10BPortfolioAcceptanceTest {
             entry("property.json", fake.json("property").toByteArray())
             entry("units.json", fake.json("units").toByteArray())
             repository.getAllReceiptsList().forEach { entry("metadata/${it.internalId}.json", fake.json("meta-${it.internalId}").toByteArray()) }
-            originals.forEach { entry("originals/${it.driveFileId}.pdf", File(it.localUri).readBytes()) }
+            originals.forEach { entry("originals/${it.driveFileId}.${it.storedFilename.substringAfterLast('.')}", File(it.localUri).readBytes()) }
         }
         File(output, "qa-transport-snapshot.sha256").writeText(StableDocumentIdentity.sha256(backup.readBytes()))
         val validated = drive.buildRestoreSnapshot("test-token", config)
@@ -188,9 +289,9 @@ class Phase10BPortfolioAcceptanceTest {
             repository.getAllReceiptsList().filter { !it.driveFileId.isNullOrBlank() }.forEach { drive.downloadReceiptOriginals("test-token", it) }
         }
         restore(RestoreMode.MERGE)
-        check("empty MERGE") { assertEquals(before, snapshot("AFTER_RESTORE_1")) }
+        check("empty MERGE") { assertTrue("Exact golden diff: AFTER_RESTORE_1", before == snapshot("AFTER_RESTORE_1")) }
         restore(RestoreMode.MERGE)
-        check("second MERGE") { assertEquals(before, snapshot("AFTER_RESTORE_2")) }
+        check("second MERGE") { assertTrue("Exact golden diff: AFTER_RESTORE_2", before == snapshot("AFTER_RESTORE_2")) }
         check("original bytes") {
             originals.forEach { source ->
                 val restored = repository.getAllManagedDocuments().single { it.documentId == source.documentId }
@@ -206,11 +307,11 @@ class Phase10BPortfolioAcceptanceTest {
             DistanceEvidence(manualKm = 25.0, manuallyConfirmed = true), bookingKey = "e10b-new-local").getOrThrow()
         val local = snapshot("AFTER_LOCAL_CHANGES")
         restore(RestoreMode.MERGE)
-        check("MERGE preserves local") { assertEquals(local, snapshot("AFTER_LOCAL_MERGE_1")) }
+        check("MERGE preserves local") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_1", local == snapshot("AFTER_LOCAL_MERGE_1")) }
         restore(RestoreMode.MERGE)
-        check("second local MERGE") { assertEquals(local, snapshot("AFTER_LOCAL_MERGE_2")) }
+        check("second local MERGE") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_2", local == snapshot("AFTER_LOCAL_MERGE_2")) }
         restore(RestoreMode.REPLACE_FULL)
-        check("REPLACE_FULL returns golden") { assertEquals(before, snapshot("AFTER_REPLACE_FULL")) }
+        check("REPLACE_FULL returns golden") { assertTrue("Exact golden diff: AFTER_REPLACE_FULL", before == snapshot("AFTER_REPLACE_FULL")) }
         File(output, "assertion-results.json").writeText(JSONObject().put("failures", JSONArray(failures)).toString(2))
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
