@@ -54,7 +54,7 @@ class Phase10BPortfolioAcceptanceTest {
         val formats = formatBytes().entries.toList()
         val receipts = (1..120).map { n ->
             val format = formats[(n - 1) % 5]
-            val file = File(context.cacheDir, "e10b-export-$n.${format.key}").apply { writeBytes(format.value) }
+            val file = File(context.cacheDir, "e10b-export-$n.${format.key}").apply { writeBytes(format.value + "\n% e10b-export-$n".toByteArray()) }
             Receipt(id = n, internalId = "export-receipt-$n", displayId = "E10B-$n", aussteller = "Handwerk ÄÖÜ",
                 datum = "2026-10-01", uhrzeit = "12:00", bruttobetrag = 10.25, hauptkategorie = "Renovierung", unterkategorie = "Reparatur",
                 kontoNr = "4800", beschreibung = "Prüfung; \"Fenster\"", propertyId = "e10b-property-1", imageUrl = file.absolutePath,
@@ -312,6 +312,12 @@ class Phase10BPortfolioAcceptanceTest {
         check("second local MERGE") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_2", local == snapshot("AFTER_LOCAL_MERGE_2")) }
         restore(RestoreMode.REPLACE_FULL)
         check("REPLACE_FULL returns golden") { assertTrue("Exact golden diff: AFTER_REPLACE_FULL", before == snapshot("AFTER_REPLACE_FULL")) }
+        val receiptIds = repository.getAllReceiptsList().map { it.id }.toSet()
+        val orphans = db.logbookDao().getAllTrips().filter { it.expenseReceiptId !in receiptIds }
+        File(output, "relation-integrity.json").writeText(JSONObject().put("orphanTrips", JSONArray(orphans.map {
+            JSONObject().put("tripId", it.id).put("missingExpenseReceiptId", it.expenseReceiptId)
+        })).toString(2))
+        check("E10B-01 REPLACE_FULL orphan relation") { assertTrue("Trips reference missing expense receipts: $orphans", orphans.isEmpty()) }
         File(output, "assertion-results.json").writeText(JSONObject().put("failures", JSONArray(failures)).toString(2))
         assertTrue(failures.joinToString("\n"), failures.isEmpty())
     }
@@ -328,6 +334,24 @@ class Phase10BPortfolioAcceptanceTest {
                 .put("category", r.hauptkategorie).put("subcategory", r.unterkategorie).put("account", r.kontoNr)
                 .put("description", r.beschreibung).put("approval", r.freigabestatus).put("exportId", r.exportlaufId)
                 .put("allocations", r.allocationsJson).put("proposals", r.bookingProposalsJson).put("driveFileId", r.driveFileId))
+        } })
+        val allReceipts = repository.getAllReceiptsList()
+        result.put("afa", JSONArray().apply { repository.getAllProperties().forEach { p ->
+            val tax = TaxPropertyCalculator.calculate(p, allReceipts.filter { it.propertyId == p.propertyId })
+            val confirmed = ConfirmedAfaValuesStore.read(context, p.propertyId)
+            val forecast = afaForecast(tax, confirmed)
+            val yearEnd = confirmed?.let { afaForecast(tax, it.copy(cutoffDate = "2026-12-31")) }.orEmpty()
+            put(JSONObject().put("propertyId", p.propertyId).put("basis", tax.buildingAcquisitionCosts)
+                .put("annualAfa", tax.annualAfa).put("limit15Percent", tax.limit15Percent)
+                .put("forecastFirstYear", forecast.firstOrNull()?.year).put("forecastFirstMonths", forecast.firstOrNull()?.months)
+                .put("forecastFirstAmount", forecast.firstOrNull()?.amount).put("yearEndFirstYear", yearEnd.firstOrNull()?.year))
+            if (p.propertyId == "e10b-property-2") {
+                assertEquals(209_000.0, tax.buildingAcquisitionCosts, 0.0)
+                assertEquals(4_180.0, tax.annualAfa, 0.0)
+                assertEquals(31_350.0, tax.limit15Percent, 0.0)
+                assertEquals(6, forecast.first().months)
+                assertEquals(2027, yearEnd.first().year)
+            }
         } })
         val text = canonical(result)
         File(output, "$label.json").writeText(text)
