@@ -2238,7 +2238,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         updateReceiptPaymentFromConfirmedBankMatch(receipt, transaction)
         refreshBankTransactionStatus(transaction.transactionId)
         val learning = com.example.data.BankLearningService(database.bankLearningRuleDao())
-        learning.recordConfirmed(transaction, receipt)
+        learning.recordConfirmed(transaction, receipt.copy(unitId = unitId))
         database.bankLearningRuleDao().getActiveRules().filter { com.example.data.BankRuleEngine.score(transaction, it) != null }.forEach { learning.recordRuleSuccess(it.ruleId) }
         return "Buchung und Beleg wurden bestätigt verbunden."
     }
@@ -2398,7 +2398,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             wohneinheit = suggestion.unitName,
             mieter = suggestion.tenantName,
             zahlungsart = "Überweisung",
-            propertyId = suggestion.propertyId
+            propertyId = suggestion.propertyId,
+            unitId = suggestion.unitId
         )
         com.example.data.BankLearningService(database.bankLearningRuleDao()).recordConfirmed(transaction, syntheticEvidenceReceipt)
         _dismissedBankRentTransactions.value = _dismissedBankRentTransactions.value - transaction.transactionId

@@ -252,3 +252,29 @@ Backup-Schemaänderung. Dies ergänzt die bisherigen 17 dokumentierten Pfade.
   bestätigte Fachschlüssel-/Credential-Namensverwechslung erhält den oben
   beschriebenen Restorefall und wird auf dem folgenden Head erneut zusammen mit
   der kompletten nativen Suite geprüft. Noch keine vorweggenommene Abnahme.
+
+### Bank-Lernregeln: sichtbarer Name im Unit-ID-Feld
+
+Abschließende direkte Zuweisungssuche bestätigt einen weiteren aktiven P1 derselben
+Label-/Identitätsverwechslung: BankLearningService.recordConfirmed verwendete
+Receipt.wohneinheit als BankRuleEvidence.unitId und später BankLearningRule.unitId.
+Drei Bestätigungen über einen Rename hinweg teilten sich deshalb in verschiedene
+Kandidaten; die erzeugte Regel mit Namens-ID passte nicht zur BankTransaction mit
+stabiler U1. Beide Aufrufe aus ReceiptViewModel sind aktiv (bestätigter Beleg und
+bestätigte Mietzuordnung).
+
+Neue Evidenz übernimmt Receipt.unitId autoritativ oder die vorhandene stabile
+Transaction.unitId ausschließlich im gleichen Property-Scope. Ein ungelöstes
+Einheitslabel erzeugt keine namensbasierte oder zum Gesamtobjekt verbreiterte
+Regel. Der Belegaufruf reicht seine bereits sicher aufgelöste ID weiter, die
+Mietzuordnung ihre vorhandene suggestion.unitId. Alte Evidenz/Regeln werden weder
+umgeschrieben noch neu identifiziert. Bankbuchungsliste und Aktivierungsvertrag
+bleiben unverändert; Regeln bleiben zunächst PROPOSED und deaktiviert.
+
+Zwei neue Room-/Servicetests: drei Bestätigungen mit WE 01 → WE 01, EG links →
+WE 01; EG|links bleiben ein U1-Kandidat; alte Label-Evidenz bleibt byte-/feldgleich.
+Die aktivierte Testregel passt zu U1, nicht U2. Fehlende sichere ID oder fremder
+Property-Scope erzeugt keine Evidenz; vorhandene U1 im gleichen Scope bleibt lesbar.
+Dies ist der 19. dokumentierte Mechanismus/Anzeigepfad. Run 39018143139 bestand
+Verify mit 1.049 Tests ohne Fehler/Skips und baute die Instrumentierung erfolgreich;
+der weitere bestätigte Treffer erfordert einen neuen vollständigen CI-Lauf.

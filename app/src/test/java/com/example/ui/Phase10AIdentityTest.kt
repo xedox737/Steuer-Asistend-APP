@@ -247,6 +247,45 @@ class Phase10AIdentityTest {
         val ambiguousLabels = units.map { it.copy(label = "Wohnung") }
         assertFalse(ReceiptUnitResolver.belongs(old.copy(unitId = "", wohneinheit = "Wohnung"), propertyId, ambiguousLabels[0], ambiguousLabels))
     }
+    @Test fun bankLearningKeepsStableUnitAcrossRenameAndPreservesOldEvidence() = runBlocking {
+        val dao = db.bankLearningRuleDao()
+        val old = BankRuleEvidence("old-evidence", "old-key", transactionId = "old-tx", receiptId = 1,
+            direction = BankRuleDirection.EXPENSE, propertyId = propertyId, unitId = "Old visible name")
+        dao.insertEvidence(old)
+        val service = BankLearningService(dao) { "2026-10-01T00:00:00Z" }
+        val receipt = Receipt(1010, "Handel", "2026-10-01", "", 119.0, "Werbungskosten", "Reparatur", "4801", "",
+            propertyId = propertyId, unitId = "U1", wohneinheit = "WE 01")
+        val transaction = BankTransaction("bank-1", "account", "2026-10-01", amount = -119.0,
+            counterparty = "Handel", purpose = "Reparatur Material", propertyId = propertyId, unitId = "U1")
+        listOf("WE 01", "WE 01, EG links", "WE 01; EG|links").forEachIndexed { index, name ->
+            service.recordConfirmed(transaction.copy(transactionId = "bank-$index"), receipt.copy(id = 1010 + index, wohneinheit = name))
+        }
+        val evidence = dao.getAllEvidence().filter { it.evidenceId != old.evidenceId }
+        assertEquals(3, evidence.size)
+        assertEquals(listOf("U1"), evidence.map { it.unitId }.distinct())
+        assertEquals(1, evidence.map { it.candidateKey }.distinct().size)
+        assertEquals(old, dao.getAllEvidence().single { it.evidenceId == old.evidenceId })
+        val rule = dao.getAllRules().single()
+        assertEquals("U1", rule.unitId)
+        assertEquals(propertyId, rule.propertyId)
+        assertEquals(3, rule.evidenceCount)
+        assertFalse(rule.enabled)
+        assertNotNull(BankRuleEngine.score(transaction, rule.copy(enabled = true, state = BankRuleState.ACTIVE)))
+        assertNull(BankRuleEngine.score(transaction.copy(unitId = "U2"), rule.copy(enabled = true, state = BankRuleState.ACTIVE)))
+    }
+    @Test fun bankLearningNeverUsesAnUnresolvedLabelOrAForeignTransactionId() = runBlocking {
+        val dao = db.bankLearningRuleDao()
+        val service = BankLearningService(dao)
+        val receipt = Receipt(1010, "Handel", "2026-10-01", "", 119.0, "Werbungskosten", "Reparatur", "4801", "",
+            propertyId = propertyId, wohneinheit = entries[0].name)
+        val transaction = BankTransaction("bank-1", "account", "2026-10-01", amount = -119.0,
+            propertyId = "foreign", unitId = "U2")
+        assertNull(service.recordConfirmed(transaction, receipt))
+        assertTrue(dao.getAllEvidence().isEmpty())
+        service.recordConfirmed(transaction.copy(propertyId = propertyId, unitId = "U1"), receipt)
+        assertEquals("U1", dao.getAllEvidence().single().unitId)
+        assertEquals(propertyId, dao.getAllEvidence().single().propertyId)
+    }
     @Test fun newLogbookCostReceiptKeepsUnitIdAndUnroundedDistanceDescription() = runBlocking {
         val repository = ReceiptRepository(db.receiptDao(), db.propertyDao(), db.receiptEntityDao(), db.belegDao(),
             db.exportAuditDao(), db.receiptDocumentDao(), db.managedDocumentDao())
