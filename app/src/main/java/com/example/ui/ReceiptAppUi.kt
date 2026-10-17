@@ -9484,6 +9484,26 @@ fun FirebaseLoginDialog(
     )
 }
 
+internal fun bankStatementCsv(statementText: String, result: com.example.api.BankStatementReconciliationResult?): String = buildString {
+    append("Datum;Empfaenger_Absender;Betrag_EUR;Buchungstyp;Verwendungszweck;Abgleich_Status;Hinweis\n")
+    fun row(values: List<String>) { append(values.joinToString(";") { com.example.util.csvField(it) }).append('\n') }
+    if (result != null && result.items.isNotEmpty()) {
+        result.items.forEach { item ->
+            val status = when (item.status) {
+                "MATCHED" -> "Zugeordnet"
+                "MISSING_RECEIPT" -> "FEHLENDER BELEG"
+                "RENT_ARREARS" -> "MIETRÜCKSTAND"
+                else -> "Ungeklärt"
+            }
+            row(listOf(item.date, item.counterparty, String.format(java.util.Locale.GERMANY, "%.2f", item.amount),
+                if (item.isIncome) "Einnahme" else "Ausgabe", item.purpose, status, item.notes))
+        }
+    } else if (statementText.isNotBlank()) {
+        // No structured reconciliation exists: preserve the complete source instead of guessing pipe fields.
+        row(listOf("", statementText, "", "", "", "Unformatiert", ""))
+    }
+}
+
 fun exportBankStatementToCsv(
     context: Context,
     statementText: String,
@@ -9492,47 +9512,7 @@ fun exportBankStatementToCsv(
     try {
         val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
         val file = File(exportDir, "Kontoauszug_Bankabgleich.csv")
-
-        val sb = java.lang.StringBuilder()
-        // German standard CSV header
-        sb.append("Datum;Empfaenger_Absender;Betrag_EUR;Buchungstyp;Verwendungszweck;Abgleich_Status;Hinweis\n")
-
-        if (result != null && result.items.isNotEmpty()) {
-            for (item in result.items) {
-                val date = item.date.replace(";", ",")
-                val party = item.counterparty.replace(";", ",")
-                val amount = String.format(java.util.Locale.GERMANY, "%.2f", item.amount)
-                val type = if (item.isIncome) "Einnahme" else "Ausgabe"
-                val purpose = item.purpose.replace(";", ",")
-                val statusText = when (item.status) {
-                    "MATCHED" -> "Zugeordnet"
-                    "MISSING_RECEIPT" -> "FEHLENDER BELEG"
-                    "RENT_ARREARS" -> "MIETRÜCKSTAND"
-                    else -> "Ungeklärt"
-                }
-                val notes = item.notes.replace(";", ",").replace("\n", " ")
-                sb.append("$date;\"$party\";$amount;$type;\"$purpose\";\"$statusText\";\"$notes\"\n")
-            }
-        } else {
-            val lines = statementText.lines().filter { it.isNotBlank() }
-            for (line in lines) {
-                val parts = line.split("|").map { it.trim() }
-                if (parts.size >= 3) {
-                    val date = parts[0].replace(";", ",")
-                    val party = parts[1].replace(";", ",")
-                    val rawAmount = parts[2].replace(";", ",").replace("EUR", "").trim()
-                    val purpose = parts.drop(3).joinToString(" ").replace(";", ",")
-                    val isIncome = !rawAmount.startsWith("-")
-                    val type = if (isIncome) "Einnahme" else "Ausgabe"
-                    sb.append("$date;\"$party\";\"$rawAmount\";$type;\"$purpose\";\"Standardisiert\";\"\"\n")
-                } else {
-                    val cleanLine = line.replace(";", ",")
-                    sb.append(";\"$cleanLine\";;;;\"Unformatiert\";\"\"\n")
-                }
-            }
-        }
-
-        file.writeText(sb.toString(), Charsets.UTF_8)
+        file.writeText(bankStatementCsv(statementText, result), Charsets.UTF_8)
 
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,

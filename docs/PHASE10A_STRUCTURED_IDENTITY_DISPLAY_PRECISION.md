@@ -85,6 +85,28 @@ Unit-IDs. Historische Fremd-/unbekannte IDs fallen nicht auf ein Label zurück.
 DATEV-EXTF, CSV/ZIP, Konten, BU, Freigabe und Audit werden nicht geändert;
 der Originalanhangpfad verwendet lediglich denselben Reader wie die App.
 
+### Bestätigte Export- und Fahrtenbuchpfade der abschließenden Suche
+
+Die ergänzende Prüfung der aktiven handgeschriebenen CSV-Zeilen fand drei weitere
+Darstellungen derselben Ursache; korrekt gequotete CSV-/DATEV-Formate bleiben
+unverändert. Es wird weder ein neues Importformat noch eine Backuparchitektur gebaut.
+
+| Priorität | Datei / Funktion | Reproduktion / Wirkung | Korrektur / Nachweis |
+| --- | --- | --- | --- |
+| P2 | GoogleDriveClient.unitsCsv / uploadWohneinheitenCsv | Einheit `WE 01; EG` oder Zeilenumbruch erzeugt zusätzliche CSV-Felder/-Datensätze | Bestehende CSV-Quotingfunktion aus LogbookCsvExporter gemeinsam genutzt; 2 Einheiten, 7 Spalten, Originalnamen/Quotes/Newlines im Regressionstest |
+| P3 | GoogleDriveClient.ledgerCsv / uploadLedgerCsv | Aussteller/Kategorie/Beschreibung mit Semikolon wird in Komma umgeschrieben; Newlines spalten Datensätze | Dieselben unveränderten Feldwerte korrekt gequotet; 10-Spalten-Roundtriptest |
+| P2 | ReceiptAppUi.bankStatementCsv / exportBankStatementToCsv | Quotes/Semikolons/Zeilenumbrüche verändern Felder; Rawtext wird ohne Struktur an Pipe geraten | Strukturierte Ergebnisse feldgenau quoten; ohne Ergebnis gesamten Rohtext als Rohtext exportieren, keine geratene Gegenpartei/Listenstruktur; UI-/Import-/Matching-/Banklistenlogik unverändert |
+| P3 | LogbookCsvExporter.create / LogbookBookingStore.saveLogbookTrip | gespeicherte 1,25 km bzw. Tacho 12345,25 werden zu 1,3/12345,3; erzeugter Beleg nennt 1,3 statt tatsächlicher 1,25 km | Gemeinsamer deutscher Mengenformatter bewahrt Dezimalen, bestehende Mindeststelle bleibt; CSV- und tatsächlicher Room-Bookingtest, Betrags-/Distanzberechnung unverändert |
+| P3 | AnnualTaxAssistantFeature.buildAdvisorAnnualSummary | Fläche 41,255 und gespeicherter Sollzins 4,375 / Tilgung 2,125 / Vermietungsanteil 87,625 werden im Bericht auf zwei Stellen verändert | Derselbe Mengenformatter bewahrt vorhandene Nachkommastellen bei bestehender Mindeststelle; Test des produktiven Berichtsbauers, Geldformatter/Finanzberechnung unverändert |
+| P1 | LogbookBookingStore.saveLogbookTrip | Quelle besitzt stabile U1; Kostenbeleg kopiert nur sichtbaren Unit-Namen und verliert U1 beim Rename | Vorhandene Unit-ID im selben Property-Scope weitergeben; fremde Property übernimmt weder ID noch Namen. Neue Buchungs-/Scope-Regression; historische Belege werden nicht geraten/umgeschrieben |
+
+Phase10AExportPrecisionTest prüft die tatsächlichen drei Exportbuilder und die
+Fahrtenbuch-CSV mit unabhängig erkannten gequoteten Datensatzgrenzen und dem
+vorhandenen CSV-Felddecoder. Dateinamen, Header/Spalten, MIME und Upload-/Teilenwege
+bleiben gleich. Ohne strukturierte Bankanalyse wird kein vorgetäuschter
+standardisierter Datensatz aus unbekannten Pipe-Texten erzeugt. Originalrohtext
+bleibt vollständig, einschließlich Quotes, Semikolon, Pipe und Zeilenumbrüchen.
+
 ## M26-02 und Formatierung
 
 GermanNumberInput bleibt der gemeinsame deutsche Zahlenhelper; Currency bleibt
@@ -110,7 +132,8 @@ Bewusst unverändert: standardkonforme CSV-/DATEV-/CAMT-Formate, ISO-Datumteile,
 Dateiendungen/Drive-Pfadsegmente, PDF-Textumbruch, Hash-Hexdarstellung, Such-/KI-
 Prompttexte, explizite Suchbegriffsyntax, Anzahl/Baujahr/Progress/Confidence,
 Bitmap-/Layout-/Dateigrößenkonversionen und gerundete Diagramm-/Monitorprozente.
-Bestätigt wurden elf in der Tabelle getrennt dokumentierte Mechanismen/Anzeigepfade.
+Bestätigt wurden zunächst elf Mechanismen/Anzeigepfade; die abschließende
+Exportprüfung ergänzt die sechs ausdrücklich oben dokumentierten Pfade.
 Von den 48 Ganzzahlkonversionszeilen waren vier Flächenanzeigen fehlerhaft (Einheit,
 Objekt-Wohnfläche, AfA-Wohnfläche, AfA-Grundstück); zwei weitere bestätigte
 Formatverluste lagen in den zusätzlich gesuchten %.1f-Anzeigen (AfA-Satz, Kilometer).
@@ -184,3 +207,11 @@ physisches Gerät und Kanzleiimport werden nicht als geprüft ausgegeben.
   Historienrohwert vor/nach Rename geprüft. Keine Produktionsänderung, kein
   gelockerter ID-/Relationsvergleich, Retry, Skip oder Timeoutwechsel.
   Der anschließende vollständige aktuelle Lauf bleibt Pflicht.
+
+- Der folgende Test-Head 392d7b7d änderte ausschließlich die native Erwartung und
+  ergänzte den Historienrohwertvergleich. Verify erneut vollständig grün.
+  Während seines nativen Laufs bestätigte die abschließende appweite Suche die
+  oben beschriebenen optionalen CSV-/Fahrtenbuchpfade. Diese erhalten denselben
+  gemeinsamen Quoting-/Zahlenvertrag; zusätzliche isolierte Format-/Bookingtests
+  werden im anschließend erneut vollständigen CI-Lauf mitgeprüft. Keine
+  DATEV-, Banklisten-, Berechnungs-, Migrations- oder Schemaänderung.

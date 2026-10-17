@@ -42,12 +42,13 @@ internal object GermanNumberInput {
     }
 
     /** Shared German presentation for non-currency decimal quantities, without integer truncation. */
-    fun formatQuantity(value: Double, minimumDecimals: Int = 0): String {
+    fun formatQuantity(value: Double, minimumDecimals: Int = 0, grouping: Boolean = true): String {
         if (!value.isFinite() || value < 0.0) return "Gespeicherten Wert bitte korrigieren"
         // Preferences store Float; do not expose widening noise (41.99f -> 41.990001678...).
         val decimal = if (value.toFloat().isFinite() && value.toFloat().toDouble() == value)
             value.toFloat().toString().toBigDecimal() else value.toBigDecimal()
         return NumberFormat.getNumberInstance(Locale.GERMANY).apply {
+            isGroupingUsed = grouping
             minimumFractionDigits = minimumDecimals
             maximumFractionDigits = decimal.scale().coerceAtLeast(minimumDecimals)
         }.format(decimal)

@@ -529,42 +529,32 @@ object GoogleDriveClient {
         return inSampleSize
     }
 
-    fun uploadLedgerCsv(accessToken: String, folderId: String, receipts: List<Receipt>): Boolean {
-        val filename = "Steuerassistent_Belege_Hauptbuch.csv"
-        val csvBuilder = StringBuilder()
-        csvBuilder.append("ID;Aussteller;Datum;Uhrzeit;Bruttobetrag;Hauptkategorie;Unterkategorie;KontoNr;Eigenleistung;Beschreibung\n")
-        for (receipt in receipts) {
-            csvBuilder.append("${receipt.id};")
-                .append("${receipt.aussteller.replace(";", ",")};")
-                .append("${receipt.datum};")
-                .append("${receipt.uhrzeit};")
-                .append("${receipt.bruttobetrag};")
-                .append("${receipt.hauptkategorie.replace(";", ",")};")
-                .append("${receipt.unterkategorie.replace(";", ",")};")
-                .append("${receipt.kontoNr};")
-                .append("${if (receipt.isEigenleistungSanierung) "Ja" else "Nein"};")
-                .append("${receipt.beschreibung.replace(";", ",")}\n")
+    internal fun ledgerCsv(receipts: List<Receipt>): String = buildString {
+        append("ID;Aussteller;Datum;Uhrzeit;Bruttobetrag;Hauptkategorie;Unterkategorie;KontoNr;Eigenleistung;Beschreibung\n")
+        receipts.forEach { receipt ->
+            append(listOf(receipt.id.toString(), receipt.aussteller, receipt.datum, receipt.uhrzeit,
+                receipt.bruttobetrag.toString(), receipt.hauptkategorie, receipt.unterkategorie, receipt.kontoNr,
+                if (receipt.isEigenleistungSanierung) "Ja" else "Nein", receipt.beschreibung)
+                .joinToString(";") { com.example.util.csvField(it) }).append('\n')
         }
-
-        return uploadFileToDrive(accessToken, folderId, filename, "text/csv; charset=UTF-8", csvBuilder.toString().toByteArray(Charsets.UTF_8))
     }
 
-    fun uploadWohneinheitenCsv(accessToken: String, folderId: String, units: List<WohneinheitStatus>): Boolean {
-        val filename = "Steuerassistent_Wohneinheiten.csv"
-        val csvBuilder = StringBuilder()
-        csvBuilder.append("Name;Label;Status;Mieter;Kaltmiete;Wohnflaeche;Mietvertragsstart\n")
-        for (u in units) {
-            csvBuilder.append("${u.name};")
-                .append("${u.label};")
-                .append("${u.status};")
-                .append("${u.mieter};")
-                .append("${u.kaltmiete};")
-                .append("${u.wohnflaeche};")
-                .append("${u.mietvertragsstart}\n")
-        }
+    fun uploadLedgerCsv(accessToken: String, folderId: String, receipts: List<Receipt>): Boolean =
+        uploadFileToDrive(accessToken, folderId, "Steuerassistent_Belege_Hauptbuch.csv", "text/csv; charset=UTF-8",
+            ledgerCsv(receipts).toByteArray(Charsets.UTF_8))
 
-        return uploadFileToDrive(accessToken, folderId, filename, "text/csv; charset=UTF-8", csvBuilder.toString().toByteArray(Charsets.UTF_8))
+    internal fun unitsCsv(units: List<WohneinheitStatus>): String = buildString {
+        append("Name;Label;Status;Mieter;Kaltmiete;Wohnflaeche;Mietvertragsstart\n")
+        units.forEach { unit ->
+            append(listOf(unit.name, unit.label, unit.status, unit.mieter, unit.kaltmiete.toString(),
+                unit.wohnflaeche.toString(), unit.mietvertragsstart)
+                .joinToString(";") { com.example.util.csvField(it) }).append('\n')
+        }
     }
+
+    fun uploadWohneinheitenCsv(accessToken: String, folderId: String, units: List<WohneinheitStatus>): Boolean =
+        uploadFileToDrive(accessToken, folderId, "Steuerassistent_Wohneinheiten.csv", "text/csv; charset=UTF-8",
+            unitsCsv(units).toByteArray(Charsets.UTF_8))
 
     private fun uploadFileToDrive(
         accessToken: String,

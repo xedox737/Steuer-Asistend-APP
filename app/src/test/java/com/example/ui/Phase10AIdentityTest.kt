@@ -182,6 +182,31 @@ class Phase10AIdentityTest {
         val ambiguousLabels = units.map { it.copy(label = "Wohnung") }
         assertFalse(ReceiptUnitResolver.belongs(old.copy(unitId = "", wohneinheit = "Wohnung"), propertyId, ambiguousLabels[0], ambiguousLabels))
     }
+    @Test fun newLogbookCostReceiptKeepsUnitIdAndUnroundedDistanceDescription() = runBlocking {
+        val repository = ReceiptRepository(db.receiptDao(), db.propertyDao(), db.receiptEntityDao(), db.belegDao(),
+            db.exportAuditDao(), db.receiptDocumentDao(), db.managedDocumentDao())
+        val source = Receipt(0, "Besichtigung", "2026-10-01", "", 0.0, "Sonstige Ausgaben", "", "", "",
+            propertyId = propertyId, unitId = "U1", wohneinheit = entries[0].name)
+        val tripId = LogbookBookingStore(db, repository).saveLogbookTrip(source, "Besichtigung", "A", "B",
+            listOf(TripStop("A", "Start", 0), TripStop("B", "Ziel", 1)), TripRouteMode.EINFACH, false,
+            DistanceEvidence(manualKm = 1.25, manuallyConfirmed = true), bookingKey = "phase10a-precise-distance").getOrThrow()
+        val trip = db.logbookDao().getTrip(tripId)!!
+        val expense = repository.getReceiptById(trip.expenseReceiptId!!)!!
+        assertEquals(1.25, trip.taxDistanceKm, 0.0)
+        assertEquals("U1", expense.unitId)
+        assertEquals(propertyId, expense.propertyId)
+        assertTrue(expense.beschreibung, expense.beschreibung.contains("1,25 km"))
+        assertFalse(expense.beschreibung.contains("1,3 km"))
+        assertEquals(ReceiptMoney.toCent(1.25 * .30), ReceiptMoney.toCent(expense.bruttobetrag))
+        val otherTripId = LogbookBookingStore(db, repository).saveLogbookTrip(source.copy(propertyId = "foreign"), "Besichtigung", "A", "B",
+            listOf(TripStop("A", "Start", 0), TripStop("B", "Ziel", 1)), TripRouteMode.EINFACH, false,
+            DistanceEvidence(manualKm = 1.25, manuallyConfirmed = true), propertyId = propertyId,
+            bookingKey = "phase10a-foreign-scope").getOrThrow()
+        val otherExpense = repository.getReceiptById(db.logbookDao().getTrip(otherTripId)!!.expenseReceiptId!!)!!
+        assertEquals(propertyId, otherExpense.propertyId)
+        assertEquals("", otherExpense.unitId)
+        assertEquals("", otherExpense.wohneinheit)
+    }
     @Test fun commonQuantityFormatterPreservesStoredDecimalsAndFloatWidening() {
         listOf(41.25 to "41,25", 41.99 to "41,99", 41.0 to "41", 41.5 to "41,5", 2.33 to "2,33", 1.25 to "1,25").forEach { (value, expected) ->
             assertEquals(expected, GermanNumberInput.formatQuantity(value))

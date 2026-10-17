@@ -711,10 +711,10 @@ internal fun buildAdvisorAnnualSummary(
         java.text.NumberFormat.getCurrencyInstance(Locale.GERMANY).format(value)
 
     fun percent(value: Double): String =
-        String.format(Locale.GERMANY, "%.2f %%", value)
+        "${GermanNumberInput.formatQuantity(value, minimumDecimals = 2)} %"
 
     fun area(value: Double): String =
-        String.format(Locale.GERMANY, "%.2f m²", value)
+        "${GermanNumberInput.formatQuantity(value, minimumDecimals = 2)} m²"
 
     fun germanDate(value: String): String = DateFormatUtils.safeFormat(value)
 
