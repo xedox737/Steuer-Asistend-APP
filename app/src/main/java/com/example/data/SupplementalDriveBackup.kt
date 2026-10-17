@@ -248,7 +248,7 @@ object SupplementalDriveBackup {
                 }
             }
             removedParents?.let { validateRemovedParentReferences(database, it) }
-            if (restoreMode == RestoreMode.REPLACE_FULL && root.has("logbookTrips")) {
+            if (restoreMode == RestoreMode.REPLACE_FULL) {
                 // Core has assembled the receipt snapshot with its original numeric IDs.
                 // Reject broken historical references; never remap or silently null them.
                 val receiptIds = database.receiptDao().getAllReceiptsIncludingDeletedList().map { it.id }.toSet()
@@ -274,6 +274,48 @@ object SupplementalDriveBackup {
         }
         // Preferences are intentionally written only after the Room transaction committed.
         PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
+    }
+
+    /** Core replaces receipts and property/unit metadata before supplemental import.
+     * Missing sections cannot safely replace locally populated snapshot domains.
+     * The full coordinator calls this read-only preflight before core can delete anything.
+     */
+    internal suspend fun validateFullRestoreCoverage(context: Context, database: AppDatabase, root: JSONObject?) {
+        val hasAuditRuns = database.exportAuditDao().getAllRunsFlow().first().isNotEmpty()
+        // Inspect permitted keys, never serialize damaged local numeric values just to
+        // determine coverage. Global profile/provider/selection settings are not relations.
+        val missingPrefs = PersistentPreferenceInventory.stores.filter {
+            it.kind == PersistentPreferenceInventory.Kind.BACKUP && it.allowedKeys == null &&
+                it.name != "ki_learned_rules_prefs" && root?.optJSONObject(requireNotNull(it.payloadKey)) == null &&
+                PersistentPreferenceInventory.hasBackupValues(context, it)
+        }
+        database.withTransaction {
+            val required = listOf(
+                Triple("loans", "Darlehen", database.loanDao().getAllLoans().isNotEmpty()),
+                Triple("properties", "Immobilien", database.propertyDao().getAllProperties().isNotEmpty()),
+                Triple("logbookTrips", "Fahrtenbuch", database.logbookDao().getAllTrips().isNotEmpty()),
+                Triple("exportAuditRuns", "Exportprotokolle", hasAuditRuns),
+                Triple("standardRoutes", "Standardrouten", database.logbookDao().getAllStandardRoutes().isNotEmpty()),
+                Triple("managedDocuments", "Dokumente", database.managedDocumentDao().getAll().isNotEmpty()),
+                Triple("bankAccounts", "Bankkonten", database.bankDao().getAllAccounts().isNotEmpty()),
+                Triple("bankTransactions", "Bankbuchungen", database.bankDao().getAllTransactions().isNotEmpty()),
+                Triple("bankReceiptLinks", "Bankbeleglinks", database.bankDao().getAllLinks().isNotEmpty()),
+                Triple("bankLearningRules", "Bankregeln", database.bankLearningRuleDao().getAllRules().isNotEmpty()),
+                Triple("bankRuleEvidence", "Banklernevidenz", database.bankLearningRuleDao().getAllEvidence().isNotEmpty()),
+                Triple("bankRentAssignments", "Mietzuordnungen", database.bankRentAssignmentDao().getAll().isNotEmpty()),
+                Triple("bankLoanAssignments", "Darlehenszuordnungen", database.bankLoanAssignmentDao().getAll().isNotEmpty()),
+                Triple("bankRecurringPatterns", "Wiederkehrende Bankbuchungen", database.bankRecurringPatternDao().getAll().isNotEmpty())
+            )
+            val missing = required.filter { (key, _, populated) -> populated && root?.optJSONArray(key) == null }
+            if (missing.isNotEmpty() || missingPrefs.isNotEmpty()) {
+                val labels = missing.map { it.second } + if (missingPrefs.isNotEmpty()) listOf("Objekt-/Einheiten- und Fachdaten-Einstellungen") else emptyList()
+                throw BackupPreflightException(
+                    "Vollständige Wiederherstellung nicht möglich: Die Sicherung deckt lokale Fach- und Relationsdaten nicht vollständig ab " +
+                        "(${labels.joinToString()}). Es wurden keine Daten übernommen.",
+                    IllegalArgumentException("Missing snapshot sections: ${missing.map { it.first } + missingPrefs.map { it.payloadKey }}")
+                )
+            }
+        }
     }
 
     private data class RemovedParents(

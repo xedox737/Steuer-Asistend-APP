@@ -54,16 +54,26 @@ abstract class Phase10CRestoreFixture {
         assertTrue(snapshot.errors.toString(), snapshot.errors.none { it.isBlocking })
     }
     protected suspend fun restore(mode: RestoreMode, legacyDocumentFlag: Boolean = false) {
-        val outcome = FullRestoreCoordinator.execute(
-            preflight = { SupplementalDriveBackup.validatePayload(payload) },
+        val outcome = restoreOutcome(mode, legacyDocumentFlag)
+        assertTrue(outcome.message, outcome.isSuccess)
+    }
+    protected suspend fun restoreOutcome(
+        mode: RestoreMode,
+        legacyDocumentFlag: Boolean = false,
+        supplemental: JSONObject? = payload
+    ): FullRestoreOutcome = FullRestoreCoordinator.execute(
+            preflight = {
+                supplemental?.let(SupplementalDriveBackup::validatePayload)
+                if (mode == RestoreMode.REPLACE_FULL) SupplementalDriveBackup.validateFullRestoreCoverage(context, db, supplemental)
+            },
             coreRestore = { drive.executeFullDriveRestore("test-token", config, mode) },
             supplementalRestore = {
                 // Explicit mode alone must enforce replace, even without the legacy document flag.
-                SupplementalDriveBackup.restorePayload(context, db, payload, replaceManagedDocuments = legacyDocumentFlag, restoreMode = mode)
+                supplemental?.let {
+                    SupplementalDriveBackup.restorePayload(context, db, it, replaceManagedDocuments = legacyDocumentFlag, restoreMode = mode)
+                }
                 SupplementalDriveBackup.Result(true, "ok")
             })
-        assertTrue(outcome.message, outcome.isSuccess)
-    }
     protected suspend fun seedProperty() {
         repository.updatePropertyMetadata(PropertyMetadata(id = 1, propertyId = "property-a", name = "Objekt",
             wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("unit-a", "WE 01, EG links")))))

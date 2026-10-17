@@ -49,6 +49,45 @@ class Phase10CBankRelationRestoreTest : Phase10CRestoreFixture() {
         repeat(2) { restore(RestoreMode.MERGE); assertEquals(1, db.bankLearningRuleDao().getAllEvidence().size) }
         repeat(2) { restore(RestoreMode.REPLACE_FULL); assertTrue(db.bankLearningRuleDao().getAllEvidence().isEmpty()) }
     }
+    @Test fun missingReceiptDependentBankAndDocumentSectionsCannotPartiallyReplaceCore() = runTest {
+        setupSnapshot(); localReceiptAndTransaction()
+        db.bankDao().upsertLink(BankReceiptLink("local-link", "local", 71, "receipt-71", 3.0))
+        db.bankRentAssignmentDao().upsert(BankRentAssignment("local-rent", "local", "property-a", "unit-a",
+            "2026-10", "Test", 3.0, "MIETE", receiptId = 71, createdAt = now, updatedAt = now))
+        db.bankLearningRuleDao().insertEvidence(BankRuleEvidence("local-evidence", "candidate", transactionId = "local",
+            receiptId = 71, direction = BankRuleDirection.EXPENSE))
+        db.managedDocumentDao().upsert(ManagedDocument("local-doc", "property-a", receiptInternalId = "receipt-71"))
+        val property = repository.getPropertyByPropertyId("property-a")!!
+        repository.updatePropertyMetadata(property.copy(wohneinheiten = UnitIdentity.encode(listOf(
+            UnitIdentity.Entry("unit-a", "WE 01, EG links"), UnitIdentity.Entry("local-unit", "Lokal")))))
+        val localTransaction = db.bankDao().getTransaction("local")!!.copy(propertyId = "property-a", unitId = "local-unit")
+        db.bankDao().upsertTransaction(localTransaction)
+        val prefs = context.getSharedPreferences("wohneinheiten_prefs", 0)
+        prefs.edit().putFloat("property_property-a_unitid_local-unit_area", Float.NaN).commit()
+        // Coverage reads keys rather than serializing damaged local values. A complete
+        // snapshot can still be selected to replace an explicitly corrupted old value.
+        SupplementalDriveBackup.validateFullRestoreCoverage(context, db, payload)
+        assertTrue(prefs.getFloat("property_property-a_unitid_local-unit_area", 0f).isNaN())
+        val renovation = RenovationReviewStore(context)
+        renovation.saveMeasure(RenovationMeasure("local-measure", "property-a", "unit-a", "Bad"))
+        renovation.saveRelation(RenovationReceiptRelation("receipt-71", "property-a", "local-measure"))
+        for (key in listOf("bankReceiptLinks", "bankRentAssignments", "bankRuleEvidence", "managedDocuments",
+            "bankTransactions", "propertyUnitPrefs", RenovationReviewStore.PAYLOAD_KEY)) {
+            val incomplete = org.json.JSONObject(payload.toString()).apply { remove(key) }
+            val before = repository.getAllReceiptsList()
+            val rejected = restoreOutcome(RestoreMode.REPLACE_FULL, supplemental = incomplete)
+            assertFalse("Missing $key accepted", rejected.isSuccess)
+            assertFalse(rejected.supplementalAttempted)
+            assertEquals(before, repository.getAllReceiptsList())
+            assertNotNull(db.bankDao().getLink("local-link"))
+            assertNotNull(db.bankRentAssignmentDao().getById("local-rent"))
+            assertEquals(1, db.bankLearningRuleDao().getAllEvidence().size)
+            assertNotNull(db.managedDocumentDao().getById("local-doc"))
+            assertEquals(localTransaction, db.bankDao().getTransaction("local"))
+            assertEquals("receipt-71", renovation.snapshot.value.relations.single().receiptInternalId)
+        }
+    }
+
     @Test fun bankSnapshotReplacesAllLocalDomainsAndMergeKeepsClassificationAndRemovedLink() = runTest {
         setupSnapshot()
         val newer = db.bankDao().getTransaction("snapshot")!!.copy(category = "local", updatedAt = "2026-10-17T12:00:00Z")

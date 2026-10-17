@@ -62,6 +62,49 @@ class Phase10CReplaceFullRelationIntegrityTest : Phase10CRestoreFixture() {
         }
     }
 
+    @Test fun missingSupplementalAndLegacyTripSectionBlockBeforeCoreWhileMergeRemainsSafe() = runTest {
+        seedProperty()
+        repository.insert(receipt(1))
+        book(repository.getReceiptById(1)!!, "snapshot")
+        backup()
+        val localTrip = book(receipt(), "legacy-local")
+        val localExpense = repository.getReceiptById(db.logbookDao().getTrip(localTrip)!!.expenseReceiptId!!)!!
+
+        // Previous production no-file callback: real coordinator/core, supplemental is a no-op.
+        // This witness proves why coverage must be checked before the core mutation.
+        val previous = FullRestoreCoordinator.execute(
+            coreRestore = { drive.executeFullDriveRestore("test-token", config, RestoreMode.REPLACE_FULL) },
+            supplementalRestore = { SupplementalDriveBackup.Result(true, "no supplemental file") })
+        assertTrue(previous.message, previous.isSuccess)
+        assertNotNull(db.logbookDao().getTrip(localTrip))
+        assertNull(repository.getReceiptById(localExpense.id))
+        repository.insert(localExpense) // Reassemble the valid local starting state for the guarded path.
+
+        val legacyPayloads = listOf(null, JSONObject("""{"schemaVersion":1,"loans":[]}"""),
+            JSONObject(payload.toString()).apply { remove("logbookTrips") })
+        for (legacy in legacyPayloads) {
+            val receiptsBefore = repository.getAllReceiptsList()
+            val tripsBefore = db.logbookDao().getAllTrips()
+            val rejected = restoreOutcome(RestoreMode.REPLACE_FULL, supplemental = legacy)
+            assertFalse(rejected.isSuccess)
+            assertFalse(rejected.supplementalAttempted)
+            assertTrue(rejected.message, rejected.message.contains("Fahrtenbuch"))
+            assertEquals(receiptsBefore, repository.getAllReceiptsList())
+            assertEquals(tripsBefore, db.logbookDao().getAllTrips())
+            repeat(2) {
+                assertTrue(restoreOutcome(RestoreMode.MERGE, supplemental = legacy).isSuccess)
+                assertNotNull(repository.getReceiptById(localExpense.id))
+                assertEquals(tripsBefore, db.logbookDao().getAllTrips())
+                assertTripIntegrity()
+            }
+        }
+        withContext(Dispatchers.IO) { db.clearAllTables() }
+        clearPreferences()
+        assertTrue(restoreOutcome(RestoreMode.REPLACE_FULL, supplemental = null).isSuccess)
+        assertEquals(setOf(1, 2), repository.getAllReceiptsList().map { it.id }.toSet())
+        assertTrue(db.logbookDao().getAllTrips().isEmpty())
+    }
+
     @Test fun invalidSnapshotReceiptReferenceRollsBackSupplementalClearingAndPreferences() = runTest {
         seedProperty()
         repository.insert(receipt(1))
