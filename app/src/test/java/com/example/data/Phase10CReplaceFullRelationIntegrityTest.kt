@@ -51,6 +51,7 @@ class Phase10CReplaceFullRelationIntegrityTest : Phase10CRestoreFixture() {
         }
         repeat(2) {
             restore(RestoreMode.REPLACE_FULL)
+            assertTripIntegrity()
             assertNull(db.logbookDao().getTrip(localTripId))
             assertNull(db.logbookDao().getTrip(sourceTrip))
             assertNull(repository.getReceiptById(expenseId))

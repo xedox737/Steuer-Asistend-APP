@@ -56,7 +56,13 @@ class Phase10CBankRelationRestoreTest : Phase10CRestoreFixture() {
         db.bankDao().deleteLink("snapshot-link")
         localReceiptAndTransaction()
         db.bankDao().upsertAccount(BankAccount("local-account", "Lokal"))
-        db.bankLearningRuleDao().upsertRule(BankLearningRule("local-rule", "Lokal", unitId = "local-unit"))
+        val property = repository.getPropertyByPropertyId("property-a")!!
+        repository.updatePropertyMetadata(property.copy(wohneinheiten = UnitIdentity.encode(listOf(
+            UnitIdentity.Entry("unit-a", "WE 01, EG links"), UnitIdentity.Entry("local-unit", "Lokal")))))
+        context.getSharedPreferences("wohneinheiten_prefs", 0).edit()
+            .putFloat("property_property-a_unitid_local-unit_area", 41.25f).commit()
+        db.bankDao().upsertTransaction(db.bankDao().getTransaction("local")!!.copy(propertyId = "property-a", unitId = "local-unit"))
+        db.bankLearningRuleDao().upsertRule(BankLearningRule("local-rule", "Lokal", propertyId = "property-a", unitId = "local-unit"))
         db.loanDao().upsertLoan(Loan(id = 2, propertyId = "property-a"))
         db.bankLoanAssignmentDao().upsert(BankLoanAssignment("local-loan", "local", 2, "property-a", 3.0,
             "RATE", "2026-10", createdAt = now, updatedAt = now))
@@ -74,6 +80,12 @@ class Phase10CBankRelationRestoreTest : Phase10CRestoreFixture() {
         }
         repeat(2) {
             restore(RestoreMode.REPLACE_FULL)
+            val restoredProperty = repository.getPropertyByPropertyId("property-a")!!
+            val unitIds = UnitIdentity.read(restoredProperty.wohneinheiten, restoredProperty.propertyId,
+                context.getSharedPreferences("wohneinheiten_prefs", 0)).entries.map { it.unitId }.toSet()
+            assertTrue("orphan bank unitId", db.bankDao().getAllTransactions().none {
+                it.propertyId == "property-a" && it.unitId.isNotBlank() && it.unitId !in unitIds
+            })
             assertEquals(listOf("snapshot"), db.bankDao().getAllTransactions().map { it.transactionId })
             assertEquals(listOf("a"), db.bankDao().getAllAccounts().map { it.accountId })
             assertEquals("", db.bankDao().getTransaction("snapshot")!!.category)

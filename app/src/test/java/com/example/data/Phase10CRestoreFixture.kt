@@ -53,13 +53,13 @@ abstract class Phase10CRestoreFixture {
         val snapshot = drive.buildRestoreSnapshot("test-token", config)
         assertTrue(snapshot.errors.toString(), snapshot.errors.none { it.isBlocking })
     }
-    protected suspend fun restore(mode: RestoreMode) {
+    protected suspend fun restore(mode: RestoreMode, legacyDocumentFlag: Boolean = false) {
         val outcome = FullRestoreCoordinator.execute(
             preflight = { SupplementalDriveBackup.validatePayload(payload) },
             coreRestore = { drive.executeFullDriveRestore("test-token", config, mode) },
             supplementalRestore = {
                 // Explicit mode alone must enforce replace, even without the legacy document flag.
-                SupplementalDriveBackup.restorePayload(context, db, payload, restoreMode = mode)
+                SupplementalDriveBackup.restorePayload(context, db, payload, replaceManagedDocuments = legacyDocumentFlag, restoreMode = mode)
                 SupplementalDriveBackup.Result(true, "ok")
             })
         assertTrue(outcome.message, outcome.isSuccess)

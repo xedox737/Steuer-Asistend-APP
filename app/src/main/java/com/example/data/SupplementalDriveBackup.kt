@@ -123,7 +123,6 @@ object SupplementalDriveBackup {
         }
         val existingDocuments = database.managedDocumentDao().getAll().associateBy { it.documentId }
         database.withTransaction {
-            if (restoreMode == RestoreMode.REPLACE_FULL) clearSnapshotDomains(database, root)
             val localLoans = database.loanDao().getAllLoans().associateBy { it.id }
             val loans = root.optJSONArray("loans") ?: JSONArray()
             for (index in 0 until loans.length()) {
@@ -156,6 +155,11 @@ object SupplementalDriveBackup {
                 if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
                     database.logbookDao().upsertStandardRoute(incoming)
                 }
+            }
+            if (replaceManagedDocuments && root.has("managedDocuments")) {
+                database.managedDocumentDao().clearSearchIndex()
+                database.managedDocumentDao().deleteAllDocuments()
+                database.managedDocumentDao().clearMigrationJournal()
             }
             val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
             for (index in 0 until documents.length()) {
@@ -245,19 +249,6 @@ object SupplementalDriveBackup {
                     database.bankRecurringPatternDao().upsert(incoming)
                 }
             }
-            if (restoreMode == RestoreMode.REPLACE_FULL && root.has("logbookTrips")) {
-                // Core has assembled the receipt snapshot with its original numeric IDs.
-                // Reject broken historical references; never remap or silently null them.
-                val receiptIds = database.receiptDao().getAllReceiptsIncludingDeletedList().map { it.id }.toSet()
-                database.logbookDao().getAllTrips().forEach { trip ->
-                    require(trip.expenseReceiptId == null || trip.expenseReceiptId in receiptIds) {
-                        "Fahrt ${trip.id}: gesicherter Fahrtkostenbeleg ${trip.expenseReceiptId} fehlt."
-                    }
-                    require(trip.sourceReceiptId == null || trip.sourceReceiptId in receiptIds) {
-                        "Fahrt ${trip.id}: gesicherter Quellbeleg ${trip.sourceReceiptId} fehlt."
-                    }
-                }
-            }
             database.managedDocumentDao().clearSearchIndex()
             database.managedDocumentDao().getAll().forEach { document ->
                 database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
@@ -271,45 +262,6 @@ object SupplementalDriveBackup {
         }
         // Preferences are intentionally written only after the Room transaction committed.
         PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
-    }
-
-    /** Called only inside the restore transaction and only for REPLACE_FULL.
-     * Missing legacy sections are not empty snapshots. Clear children before parents,
-     * then the existing import path restores the declared snapshot domains.
-     */
-    private suspend fun clearSnapshotDomains(database: AppDatabase, root: JSONObject) {
-        if (root.has("bankReceiptLinks")) database.bankDao().clearLinks()
-        if (root.has("bankRentAssignments")) database.bankRentAssignmentDao().clearAll()
-        if (root.has("bankLoanAssignments")) database.bankLoanAssignmentDao().getAll().forEach {
-            database.bankLoanAssignmentDao().deleteForTransaction(it.transactionId)
-        }
-        if (root.has("bankRuleEvidence")) database.bankLearningRuleDao().getAllEvidence().forEach {
-            database.bankLearningRuleDao().deleteEvidence(it.evidenceId)
-        }
-        if (root.has("logbookTrips")) database.logbookDao().getAllTrips().forEach {
-            database.logbookDao().deleteTrip(it.id)
-        }
-        if (root.has("managedDocuments")) {
-            database.managedDocumentDao().clearSearchIndex()
-            database.managedDocumentDao().deleteAllDocuments()
-            database.managedDocumentDao().clearMigrationJournal()
-        }
-        if (root.has("bankRecurringPatterns")) database.bankRecurringPatternDao().getAll().forEach {
-            database.bankRecurringPatternDao().delete(it.patternId)
-        }
-        if (root.has("bankLearningRules")) database.bankLearningRuleDao().getAllRules().forEach {
-            database.bankLearningRuleDao().deleteRule(it.ruleId)
-        }
-        if (root.has("bankTransactions")) database.bankDao().deleteAllTransactions()
-        if (root.has("bankAccounts")) database.bankDao().deleteAllAccounts()
-        if (root.has("standardRoutes")) database.logbookDao().getAllStandardRoutes().forEach {
-            database.logbookDao().deleteStandardRoute(it.id)
-        }
-        if (root.has("loans")) database.loanDao().getAllLoans().forEach { database.loanDao().deleteLoan(it.id) }
-        if (root.has("properties")) database.propertyDao().getAllProperties().forEach {
-            database.propertyDao().deletePropertyByPropertyId(it.propertyId)
-        }
-        if (root.has("exportAuditRuns")) database.exportAuditDao().deleteAll()
     }
 
     internal fun validatePayload(root: JSONObject) {
