@@ -89,6 +89,23 @@ Die Tests sind ausführbare konkrete Reproduktionen; Laufstatus separat unten. S
 | Receipt → Property/Unit/ExportRun | erhalten | C + S + P Snapshotbestand | kein weiterer eigenständiger Clearingfehler | bestehende ID-/Snapshotlogik, keine DATEV-Änderung | Phase10A + Phase9A Regressionen |
 | Tenant/History/Tasks → Property/Unit | erhalten | P ersetzt Keys + Portfolio | P hatte bereits Replace-Vertrag | keine Storeänderung | bestehende Preference-/10A-Tests + Portfolio-Test |
 
+## Ausgeführter Vorher-Nachweis zusätzlicher Befunde
+
+Der diagnostische Zwischencommit `ee37bd7bbaf8d1e851b578388d6984e974f38176` hat gegenüber main ausschließlich die vier Testdateien und diesen Bericht geändert; beide Produktdateien entsprechen bytegleich main (GitHub-Compare geprüft). Android CI **#1307 / 39062657398**, vollständig abgeschlossen: Lint erfolgreich, Unit-Testjob rot, APK/Emulator wegen Verify-Fehlschlag übersprungen. **1058 Tests ausgeführt, zehn fehlgeschlagen.** Kein Infrastrukturfehler und kein abgebrochener Lauf. Die finalen Testdateien und Assertions entsprechen diesem Vorher-Nachweis.
+
+| Befund | Tatsächlicher Zustand auf unverändertem main | Regression |
+|---|---|---|
+| E10B-01 | reale Buchung: nach REPLACE_FULL `orphan expenseReceiptId` | realBookingEmptyTargetDoubleMergeAndDoubleReplaceKeepExactTripReceiptSnapshot |
+| E10C-02 | Receipt 71 entfernt; BankReceiptLink `local-link`, receiptId=71 bleibt | localBankReceiptLinkCannotOutliveReceiptOrTransaction |
+| E10C-03 | lokales RentAssignment mit receiptId=71 bleibt nach Core-Receiptlöschung | localRentReceiptAssignmentCannotOutliveReceiptOrSnapshotUnit |
+| E10C-04 | lokale BankRuleEvidence mit receiptId=71 bleibt nach Core-Receiptlöschung | localRuleEvidenceCannotOutliveReceipt |
+| E10C-05 | Property/Preferences auf alte Unitliste gesetzt; lokale BankTransaction mit local-unit bleibt: `orphan bank unitId` | bankSnapshotReplacesAllLocalDomainsAndMergeKeepsClassificationAndRemovedLink |
+| E10C-06 | mit echtem Produktionsflag: Dokument entfernt, lokales Property mit `afaShorterDocumentId=local-doc` bleibt | productionReplaceRemovesLocalPropertyAfaReferenceWithDocument |
+| E10C-07 | explizites REPLACE_FULL ohne Altflag: Receipt 71 entfernt, ManagedDocument mit receiptInternalId=receipt-71 bleibt | explicitReplaceModeWithoutLegacyFlagStillReplacesDocuments |
+| E10C-08 (zusätzliche MERGE-Sicherheitsgrenze) | explizites MERGE mit altem Dokumentflag löscht lokale Dokumente | absentLegacyArraysDoNotMeanEmptyAndMergeFlagCannotDeleteDocuments |
+
+Zwei weitere rote Assertions sind **nicht** als zwei zusätzliche gleiche Root Causes gewertet: main akzeptiert einen ungültigen Snapshot-Tripbezug (`Invalid expenseReceiptId accepted`), und der neue Teilbackup-Schutzvertrag wird noch nicht erfüllt. Beim Teilbackup löscht main das Darlehen gerade nicht; der Test schützt den neu eingeführten echten Parentersatz vor einem neuen Bruch und beweist keinen vorherigen Darlehens-Delete-Bug. Insertfehler-Rollback und bereits korrekt ersetzte Preference-Relationen blieben im Vorherlauf grün. Die Root-Cause-Fixes sind zentral im gemeinsamen Replace-Vertrag; keine individuellen ID-Reparaturen.
+
 ## False Positives und Grenzen der Prüfung
 
 - Standardrouten können im normalen UI hart gelöscht werden, ohne historische Fahrten umzuschreiben (`ReceiptViewModel.deleteStandardRoute`). Deshalb ist eine historische standardRouteId kein pauschal erzwingbarer Pflicht-FK. Der neue Test verlangt nur konsistente frisch erzeugte Snapshotfälle; keine Umdeutung historischer Routen.
@@ -115,6 +132,13 @@ Neue fokussierte Robolectric-Tests:
 
 Lokale Gradle-/Kompilierungsstarts scheitern vor Projektkonfiguration: `FileLockContentionHandler` / „Could not determine a usable wildcard IP for this machine“. Gradle 9.3.1, JDK17 und SDK sind vorbereitet, aber lokale Socketverwendung wird von der Sandbox verhindert. Zwei Versuche zusätzlicher Netzwerkfreigabe wurden unterbrochen; keine lokale erfolgreiche Ausführung behauptet. `/dev/kvm` fehlt. `git diff --check` ist separat ausführbar.
 
-CI-Nachweise (Run-ID, Head, Testergebnisse, lint, assembleDebug, assembleDebugAndroidTest und Emulator) werden nach vollständiger Auswertung ergänzt. Bis dahin keine Abnahme/Freigabe. Bestehende Phase10A- und Phase9A–9D-Tests bleiben unverändert und müssen im normalen vollständigen Testsatz laufen. PR #139 wird weder gemergt noch werden dessen Assertions abgeschwächt.
+Ausgeführte CI:
+
+| Lauf | Head | Ergebnis |
+|---|---|---|
+| [Android CI #1306 / 39059714564](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/39059714564) | 8f43ea56fd8620df852f5569dd89342205673e40 | erster Fixstand vollständig erfolgreich: lint, Unit/Robolectric, assembleDebug, assembleDebugAndroidTest und 70 Android-Emulatortests |
+| [Android CI #1307 / 39062657398](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/39062657398) | ee37bd7bbaf8d1e851b578388d6984e974f38176 | diagnostischer unveränderter main-Produktcode: lint grün; zehn strikte Assertions rot, 1058 Tests ausgeführt; APK/Emulator folgerichtig übersprungen |
+
+Der finale Fix enthält exakt dieselben zwölf Phase10C-Testfälle wie der Vorherlauf plus die zentrale Parent-Delta-Absicherung. Sein abschließender CI-Lauf und die Conclusion werden im [PR #140](https://github.com/xedox737/Steuer-Asistend-APP/pull/140) nach vollständigem Ablauf dokumentiert; maßgeblich sind die Checks des finalen PR-Heads. Der PR wird nicht gemergt. Keine Freigabe aus übersprungenen Jobs ableiten. Bestehende Phase10A- und Phase9A–9D-Tests bleiben unverändert und müssen im normalen vollständigen Testsatz laufen. PR #139 wird weder gemergt noch werden dessen Assertions abgeschwächt.
 
 Praktisch offen: echtes Drive, reales Gerät, Prozessabbruch zwischen Core/Supplemental, externe Provider/Picker, Kanzleiimport. Keine Behauptung solcher Tests. Ein späterer erneuter Phase10B-Lauf nach separat freigegebenem Merge bleibt Voraussetzung für die Portfoliofreigabe.
