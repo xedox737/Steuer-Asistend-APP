@@ -172,3 +172,15 @@ physisches Gerät und Kanzleiimport werden nicht als geprüft ausgegeben.
   Erweiterungsfixture folgt demselben Vertrag und behält die ursprüngliche erste
   ID. Sämtliche fachlichen Assertions, Fallzahlen und Zeitlimits bleiben bestehen;
   mehrdeutige Legacywerte werden weiterhin ausdrücklich separat getestet.
+
+- Run 38984437402, Head d7018166: Verify vollständig grün (Lint, gesamte JVM-Suite,
+  assembleDebug); assembleDebugAndroidTest ebenfalls erfolgreich. Der vollständige
+  Emulatorlauf führte alle 70 Fälle ohne Skips aus: 67 bestanden, die drei neuen
+  FontScale-Fälle scheiterten an derselben Test-Erwartung für TenantPeriod.unitName.
+  Dieser Wert wird vom bestehenden Historienreader aus dem aktuellen Anzeigenamen
+  projiziert und nicht als Mietidentität gespeichert. Nach Rename muss der Test
+  daher den neuen Anzeigenamen erwarten. Alle übrigen Periodenfelder werden weiter
+  vollständig verglichen; zusätzlich wird der unveränderte gespeicherte
+  Historienrohwert vor/nach Rename geprüft. Keine Produktionsänderung, kein
+  gelockerter ID-/Relationsvergleich, Retry, Skip oder Timeoutwechsel.
+  Der anschließende vollständige aktuelle Lauf bleibt Pflicht.

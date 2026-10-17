@@ -41,6 +41,10 @@ abstract class Phase10AIdentityMatrix : EmulatorTestSupport() {
             db.bankDao().upsertTransaction(BankTransaction("phase10a-tx", "phase10a-account", "2026-10-01", amount = 700.0, propertyId = propertyId, unitId = "U1"))
             db.bankRentAssignmentDao().upsert(assignment)
         }
+        val historyPrefs = context.getSharedPreferences("tenant_history_prefs", 0)
+        val historyKey = "history_v2_${propertyId}_U1"
+        val historyRawBeforeRename = historyPrefs.getString(historyKey, null)
+        assertNotNull(historyRawBeforeRename)
         fun detail(name: String) {
             ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag("unit_card_U1"))
             ui.onNodeWithTag("unit_card_U1").assertIsDisplayed().performClick()
@@ -67,7 +71,8 @@ abstract class Phase10AIdentityMatrix : EmulatorTestSupport() {
         ui.onNodeWithTag("property_units_overview").assertIsDisplayed()
         scenario.recreate()
         detail(renamed)
-        assertEquals(listOf(period), TenantHistoryStore.load(context, propertyId, "U1", renamed))
+        assertEquals(listOf(period.copy(unitName = renamed)), TenantHistoryStore.load(context, propertyId, "U1", renamed))
+        assertEquals(historyRawBeforeRename, historyPrefs.getString(historyKey, null))
         runBlocking(Dispatchers.IO) {
             assertEquals(receipt, db.receiptDao().getReceiptById(receipt.id))
             assertEquals(document, db.managedDocumentDao().getById(document.documentId))
