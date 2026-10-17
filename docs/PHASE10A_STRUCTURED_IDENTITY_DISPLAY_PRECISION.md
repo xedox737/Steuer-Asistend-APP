@@ -224,3 +224,31 @@ werden nicht als Autorität gegen eine gültige strukturierte ID benutzt. Zwei
 zusätzliche Storefälle sichern dies ab. Drei ältere Migrations-/9B-Testfixtures
 stellen ihre bereits angenommenen stabilen Alias-IDs jetzt explizit bereit;
 sämtliche ursprünglichen Migrations-/Rohwert-/Reparaturassertions bleiben erhalten.
+
+### Namensbestandteile in Preference-Schlüsseln der Sicherung
+
+Bestätigter P1 derselben Label-/Schlüsselverwechslung: Ein historischer gültiger
+Einheitsname `token` erzeugt Schlüssel wie `property_<id>_unit_token_id/area`.
+Der generische Credential-Key-Filter interpretierte den sichtbaren Namensbestandteil
+als Geheimnisfeld und ließ stabile ID/Fläche weg. Auch vorhandene opaque IDs mit
+solchen Bestandteilen konnten Miet-/Historienkeys verlieren. Beim Restore konnte
+so die alte ID fehlen, obwohl sie vor dem Backup gespeichert war.
+
+PersistentPreferenceInventory erkennt nun ausschließlich die bereits bestehenden
+Fachschlüssel-Grammatiken für Unit-Felder, Mietplanwerte, Historien,
+Unit-Status-/Mietdetails und Händlerregeln. Gemischte
+Einstellungsstores bleiben auf ihre expliziten Felder beschränkt; echte
+`access_token`, `api_key`, `password`, PIN/TAN usw. bleiben in allen Stores
+gefiltert. Der unveränderte Credential-Regressionsfall läuft weiter. Neuer
+Store-/Room-Test: Label `token`, unveränderte Original-ID, Fläche, Miete und
+Historie → leeres Ziel → zweimal MERGE → REPLACE_FULL; ein gleichzeitig gesetzter
+synthetischer Geheimnisschlüssel darf nicht im Payload erscheinen. Keine
+Credentialwerte werden exportiert/geloggt, keine lokale Bereinigung oder
+Backup-Schemaänderung. Dies ergänzt die bisherigen 17 dokumentierten Pfade.
+
+- Run 39017176613 / Head 0bed49bc bestand Verify vollständig, einschließlich der
+  neuen Export-/Buchungs-/Berichtspräzisionsfälle, der strengeren Aliasgrenze und
+  sämtlicher unveränderter Credential-, 9A-/9B-/9C-/9D-Regressionen. Die zusätzlich
+  bestätigte Fachschlüssel-/Credential-Namensverwechslung erhält den oben
+  beschriebenen Restorefall und wird auf dem folgenden Head erneut zusammen mit
+  der kompletten nativen Suite geprüft. Noch keine vorweggenommene Abnahme.

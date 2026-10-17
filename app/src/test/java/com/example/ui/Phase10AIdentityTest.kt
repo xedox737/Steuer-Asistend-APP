@@ -96,6 +96,45 @@ class Phase10AIdentityTest {
             .putString("property_${propertyId}_unit_EG links_id", "Y").commit()
         assertNotNull(UnitIdentity.read(raw, propertyId, prefs).error)
     }
+    @Test fun legacyLabelThatLooksLikeACredentialKeyKeepsItsIdAreaRentAndHistoryThroughBackup() = runBlocking {
+        val name = "token"
+        val id = "original-token-unit"
+        val legacyProperty = property.copy(wohneinheiten = name)
+        db.propertyDao().insertPropertyMetadata(legacyProperty)
+        prefs.edit().putString("property_${propertyId}_unit_${name}_id", id)
+            .putFloat("property_${propertyId}_unit_${name}_area", 41.25f)
+            .putString("access_token", "DO_NOT_EXPORT_SECRET_SENTINEL").commit()
+        app.getSharedPreferences("rent_plan_prefs", 0).edit().putFloat("v2_${propertyId}_${id}_nk", 123.25f).commit()
+        app.getSharedPreferences("unit_rental_detail_prefs", 0).edit().putString("${propertyId}_${id}_deposit", "1200 €").commit()
+        app.getSharedPreferences("unit_status_meta_prefs", 0).edit().putString("${propertyId}_${id}_effectiveDate", "2020-01-01").commit()
+        val rule = LearnedVendorRule("Token GmbH", "Werbungskosten", "Material", "4801", name)
+        app.getSharedPreferences("ki_learned_rules_prefs", 0).edit().putString("rule_token_gmbh", LearnedVendorRuleCodec.encode(rule)).commit()
+        val period = TenantPeriod(101, name, "Martin Weber", "2020-01-01", "", 600.0, 123.25, 0.0)
+        assertTrue(TenantHistoryStore.save(app, propertyId, id, name, listOf(period)))
+        val payload = SupplementalDriveBackup.createPayload(app, db)
+        assertFalse(payload.toString().contains("DO_NOT_EXPORT_SECRET_SENTINEL"))
+        assertTrue(payload.getJSONObject("propertyUnitPrefs").has("property_${propertyId}_unit_${name}_id"))
+        db.clearAllTables()
+        PersistentPreferenceInventory.stores.forEach { app.getSharedPreferences(it.name, 0).edit().clear().commit() }
+        repeat(2) {
+            SupplementalDriveBackup.restorePayload(app, db, payload)
+            val restored = db.propertyDao().getPropertyByPropertyId(propertyId)!!
+            val unit = vm.getWohneinheitenForProperty(restored).single()
+            assertEquals(legacyProperty, restored)
+            assertEquals(id, unit.unitId)
+            assertEquals(name, unit.name)
+            assertEquals(41.25, unit.wohnflaeche, 0.0)
+            assertEquals(listOf(period), TenantHistoryStore.load(app, propertyId, id, name))
+            assertEquals(123.25, PropertyUnitScopedData.rentValue(app, propertyId, unit, "nk"), 0.0)
+            assertEquals(123.25f, app.getSharedPreferences("rent_plan_prefs", 0).getFloat("v2_${propertyId}_${id}_nk", 0f))
+            assertFalse(prefs.contains("access_token"))
+            assertEquals("1200 €", app.getSharedPreferences("unit_rental_detail_prefs", 0).getString("${propertyId}_${id}_deposit", null))
+            assertEquals("2020-01-01", app.getSharedPreferences("unit_status_meta_prefs", 0).getString("${propertyId}_${id}_effectiveDate", null))
+            assertEquals(rule, LearnedVendorRuleCodec.decode(app.getSharedPreferences("ki_learned_rules_prefs", 0).getString("rule_token_gmbh", null)!!))
+        }
+        SupplementalDriveBackup.restorePayload(app, db, payload, restoreMode = RestoreMode.REPLACE_FULL)
+        assertEquals(id, vm.getWohneinheitenForProperty(db.propertyDao().getPropertyByPropertyId(propertyId)!!).single().unitId)
+    }
     @Test fun backupTwiceAndFullReplaceKeepNamesIdsAreasHistoryBankDocumentAndOriginal() = runBlocking {
         db.propertyDao().insertPropertyMetadata(property)
         val period = TenantPeriod(1001, entries[0].name, "Mieter", "2020-01-01", "", 600.0, 100.0, 0.0)
