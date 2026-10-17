@@ -174,6 +174,12 @@ interface BankDao {
     @Query("DELETE FROM bank_receipt_links")
     suspend fun clearLinks()
 
+    @Query("DELETE FROM bank_transactions")
+    suspend fun deleteAllTransactions()
+
+    @Query("DELETE FROM bank_accounts")
+    suspend fun deleteAllAccounts()
+
     @Query("UPDATE bank_transactions SET reconciliationStatus = 'OPEN', noReceiptReason = '', updatedAt = :updatedAt WHERE reconciliationStatus IN ('MATCHED','PARTIAL')")
     suspend fun reopenLinkedTransactions(updatedAt: String)
 }

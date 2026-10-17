@@ -123,6 +123,9 @@ object SupplementalDriveBackup {
         }
         val existingDocuments = database.managedDocumentDao().getAll().associateBy { it.documentId }
         database.withTransaction {
+            val removedParents = if (restoreMode == RestoreMode.REPLACE_FULL) {
+                snapshotParentsRemovedByReplace(database, root).also { clearSnapshotDomains(database, root) }
+            } else null
             val localLoans = database.loanDao().getAllLoans().associateBy { it.id }
             val loans = root.optJSONArray("loans") ?: JSONArray()
             for (index in 0 until loans.length()) {
@@ -155,11 +158,6 @@ object SupplementalDriveBackup {
                 if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
                     database.logbookDao().upsertStandardRoute(incoming)
                 }
-            }
-            if (replaceManagedDocuments && root.has("managedDocuments")) {
-                database.managedDocumentDao().clearSearchIndex()
-                database.managedDocumentDao().deleteAllDocuments()
-                database.managedDocumentDao().clearMigrationJournal()
             }
             val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
             for (index in 0 until documents.length()) {
@@ -249,6 +247,20 @@ object SupplementalDriveBackup {
                     database.bankRecurringPatternDao().upsert(incoming)
                 }
             }
+            removedParents?.let { validateRemovedParentReferences(database, it) }
+            if (restoreMode == RestoreMode.REPLACE_FULL) {
+                // Core has assembled the receipt snapshot with its original numeric IDs.
+                // Reject broken historical references; never remap or silently null them.
+                val receiptIds = database.receiptDao().getAllReceiptsIncludingDeletedList().map { it.id }.toSet()
+                database.logbookDao().getAllTrips().forEach { trip ->
+                    require(trip.expenseReceiptId == null || trip.expenseReceiptId in receiptIds) {
+                        "Fahrt ${trip.id}: gesicherter Fahrtkostenbeleg ${trip.expenseReceiptId} fehlt."
+                    }
+                    require(trip.sourceReceiptId == null || trip.sourceReceiptId in receiptIds) {
+                        "Fahrt ${trip.id}: gesicherter Quellbeleg ${trip.sourceReceiptId} fehlt."
+                    }
+                }
+            }
             database.managedDocumentDao().clearSearchIndex()
             database.managedDocumentDao().getAll().forEach { document ->
                 database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
@@ -262,6 +274,130 @@ object SupplementalDriveBackup {
         }
         // Preferences are intentionally written only after the Room transaction committed.
         PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
+    }
+
+    /** Core replaces receipts and property/unit metadata before supplemental import.
+     * Missing sections cannot safely replace locally populated snapshot domains.
+     * The full coordinator calls this read-only preflight before core can delete anything.
+     */
+    internal suspend fun validateFullRestoreCoverage(context: Context, database: AppDatabase, root: JSONObject?) {
+        val hasAuditRuns = database.exportAuditDao().getAllRunsFlow().first().isNotEmpty()
+        // Inspect permitted keys, never serialize damaged local numeric values just to
+        // determine coverage. Global profile/provider/selection settings are not relations.
+        val missingPrefs = PersistentPreferenceInventory.stores.filter {
+            it.kind == PersistentPreferenceInventory.Kind.BACKUP && it.allowedKeys == null &&
+                it.name != "ki_learned_rules_prefs" && root?.optJSONObject(requireNotNull(it.payloadKey)) == null &&
+                PersistentPreferenceInventory.hasBackupValues(context, it)
+        }
+        database.withTransaction {
+            val required = listOf(
+                Triple("loans", "Darlehen", database.loanDao().getAllLoans().isNotEmpty()),
+                Triple("properties", "Immobilien", database.propertyDao().getAllProperties().isNotEmpty()),
+                Triple("logbookTrips", "Fahrtenbuch", database.logbookDao().getAllTrips().isNotEmpty()),
+                Triple("exportAuditRuns", "Exportprotokolle", hasAuditRuns),
+                Triple("standardRoutes", "Standardrouten", database.logbookDao().getAllStandardRoutes().isNotEmpty()),
+                Triple("managedDocuments", "Dokumente", database.managedDocumentDao().getAll().isNotEmpty()),
+                Triple("bankAccounts", "Bankkonten", database.bankDao().getAllAccounts().isNotEmpty()),
+                Triple("bankTransactions", "Bankbuchungen", database.bankDao().getAllTransactions().isNotEmpty()),
+                Triple("bankReceiptLinks", "Bankbeleglinks", database.bankDao().getAllLinks().isNotEmpty()),
+                Triple("bankLearningRules", "Bankregeln", database.bankLearningRuleDao().getAllRules().isNotEmpty()),
+                Triple("bankRuleEvidence", "Banklernevidenz", database.bankLearningRuleDao().getAllEvidence().isNotEmpty()),
+                Triple("bankRentAssignments", "Mietzuordnungen", database.bankRentAssignmentDao().getAll().isNotEmpty()),
+                Triple("bankLoanAssignments", "Darlehenszuordnungen", database.bankLoanAssignmentDao().getAll().isNotEmpty()),
+                Triple("bankRecurringPatterns", "Wiederkehrende Bankbuchungen", database.bankRecurringPatternDao().getAll().isNotEmpty())
+            )
+            val missing = required.filter { (key, _, populated) -> populated && root?.optJSONArray(key) == null }
+            if (missing.isNotEmpty() || missingPrefs.isNotEmpty()) {
+                val labels = missing.map { it.second } + if (missingPrefs.isNotEmpty()) listOf("Objekt-/Einheiten- und Fachdaten-Einstellungen") else emptyList()
+                throw BackupPreflightException(
+                    "Vollständige Wiederherstellung nicht möglich: Die Sicherung deckt lokale Fach- und Relationsdaten nicht vollständig ab " +
+                        "(${labels.joinToString()}). Es wurden keine Daten übernommen.",
+                    IllegalArgumentException("Missing snapshot sections: ${missing.map { it.first } + missingPrefs.map { it.payloadKey }}")
+                )
+            }
+        }
+    }
+
+    private data class RemovedParents(
+        val properties: Set<String>, val loans: Set<Int>, val documents: Set<String>,
+        val accounts: Set<String>, val transactions: Set<String>
+    )
+
+    private suspend fun snapshotParentsRemovedByReplace(database: AppDatabase, root: JSONObject): RemovedParents {
+        fun <T> removed(key: String, local: List<T>, incomingId: (JSONObject) -> T): Set<T> {
+            val array = root.optJSONArray(key) ?: return emptySet()
+            return local.toSet() - (0 until array.length()).map { incomingId(array.getJSONObject(it)) }.toSet()
+        }
+        return RemovedParents(
+            removed("properties", database.propertyDao().getAllProperties().map { it.propertyId }) { it.toPropertyMetadata().propertyId },
+            removed("loans", database.loanDao().getAllLoans().map { it.id }) { it.toLoan().id },
+            removed("managedDocuments", database.managedDocumentDao().getAll().map { it.documentId }) { it.toManagedDocument().documentId },
+            removed("bankAccounts", database.bankDao().getAllAccounts().map { it.accountId }) { it.toBankAccount().accountId },
+            removed("bankTransactions", database.bankDao().getAllTransactions().map { it.transactionId }) { it.toBankTransaction().transactionId }
+        )
+    }
+
+    /** Reject only references to parents this restore actually removed, including omitted
+     * legacy child sections. Unrelated historical optional IDs are not promoted to FKs.
+     */
+    private suspend fun validateRemovedParentReferences(database: AppDatabase, removed: RemovedParents) {
+        fun property(id: String) = require(id.isBlank() || id == StableDocumentIdentity.LEGACY_PROPERTY_ID || id !in removed.properties) { "Referenz auf durch Restore entfernte Immobilie $id." }
+        fun loan(id: Int?) = require(id !in removed.loans) { "Referenz auf durch Restore entferntes Darlehen $id." }
+        fun account(id: String) = require(id.isBlank() || id !in removed.accounts) { "Referenz auf durch Restore entferntes Bankkonto $id." }
+        fun transaction(id: String) = require(id.isBlank() || id !in removed.transactions) { "Referenz auf durch Restore entfernte Bankbuchung $id." }
+        database.receiptDao().getAllReceiptsIncludingDeletedList().forEach { property(it.propertyId) }
+        database.propertyDao().getAllProperties().forEach {
+            require(it.afaShorterDocumentId !in removed.documents) { "AfA-Nachweis wurde durch Restore entfernt." }
+        }
+        database.loanDao().getAllLoans().forEach { property(it.propertyId) }
+        database.logbookDao().getAllTrips().forEach { property(it.propertyId) }
+        database.managedDocumentDao().getAll().forEach { property(it.propertyId); loan(it.loanId) }
+        database.bankDao().getAllTransactions().forEach { property(it.propertyId); account(it.accountId); transaction(it.linkedTransferTransactionId) }
+        database.bankDao().getAllLinks().forEach { transaction(it.transactionId) }
+        database.bankRentAssignmentDao().getAll().forEach { property(it.propertyId); transaction(it.transactionId) }
+        database.bankLoanAssignmentDao().getAll().forEach { property(it.propertyId); loan(it.loanId); transaction(it.transactionId) }
+        database.bankLearningRuleDao().getAllRules().forEach { property(it.propertyId); account(it.accountId) }
+        database.bankLearningRuleDao().getAllEvidence().forEach { property(it.propertyId); account(it.accountId); transaction(it.transactionId) }
+        database.bankRecurringPatternDao().getAll().forEach { property(it.propertyId); account(it.accountId) }
+    }
+
+    /** Called only inside the restore transaction and only for REPLACE_FULL.
+     * Missing legacy sections are not empty snapshots. Clear children before parents,
+     * then the existing import path restores the declared snapshot domains.
+     */
+    private suspend fun clearSnapshotDomains(database: AppDatabase, root: JSONObject) {
+        if (root.has("bankReceiptLinks")) database.bankDao().clearLinks()
+        if (root.has("bankRentAssignments")) database.bankRentAssignmentDao().clearAll()
+        if (root.has("bankLoanAssignments")) database.bankLoanAssignmentDao().getAll().forEach {
+            database.bankLoanAssignmentDao().deleteForTransaction(it.transactionId)
+        }
+        if (root.has("bankRuleEvidence")) database.bankLearningRuleDao().getAllEvidence().forEach {
+            database.bankLearningRuleDao().deleteEvidence(it.evidenceId)
+        }
+        if (root.has("logbookTrips")) database.logbookDao().getAllTrips().forEach {
+            database.logbookDao().deleteTrip(it.id)
+        }
+        if (root.has("managedDocuments")) {
+            database.managedDocumentDao().clearSearchIndex()
+            database.managedDocumentDao().deleteAllDocuments()
+            database.managedDocumentDao().clearMigrationJournal()
+        }
+        if (root.has("bankRecurringPatterns")) database.bankRecurringPatternDao().getAll().forEach {
+            database.bankRecurringPatternDao().delete(it.patternId)
+        }
+        if (root.has("bankLearningRules")) database.bankLearningRuleDao().getAllRules().forEach {
+            database.bankLearningRuleDao().deleteRule(it.ruleId)
+        }
+        if (root.has("bankTransactions")) database.bankDao().deleteAllTransactions()
+        if (root.has("bankAccounts")) database.bankDao().deleteAllAccounts()
+        if (root.has("standardRoutes")) database.logbookDao().getAllStandardRoutes().forEach {
+            database.logbookDao().deleteStandardRoute(it.id)
+        }
+        if (root.has("loans")) database.loanDao().getAllLoans().forEach { database.loanDao().deleteLoan(it.id) }
+        if (root.has("properties")) database.propertyDao().getAllProperties().forEach {
+            database.propertyDao().deletePropertyByPropertyId(it.propertyId)
+        }
+        if (root.has("exportAuditRuns")) database.exportAuditDao().deleteAll()
     }
 
     internal fun validatePayload(root: JSONObject) {

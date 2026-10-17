@@ -61,6 +61,9 @@ internal object PersistentPreferenceInventory {
     private fun permits(store: Store, key: String): Boolean =
         store.kind == Kind.BACKUP && (store.allowedKeys?.contains(key) ?: (businessKey(store, key) || !secretKey.containsMatchIn(key)))
 
+    fun hasBackupValues(context: Context, store: Store): Boolean =
+        context.getSharedPreferences(store.name, Context.MODE_PRIVATE).all.keys.any { permits(store, it) }
+
     fun writePayload(context: Context, root: JSONObject) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
             val values = JSONObject()

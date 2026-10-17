@@ -1307,7 +1307,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     var supplementalPayload: org.json.JSONObject? = null
                     val outcome = com.example.data.FullRestoreCoordinator.execute(
-                        preflight = { supplementalPayload = com.example.data.SupplementalDriveBackup.loadValidatedPayload(token, initResult.config.systemFolderId) },
+                        preflight = {
+                            supplementalPayload = com.example.data.SupplementalDriveBackup.loadValidatedPayload(token, initResult.config.systemFolderId)
+                            if (mode == com.example.data.RestoreMode.REPLACE_FULL) {
+                                com.example.data.SupplementalDriveBackup.validateFullRestoreCoverage(getApplication(), database, supplementalPayload)
+                            }
+                        },
                         coreRestore = { drivePersistenceRepository.executeFullDriveRestore(token, initResult.config, mode) },
                         supplementalRestore = {
                             supplementalPayload?.let { payload ->
