@@ -85,9 +85,12 @@ internal object UnitIdentity {
 
     /** A name alias is never allowed to override a different, already stored stable ID. */
     fun legacyAliasMatches(prefs: SharedPreferences, propertyId: String, unitId: String, name: String): Boolean {
-        val scoped = prefs.getString("property_${propertyId}_unit_${name}_id", null)
-        val legacy = if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) prefs.getString("unit_id_$name", null) else null
-        return listOfNotNull(scoped, legacy).all { it == unitId }
+        val scoped = runCatching { prefs.getString("property_${propertyId}_unit_${name}_id", null) }.getOrElse { return false }
+        val legacy = if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID)
+            runCatching { prefs.getString("unit_id_$name", null) }.getOrElse { return false } else null
+        val aliases = listOfNotNull(scoped, legacy)
+        return if (aliases.isEmpty()) unitId == StableDocumentIdentity.legacyUnitId(propertyId, name)
+            else aliases.all { it == unitId }
     }
 
     fun decode(raw: String): List<Entry> {

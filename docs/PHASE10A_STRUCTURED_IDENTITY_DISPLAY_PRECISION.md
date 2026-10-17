@@ -215,3 +215,12 @@ physisches Gerät und Kanzleiimport werden nicht als geprüft ausgegeben.
   gemeinsamen Quoting-/Zahlenvertrag; zusätzliche isolierte Format-/Bookingtests
   werden im anschließend erneut vollständigen CI-Lauf mitgeprüft. Keine
   DATEV-, Banklisten-, Berechnungs-, Migrations- oder Schemaänderung.
+
+Die Legacy-Aliasgrenze prüft auch fehlende Alias-IDs: Eine neue strukturierte ID
+mit wiederverwendetem altem Namen darf keine unidentifizierten Altflächen,
+Mietpläne oder Historien übernehmen. Ohne gespeicherte Alias-ID bleibt nur der
+bereits bestehende kanonische Legacy-ID-Vertrag zulässig. Beschädigte Alias-Typen
+werden nicht als Autorität gegen eine gültige strukturierte ID benutzt. Zwei
+zusätzliche Storefälle sichern dies ab. Drei ältere Migrations-/9B-Testfixtures
+stellen ihre bereits angenommenen stabilen Alias-IDs jetzt explizit bereit;
+sämtliche ursprünglichen Migrations-/Rohwert-/Reparaturassertions bleiben erhalten.

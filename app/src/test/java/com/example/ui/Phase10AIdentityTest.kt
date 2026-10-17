@@ -134,6 +134,32 @@ class Phase10AIdentityTest {
         original.delete()
         Unit
     }
+    @Test fun newStableUnitCannotBorrowUnidentifiedLegacyValuesOfAReusedName() {
+        val pid = StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val name = "Wohnung"
+        val oldId = StableDocumentIdentity.legacyUnitId(pid, name)
+        prefs.edit().putFloat("unit_area_$name", 99f).putString("unit_mieter_$name", "Alt").commit()
+        app.getSharedPreferences("rent_plan_prefs", 0).edit().putFloat("nk_$name", 123f).commit()
+        assertTrue(TenantHistoryStore.save(app, pid, oldId, name, listOf(TenantPeriod(7, name, "Alt", "2020-01-01", "", 600.0, 123.0, 0.0))))
+        val rawHistory = app.getSharedPreferences("tenant_history_prefs", 0).getString("history_$name", null)
+        val unit = vm.getWohneinheitenForProperty(PropertyMetadata(propertyId = pid,
+            wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("NEW", name))))).single()
+        assertEquals(0.0, unit.wohnflaeche, 0.0)
+        assertEquals("", unit.mieter)
+        assertTrue(TenantHistoryStore.load(app, pid, "NEW", name).isEmpty())
+        assertEquals(0.0, PropertyUnitScopedData.rentValue(app, pid, unit, "nk"), 0.0)
+        PropertyUnitScopedData.setRentValues(app, pid, unit, 200.0, 0.0)
+        assertEquals(123f, app.getSharedPreferences("rent_plan_prefs", 0).getFloat("nk_$name", 0f))
+        assertEquals(rawHistory, app.getSharedPreferences("tenant_history_prefs", 0).getString("history_$name", null))
+        assertEquals("Alt", TenantHistoryStore.load(app, pid, oldId, name).single().tenantName)
+    }
+    @Test fun malformedLegacyAliasCannotOverrideAnAuthoritativeStructuredId() {
+        prefs.edit().putInt("property_${propertyId}_unit_${entries[0].name}_id", 42).commit()
+        val unit = vm.getWohneinheitenForProperty(property).first()
+        assertEquals("U1", unit.unitId)
+        assertEquals(41.25, unit.wohnflaeche, 0.0)
+        assertEquals(42, prefs.getInt("property_${propertyId}_unit_${entries[0].name}_id", 0))
+    }
     @Test fun conflictingOldNameAliasCannotLendItsValuesOrTenantToAnotherStableId() {
         val pid = StableDocumentIdentity.LEGACY_PROPERTY_ID
         val name = "Wohnung"
