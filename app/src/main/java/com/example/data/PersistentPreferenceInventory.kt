@@ -42,8 +42,24 @@ internal object PersistentPreferenceInventory {
         "(?i)(^|[_-])(api[_-]?key|key[_-]?(ciphertext|iv)|ciphertext|token|pin|tan|password|secret|credential)([_-]|$)"
     )
 
+    // A visible legacy unit name (e.g. "token") is data, never a credential field name.
+    // Keep the existing credential filter for actual keys; recognize only existing domain-key grammars.
+    private val unitDataKey = Regex("^(unit_(id|status|label|mieter|rent|area|start)_.+|property_.+_unit(id)?_.+_(id|status|label|mieter|rent|area|start))$", RegexOption.DOT_MATCHES_ALL)
+    private val rentDataKey = Regex("^((nk|other)_.+|v2_.+_(nk|other))$", RegexOption.DOT_MATCHES_ALL)
+    private val unitStatusDataKey = Regex("^.+_(status|effectiveDate)$", RegexOption.DOT_MATCHES_ALL)
+    private val unitRentalDataKey = Regex("^.+_(paymentMethod|dueDate|deposit|rooms)$", RegexOption.DOT_MATCHES_ALL)
+    private fun businessKey(store: Store, key: String): Boolean = when (store.name) {
+        "wohneinheiten_prefs" -> unitDataKey.matches(key)
+        "rent_plan_prefs" -> rentDataKey.matches(key)
+        "tenant_history_prefs" -> key.startsWith("history_")
+        "unit_status_meta_prefs" -> unitStatusDataKey.matches(key)
+        "unit_rental_detail_prefs" -> unitRentalDataKey.matches(key)
+        "ki_learned_rules_prefs" -> key.startsWith("rule_")
+        else -> false
+    }
+
     private fun permits(store: Store, key: String): Boolean =
-        store.kind == Kind.BACKUP && (store.allowedKeys?.contains(key) ?: !secretKey.containsMatchIn(key))
+        store.kind == Kind.BACKUP && (store.allowedKeys?.contains(key) ?: (businessKey(store, key) || !secretKey.containsMatchIn(key)))
 
     fun writePayload(context: Context, root: JSONObject) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->

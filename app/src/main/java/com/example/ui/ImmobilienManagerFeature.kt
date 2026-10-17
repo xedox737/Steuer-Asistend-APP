@@ -166,7 +166,7 @@ internal object ImmobilienManagerProjection {
         val rows = units.map { unit ->
             RentTrackingLogic.month(
                 context, property.propertyId, unit, receipts, month,
-                bankAssignments, bankLinks, bankTransactions
+                bankAssignments, bankLinks, bankTransactions, units
             )
         }
         return PropertyManagerSummary(
@@ -403,7 +403,7 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
                     Row(Modifier.fillMaxWidth()) {
                         PropertyMetric("${summary.unitCount}", "Einheiten", Modifier.weight(1f))
                         PropertyMetric(NumberFormatter.format(summary.expectedRent), "Mieteinnahmen", Modifier.weight(1f))
-                        PropertyMetric("${property.wohnflaeche.toInt()} m²", "Wohnfläche", Modifier.weight(1f))
+                        PropertyMetric("${GermanNumberInput.formatQuantity(property.wohnflaeche)} m²", "Wohnfläche", Modifier.weight(1f))
                     }
                 }
             }
@@ -848,10 +848,7 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
 @Composable private fun PropertyData(viewModel: ReceiptViewModel, property: PropertyMetadata) {
     var edit by remember { mutableStateOf(false) }
     if (edit) PropertyMetadataFormDialog(viewModel = viewModel, property = property, onDismiss = { edit = false })
-    val unitCount = property.wohneinheiten
-        .split(',')
-        .map { it.trim() }
-        .count { it.isNotBlank() }
+    val unitCount = viewModel.getWohneinheitenForProperty(property).size
     val allocationSource = when (property.kaufpreisAufteilungQuelle.uppercase()) {
         "MANUELL" -> "Manuell"
         "ABGELEITET" -> "Abgeleitet"
@@ -1247,7 +1244,7 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                         wohnflaeche = values.livingArea,
                         grundstuecksgroesse = values.landArea,
                         notariellesKaufdatum = purchaseDate.trim(),
-                        wohneinheiten = savedUnitNames.joinToString(", "),
+                        wohneinheiten = "",
                         gesamtKaufpreis = values.purchasePrice,
                         gebaeudewert = values.buildingValue,
                         grundUndBodenWert = values.landValue

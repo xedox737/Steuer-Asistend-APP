@@ -20,7 +20,7 @@ internal data class RentOverviewUnit(
 ) {
     val unit get() = projection.unit
     val key get() = property.propertyId + ":" + PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
-    val tenants get() = projection.months.filter { it.expected > .01 }.flatMap { it.tenantNames.split(" → ") }.distinct()
+    val tenants get() = projection.months.filter { it.expected > .01 }.flatMap { it.tenantLabels }.distinct()
         .joinToString(" → ").ifBlank { if (unit.status == "Vermietet") unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else unit.status }
     val expected get() = projection.expected
     val actual get() = projection.actual
@@ -97,7 +97,7 @@ internal object RentOverviewPresentation {
         }
         val unassigned = rental.filter { receipt ->
             groups.none { group -> group.property.propertyId == receipt.propertyId &&
-                group.units.any { it.name == receipt.wohneinheit && receipt.wohneinheit.isNotBlank() } }
+                group.units.any { ReceiptUnitResolver.belongs(receipt, group.property.propertyId, it, group.units) } }
         }
         // Only explicit receipt income categories. Warm/flat rent cannot reliably be split into utilities.
         val utilities = rental.filter { receipt -> receipt !in unassigned &&

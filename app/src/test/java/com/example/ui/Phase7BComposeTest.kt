@@ -40,7 +40,10 @@ class Phase7BComposeTest {
     }
     private fun batch(count: Int, scale: Float, tablet: Boolean = false) {
         val p = PropertyMetadata(id = 91, propertyId = "batch", name = "Haus",
-            wohneinheiten = (1..count).joinToString(", ") { "WE $it" })
+            wohneinheiten = UnitIdentity.encode((1..count).map {
+                val name = "WE $it"
+                UnitIdentity.Entry(StableDocumentIdentity.legacyUnitId("batch", name), name)
+            }))
         runBlocking(Dispatchers.IO) { db.propertyDao().insertPropertyMetadata(p) }
         ui.waitUntil(10_000) { vm.properties.value.size == 1 }
         val model = vm

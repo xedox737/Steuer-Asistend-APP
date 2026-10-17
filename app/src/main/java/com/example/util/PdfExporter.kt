@@ -159,7 +159,7 @@ object PdfExporter {
                 activeCanvas().drawText("STEUEROBJEKT & IMMOBILIEN-METADATEN", MARGIN_LEFT + 15f, yPos + 18f, metaBold)
                 activeCanvas().drawText("Bezeichnung: ${metadata.name}", MARGIN_LEFT + 15f, yPos + 34f, metaNormal)
                 activeCanvas().drawText("Adresse:     ${metadata.adresse}", MARGIN_LEFT + 15f, yPos + 48f, metaNormal)
-                activeCanvas().drawText("Einheiten:   ${metadata.wohneinheiten}", MARGIN_LEFT + 15f, yPos + 62f, metaNormal)
+                activeCanvas().drawText("Einheiten:   ${com.example.data.UnitIdentity.display(metadata.wohneinheiten)}", MARGIN_LEFT + 15f, yPos + 62f, metaNormal)
                 yPos += 90f
             }
 

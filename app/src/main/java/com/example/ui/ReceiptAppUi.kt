@@ -614,11 +614,11 @@ fun WohneinheitenStatusSection(
 
         wohneinheiten.forEach { unit ->
             val unitIncome = receipts
-                .filter { it.wohneinheit == unit.name && (it.hauptkategorie == "Miete, Nebenkosten & Kaution" || it.hauptkategorie == "Sonstige Einnahmen") }
+                .filter { ReceiptUnitResolver.belongs(it, viewModel.propertyMetadata.value?.propertyId.orEmpty(), unit, wohneinheiten) && (it.hauptkategorie == "Miete, Nebenkosten & Kaution" || it.hauptkategorie == "Sonstige Einnahmen") }
                 .sumOf { it.bruttobetrag }
 
             val unitExpenses = receipts
-                .filter { it.wohneinheit == unit.name && !(it.hauptkategorie == "Miete, Nebenkosten & Kaution" || it.hauptkategorie == "Sonstige Einnahmen") }
+                .filter { ReceiptUnitResolver.belongs(it, viewModel.propertyMetadata.value?.propertyId.orEmpty(), unit, wohneinheiten) && !(it.hauptkategorie == "Miete, Nebenkosten & Kaution" || it.hauptkategorie == "Sonstige Einnahmen") }
                 .sumOf { it.bruttobetrag }
 
             val unitNet = unitIncome - unitExpenses
@@ -1663,7 +1663,7 @@ fun ReceiptThumbnailBox(
     onZoomClick: ((Bitmap) -> Unit)? = null
 ) {
     val paths = remember(imageUrl) {
-        if (imageUrl.isNotEmpty()) imageUrl.split(",") else emptyList()
+        if (imageUrl.isNotEmpty()) com.example.data.ReceiptOriginalChain.paths(imageUrl) else emptyList()
     }
     val firstPath = paths.firstOrNull()
 
@@ -4097,7 +4097,7 @@ fun ReceiptPreviewSection(receipt: Receipt, viewModel: ReceiptViewModel) {
     val currentLocalPath = status?.localPath ?: receipt.imageUrl
     
     val paths = remember(currentLocalPath) {
-        if (currentLocalPath.isNotEmpty()) currentLocalPath.split(",") else emptyList()
+        if (currentLocalPath.isNotEmpty()) com.example.data.ReceiptOriginalChain.paths(currentLocalPath) else emptyList()
     }
 
     if (state != DocumentState.CHECKING || paths.isNotEmpty()) {
@@ -6250,7 +6250,7 @@ fun AddReceiptScreen(viewModel: ReceiptViewModel) {
                             kontoNr = editKontoNr,
                             beschreibung = editBeschreibung,
                             isEigenleistung = editIsEigenleistung,
-                            imageUrl = selectedFiles.mapNotNull { it.original }.joinToString(",") { it.localUri },
+                            imageUrl = com.example.data.ReceiptOriginalChain.encodePaths(selectedFiles.mapNotNull { it.original?.localUri }),
                             originals = selectedFiles.mapNotNull { it.original },
                             wohneinheit = editWohneinheit,
                             mieter = editMieter,
@@ -8946,7 +8946,8 @@ fun PropertyMetadataFormDialog(
     var editGrundstuecksgroesse by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundstuecksgroesse)) }
     var editNotariellesKaufdatum by remember(metadata) { mutableStateOf(metadata.notariellesKaufdatum) }
     var editUebergangNutzenLasten by remember(metadata) { mutableStateOf(metadata.uebergangNutzenLasten) }
-    var editWohneinheiten by remember(metadata) { mutableStateOf(metadata.wohneinheiten) }
+    val editableUnits = remember(metadata) { mutableStateListOf<WohneinheitStatus>().apply { addAll(viewModel.getWohneinheitenForProperty(metadata)) } }
+    val editedUnitNames = remember(metadata) { mutableStateListOf<String>().apply { addAll(editableUnits.map { it.name }) } }
     var editGesamtKaufpreis by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.gesamtKaufpreis)) }
     var editGebaeudewert by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.gebaeudewert)) }
     var editGrundUndBodenWert by remember(metadata) { mutableStateOf(GermanNumberInput.formatForInput(metadata.grundUndBodenWert)) }
@@ -8998,7 +8999,7 @@ fun PropertyMetadataFormDialog(
                     Pair("Übergang Nutzen/Lasten", editUebergangNutzenLasten.isNotBlank()),
                     Pair("Wohnfläche", GermanNumberInput.parseNonNegative(editWohnflaeche)?.let { it > 0.0 } == true),
                     Pair("Grundstücksgröße", GermanNumberInput.parseNonNegative(editGrundstuecksgroesse)?.let { it > 0.0 } == true),
-                    Pair("Wohneinheiten", editWohneinheiten.isNotBlank()),
+                    Pair("Wohneinheiten", editedUnitNames.isNotEmpty() && editedUnitNames.all { it.isNotBlank() }),
                     Pair("Gesamtkaufpreis", GermanNumberInput.parseNonNegative(editGesamtKaufpreis)?.let { it > 0.0 } == true),
                     Pair("Gebäudewert", GermanNumberInput.parseNonNegative(editGebaeudewert)?.let { it > 0.0 } == true),
                     Pair("Grund und Boden", GermanNumberInput.parseNonNegative(editGrundUndBodenWert) != null)
@@ -9187,18 +9188,23 @@ fun PropertyMetadataFormDialog(
                     )
                 }
 
-                OutlinedTextField(
-                    value = editWohneinheiten,
-                    onValueChange = { editWohneinheiten = it },
-                    label = { Text("Wohneinheiten (kommagetrennt)") },
-                    placeholder = { Text("z.B. WE 1, WE 2, WE 3, WE 4") },
-                    supportingText = { Text("Belege können diesen Einheiten zugeordnet werden.", fontSize = 10.sp) },
-                    modifier = Modifier.fillMaxWidth().testTag("edit_property_wohneinheiten"),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
+                viewModel.unitIdentityError(metadata)?.let { Text(it, color = CrimsonRed) }
+                editableUnits.forEachIndexed { index, unit ->
+                    OutlinedTextField(
+                        value = editedUnitNames[index], onValueChange = { editedUnitNames[index] = it },
+                        label = { Text("Einheit ${index + 1}") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("edit_property_unit_${unit.unitId}"),
+                        colors = OutlinedTextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.White)
                     )
-                )
+                    TextButton(onClick = { editableUnits.removeAt(index); editedUnitNames.removeAt(index) }) { Text("Einheit entfernen") }
+                }
+                if (viewModel.unitIdentityError(metadata) == null) {
+                    TextButton(onClick = {
+                        val name = "Neue Einheit ${editableUnits.size + 1}"
+                        editableUnits.add(WohneinheitStatus(name, name, "Leerstand", "", 0.0, 0.0, unitId = java.util.UUID.randomUUID().toString()))
+                        editedUnitNames.add(name)
+                    }) { Text("Einheit hinzufügen") }
+                }
 
 Row(
     modifier = Modifier.fillMaxWidth(),
@@ -9280,6 +9286,14 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                     }
                     if (metadataInputError != null) return@Button
 
+                    if (viewModel.unitIdentityError(metadata) == null && runCatching {
+                        com.example.data.UnitIdentity.encode(editableUnits.mapIndexed { index, unit ->
+                            com.example.data.UnitIdentity.Entry(unit.unitId, editedUnitNames[index])
+                        })
+                    }.isFailure) {
+                        metadataInputError = "Bitte nicht leere, eindeutige Einheitsnamen vergeben."
+                        return@Button
+                    }
                     val updated = metadata.copy(
                         name = editName.trim(),
                         adresse = editAdresse.trim(),
@@ -9291,13 +9305,16 @@ metadataInputError?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWei
                         grundstuecksgroesse = finalGrundstuecksgroesse!!,
                         notariellesKaufdatum = editNotariellesKaufdatum,
                         uebergangNutzenLasten = editUebergangNutzenLasten,
-                        wohneinheiten = editWohneinheiten,
+                        wohneinheiten = if (viewModel.unitIdentityError(metadata) != null) metadata.wohneinheiten else
+                            com.example.data.UnitIdentity.encode(editableUnits.mapIndexed { index, unit ->
+                                com.example.data.UnitIdentity.Entry(unit.unitId, editedUnitNames[index])
+                            }),
                         gesamtKaufpreis = finalGesamtKaufpreis!!,
                         gebaeudewert = finalGebaeudewert!!,
                         grundUndBodenWert = finalGrundUndBodenWert!!,
                         kaufpreisAufteilungQuelle = "MANUELL"
                     )
-                    viewModel.updatePropertyMetadata(updated)
+                    viewModel.updatePropertyMetadata(updated, explicitUnitListEdit = true)
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
@@ -9467,6 +9484,26 @@ fun FirebaseLoginDialog(
     )
 }
 
+internal fun bankStatementCsv(statementText: String, result: com.example.api.BankStatementReconciliationResult?): String = buildString {
+    append("Datum;Empfaenger_Absender;Betrag_EUR;Buchungstyp;Verwendungszweck;Abgleich_Status;Hinweis\n")
+    fun row(values: List<String>) { append(values.joinToString(";") { com.example.util.csvField(it) }).append('\n') }
+    if (result != null && result.items.isNotEmpty()) {
+        result.items.forEach { item ->
+            val status = when (item.status) {
+                "MATCHED" -> "Zugeordnet"
+                "MISSING_RECEIPT" -> "FEHLENDER BELEG"
+                "RENT_ARREARS" -> "MIETRÜCKSTAND"
+                else -> "Ungeklärt"
+            }
+            row(listOf(item.date, item.counterparty, String.format(java.util.Locale.GERMANY, "%.2f", item.amount),
+                if (item.isIncome) "Einnahme" else "Ausgabe", item.purpose, status, item.notes))
+        }
+    } else if (statementText.isNotBlank()) {
+        // No structured reconciliation exists: preserve the complete source instead of guessing pipe fields.
+        row(listOf("", statementText, "", "", "", "Unformatiert", ""))
+    }
+}
+
 fun exportBankStatementToCsv(
     context: Context,
     statementText: String,
@@ -9475,47 +9512,7 @@ fun exportBankStatementToCsv(
     try {
         val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
         val file = File(exportDir, "Kontoauszug_Bankabgleich.csv")
-
-        val sb = java.lang.StringBuilder()
-        // German standard CSV header
-        sb.append("Datum;Empfaenger_Absender;Betrag_EUR;Buchungstyp;Verwendungszweck;Abgleich_Status;Hinweis\n")
-
-        if (result != null && result.items.isNotEmpty()) {
-            for (item in result.items) {
-                val date = item.date.replace(";", ",")
-                val party = item.counterparty.replace(";", ",")
-                val amount = String.format(java.util.Locale.GERMANY, "%.2f", item.amount)
-                val type = if (item.isIncome) "Einnahme" else "Ausgabe"
-                val purpose = item.purpose.replace(";", ",")
-                val statusText = when (item.status) {
-                    "MATCHED" -> "Zugeordnet"
-                    "MISSING_RECEIPT" -> "FEHLENDER BELEG"
-                    "RENT_ARREARS" -> "MIETRÜCKSTAND"
-                    else -> "Ungeklärt"
-                }
-                val notes = item.notes.replace(";", ",").replace("\n", " ")
-                sb.append("$date;\"$party\";$amount;$type;\"$purpose\";\"$statusText\";\"$notes\"\n")
-            }
-        } else {
-            val lines = statementText.lines().filter { it.isNotBlank() }
-            for (line in lines) {
-                val parts = line.split("|").map { it.trim() }
-                if (parts.size >= 3) {
-                    val date = parts[0].replace(";", ",")
-                    val party = parts[1].replace(";", ",")
-                    val rawAmount = parts[2].replace(";", ",").replace("EUR", "").trim()
-                    val purpose = parts.drop(3).joinToString(" ").replace(";", ",")
-                    val isIncome = !rawAmount.startsWith("-")
-                    val type = if (isIncome) "Einnahme" else "Ausgabe"
-                    sb.append("$date;\"$party\";\"$rawAmount\";$type;\"$purpose\";\"Standardisiert\";\"\"\n")
-                } else {
-                    val cleanLine = line.replace(";", ",")
-                    sb.append(";\"$cleanLine\";;;;\"Unformatiert\";\"\"\n")
-                }
-            }
-        }
-
-        file.writeText(sb.toString(), Charsets.UTF_8)
+        file.writeText(bankStatementCsv(statementText, result), Charsets.UTF_8)
 
         val uri = androidx.core.content.FileProvider.getUriForFile(
             context,

@@ -159,7 +159,11 @@ class BankLearningService(private val dao:BankLearningRuleDao, private val now:(
         val direction=if(transaction.amount>=0) BankRuleDirection.INCOME else BankRuleDirection.EXPENSE
         val cp=BankRuleEngine.norm(transaction.counterparty)
         val property=receipt.propertyId
-        val unit=receipt.wohneinheit.trim()
+        val unit=receipt.unitId.ifBlank {
+            transaction.unitId.takeIf { transaction.propertyId == property }.orEmpty()
+        }
+        // Unresolved unit labels must not become identities or broaden a rule to the property.
+        if(unit.isBlank() && receipt.wohneinheit.isNotBlank()) return null
         val key=hash(listOf(cp,direction,property,unit,BankRuleEngine.norm(receipt.aussteller),BankRuleEngine.norm(receipt.hauptkategorie)).joinToString("|"))
         val evidenceId="evidence-"+hash("${transaction.transactionId}|${receipt.id}|$key").take(24)
         dao.insertEvidence(BankRuleEvidence(evidenceId,key,transactionId=transaction.transactionId,receiptId=receipt.id,counterparty=transaction.counterparty,direction=direction,purposeTerms=purposeTerms(transaction.purpose),accountId=transaction.accountId,propertyId=property,unitId=unit,vendorTarget=receipt.aussteller,categoryTarget=receipt.hauptkategorie,subcategoryTarget=receipt.unterkategorie,paymentMethodTarget=receipt.zahlungsart,createdAt=now()))

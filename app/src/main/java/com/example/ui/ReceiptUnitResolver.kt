@@ -6,6 +6,14 @@ internal data class ReceiptUnitSelection(val unitId: String = "", val name: Stri
 
 /** IDs are authoritative for explicit choices; legacy names are scoped to one property. */
 internal object ReceiptUnitResolver {
+    fun belongs(receipt: Receipt, propertyId: String, unit: WohneinheitStatus, units: List<WohneinheitStatus>): Boolean {
+        if (receipt.propertyId != propertyId) return false
+        if (receipt.unitId.isNotBlank()) return receipt.unitId == PropertyUnitScopedData.stableUnitId(propertyId, unit)
+        if (isGeneral(receipt.wohneinheit)) return false
+        val match = units.singleOrNull { it.name.equals(receipt.wohneinheit, true) || it.label.equals(receipt.wohneinheit, true) }
+        return match != null && PropertyUnitScopedData.stableUnitId(propertyId, match) == PropertyUnitScopedData.stableUnitId(propertyId, unit)
+    }
+
     fun isGeneral(name: String): Boolean = name.isBlank() ||
         name.equals("Gesamtobjekt / Allgemein", true) || name.equals("GESAMT", true) || name.equals("ALLG", true)
 
