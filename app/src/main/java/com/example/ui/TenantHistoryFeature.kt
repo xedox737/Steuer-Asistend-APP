@@ -169,7 +169,8 @@ internal object TenantHistoryStore {
             return runCatching { decode(requireNotNull(prefs.getString(scoped, null)), unitName) }
                 .getOrElse { StoredListRead(emptyList(), true, true) }
         }
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && prefs.contains(legacyKey(unitName))) {
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && prefs.contains(legacyKey(unitName)) &&
+            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, stableUnitId, unitName)) {
             return runCatching {
                 val raw = requireNotNull(prefs.getString(legacyKey(unitName), null))
                 val result = decode(raw, unitName)
@@ -198,7 +199,8 @@ internal object TenantHistoryStore {
         prefs.edit().putString(scopedKey(propertyId, stableUnitId), raw).apply()
         // Keep historical readers compatible for property-1, but never create a
         // name-only key for another property.
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
+            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, stableUnitId, unitName)) {
             prefs.edit().putString(legacyKey(unitName), raw).apply()
         }
         true
@@ -209,7 +211,7 @@ internal object TenantHistoryStore {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val raw = runCatching {
             prefs.getString(scopedKey(propertyId, unitId), null)
-                ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) prefs.getString(legacyKey(unitName), null) else null)
+                ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unitName)) prefs.getString(legacyKey(unitName), null) else null)
         }.getOrElse { return true } ?: return false
         return runCatching { JSONArray(raw).length() > 0 }.getOrDefault(true)
     }

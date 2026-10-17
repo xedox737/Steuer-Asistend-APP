@@ -16,13 +16,15 @@ internal object UnitIdentity {
         require(entries.map { it.name.trim().lowercase(java.util.Locale.ROOT) }.distinct().size == entries.size) {
             "Bitte eindeutige Einheitsnamen vergeben."
         }
-        return JSONArray().apply { entries.forEach { put(JSONObject().put("unitId", it.unitId).put("name", it.name)) } }.toString()
+        return JSONObject().put("unitListVersion", 1).put("units", JSONArray().apply {
+            entries.forEach { put(JSONObject().put("unitId", it.unitId).put("name", it.name)) }
+        }).toString()
     }
 
     fun read(raw: String, propertyId: String, prefs: SharedPreferences): Read {
         if (raw.isBlank()) return Read(emptyList())
         // A malformed structured value must never fall through to legacy text interpretation.
-        if (raw.trimStart().startsWith("[")) return runCatching { Read(decode(raw)) }
+        if (raw.trimStart().startsWith("{")) return runCatching { Read(decode(raw)) }
             .getOrElse { Read(emptyList(), ERROR) }
 
         val scoped = "property_${propertyId}_unit_"
@@ -65,21 +67,40 @@ internal object UnitIdentity {
         // The historic single-name contract is unambiguous; preserve its deterministic legacy ID.
         if (unique.isEmpty() && !raw.contains(',')) {
             val name = raw.trim()
-            return Read(listOf(Entry(candidates[name] ?: StableDocumentIdentity.legacyUnitId(propertyId, name), name)))
+            val legacyId = StableDocumentIdentity.legacyUnitId(propertyId, name)
+            val expectedPrefix = "property_${propertyId}_unitid_${legacyId}_"
+            val hasUnresolvedStableIdentity = prefs.all.any { (key, value) ->
+                when {
+                    key.startsWith("property_${propertyId}_unit_id_index_") -> value != legacyId
+                    key.startsWith("property_${propertyId}_unitid_") -> !key.startsWith(expectedPrefix)
+                    propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && key.startsWith("unit_id_index_") -> value != legacyId
+                    else -> false
+                }
+            }
+            if (candidates[name] == null && (hasUnresolvedStableIdentity || candidates.isNotEmpty())) return Read(emptyList(), ERROR)
+            return Read(listOf(Entry(candidates[name] ?: legacyId, name)))
         }
         return Read(emptyList(), ERROR)
     }
 
+    /** A name alias is never allowed to override a different, already stored stable ID. */
+    fun legacyAliasMatches(prefs: SharedPreferences, propertyId: String, unitId: String, name: String): Boolean {
+        val scoped = prefs.getString("property_${propertyId}_unit_${name}_id", null)
+        val legacy = if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) prefs.getString("unit_id_$name", null) else null
+        return listOfNotNull(scoped, legacy).all { it == unitId }
+    }
+
     fun decode(raw: String): List<Entry> {
-        val array = JSONArray(raw)
+        val root = JSONObject(raw)
+        require(root.get("unitListVersion") == 1) { ERROR }
+        val array = root.getJSONArray("units")
         return (0 until array.length()).map {
             val item = array.getJSONObject(it)
-            Entry(item.getString("unitId"), item.getString("name"))
+            Entry(item.get("unitId") as? String ?: error(ERROR), item.get("name") as? String ?: error(ERROR))
         }.also { encode(it) }
     }
 
-    fun display(raw: String): String = if (raw.trimStart().startsWith("[")) runCatching {
-        val array = JSONArray(raw)
-        (0 until array.length()).joinToString(", ") { array.getJSONObject(it).getString("name") }
+    fun display(raw: String): String = if (raw.trimStart().startsWith("{")) runCatching {
+        decode(raw).joinToString(", ") { it.name }
     }.getOrDefault(ERROR) else raw
 }

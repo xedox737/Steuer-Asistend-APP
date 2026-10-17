@@ -850,11 +850,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private fun loadUnitById(unitPrefs: android.content.SharedPreferences, propertyId: String, unitId: String, name: String): WohneinheitStatus {
         val idPrefix = scopedUnitPrefix(propertyId, unitId)
         val namePrefix = scopedUnitNamePrefix(propertyId, name)
-        val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, unitId, name)
+        val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches
 
         fun string(field: String, legacyKey: String, default: String): String {
             if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getString(idPrefix + field, default) ?: default
-            if (unitPrefs.contains(namePrefix + field)) {
+            if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
                 val value = unitPrefs.getString(namePrefix + field, default) ?: default
                 unitPrefs.edit().putString(idPrefix + field, value).apply()
                 return value
@@ -869,7 +870,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
         fun number(field: String, legacyKey: String): Double {
             if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
-            if (unitPrefs.contains(namePrefix + field)) {
+            if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
                 val value = unitPrefs.getFloat(namePrefix + field, 0f)
                 if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
                 return value.toDouble()
@@ -1019,7 +1020,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             _driveSyncStatus.value = it.message; return
         }
         val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
-        val namePrefix = scopedUnitNamePrefix(targetProperty.propertyId, updated.name)
+        val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, targetProperty.propertyId, stableId, updated.name)
 
         unitPrefs.edit().apply {
             putString(idPrefix + "status", updated.status)
@@ -1028,9 +1029,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
             putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
             putString(idPrefix + "start", updated.mietvertragsstart)
-            putString(namePrefix + "id", stableId)
 
-            if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+            if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches) {
                 putString("unit_status_${updated.name}", updated.status)
                 putString("unit_label_${updated.name}", updated.label)
                 putString("unit_mieter_${updated.name}", updated.mieter)

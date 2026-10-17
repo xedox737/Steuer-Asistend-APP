@@ -50,7 +50,8 @@ internal object PropertyUnitScopedData {
         val unitId = stableUnitId(propertyId, unit)
         val scoped = scopedRentKey(propertyId, unitId, field)
         if (prefs.contains(scoped)) return prefs.getFloat(scoped, 0f).toDouble()
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
+            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unit.name)) {
             val legacy = legacyRentKey(unit.name, field)
             if (prefs.contains(legacy)) {
                 val value = prefs.getFloat(legacy, 0f)
@@ -72,7 +73,8 @@ internal object PropertyUnitScopedData {
             .apply()
         // Keep historical property-1 consumers compatible without ever writing
         // name-only values for a second property.
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
+            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unit.name)) {
             prefs.edit()
                 .putFloat(legacyRentKey(unit.name, "nk"), com.example.data.NumericWriteBoundary.float(nebenkosten))
                 .putFloat(legacyRentKey(unit.name, "other"), com.example.data.NumericWriteBoundary.float(sonstige))

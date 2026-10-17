@@ -13,6 +13,12 @@ import org.junit.runner.RunWith
 /** Production persistence and screens on the existing disposable emulator, including real back actions. */
 abstract class Phase10AIdentityMatrix : EmulatorTestSupport() {
     @Test fun commaNamePrecisionAndRelationsSurviveRenameReopenAndRecreate() {
+        ui.waitUntil(10_000) {
+            var actual = 0f
+            scenario.onActivity { actual = it.resources.configuration.fontScale }
+            kotlin.math.abs(actual - fontScale) < .01f
+        }
+        assertEquals(393, context.resources.configuration.screenWidthDp)
         val propertyId = "phase10a-native"
         val first = WohneinheitStatus("WE 01, EG links", "WE 01, EG links", "Leerstand", "", 0.0, 41.25, unitId = "U1")
         val second = first.copy(name = "WE 02", label = "WE 02", wohnflaeche = 55.5, unitId = "U2")
@@ -67,6 +73,18 @@ abstract class Phase10AIdentityMatrix : EmulatorTestSupport() {
             assertEquals(document, db.managedDocumentDao().getById(document.documentId))
             assertEquals(listOf(assignment), db.bankRentAssignmentDao().getAll())
         }
+        // Historical ambiguity is visibly different from an empty property and never rewrites raw data.
+        val ambiguous = "WE 01, EG links, WE 02"
+        val rawPreferences = context.getSharedPreferences("wohneinheiten_prefs", 0).all.toMap()
+        runBlocking(Dispatchers.IO) { db.propertyDao().insertPropertyMetadata(property.copy(wohneinheiten = ambiguous)) }
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("unit_identity_error").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithTag("unit_identity_error").assertIsDisplayed()
+        ui.onNodeWithTag("unit_card_U1").assertDoesNotExist()
+        capture("phase10a-legacy-error-font-$fontScale")
+        scenario.recreate()
+        ui.onNodeWithTag("unit_identity_error").assertIsDisplayed()
+        assertEquals(ambiguous, runBlocking(Dispatchers.IO) { db.propertyDao().getPropertyByPropertyId(propertyId)!!.wohneinheiten })
+        assertEquals(rawPreferences, context.getSharedPreferences("wohneinheiten_prefs", 0).all)
     }
 }
 

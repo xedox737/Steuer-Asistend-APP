@@ -78,6 +78,13 @@ class Phase10AIdentityTest {
         assertEquals(before, prefs.all)
         assertEquals(raw, property.copy(wohneinheiten = raw).wohneinheiten)
     }
+    @Test fun evenOneLegacyUnitCannotReceiveANewIdWhenOnlyAnOldIndexIdIsKnown() {
+        val pid = "index-only-property"
+        prefs.edit().putString("property_${pid}_unit_id_index_0", "original-stable-id").commit()
+        val before = prefs.all.toMap()
+        assertNotNull(UnitIdentity.read("Wohnung", pid, prefs).error)
+        assertEquals(before, prefs.all)
+    }
     @Test fun legacyCanOnlyBeReconstructedFromCompleteScopedNamesAndUniqueIds() {
         entries.forEach { prefs.edit().putString("property_${propertyId}_unit_${it.name}_id", it.unitId).commit() }
         val raw = "WE 01, EG links, WE 02"
@@ -127,8 +134,41 @@ class Phase10AIdentityTest {
         original.delete()
         Unit
     }
+    @Test fun conflictingOldNameAliasCannotLendItsValuesOrTenantToAnotherStableId() {
+        val pid = StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val name = "Wohnung"
+        prefs.edit().putString("unit_id_$name", "OLD").putFloat("unit_area_$name", 99f)
+            .putString("unit_mieter_$name", "Alter Mieter").commit()
+        app.getSharedPreferences("rent_plan_prefs", 0).edit().putFloat("nk_$name", 123f).commit()
+        TenantHistoryStore.save(app, pid, "OLD", name, listOf(TenantPeriod(7, name, "Alter Mieter", "2020-01-01", "", 600.0, 123.0, 0.0)))
+        val before = prefs.all.toMap()
+        val metadata = PropertyMetadata(propertyId = pid, wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("NEW", name))))
+        val unit = vm.getWohneinheitenForProperty(metadata).single()
+        assertEquals("NEW", unit.unitId)
+        assertEquals(0.0, unit.wohnflaeche, 0.0)
+        assertEquals("", unit.mieter)
+        assertTrue(TenantHistoryStore.load(app, pid, "NEW", name).isEmpty())
+        assertEquals(0.0, PropertyUnitScopedData.rentValue(app, pid, unit, "nk"), 0.0)
+        assertEquals(before, prefs.all)
+        assertEquals("Alter Mieter", TenantHistoryStore.load(app, pid, "OLD", name).single().tenantName)
+        val legacyHistory = app.getSharedPreferences("tenant_history_prefs", 0).getString("history_$name", null)
+        assertTrue(TenantHistoryStore.save(app, pid, "NEW", name, listOf(TenantPeriod(8, name, "Neuer Mieter", "2021-01-01", "", 700.0, 200.0, 0.0))))
+        assertEquals(legacyHistory, app.getSharedPreferences("tenant_history_prefs", 0).getString("history_$name", null))
+        PropertyUnitScopedData.setRentValues(app, pid, unit, 200.0, 0.0)
+        assertEquals(123f, app.getSharedPreferences("rent_plan_prefs", 0).getFloat("nk_$name", 0f))
+    }
+    @Test fun legacyBracketNameIsNotConfusedWithAnEmptyStructuredList() {
+        prefs.edit().putString("property_${propertyId}_unit_[]_id", "bracket-unit").commit()
+        assertEquals(listOf(UnitIdentity.Entry("bracket-unit", "[]")), UnitIdentity.read("[]", propertyId, prefs).entries)
+        assertTrue(UnitIdentity.decode(UnitIdentity.encode(emptyList())).isEmpty())
+    }
+    @Test fun malformedStructuredIdentityTypesAreNotConvertedToLabelsOrIds() {
+        val malformed = """{"unitListVersion":1,"units":[{"unitId":17,"name":"WE 01"}]}"""
+        assertNotNull(UnitIdentity.read(malformed, propertyId, prefs).error)
+        assertTrue(vm.getWohneinheitenForProperty(property.copy(wohneinheiten = malformed)).isEmpty())
+    }
     @Test fun firestoreDocumentKeyUsesPropertyAndStableUnitIdInsteadOfRenameableName() {
-        assertEquals(FirestoreService.unitDocumentKey("P1", "U1"), FirestoreService.unitDocumentKey("P1", "U1"))
+        assertNotEquals(FirestoreService.unitDocumentKey("P|U", "X"), FirestoreService.unitDocumentKey("P", "U|X"))
         assertNotEquals(FirestoreService.unitDocumentKey("P1", "U1"), FirestoreService.unitDocumentKey("P2", "U1"))
         assertNotEquals(FirestoreService.unitDocumentKey("P1", "U1"), FirestoreService.unitDocumentKey("P1", "U2"))
     }
@@ -170,8 +210,8 @@ class Phase10AIdentityTest {
     @Test fun tenantLabelArrowDoesNotBecomeAnotherTenantOnAnnualProjection() {
         val unit = vm.getWohneinheitenForProperty(property).first()
         val month = RentMonthProjection(unit, 1.0, 0.0, "Martin → Weber", false)
-        val row = RentOverviewUnit(property, RentYearProjection(unit, listOf(month)), 0.0, 0.0)
-        assertEquals("Martin → Weber", row.tenants)
+        val row = RentOverviewUnit(property, RentYearProjection(unit, listOf(month, RentMonthProjection(unit, 1.0, 0.0, "Martin", false))), 0.0, 0.0)
+        assertEquals("Martin → Weber → Martin", row.tenants)
         assertEquals(listOf("Martin → Weber"), month.tenantLabels)
     }
 }

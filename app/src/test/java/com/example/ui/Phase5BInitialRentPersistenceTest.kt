@@ -28,7 +28,10 @@ class Phase5BInitialRentPersistenceTest {
     private val instance = AppDatabase::class.java.getDeclaredField("INSTANCE").apply { isAccessible = true }
     private var previous: AppDatabase? = null
     private val property = PropertyMetadata(id = 71, propertyId = "phase5b-a", name = "Haus", adresse = "Teststraße 1",
-        wohneinheiten = (1..25).joinToString(", ") { "WE ${it.toString().padStart(2, '0')}" })
+        wohneinheiten = UnitIdentity.encode((1..25).map {
+            val name = "WE ${it.toString().padStart(2, '0')}"
+            UnitIdentity.Entry(StableDocumentIdentity.legacyUnitId("phase5b-a", name), name)
+        }))
 
     @Before fun setUp() {
         app = ApplicationProvider.getApplicationContext()

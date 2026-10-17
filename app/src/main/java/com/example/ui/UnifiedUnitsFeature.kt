@@ -96,6 +96,15 @@ internal fun UnifiedPropertyUnitsScreen(
     onBackToProperty: () -> Unit
 ) {
     val context = LocalContext.current
+    val identityError = viewModel.unitIdentityError(property)
+    if (identityError != null) {
+        Column(Modifier.fillMaxSize().testTag("property_units_overview").padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            IconButton(onClick = onBackToProperty) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }
+            Text("Einheiten prüfen", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(identityError, color = CrimsonRed, modifier = Modifier.testTag("unit_identity_error"))
+        }
+        return
+    }
     val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
@@ -174,7 +183,6 @@ internal fun UnifiedPropertyUnitsScreen(
         }
 
         item {
-            viewModel.unitIdentityError(property)?.let { Text(it, color = CrimsonRed, modifier = Modifier.testTag("unit_identity_error")) }
             Text("Einheiten", fontSize = 22.sp, fontWeight = FontWeight.Black, color = DarkNavy)
             Text("Mietverhältnisse, Zahlungen und Nebenkosten im Überblick", fontSize = 12.sp, color = SlateGray)
             TextButton(onClick = { showInitialBatch = true }, modifier = Modifier.testTag("rent_batch_open")) { Text("Mietdaten gesammelt erfassen") }

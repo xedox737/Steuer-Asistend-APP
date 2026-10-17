@@ -30,7 +30,9 @@ Einträge und doppelte stabile IDs erzeugen. Der Drive-Reader enthielt denselben
 Mechanismus und zusätzlich ungescopte Name-Schlüssel für andere Immobilien.
 
 Es gibt keine lokale Room-Unit-Tabelle. Die vorhandene Room-Property-Spalte bleibt
-das einzige Listenfeld, trägt nun jedoch ein JSON-Array aus `{unitId,name}`.
+das einzige Listenfeld, trägt nun jedoch ein versioniertes JSON-Objekt mit `unitListVersion: 1` und
+einem Einheitenarray aus `{unitId,name}`. Ein alter Einheitsname `[]` bleibt damit
+ein Label und wird nicht mit einer leeren strukturierten Liste verwechselt.
 UnitIdentity kodiert und validiert dieses Feld zentral. Keine zweite Liste in
 Preferences, keine zweite Datenarchitektur. Bestehende Preference-Fachwerte bleiben
 unter propertyId + unitId; neue Anlagewerte werden vor Veröffentlichung der
@@ -66,6 +68,7 @@ auf einen alten Parser ist kein unterstützter Rückweg.
 | P1 | ReceiptViewModel.loadUnits / resolveUnitId | M26-Kommaname erzeugt dritte Einheit und doppelte ID | Strukturierter gemeinsamer Codec, keine Indexidentität; Identity-/Compose-/Emulatortests |
 | P1 | DrivePersistenceRepository.getWohneinheitenFromPrefs / saveWohneinheitenToPrefs | Kommaname bzw. gleichnamige fremde Property wird beim Backup falsch gelesen | Gleiche Struktur, propertyId+unitId, bestehender Restoremodus; Fake-Drive-Roundtrip |
 | P1 | UnifiedUnitsFeature.unitReceipts, AnnualTaxAssistantFeature.buildUnitAnnualSummaries/buildAnnualRentRows, RentIncomeFeature.incomeBreakdown, RentOverviewPresentation.unassigned | U1 umbenennen, Receipt behält U1 und alten Namen: Beleg verschwindet aus direkter Anzeige oder wird unzugeordnet | ReceiptUnitResolver.belongs bevorzugt ID und prüft Scope; Legacy-Label nur eindeutig; Resolver-/Relations-E2E |
+| P1 | ReceiptViewModel.loadUnitById / TenantHistoryStore / PropertyUnitScopedData | Ein alter Name zeigt auf OLD, strukturierter Eintrag auf NEW: Name-Fallback leiht Fläche/Miete/Historie oder überschreibt alte Rohwerte | Widersprechende Namensalias-IDs sperren Lesen und Legacy-Spiegelschreiben; Store-Test mit erhaltenem OLD-Bestand |
 | P1 | FirestoreService.saveWohneinheit / ReceiptViewModel.syncWithCloud | Name als Cloud-Dokumentkey: Rename erzeugt weiteres Dokument; gleichnamige Properties teilen Key | Cloudkey aus Property+Unit-ID, Scope im vorhandenen Dokument; unbekannte/mehrdeutige Remote-IDs vor Writes blockiert; kein Löschen alter Remote-Dokumente |
 | P2 | ReceiptViewModel.learnVendorRule/loadLearnedRules, DrivePersistenceRepository Rule-Preferences | Aussteller oder Einheit enthält `|||`: Felder/Count verschoben | JSON-Objekt, eindeutiger Legacyvertrag; beschädigte Rohwerte nicht überschreiben; Codec-Test |
 | P2 | ReceiptOriginalChain / Originalpfad-Verbraucher | Datei `Original, EG.pdf` wird als zwei Pfade geöffnet/gezählt | Gemeinsamer Reader, vorhandene vollständige Datei zuerst; neue separatorhaltige Pfade als JSON; Originalpfadtest |
@@ -107,6 +110,10 @@ Bewusst unverändert: standardkonforme CSV-/DATEV-/CAMT-Formate, ISO-Datumteile,
 Dateiendungen/Drive-Pfadsegmente, PDF-Textumbruch, Hash-Hexdarstellung, Such-/KI-
 Prompttexte, explizite Suchbegriffsyntax, Anzahl/Baujahr/Progress/Confidence,
 Bitmap-/Layout-/Dateigrößenkonversionen und gerundete Diagramm-/Monitorprozente.
+Bestätigt wurden elf in der Tabelle getrennt dokumentierte Mechanismen/Anzeigepfade.
+Von den 48 Ganzzahlkonversionszeilen waren vier Flächenanzeigen fehlerhaft (Einheit,
+Objekt-Wohnfläche, AfA-Wohnfläche, AfA-Grundstück); zwei weitere bestätigte
+Formatverluste lagen in den zusätzlich gesuchten %.1f-Anzeigen (AfA-Satz, Kilometer).
 Kompakte Mio.-Summen sind bewusst gerundete Übersichtswerte. Nicht aktive alte
 PropertyDashboard-Detailzweige werden nicht pauschal refaktoriert.
 
@@ -140,3 +147,28 @@ lintDebug, assembleDebug, assembleDebugAndroidTest und kompletter vorhandener
 Emulatorjob. Run-/Head-Belege und abschließende Resultate stehen im PR. Angelegte
 Tests sind kein vorweggenommener Erfolgsnachweis. Live-Drive-/Firestorekonten,
 physisches Gerät und Kanzleiimport werden nicht als geprüft ausgegeben.
+
+## Laufprotokoll
+
+- Run 38983523905, Head 5fd918a: Kompilierungsfehler in der Vollständigkeitsanzeige
+  des Metadateneditors (übrig gebliebener Verweis auf editWohneinheiten). Auf die
+  strukturierten Namensfelder korrigiert. Keine Assertions oder Tests verändert.
+- Run 38983757418, Head 2bda7fb: lintDebug erfolgreich; Unit-Suite beim Erstellen
+  dieses Protokolleintrags noch aktiv. Dieser Zwischenstand ersetzt nicht die
+  komplette Abnahme des folgenden finalen Heads.
+- Neue Legacy-Prüfung enthält außerdem einen sichtbaren Fehlerzustand bei allen
+  drei Emulator-Schriftgrößen, erhaltenen Rohwert nach Activity recreate und
+  Verbot scheinbarer leerer Einheitenkarten. Das Formular bietet Einheiten weiter
+  einzeln zum Hinzufügen/Entfernen an; vorhandene IDs werden beim Rename bewahrt.
+  Nur eine ausdrücklich hinzugefügte neue Einheit erhält eine neue ID.
+
+- Run 38983757418: alle 1.030 JVM-Fälle ausgeführt; 1.015 bestanden, 15 Fehler.
+  Die neuen Phase-10A-Fälle bestanden. Die 15 Fehler betrafen drei ältere
+  Fixturegruppen (Phase5BInitialRentPersistenceTest, Phase7BComposeTest,
+  RentOverviewComposeTest), die mehrteilige Kommastrings ohne stabile Zuordnung
+  bereitstellten. Die RentOverview-Fixture ersetzte anschließend sogar die zuvor
+  erzeugten IDs. Diese Fixtures erhalten nun ihre beabsichtigten stabilen IDs
+  bereits bei Vorbereitung als strukturierte Liste. Der native Phase-7B-
+  Erweiterungsfixture folgt demselben Vertrag und behält die ursprüngliche erste
+  ID. Sämtliche fachlichen Assertions, Fallzahlen und Zeitlimits bleiben bestehen;
+  mehrdeutige Legacywerte werden weiterhin ausdrücklich separat getestet.

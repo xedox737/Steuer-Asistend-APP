@@ -456,8 +456,8 @@ class DrivePersistenceRepository(
             val namePrefix = "property_${propertyId}_unit_${entry.name}_"
             fun key(field: String, legacy: String): String = when {
                 unitPrefs.contains(idPrefix + field) -> idPrefix + field
-                unitPrefs.contains(namePrefix + field) -> namePrefix + field
-                propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID -> legacy
+                UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, entry.unitId, entry.name) && unitPrefs.contains(namePrefix + field) -> namePrefix + field
+                propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, entry.unitId, entry.name) -> legacy
                 else -> idPrefix + field
             }
             fun text(field: String, default: String = "") = unitPrefs.getString(key(field, "unit_${field}_${entry.name}"), default) ?: default
