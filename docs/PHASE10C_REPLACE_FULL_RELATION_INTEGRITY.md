@@ -119,7 +119,7 @@ Zwei weitere rote Assertions sind **nicht** als zwei zusätzliche gleiche Root C
 
 ## Versionen und unberührte Bereiche
 
-Room **34 → 34**, keine Migration, keine destructive migration. Supplemental **15 → 15**, Receipt-Backup **2 → 2**. Keine neuen persistierten Backupfelder. Navigation, Design, Parser-/Schreibgrenzen, Bankbuchungsliste und DATEV-Exportlogik unverändert.
+Room **34 → 34**, keine Migration, keine destructive migration. Supplemental **15 → 15**, Receipt-Backup **2 → 2**. Keine neuen persistierten Backupfelder. Navigation, Design, Parser-/Schreibgrenzen, Bankbuchungsliste und DATEV-Exportlogik unverändert. Im bestehenden Phase10A-Emulatortest wurde nach einem belegten CI-Synchronisierungsfehler ausschließlich das Warten auf die neue Compose-Übersicht nach Activity-Recreate ergänzt; Assertions und Timeoutgrenze bleiben unverändert.
 
 ## Tests und Prüfstatus
 
@@ -138,6 +138,9 @@ Ausgeführte CI:
 |---|---|---|
 | [Android CI #1306 / 39059714564](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/39059714564) | 8f43ea56fd8620df852f5569dd89342205673e40 | erster Fixstand vollständig erfolgreich: lint, Unit/Robolectric, assembleDebug, assembleDebugAndroidTest und 70 Android-Emulatortests |
 | [Android CI #1307 / 39062657398](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/39062657398) | ee37bd7bbaf8d1e851b578388d6984e974f38176 | diagnostischer unveränderter main-Produktcode: lint grün; zehn strikte Assertions rot, 1058 Tests ausgeführt; APK/Emulator folgerichtig übersprungen |
+| [Android CI #1308 / 39063579125](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/39063579125) | 7a2ff42e0b965f2d7ab075e623bdc91a0be144cb | verify vollständig grün; XML 1063 Einträge, 0 Failures/Errors/Skips, alle zwölf Phase10C-Fälle und Phase9A–9D/10A grün. assembleDebugAndroidTest erfolgreich. Emulator: 70 ausgeführt, 1 Fehler, 0 Skips in Phase10AIdentity15EmulatorTest; Testsynchronisationsfehler nach Recreate, vollständig ausgewertet. |
+
+Der Fehler in #1308 entsteht in `detail(renamed)` direkt nach `scenario.recreate()` (vorher Zeile 73/49). `performScrollToNode` fragt die noch nicht sicher registrierte neue Übersicht ab; der Semantics-Fehlerdump greift während des Layouts auf dem Instrumentation-Thread zu (`Detected multithreaded access to SnapshotStateObserver`, vorheriger Thread 2, aktueller Runner-Thread 41). Der spätere Diagnosebaum enthält die richtige Übersicht und die umbenannte Einheit. Der Test wartet nun vor dem Scrollen über `onAllNodesWithTag(...).fetchSemanticsNodes().size == 1` auf genau diesen erwarteten Zustand. Bestehende Grenze 10.000 ms, keine Retries, keine entfernten Assertions, keine Produkt-/Navigationsänderung. Der neue Lauf wird wegen dieser konkreten Synchronisierungskorrektur gestartet, nicht als blinder Wiederholungsversuch.
 
 Der finale Fix enthält exakt dieselben zwölf Phase10C-Testfälle wie der Vorherlauf plus die zentrale Parent-Delta-Absicherung. Sein abschließender CI-Lauf und die Conclusion werden im [PR #140](https://github.com/xedox737/Steuer-Asistend-APP/pull/140) nach vollständigem Ablauf dokumentiert; maßgeblich sind die Checks des finalen PR-Heads. Der PR wird nicht gemergt. Keine Freigabe aus übersprungenen Jobs ableiten. Bestehende Phase10A- und Phase9A–9D-Tests bleiben unverändert und müssen im normalen vollständigen Testsatz laufen. PR #139 wird weder gemergt noch werden dessen Assertions abgeschwächt.
 
