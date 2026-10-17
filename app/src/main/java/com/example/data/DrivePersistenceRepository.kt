@@ -448,31 +448,27 @@ class DrivePersistenceRepository(
 
     fun getWohneinheitenFromPrefs(metadata: PropertyMetadata?): List<WohneinheitStatus> {
         val unitPrefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val unitNames = metadata?.wohneinheiten.orEmpty()
-            .split(",")
-            .map(String::trim)
-            .filter(String::isNotBlank)
-        if (unitNames.isEmpty()) return emptyList()
-
         val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
-        return unitNames.mapIndexed { index, name ->
-            WohneinheitStatus(
-                name = name,
-                label = unitPrefs.getString("unit_label_$name", name) ?: name,
-                status = unitPrefs.getString("unit_status_$name", "Leerstand") ?: "Leerstand",
-                mieter = unitPrefs.getString("unit_mieter_$name", "") ?: "",
-                kaltmiete = unitPrefs.getFloat("unit_rent_$name", 0f).toDouble(),
-                wohnflaeche = unitPrefs.getFloat("unit_area_$name", 0f).toDouble(),
-                mietvertragsstart = unitPrefs.getString("unit_start_$name", "") ?: "",
-                unitId = unitPrefs.getString("unit_id_$name", null) ?: unitPrefs.getString("unit_id_index_$index", null)
-                    ?: StableDocumentIdentity.legacyUnitId(propertyId, name).also {
-                        unitPrefs.edit().putString("unit_id_$name", it).putString("unit_id_index_$index", it).apply()
-                    }
-            )
+        val read = UnitIdentity.read(metadata?.wohneinheiten.orEmpty(), propertyId, unitPrefs)
+        check(read.error == null) { UnitIdentity.ERROR }
+        return read.entries.map { entry ->
+            val idPrefix = "property_${propertyId}_unitid_${entry.unitId}_"
+            val namePrefix = "property_${propertyId}_unit_${entry.name}_"
+            fun key(field: String, legacy: String): String = when {
+                unitPrefs.contains(idPrefix + field) -> idPrefix + field
+                UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, entry.unitId, entry.name) && unitPrefs.contains(namePrefix + field) -> namePrefix + field
+                propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, entry.unitId, entry.name) -> legacy
+                else -> idPrefix + field
+            }
+            fun text(field: String, default: String = "") = unitPrefs.getString(key(field, "unit_${field}_${entry.name}"), default) ?: default
+            fun number(field: String) = unitPrefs.getFloat(key(field, "unit_${field}_${entry.name}"), 0f).toDouble()
+            WohneinheitStatus(name = entry.name, label = text("label", entry.name), status = text("status", "Leerstand"),
+                mieter = text("mieter"), kaltmiete = number("rent"), wohnflaeche = number("area"),
+                mietvertragsstart = text("start"), unitId = entry.unitId)
         }
     }
 
-    fun saveWohneinheitenToPrefs(units: List<WohneinheitStatus>, mode: RestoreMode = RestoreMode.MERGE) {
+    fun saveWohneinheitenToPrefs(units: List<WohneinheitStatus>, mode: RestoreMode = RestoreMode.MERGE, propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID) {
         val unitPrefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val editor = unitPrefs.edit()
         fun putString(key: String, value: String) {
@@ -481,16 +477,22 @@ class DrivePersistenceRepository(
         fun putFloat(key: String, value: Float) {
             if (mode != RestoreMode.MERGE || !unitPrefs.contains(key)) editor.putFloat(key, value)
         }
-        for ((index, u) in units.withIndex()) {
+        units.forEach { u ->
+            val stableId = u.unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, u.name) }
+            val prefix = "property_${propertyId}_unitid_${stableId}_"
+            putString("property_${propertyId}_unit_${u.name}_id", stableId)
+            putString(prefix + "status", u.status); putString(prefix + "label", u.label)
+            putString(prefix + "mieter", u.mieter); putString(prefix + "start", u.mietvertragsstart)
+            putFloat(prefix + "rent", NumericWriteBoundary.float(u.kaltmiete))
+            putFloat(prefix + "area", NumericWriteBoundary.float(u.wohnflaeche))
+            if (propertyId != StableDocumentIdentity.LEGACY_PROPERTY_ID) return@forEach
             putString("unit_status_${u.name}", u.status)
             putString("unit_label_${u.name}", u.label)
             putString("unit_mieter_${u.name}", u.mieter)
             putFloat("unit_rent_${u.name}", com.example.data.NumericWriteBoundary.float(u.kaltmiete))
             putFloat("unit_area_${u.name}", com.example.data.NumericWriteBoundary.float(u.wohnflaeche))
             putString("unit_start_${u.name}", u.mietvertragsstart)
-            val stableId = u.unitId.ifBlank { StableDocumentIdentity.legacyUnitId(StableDocumentIdentity.LEGACY_PROPERTY_ID, u.name) }
             putString("unit_id_${u.name}", stableId)
-            putString("unit_id_index_$index", stableId)
         }
         editor.apply()
     }
@@ -501,19 +503,7 @@ class DrivePersistenceRepository(
         val allPrefs = learnedRulesPrefs.all
         for ((key, value) in allPrefs) {
             if (key.startsWith("rule_") && value is String) {
-                val parts = value.split("|||")
-                if (parts.size >= 5) {
-                    rulesList.add(
-                        LearnedVendorRule(
-                            aussteller = parts[0],
-                            hauptkategorie = parts[1],
-                            unterkategorie = parts[2],
-                            kontoNr = parts[3],
-                            wohneinheit = parts[4],
-                            count = parts.getOrNull(5)?.toIntOrNull() ?: 1
-                        )
-                    )
-                }
+                rulesList.add(LearnedVendorRuleCodec.decode(value))
             }
         }
         return rulesList
@@ -528,7 +518,7 @@ class DrivePersistenceRepository(
         for (rule in rules) {
             val cleanVendor = rule.aussteller.trim()
             val normalizedKey = "rule_" + cleanVendor.lowercase().replace(Regex("[^a-z0-9]"), "_")
-            val serialized = "${rule.aussteller}|||${rule.hauptkategorie}|||${rule.unterkategorie}|||${rule.kontoNr}|||${rule.wohneinheit}|||${rule.count}"
+            val serialized = LearnedVendorRuleCodec.encode(rule)
             if (mode != RestoreMode.MERGE || !learnedRulesPrefs.contains(normalizedKey)) editor.putString(normalizedKey, serialized)
         }
         editor.apply()
@@ -751,7 +741,7 @@ class DrivePersistenceRepository(
             val unitsFile = unitsFilePreflight
             if (unitsFile != null) {
                 val units = requireNotNull(unitsPreflight)
-                saveWohneinheitenToPrefs(units)
+                saveWohneinheitenToPrefs(units, propertyId = metadataPreflight?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID)
                 DiagnosticLog.d(TAG, "Restored Wohneinheiten successfully.")
             }
 
@@ -1496,7 +1486,7 @@ class DrivePersistenceRepository(
                 role = ReceiptDocumentRole.ATTACHMENT.name, createdAt = synced.createdAt
             ))
         }
-        return documents.size >= receipt.imageUrl.split(',').filter { it.isNotBlank() }.distinct().size
+        return documents.size >= com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).filter { it.isNotBlank() }.distinct().size
     }
 
     suspend fun syncReceiptToDrive(
@@ -1680,7 +1670,7 @@ class DrivePersistenceRepository(
             }
 
             // Retrieve local file content and verify Magic Bytes and SHA-256
-            val paths = currentReceipt.imageUrl.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            val paths = com.example.data.ReceiptOriginalChain.paths(currentReceipt.imageUrl).map { it.trim() }.filter { it.isNotEmpty() }
             var fileBytes: ByteArray? = null
             var detectedExt = "txt"
             if (paths.isNotEmpty()) {
@@ -1884,10 +1874,10 @@ class DrivePersistenceRepository(
                 documentDate = currentReceipt.datum,
                 title = currentReceipt.aussteller,
                 originalFilename = existingManaged?.originalFilename?.takeIf(String::isNotBlank)
-                    ?: currentReceipt.imageUrl.substringBefore(',').substringAfterLast('/').ifBlank { filename ?: "Beleg" },
+                    ?: com.example.data.ReceiptOriginalChain.paths(currentReceipt.imageUrl).firstOrNull().orEmpty().substringAfterLast('/').ifBlank { filename ?: "Beleg" },
                 storedFilename = filename ?: "Beleg",
                 mimeType = mimeType ?: "application/octet-stream",
-                localUri = currentReceipt.imageUrl.substringBefore(','),
+                localUri = com.example.data.ReceiptOriginalChain.paths(currentReceipt.imageUrl).firstOrNull().orEmpty(),
                 driveFileId = driveFileId,
                 driveFolderId = actualDriveFolderId ?: targetFolderId,
                 sha256 = contentSha256,
@@ -2916,7 +2906,7 @@ class DrivePersistenceRepository(
 
         try {
             if (snapshot.units.isNotEmpty()) {
-                saveWohneinheitenToPrefs(snapshot.units, mode)
+                saveWohneinheitenToPrefs(snapshot.units, mode, snapshot.propertyMetadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID)
             }
             if (snapshot.datevProfiles.isNotEmpty() && (mode != RestoreMode.MERGE ||
                 !context.getSharedPreferences("datev_kanzleiprofil_prefs", Context.MODE_PRIVATE).contains("active_profile_json"))) {
@@ -3346,7 +3336,7 @@ class DrivePersistenceRepository(
         // All pages have passed validation before any receipt reference is changed.
         downloaded.forEach { localRepository.upsertManagedDocument(it) }
         val current = localRepository.getReceiptByInternalId(receipt.internalId) ?: receipt
-        val paths = downloaded.joinToString(",") { it.localUri }
+        val paths = com.example.data.ReceiptOriginalChain.encodePaths(downloaded.map { it.localUri })
         if (current.imageUrl != paths) localRepository.insert(current.copy(imageUrl = paths))
         return downloaded.first().localUri
     }

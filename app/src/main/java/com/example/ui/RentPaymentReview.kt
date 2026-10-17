@@ -32,8 +32,7 @@ internal object RentPaymentReview {
                 receipt.bruttobetrag.isFinite() && receipt.exportStatus != "AUSGESCHLOSSEN" &&
                 (!isConfirmedRentalIncomeReceipt(receipt) || groups.none { group ->
                     group.property.propertyId == receipt.propertyId && group.units.any { unit ->
-                        if (receipt.unitId.isNotBlank()) receipt.unitId == PropertyUnitScopedData.stableUnitId(group.property.propertyId, unit)
-                        else receipt.wohneinheit.isNotBlank() && receipt.wohneinheit in setOf(unit.name, unit.label)
+                        ReceiptUnitResolver.belongs(receipt, group.property.propertyId, unit, group.units)
                     }
                 })
         }.map { receipt ->

@@ -96,6 +96,15 @@ internal fun UnifiedPropertyUnitsScreen(
     onBackToProperty: () -> Unit
 ) {
     val context = LocalContext.current
+    val identityError = viewModel.unitIdentityError(property)
+    if (identityError != null) {
+        Column(Modifier.fillMaxSize().testTag("property_units_overview").padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            IconButton(onClick = onBackToProperty) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Zurück", tint = DarkNavy) }
+            Text("Einheiten prüfen", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+            Text(identityError, color = CrimsonRed, modifier = Modifier.testTag("unit_identity_error"))
+        }
+        return
+    }
     val bankAssignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val bankTransactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
@@ -366,7 +375,7 @@ private fun UnifiedUnitOverviewCard(
 ) {
     val rented = unit.status == "Vermietet"
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+        modifier = Modifier.fillMaxWidth().testTag("unit_card_${unit.unitId}").clickable(onClick = onOpen),
         shape = Ui2.shape,
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(1.dp, BorderColor)
@@ -516,7 +525,8 @@ private fun UnifiedUnitDetailScreen(
 
     val unitId = PropertyUnitScopedData.stableUnitId(property.propertyId, unit)
     var historyReadError by remember(unitId, detailsVersion) { mutableStateOf(TenantHistoryStore.read(context, property.propertyId, unitId, unit.name).error) }
-    val unitReceipts = receipts.filter { it.wohneinheit == unit.name || it.wohneinheit == unit.label }
+    val propertyUnits = remember(property) { viewModel.getWohneinheitenForProperty(property) }
+    val unitReceipts = receipts.filter { ReceiptUnitResolver.belongs(it, property.propertyId, unit, propertyUnits) }
     val unitDocs = documents.filter { it.unitId == unitId }
     val periods = remember(unitId, unit, detailsVersion) {
         TenantHistoryStore.ensureCurrentPeriod(
@@ -804,7 +814,7 @@ private fun UnifiedUnitDetailScreen(
                             UnifiedDetailFact(
                                 Icons.Default.HomeWork,
                                 "Wohnfläche",
-                                if (unit.wohnflaeche.isFinite() && unit.wohnflaeche >= 0.0) "${unit.wohnflaeche.toInt()} m²"
+                                if (unit.wohnflaeche.isFinite() && unit.wohnflaeche >= 0.0) "${GermanNumberInput.formatQuantity(unit.wohnflaeche)} m²"
                                 else "Gespeicherte Fläche bitte korrigieren"
                             )
                             UnifiedDetailFact(Icons.Default.Apartment, "Zimmer", extraDetails.rooms.ifBlank { "Nicht hinterlegt" })

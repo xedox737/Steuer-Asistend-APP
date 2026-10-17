@@ -61,6 +61,7 @@ class Phase9BWriteBoundaryTest {
 
     @Test fun sharedRentWriterIsAtomicAndOldInfinityIsRetainedUntilExplicitRepair() = runBlocking {
         val unit = WohneinheitStatus("WE 01", "WE 01", "Vermietet", "Mieter", 600.0, 72.5, "", "unit-9b")
+        app.getSharedPreferences("wohneinheiten_prefs", 0).edit().putString("unit_id_${unit.name}", unit.unitId).commit()
         val prefs = app.getSharedPreferences("rent_plan_prefs", 0)
         PropertyUnitScopedData.setRentValues(app, "property-1", unit, 220.0, 10.0)
         val before = prefs.all.toMap()

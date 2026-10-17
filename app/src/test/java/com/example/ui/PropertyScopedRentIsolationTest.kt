@@ -21,6 +21,7 @@ class PropertyScopedRentIsolationTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("tenant_history_prefs", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE).edit().clear().commit()
@@ -62,6 +63,7 @@ class PropertyScopedRentIsolationTest {
     @Test
     fun `legacy rent plan is copied lazily but original remains`() {
         val prefs = context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE)
+        context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE).edit().putString("unit_id_WE 1", "legacy-unit").commit()
         prefs.edit().putFloat("nk_WE 1", 155f).putFloat("other_WE 1", 12f).commit()
         val unit = WohneinheitStatus("WE 1", "WE 1", "Vermietet", "Alt", 500.0, 50.0, unitId = "legacy-unit")
 
@@ -80,6 +82,7 @@ class PropertyScopedRentIsolationTest {
         val prefs = context.getSharedPreferences("tenant_history_prefs", Context.MODE_PRIVATE)
         prefs.edit().putString("history_WE 1", arr.toString()).commit()
 
+        context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE).edit().putString("unit_id_WE 1", "legacy-unit").commit()
         val loaded = TenantHistoryStore.load(context, StableDocumentIdentity.LEGACY_PROPERTY_ID, "legacy-unit", "WE 1")
 
         assertEquals("Legacy", loaded.single().tenantName)

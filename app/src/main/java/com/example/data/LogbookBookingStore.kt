@@ -1,7 +1,6 @@
 package com.example.data
 
 import androidx.room.withTransaction
-import java.util.Locale
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -73,9 +72,10 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
                 hauptkategorie = "Sonstige Ausgaben",
                 unterkategorie = "Fahrtkosten",
                 kontoNr = "4670",
-                beschreibung = "Fahrtenbuch: ${normalized.stops.joinToString(" -> ") { it.label.ifBlank { it.address } }} | Zweck: $purpose | ${String.format(Locale.GERMANY, "%.1f", distance)} km | Quelle: ${source.name}",
+                beschreibung = "Fahrtenbuch: ${normalized.stops.joinToString(" -> ") { it.label.ifBlank { it.address } }} | Zweck: $purpose | ${com.example.ui.GermanNumberInput.formatQuantity(distance, minimumDecimals = 1, grouping = false)} km | Quelle: ${source.name}",
                 isEigenleistungSanierung = originalReceipt.isEigenleistungSanierung,
-                wohneinheit = originalReceipt.wohneinheit,
+                wohneinheit = originalReceipt.wohneinheit.takeIf { originalReceipt.propertyId == propertyId }.orEmpty(),
+                unitId = originalReceipt.unitId.takeIf { originalReceipt.propertyId == propertyId }.orEmpty(),
                 propertyId = propertyId
             )
         )

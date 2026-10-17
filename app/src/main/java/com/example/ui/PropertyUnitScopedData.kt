@@ -50,7 +50,8 @@ internal object PropertyUnitScopedData {
         val unitId = stableUnitId(propertyId, unit)
         val scoped = scopedRentKey(propertyId, unitId, field)
         if (prefs.contains(scoped)) return prefs.getFloat(scoped, 0f).toDouble()
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
+            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unit.name)) {
             val legacy = legacyRentKey(unit.name, field)
             if (prefs.contains(legacy)) {
                 val value = prefs.getFloat(legacy, 0f)
@@ -72,7 +73,8 @@ internal object PropertyUnitScopedData {
             .apply()
         // Keep historical property-1 consumers compatible without ever writing
         // name-only values for a second property.
-        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+        if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
+            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unit.name)) {
             prefs.edit()
                 .putFloat(legacyRentKey(unit.name, "nk"), com.example.data.NumericWriteBoundary.float(nebenkosten))
                 .putFloat(legacyRentKey(unit.name, "other"), com.example.data.NumericWriteBoundary.float(sonstige))
@@ -86,7 +88,8 @@ internal data class RentMonthProjection(
     val expected: Double,
     val actual: Double,
     val tenantNames: String,
-    val tenantChangeInMonth: Boolean
+    val tenantChangeInMonth: Boolean,
+    val tenantLabels: List<String> = listOf(tenantNames)
 ) {
     val missing: Double get() = RentTrackingLogic.outstanding(expected, actual)
     val status: RentPaymentStatus get() = when {
@@ -146,7 +149,8 @@ internal object RentTrackingLogic {
         month: YearMonth,
         bankAssignments: List<BankRentAssignment> = emptyList(),
         bankLinks: List<BankReceiptLink> = emptyList(),
-        bankTransactions: List<BankTransaction> = emptyList()
+        bankTransactions: List<BankTransaction> = emptyList(),
+        scopeUnits: List<WohneinheitStatus> = emptyList()
     ): RentMonthProjection {
         val stored = TenantHistoryStore.load(
             context = context,
@@ -158,12 +162,11 @@ internal object RentTrackingLogic {
         val relevant = periods.filter { expectedInMonth(it, month) > 0.0 }
         val expected = relevant.sumOf { expectedInMonth(it, month) }
         val stableUnitId = PropertyUnitScopedData.stableUnitId(propertyId, unit)
-        val actual = actualInMonth(propertyId, stableUnitId, unit, receipts, month, bankAssignments, bankLinks, bankTransactions)
-        val tenants = relevant.map { it.tenantName.ifBlank { "Mieter nicht hinterlegt" } }
-            .distinct().joinToString(" → ").ifBlank {
-                if (unit.status == "Vermietet") unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else unit.status
-            }
-        return RentMonthProjection(unit, expected, actual, tenants, relevant.size > 1)
+        val actual = actualInMonth(propertyId, stableUnitId, unit, receipts, month, bankAssignments, bankLinks, bankTransactions, scopeUnits)
+        val tenantLabels = relevant.map { it.tenantName.ifBlank { "Mieter nicht hinterlegt" } }.distinct().ifEmpty {
+            listOf(if (unit.status == "Vermietet") unit.mieter.ifBlank { "Mieter nicht hinterlegt" } else unit.status)
+        }
+        return RentMonthProjection(unit, expected, actual, tenantLabels.joinToString(" → "), relevant.size > 1, tenantLabels)
     }
 
     private fun actualInMonth(
@@ -174,14 +177,14 @@ internal object RentTrackingLogic {
         month: YearMonth,
         bankAssignments: List<BankRentAssignment>,
         bankLinks: List<BankReceiptLink>,
-        bankTransactions: List<BankTransaction>
+        bankTransactions: List<BankTransaction>,
+        scopeUnits: List<WohneinheitStatus>
     ): Double {
         val sources = RentPaymentProjection.project(
             receipts, bankAssignments, bankLinks, bankTransactions,
             assignmentScope = { it.propertyId == propertyId && it.unitId == stableUnitId },
-            receiptScope = { receipt -> receipt.propertyId == propertyId &&
-                (receipt.unitId == stableUnitId || (receipt.unitId.isBlank() &&
-                    (receipt.wohneinheit.equals(unit.name, true) || receipt.wohneinheit.equals(unit.label, true)))) }
+            receiptScope = { receipt -> ReceiptUnitResolver.belongs(receipt, propertyId, unit,
+                scopeUnits.ifEmpty { listOf(unit.copy(label = unit.name)) }) }
         )
         return sources.bankPayments.filter { it.rentMonth == month.toString() }.sumOf { it.allocatedAmount } +
             sources.receiptPayments.filter { receiptMonth(it.receipt) == month }.sumOf { it.amount }
@@ -202,7 +205,7 @@ internal object RentTrackingLogic {
             months = (1..12).map {
                 month(
                     context, propertyId, unit, receipts, YearMonth.of(year, it),
-                    bankAssignments, bankLinks, bankTransactions
+                    bankAssignments, bankLinks, bankTransactions, units
                 )
             }
         )

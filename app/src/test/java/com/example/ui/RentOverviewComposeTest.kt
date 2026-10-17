@@ -58,7 +58,7 @@ class RentOverviewComposeTest {
     private fun seed(open: Boolean = true, extraProperty: Boolean = false) {
         val db = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         runBlocking {
-            db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 81, propertyId = propertyId, name = "Sulzerstraße 32", wohneinheiten = "OG links,OG rechts,DG rechts"))
+            db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 81, propertyId = propertyId, name = "Sulzerstraße 32", wohneinheiten = UnitIdentity.encode(listOf("OG links", "OG rechts", "DG rechts").map { UnitIdentity.Entry("u-$it", it) })))
             if (extraProperty) db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 82, propertyId = "rent-b", name = "Zweites Haus", wohneinheiten = "OG links"))
         }
         ui.waitUntil(10000) { vm.properties.value.any { it.propertyId == propertyId } }
@@ -67,7 +67,7 @@ class RentOverviewComposeTest {
         ui.runOnIdle {
             vm.wohneinheitenStatus.value.forEachIndexed { i, unit ->
                 val updated = unit.copy(status = "Vermietet", mieter = listOf("Max Mustermann", "Anna Beispiel", "Mieter mit einem sehr langen Namen")[i],
-                    kaltmiete = 600.0, mietvertragsstart = "2026-01-01", unitId = "u-${unit.name}")
+                    kaltmiete = 600.0, mietvertragsstart = "2026-01-01")
                 vm.updateWohneinheit(updated)
                 PropertyUnitScopedData.setRentValues(fixtureContext, propertyId, updated, 150.0, 0.0)
                 TenantHistoryStore.ensureCurrentPeriod(fixtureContext, updated, 150.0, 0.0, propertyId)

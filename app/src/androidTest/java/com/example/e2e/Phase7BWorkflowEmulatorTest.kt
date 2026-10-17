@@ -97,7 +97,11 @@ class Phase7BObjectLedgerEmulatorTest : EmulatorTestSupport() {
 abstract class Phase7BBatchMatrix : EmulatorTestSupport() {
     @Test fun twentyUnitsKeepValuesWhileScrollingAndProtectExistingContracts() {
         val property = seedProperty("p7b-rent", "Mietobjekt")
-        val expanded = property.copy(wohneinheiten = (1..20).joinToString(", ") { "WE ${it.toString().padStart(2, '0')}" })
+        val originalUnitId = vm.getWohneinheitenForProperty(property).single().unitId
+        val expanded = property.copy(wohneinheiten = UnitIdentity.encode((1..20).map {
+            val name = "WE ${it.toString().padStart(2, '0')}"
+            UnitIdentity.Entry(if (it == 1) originalUnitId else StableDocumentIdentity.legacyUnitId(property.propertyId, name), name)
+        }))
         runBlocking(Dispatchers.IO) { db.propertyDao().insertPropertyMetadata(expanded) }
         val model = vm
         ui.waitUntil(10_000) { model.properties.value.any { it.propertyId == property.propertyId && it.wohneinheiten == expanded.wohneinheiten } }

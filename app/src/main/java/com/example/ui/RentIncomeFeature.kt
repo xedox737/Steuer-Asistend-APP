@@ -272,7 +272,7 @@ fun RentIncomeOverviewScreen(
             previousTenancyEnd = TenantHistoryStore.load(context, row.property.propertyId,
                 PropertyUnitScopedData.stableUnitId(row.property.propertyId, row.unit), row.unit.name)
                 .filterNot { it.active }.mapNotNull { RentOverviewPresentation.date(it.endDate) }.maxOrNull(),
-            incomeBreakdown = scopedReceipts.filter { it.propertyId == row.property.propertyId && it.wohneinheit == row.unit.name &&
+            incomeBreakdown = scopedReceipts.filter { ReceiptUnitResolver.belongs(it, row.property.propertyId, row.unit, groups.firstOrNull { group -> group.property.propertyId == row.property.propertyId }?.units.orEmpty()) &&
                 RentOverviewPresentation.date(it.datum)?.year == selectedYear && isRentalIncomeReceipt(it) }
                 .groupBy { it.unterkategorie.ifBlank { "Sonstige Mieteinnahmen" } }.mapValues { (_, values) -> values.sumOf { it.bruttobetrag } })
     }

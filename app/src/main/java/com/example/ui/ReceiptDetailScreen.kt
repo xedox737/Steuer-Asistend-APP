@@ -65,7 +65,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
         it.receiptId == current.id || (current.internalId.isNotBlank() && it.receiptInternalId == current.internalId)
     }.mapNotNull { link -> transactions.firstOrNull { it.transactionId == link.transactionId }?.let { link to it } }
     val status = downloads[current.internalId]
-    val paths = (status?.localPath ?: current.imageUrl).split(',').filter { it.isNotBlank() }
+    val paths = com.example.data.ReceiptOriginalChain.paths(status?.localPath ?: current.imageUrl).filter { it.isNotBlank() }
     var selectedFile by remember(current.id) { mutableIntStateOf(0) }
     val path = paths.getOrNull(selectedFile) ?: paths.firstOrNull()
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -197,7 +197,7 @@ fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () 
         transactions.firstOrNull { it.transactionId == link.transactionId }?.let { link to it }
     }
     val status = downloads[current.internalId]
-    val paths = (status?.localPath ?: current.imageUrl).split(',').filter { it.isNotBlank() }
+    val paths = com.example.data.ReceiptOriginalChain.paths(status?.localPath ?: current.imageUrl).filter { it.isNotBlank() }
     var selectedFile by remember(current.id) { mutableIntStateOf(0) }
     val path = paths.getOrNull(selectedFile) ?: paths.firstOrNull()
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
