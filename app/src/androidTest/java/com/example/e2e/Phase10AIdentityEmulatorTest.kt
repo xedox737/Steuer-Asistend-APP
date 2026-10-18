@@ -46,6 +46,12 @@ abstract class Phase10AIdentityMatrix : EmulatorTestSupport() {
         val historyRawBeforeRename = historyPrefs.getString(historyKey, null)
         assertNotNull(historyRawBeforeRename)
         fun detail(name: String) {
+            // ActivityScenario.recreate resumes the Activity before its new Compose root
+            // necessarily exposes this screen. Query the collection until it is registered;
+            // a missing single-node query can dump semantics off the UI thread mid-layout.
+            ui.waitUntil(10_000) {
+                ui.onAllNodesWithTag("property_units_overview").fetchSemanticsNodes().size == 1
+            }
             ui.onNodeWithTag("property_units_overview").performScrollToNode(hasTestTag("unit_card_U1"))
             ui.onNodeWithTag("unit_card_U1").assertIsDisplayed().performClick()
             ui.onNodeWithTag("unit_detail_list").performScrollToNode(hasText("41,25 m²"))
