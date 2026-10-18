@@ -71,7 +71,8 @@ android {
 }
 
 tasks.withType<Test>().configureEach {
-  systemProperty("robolectric.enabledSdks", "35")
+  // Respect each test's @Config SDK (34/35/36); a global allow-list silently
+  // turns other SDK classes into Gradle suite placeholders without methods.
   testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 }
 

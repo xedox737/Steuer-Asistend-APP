@@ -64,9 +64,27 @@ jobs:
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon
 
+      # Only JVM tests need Java 21 for Robolectric SDK 36. Android build,
+      # lint, release and the emulator job keep the existing Java 17 runtime.
+      - name: Set up Java 21 for Robolectric
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
       - name: Run unit tests
         timeout-minutes: 10
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
+
+      - name: Verify actual test method execution
+        if: always()
+        run: python3 .github/scripts/verify-test-execution.py
+
+      - name: Restore Java 17 for Android builds
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Build debug APK
         timeout-minutes: 10
