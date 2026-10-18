@@ -68,6 +68,10 @@ jobs:
         timeout-minutes: 10
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
+      - name: Preserve synthetic Phase10B evidence in job log
+        if: always() && github.head_ref == 'test/phase10b-portfolio-e2e-acceptance'
+        run: python3 .github/scripts/phase10b-evidence.py
+
       - name: Build debug APK
         timeout-minutes: 10
         run: gradle assembleDebug --stacktrace --no-daemon
