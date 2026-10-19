@@ -376,11 +376,26 @@ class Phase10BPortfolioAcceptanceTest {
             val adapter = rawMoshi.adapter(ManagedDocument::class.java)
             repository.getAllManagedDocuments().forEach { put(JSONObject(adapter.toJson(it))) }
         })
+        val chainEvidence = JSONObject()
+        val currentDocuments = repository.getAllManagedDocuments()
+        repository.getAllReceiptsIncludingDeletedList().forEach { receipt ->
+            chainEvidence.put(receipt.internalId, JSONObject().apply {
+                ReceiptOriginalChain.paths(receipt.imageUrl).forEachIndexed { rank, path ->
+                    val matching = currentDocuments.singleOrNull {
+                        it.receiptInternalId == receipt.internalId && it.localUri.removePrefix("file://") == path.removePrefix("file://")
+                    }
+                    val file = File(path.removePrefix("file://"))
+                    put(rank.toString(), JSONObject().put("documentId", matching?.documentId ?: "<unresolved>")
+                        .put("readable", file.isFile).put("sha256", if (file.isFile) StableDocumentIdentity.sha256(file.readBytes()) else "<missing>"))
+                }
+            })
+        }
+        roomRaw.put("receiptOriginalChains", chainEvidence)
         capturedRoom[label] = canonical(roomRaw)
         File(output, "$label.ROOM-RAW.json").writeText(capturedRoom.getValue(label))
         val text = canonical(result)
         File(output, "$label.json").writeText(text)
-        File(output, "$label.CONTRACT.json").writeText(RestoreContractSnapshot.fromRaw(text).canonical())
+        File(output, "$label.CONTRACT.json").writeText(RestoreContractSnapshot.fromRaw(text, capturedRoom.getValue(label)).canonical())
         captured[label] = text
         return text
     }
@@ -390,7 +405,8 @@ class Phase10BPortfolioAcceptanceTest {
         val rawDiff = snapshotDiff(before, after)
         val roomRawDiff = snapshotDiff(capturedRoom.getValue(beforeLabel), capturedRoom.getValue(afterLabel))
         File(output, "$name.ROOM-RAW-DIFF.json").writeText(roomRawDiff.toString(2))
-        val contractDiff = snapshotDiff(RestoreContractSnapshot.fromRaw(before).canonical(), RestoreContractSnapshot.fromRaw(after).canonical())
+        val contractDiff = snapshotDiff(RestoreContractSnapshot.fromRaw(before, capturedRoom.getValue(beforeLabel)).canonical(),
+            RestoreContractSnapshot.fromRaw(after, capturedRoom.getValue(afterLabel)).canonical())
         File(output, "$name.RAW-DIFF.json").writeText(rawDiff.toString(2))
         File(output, "$name.CONTRACT-DIFF.json").writeText(contractDiff.toString(2))
         comparisonSummary.put(name, JSONObject().put("raw", rawDiff.length()).put("roomRaw", roomRawDiff.length()).put("contract", contractDiff.length()))

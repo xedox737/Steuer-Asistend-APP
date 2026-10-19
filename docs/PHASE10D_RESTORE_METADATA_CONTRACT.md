@@ -12,25 +12,25 @@ Der separate Bericht Phase10B_Portfolio_E2E_Abnahme.md/.pdf ist bislang weder im
 Die zwei Portfolio- und Review-Tests werden unverändert aus dem QA-Head übernommen, ohne PR #139 zu mergen.
 
 Lokaler Gradle-Versuch scheitert vor Projektkonfiguration an `SocketException: Operation not permitted` im FileLockContentionHandler.
-Kein lokaler Testlauf wird als bestanden gezählt. Kein `/dev/kvm`; Android-Nachweis über CI.
+Kein Standard-Gradlelauf wird lokal als bestanden gezählt; direkt kompilierte JUnit-Nachweise sind unten separat ausgewiesen. Kein `/dev/kvm`; Android-Nachweis über CI.
 
 ## Q10B-01 – ursprüngliche Rohdifferenzen
 
 Unabhängig aus den JSON-Dateien des Originalartefakts nachgezählt, für 17 und 21 Einheiten identisch:
 
-| Feldgruppe | MERGE 1 | MERGE 2 | REPLACE_FULL | Vorläufige Bewertung |
+| Feldgruppe | MERGE 1 | MERGE 2 | REPLACE_FULL | Verbindliche Klassifikation |
 | --- | ---: | ---: | ---: | --- |
-| Receipt allocations | 70 | 70 | 70 | Consumerprüfung offen; kein pauschaler Ausschluss |
-| Receipt proposals | 70 | 70 | 70 | Consumerprüfung offen; kein pauschaler Ausschluss |
-| Originalreihenfolge in extractedFieldsJson | 70 | 70 | 70 | Explizite Reihenfolge betrifft Dateikette; nur beweisbar gleiche effektive Ordnung rekonstruierbar |
-| ManagedDocument source | 60 | 60 | 0 | Herkunftssemantik prüfen; nicht blind als Cache einstufen |
+| Receipt allocations | 70 | 70 | 70 | B: Rohrepräsentation beeinflusst Freigabe-Invalidierung |
+| Receipt proposals | 70 | 70 | 70 | B: Rohrepräsentation beeinflusst Freigabe-Invalidierung |
+| Originalreihenfolge in extractedFieldsJson | 70 | 70 | 70 | C bedingt: effektive Originalfolge muss exakt gleich bleiben |
+| ManagedDocument source | 60 | 60 | 0 | B: manuelle Importherkunft erhalten |
 | ManagedDocument updatedAt | 60 | 60 | 60 | B: Konfliktversion, keine technische Neudatierung zulässig |
-| Namens-ID-Aliasse auf bestehende IDs | 8 | 8 | 0 | Nur bei identischer stabiler Identität und ohne abweichende Legacy-Nutzdaten rekonstruierbar |
+| Namens-ID-Aliasse auf bestehende IDs | 8 | 8 | 0 | C bedingt: identische stabile ID und identische Legacy-Nutzdaten |
 | Gesamt | 338 | 338 | 270 | Keine Rohdifferenz entfernt |
 
 Restore 1/2 und lokale MERGE-Wiederholungen jeweils RAW 0. Originalhashes 60/60 erhalten.
 Gezielte Phase10DRestoreMetadataTest-Fälle prüfen tatsächlichen Reindex, Restore und Originaldownload sowie danach ältere/neuere Dokumentversionen.
-Bis zum reproduzierten Befund keine Produktänderung. Golden-Assertions bleiben zunächst strikt rot.
+Produktkorrekturen erfolgen ausschließlich nach den unten dokumentierten E10D-01/02-Reproduktionen; CLASS-A/B-Vergleiche bleiben strikt.
 
 ## Q10B-02 – SDK/JDK-Analyse
 
@@ -58,7 +58,7 @@ Ein verpflichtender XML-Prüfer zählt echte Methoden anhand ihres vollständige
 gleicht die Zahl gegen @Test im Quelltext ab und verlangt keine Fehler, Skips oder Platzhalter.
 Er schreibt `app/build/reports/phase10d/test-execution.json` und schlägt bei fehlenden Tests fehl.
 
-## Noch ausstehend
+## Reproduzierte Befunde und begrenzte Korrekturen
 
 ### Bestätigter Produktbefund E10D-01 (P2)
 
@@ -104,13 +104,14 @@ A = fachlich autoritativ, exakt erhalten. B = fachlich relevante Metadaten, exak
 außer bei einer ausdrücklich fachlichen Änderung oder einer nachgewiesen neueren Backup-Version.
 C = deterministisch rekonstruierbare Technik unter den unten genannten Bedingungen.
 D = ausdrücklich erlaubte semantische Repräsentationsnormalisierung. Für die beobachteten
-Aufteilungsstrings ist D **nicht** zulässig; die D-Liste dieses Vertrags ist leer.
+Aufteilungsstrings ist D **nicht** zulässig. Einziger D-Fall ist die unten separat begründete
+benachbarte IEEE-754-Darstellung eines unabhängig gesicherten exakten Centwerts.
 Nicht ausdrücklich als C/D aufgeführte neue Felder bleiben im Test standardmäßig autoritativ.
 
 „Exakt“ bezieht sich bei MERGE auf die nach Konfliktregel gewinnende Version; ein neuerer lokaler
 Stand wird nicht gegen einen absichtlich älteren Snapshot gleichgesetzt. Bei REPLACE_FULL gilt
 vollständig der gesicherte Stand. JSON-Objekt-/Entity-Set-Sortierung im bestehenden Golden-Serializer
-ist keine Wertnormalisierung; Zahlen haben keine Toleranz. Originalreihenfolge wird zusätzlich als
+ist keine Wertnormalisierung; es gibt keine globale Zahlentoleranz. Originalreihenfolge wird zusätzlich als
 Dokument-ID→Rang abgebildet, damit Set-Sortierung keine geänderte Seitenfolge verdeckt.
 
 | Field / Domain | Klasse | Exakt erhalten? | Normalisieren? | Neu erzeugen? | Konfliktnutzung | Nutzersichtbar | Exportrelevant | Consumer / Test |
@@ -122,10 +123,11 @@ Dokument-ID→Rang abgebildet, damit Set-Sortierung keine geänderte Seitenfolge
 | Receipt.internalId, displayId | A | ja | nein | nein | primäre Restoreidentität | Belegnummer | GUID/Zuordnung | ReceiptRestoreUpsertResolver; Phase10BPortfolioAcceptanceTest |
 | Receipt.numeric id | A (v2 gespeichert) | ja | nein | nein | ID-Kollision blockiert | Referenzen | Zuordnung | executeFullDriveRestore/upsertRestoredReceipt; Phase10C-Fälle |
 | Receipt.propertyId, unitId | A | ja | nein | nein | Scope/Identität | Objekt/Einheit | ja | ReceiptUnitResolver; Phase10A/6A und Portfolio |
-| Receipt.Betrag/Cent, Datum, Zeit, Kategorie, Konto, Beschreibung, Positionen, Zahlungsdaten | A | ja | nein | nein | lokaler Stand bei MERGE | ja | ja | Restore-Codec/TaxPropertyCalculator/DATEV; Portfolio und Phase9B |
+| Receipt.Cent, Datum, Zeit, Kategorie, Konto, Beschreibung, Positionen, Zahlungsdaten | A | ja | nein | nein | lokaler Stand bei MERGE | ja | ja | Restore-Codec/TaxPropertyCalculator/DATEV; Portfolio und Phase9B |
+| Receipt.bruttobetrag Double-Repräsentation | D nur exakt definierte Nachbarschaft; Cent A | Cent exakt | nur unmittelbar benachbarte IEEE-754-Repräsentation zum unabhängig gesicherten Centbetrag | nein | keine Version | gleicher Geldbetrag | Cent exakt | ReceiptMoney.toCent; Drive-v2 Long-Cent/100; LogbookBookingStore km×0,30; Helper-Gegenproben |
 | Receipt.imageUrl (lokale Pfadrepräsentation) | C | Byte-/Seitenreferenz ja; Gerätepfad nein | nur encodePaths-Vertrag | hashgeprüfter Gerätepfad | kein fachlicher Zeitstempel | Viewer | Originalbytes ja | ReceiptOriginalChain.localPaths/paths; downloadReceiptOriginals; ROOM-RAW und Originalhashprüfungen |
 | Receipt.driveFileId, Originalketten-Dokument-IDs/-Relationen | A | ja | nein | nein | Datei-/Belegidentität | Viewer/Originalwahl | ja | ReceiptOriginalChain/ReceiptDocumentReference; Mehrseiten-/DATEV-Regressionen |
-| Receipt.syncStatus, syncError, lastSyncedAt, driveRevision | C | Fachwerte unverändert | technischer Syncstatus | ja | keine Autorenkonfliktversion | Syncanzeige | nein | ReceiptRestoreUpsertResolver.preferredReceipt; Phase10D-Reindex-/Downloadtest |
+| Receipt.isArchivedToDrive, syncStatus, syncError, lastSyncedAt, driveRevision | C | Fachwerte unverändert | technischer Syncstatus | ja | keine Autorenkonfliktversion | Syncanzeige | nein | ReceiptRestoreUpsertResolver.preferredReceipt; Phase10D-Reindex-/Downloadtest |
 | ManagedDocument.documentId, receiptInternalId, propertyId, unitId | A | ja | nein | nein | Schlüssel/Scope | Zuordnung | Originalzuordnung | StableDocumentIdentity; Originalmetadaten-/Portfolio-/Reviewtests |
 | ManagedDocument.source | B | ja, DATEIIMPORT bleibt DATEIIMPORT | nein | nein | Teil der versionierten Entität | derzeit keine direkte Quellenanzeige | kein direkter DATEV-Consumer | ManagedDocumentService.prepareImport; ReceiptOriginalChain.parseMetadata; SupplementalDriveBackup.mergeManagedDocument; Phase10D MERGE/REPLACE |
 | ManagedDocument.updatedAt | B | ja | nein | nur echte fachliche Änderung | ja, RestoreConflictPolicy | Sortierung/Reviewstand | indirekt | ReceiptRepository.indexReceiptDocument; SupplementalDriveBackup; Reindex/Download/älterer+neuerer MERGE |
@@ -205,12 +207,40 @@ DATEV-Berechnung/Invalidierung wurden nicht geändert.
 Unveränderte Phase-10B-Snapshotdateien bleiben unter BEFORE/AFTER_*.json erhalten, damit die
 ursprünglichen 338/270 Diffgruppen vergleichbar bleiben. Hinzu kommen vollständige persistierte
 Receipt-/ManagedDocument-ROOM-RAW-Dateien mit Gerätepfaden, Originalkettenfeldern und OCR-Text.
+Auch diese vollständigen Room-Zeilen gehen in CONTRACT ein; ausschließlich die exakt benannten
+lokalen Pfad-/OCR-/Syncfelder werden nach Klasse C behandelt. Für imageUrl wird beim Erzeugen
+jedes Snapshots die tatsächlich geöffnete Originalkette zusätzlich als Rang→Dokument-ID/Hash/
+Lesbarkeit gesichert. Dadurch bleiben falsche Viewer-/Exportoriginale oder fehlende Seiten rot,
+auch wenn lokale Pfade zwischen Geräten wechseln. Diese Evidenz wird vor dem Löschen des
+BEFORE-Ziels ermittelt und bleibt anschließend unverändert erhalten.
 Für jeden Restorevergleich werden RAW-DIFF, ROOM-RAW-DIFF, CONTRACT-DIFF und comparison-summary.json
 abgelegt. Contract-Diff verlangt null; CLASS-A/B-Differenzen werden nicht normalisiert.
 Wiederholter Restore und lokale MERGEs verlangen zusätzlich RAW null. Der Helper enthält
-explicit authoritativeFields, normalizedFields (leer) und reconstructedFields. Gegenproben
+explizit authoritativeFields, normalizedFields (ausschließlich der unten definierte Geldrepräsentationsfall) und reconstructedFields. Gegenproben
 für source, Zeitstempel, Review, leere Strings, fremde IDs, unbekannte Felder und Seitenumordnung
 halten den Contractvergleich absichtlich rot.
+
+### Zusätzlich sichtbare vollständige Room-Differenzen
+
+Run 39189613225 sichert erstmals alle Room-Felder: BEFORE→Restore 1/2 und REPLACE jeweils
+402 Rohdifferenzen, davon 280 reine Receipt-Syncfelder (70×driveRevision/isArchivedToDrive/
+lastSyncedAt/syncStatus), 60 lokale Dokumentpfade, 60 imageUrl-Pfade und zwei Geldrepräsentationen.
+Die vollständigen Originalketten werden im Folgecommit auch beim Capture physisch geöffnet und
+mit Dokument-ID, SHA256 und Rang in CONTRACT aufgenommen; ein Pfad allein ist kein Integritätsnachweis.
+
+Die zwei Werte stammen unverändert aus dem produktiven LogbookBookingStore (`km * 0.30`):
+23 km ergeben als Double 6.8999999999999995, 24 km 7.199999999999999. ReceiptMoney.toCent
+und beide Drive-Backupwriter speichern ausdrücklich Long-Cent (690/720), der Reader lädt Cent/100
+(6.9/7.2). DATEV-Geldwerte und das bisherige Golden vergleichen diese Centwerte bereits exakt.
+Es gibt keinen Centverlust und keinen Anlass, dafür Produktcode oder historische Fixtures zu ändern.
+
+D ist **nur** zulässig, wenn für dieselbe internalId der unabhängig gesicherte Golden-Centwert
+vorliegt und der Room-Double entweder exakt Cent/100 oder dessen unmittelbar benachbarte
+IEEE-754-Zahl ist. Keine globale Rundung, kein Epsilon, keine Kanonisierung beliebiger Teilcentwerte.
+Der Rohdouble bleibt in ROOM-RAW sichtbar; CONTRACT speichert den belegten Centwert und die
+kanonische Double-Darstellung. Ein Cent Änderung, ein echter Teilcentbetrag (6.901), zwei Schritte
+IEEE-Abstand, fehlende Cent-Evidenz oder widersprechende Centwerte bleiben rot. Dies ergänzt die
+A-Klassifikation des fachlichen Geldbetrags um einen ausdrücklich begrenzten D-Repräsentationsfall.
 
 ### Q10B-02: Isolation und latente Test-Fixtures
 
@@ -252,3 +282,30 @@ native Android-PDF-Serialisierung. Der Adapter wird nicht in die App gepackt.
   optionale Repräsentationsfelder ergänzt. Alte Sicherungen ohne diese Werte können verlorene Rohbytes
   nicht rückwirkend liefern. Für neue Backups ist die ursprüngliche Repräsentation verbindlich exakt.
 - PR #139 bleibt Draft. Der reine Diagnosestand #141 wird durch den eigenen Fix-PR ersetzt; NICHT MERGEN.
+
+### Abgeschlossener Korrekturlauf 39189613225 (Head a71ef321177a24661f8eca6caded71c17ba7a555)
+
+Lint und Kompilierung grün. 1100 tatsächliche Methoden, zwei Fehler ausschließlich in
+PrimaryNavigationComposeTest.seed: Timeout in Zeile 70 beim Fixtureaufbau vor der Navigation.
+Alle fünf Zielklassen vollständig grün: 1/1/2/11/3 Methoden, jeweils 0 failures/errors/skips.
+Phase10C 14/14, Phase10A 30/30, Phase9A 19/19, Phase9B 6/6, Phase9C 10/10,
+Phase9D 20/20, neue Restore-/Freigabetests 12/12, Portfolio 4/4 und ReviewedDocumentRestore 1/1 grün.
+APK-Builds und Emulator wegen rotem Unit-Task übersprungen; das ist keine Gesamtfreigabe.
+Artefakt 12159808895, SHA256 `00dd9e6cc405ea3862ca72330e5576a881fa93831c34a0b5dbba08eb618cfe42`.
+
+Für beide Portfolios: bisheriger RAW-Vergleich Restore 1=8, Restore 2=8, REPLACE=0;
+CONTRACT jeweils 0; alle lokalen MERGEs und Restore-Wiederholungen RAW/CONTRACT=0.
+Die acht verbleibenden Rohwerte sind ausschließlich redundante Namens-ID-Bindings. Im Folgecommit
+wird CONTRACT zusätzlich auf sämtliche Room-Felder und die physisch geöffnete Originalkette erweitert.
+
+Der Navigationstest nutzt noch den statischen Room-Singleton der vorherigen Robolectric-Anwendung.
+Die exakt gleichen zwei Aufbaufehler sind lokal mit allen 19 Methoden reproduziert (2 failures,
+0 ignored). Ein Zwischenversuch nur mit Datenbankisolation beseitigte den Aufbaufehler, zeigte aber noch
+eine Cleanup-Race beim Leeren der beobachteten DB. Die Fixture wird deshalb vor dem Activitystart
+gesetzt, und die vorhandene IsolatedAppDatabaseRule schließt ihre eigene DB nach dem Activityende;
+keine Navigationsassertion, kein Timeout und kein Produkt-Navigationscode wird verändert.
+Der gezielte lokale Lauf mit vollständig isolierter Fixture führt alle 19 Methoden aus:
+19 bestanden, 0 failures, 0 ignored. Zusätzlich bestehen alle sieben aktuellen Helper-Gegenproben.
+Der vollständige Folge-CI-Lauf einschließlich Builds und Emulator wird vor Abschluss ausgewertet.
+Der finale Bericht mit Run-ID, Head und Jobresultaten wird im Draft-PR #142 veröffentlicht;
+dieses Dokument unterscheidet abgeschlossene historische Evidenz von noch laufenden Folgeprüfungen.
