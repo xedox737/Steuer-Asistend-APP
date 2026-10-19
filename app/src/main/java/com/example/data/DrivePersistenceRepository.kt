@@ -899,6 +899,10 @@ class DrivePersistenceRepository(
                 })
             }
             put("bookingProposals", propArray)
+            // Existing local representations are relevant to approval invalidation.
+            // Optional v2 fields preserve them without changing the typed values.
+            rawAllocationsJson?.let { put("rawAllocationsJson", it) }
+            rawBookingProposalsJson?.let { put("rawBookingProposalsJson", it) }
             
             put("zahlungsstatus", zahlungsstatus ?: JSONObject.NULL)
             put("zahlungsdatum", zahlungsdatum ?: JSONObject.NULL)
@@ -1056,6 +1060,14 @@ class DrivePersistenceRepository(
             )
         }
 
+        val rawAllocations = if (json.has("rawAllocationsJson") && !json.isNull("rawAllocationsJson")) json.getString("rawAllocationsJson") else null
+        val rawProposals = if (json.has("rawBookingProposalsJson") && !json.isNull("rawBookingProposalsJson")) json.getString("rawBookingProposalsJson") else null
+        require(rawAllocations == null || AccountingApprovalJson.decodeAllocations(rawAllocations) == allocationsList) {
+            "Gesicherte Aufteilungen widersprechen ihrer gespeicherten Repräsentation."
+        }
+        require(rawProposals == null || AccountingApprovalJson.decodeBookingProposals(rawProposals) == proposalsList) {
+            "Gesicherte Buchungsvorschläge widersprechen ihrer gespeicherten Repräsentation."
+        }
         val exportIdsList = mutableListOf<String>()
         val exportIdsArr = json.optJSONArray("exportIds") ?: JSONArray()
         for (i in 0 until exportIdsArr.length()) {
@@ -1147,7 +1159,9 @@ class DrivePersistenceRepository(
             aiAnalysis = aiAnalysis,
             createdAt = json.getString("createdAt"),
             updatedAt = json.getString("updatedAt"),
-            lastSyncedAt = if (json.isNull("lastSyncedAt")) null else json.getString("lastSyncedAt")
+            lastSyncedAt = if (json.isNull("lastSyncedAt")) null else json.getString("lastSyncedAt"),
+            rawAllocationsJson = rawAllocations,
+            rawBookingProposalsJson = rawProposals
         )
     }
 
@@ -1194,8 +1208,8 @@ class DrivePersistenceRepository(
             zahlungsartConfidence = zahlungsartConfidence,
             isArchivedToDrive = true,
             positionenJson = posJsonStr,
-            allocationsJson = AccountingApprovalJson.encodeAllocations(allocations),
-            bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(bookingProposals),
+            allocationsJson = rawAllocationsJson ?: AccountingApprovalJson.encodeAllocations(allocations),
+            bookingProposalsJson = rawBookingProposalsJson ?: AccountingApprovalJson.encodeBookingProposals(bookingProposals),
             freigabestatus = freigabestatus ?: "OFFEN",
             exportStatus = exportstatus ?: "EXPORTBEREIT",
             pruefstatus = pruefstatus ?: "GEPRUEFT",
@@ -1927,6 +1941,8 @@ class DrivePersistenceRepository(
                 positionen = currentReceipt.getPositionenList().toPersistedItems(),
                 allocations = AccountingApprovalJson.decodeAllocations(currentReceipt.allocationsJson),
                 bookingProposals = AccountingApprovalJson.decodeBookingProposals(currentReceipt.bookingProposalsJson),
+                rawAllocationsJson = currentReceipt.allocationsJson,
+                rawBookingProposalsJson = currentReceipt.bookingProposalsJson,
                 zahlungsstatus = "BEZAHLT",
                 zahlungsdatum = currentReceipt.datum,
                 zahlungsreferenz = "",
@@ -3587,6 +3603,8 @@ class DrivePersistenceRepository(
                     positionen = currentReceipt.getPositionenList().toPersistedItems(),
                     allocations = AccountingApprovalJson.decodeAllocations(currentReceipt.allocationsJson),
                     bookingProposals = AccountingApprovalJson.decodeBookingProposals(currentReceipt.bookingProposalsJson),
+                    rawAllocationsJson = currentReceipt.allocationsJson,
+                    rawBookingProposalsJson = currentReceipt.bookingProposalsJson,
                     zahlungsstatus = "BEZAHLT",
                     zahlungsdatum = currentReceipt.datum,
                     zahlungsreferenz = "",
@@ -4459,7 +4477,9 @@ data class PersistedReceipt(
     val analysisRecords: List<AnalysisRecord> = emptyList(),
     val createdAt: String,
     val updatedAt: String,
-    val lastSyncedAt: String?
+    val lastSyncedAt: String?,
+    val rawAllocationsJson: String? = null,
+    val rawBookingProposalsJson: String? = null
 )
 
 data class PersistedAiAnalysis(

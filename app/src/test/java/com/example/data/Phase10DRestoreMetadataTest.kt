@@ -90,6 +90,62 @@ class Phase10DRestoreMetadataTest : Phase10CRestoreFixture() {
         assertEquals("Neu Backup", repository.getManagedDocument(before.documentId)!!.title)
     }
 
+    @Test fun bankAndTripVersionsSurviveRestoreAndOrderBothFurtherMerges() = runTest {
+        seedReviewed()
+        val transaction = BankTransaction("transaction-10d", "account-10d", "2026-01-01",
+            amount = 10.0, category = "Alt", updatedAt = older)
+        val trip = LogbookTrip(id = 71, date = "2026-01-01", purpose = "Alt", startAddress = "A",
+            destinationAddress = "B", taxDistanceKm = 10.0, manualKm = 10.0, kilometerSource = "MANUELL",
+            createdAt = older, updatedAt = older, propertyId = "property-a")
+        db.bankDao().upsertTransaction(transaction)
+        db.logbookDao().upsertTrip(trip)
+        val oldBackup = SupplementalDriveBackup.createPayload(context, db)
+        db.bankDao().upsertTransaction(transaction.copy(category = "Neu lokal", updatedAt = newer))
+        db.logbookDao().upsertTrip(trip.copy(purpose = "Neu lokal", updatedAt = newer))
+        SupplementalDriveBackup.restorePayload(context, db, oldBackup, restoreMode = RestoreMode.MERGE)
+        assertEquals("Neu lokal", db.bankDao().getAllTransactions().single().category)
+        assertEquals(newer, db.bankDao().getAllTransactions().single().updatedAt)
+        assertEquals("Neu lokal", db.logbookDao().getTrip(71)!!.purpose)
+        oldBackup.getJSONArray("bankTransactions").getJSONObject(0)
+            .put("category", "Neu Backup").put("updatedAt", "2026-03-01T10:00:00Z")
+        oldBackup.getJSONArray("logbookTrips").getJSONObject(0)
+            .put("purpose", "Neu Backup").put("updatedAt", "2026-03-01T10:00:00Z")
+        SupplementalDriveBackup.restorePayload(context, db, oldBackup, restoreMode = RestoreMode.MERGE)
+        assertEquals("Neu Backup", db.bankDao().getAllTransactions().single().category)
+        assertEquals("Neu Backup", db.logbookDao().getTrip(71)!!.purpose)
+    }
+
+    @Test fun legacyBindingsRemainCompatibilityAliasesAcrossRestoreAndRename() = runTest {
+        seedReviewed()
+        val before = repository.getAllProperties().single()
+        val units = drive.getWohneinheitenFromPrefs(before)
+        val prefs = context.getSharedPreferences("wohneinheiten_prefs", 0)
+        val key = "property_property-a_unit_WE 01, EG links_id"
+        assertFalse(prefs.contains(key))
+        drive.saveWohneinheitenToPrefs(units, RestoreMode.MERGE, before.propertyId)
+        assertEquals("unit-a", prefs.getString(key, null))
+        backup()
+        restore(RestoreMode.MERGE)
+        assertEquals(units.map { it.unitId }, drive.getWohneinheitenFromPrefs(before).map { it.unitId })
+        val renamed = before.copy(wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("unit-a", "Neuer Name"))))
+        repository.updatePropertyMetadata(renamed)
+        val after = drive.getWohneinheitenFromPrefs(renamed)
+        assertEquals("unit-a", after.single().unitId)
+        assertEquals("Neuer Name", after.single().name)
+        prefs.edit().putString(key, "foreign-id").commit()
+        assertFalse(UnitIdentity.legacyAliasMatches(prefs, before.propertyId, "unit-a", "WE 01, EG links"))
+        assertEquals("unit-a", drive.getWohneinheitenFromPrefs(renamed).single().unitId)
+    }
+
+    @Test fun authoredReceiptChangeStillAdvancesDocumentVersion() = runTest {
+        val before = seedReviewed()
+        repository.insert(repository.getReceiptById(1)!!.copy(aussteller = "Fachlich geändert"))
+        val after = repository.getManagedDocument(before.documentId)!!
+        assertEquals("Fachlich geändert", after.title)
+        assertTrue(RestoreConflictPolicy.backupIsNewer(before.updatedAt, after.updatedAt))
+        assertEquals(before.source, after.source)
+    }
+
     private fun assertReview(expected: ManagedDocument, actual: ManagedDocument) {
         assertEquals(expected.documentId, actual.documentId)
         assertEquals(expected.propertyId, actual.propertyId)

@@ -25,6 +25,11 @@ class Phase10BPortfolioAcceptanceTest {
     private lateinit var drive: DrivePersistenceRepository
     private lateinit var fake: ManagedDocumentFakeDrive
     private lateinit var output: File
+    private val captured = linkedMapOf<String, String>()
+    private val capturedRoom = linkedMapOf<String, String>()
+    private val rawMoshi = com.squareup.moshi.Moshi.Builder()
+        .addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+    private val comparisonSummary = JSONObject()
     private val timestamp = "2026-10-01T12:00:00Z"
     private val config = DriveAppConfig(rootFolderId = "root", systemFolderId = "system", receiptsFolderId = "receipts",
         paymentsFolderId = "payments", exportsFolderId = "exports", transactionsFolderId = "transactions",
@@ -278,20 +283,25 @@ class Phase10BPortfolioAcceptanceTest {
         withContext(Dispatchers.IO) { db.clearAllTables() }
         PersistentPreferenceInventory.stores.forEach { context.getSharedPreferences(it.name, 0).edit().clear().commit() }
         suspend fun restore(mode: RestoreMode) {
+            val documentsBeforeCore = repository.getAllManagedDocuments().associateBy { it.documentId }
             val result = FullRestoreCoordinator.execute(coreRestore = { drive.executeFullDriveRestore("test-token", config, mode) },
                 preflight = { SupplementalDriveBackup.validatePayload(JSONObject(fake.json("supplemental"))) },
                 supplementalRestore = {
                     SupplementalDriveBackup.restorePayload(context, db, JSONObject(fake.json("supplemental")),
-                        replaceManagedDocuments = mode == RestoreMode.REPLACE_FULL, restoreMode = mode)
+                        replaceManagedDocuments = mode == RestoreMode.REPLACE_FULL, restoreMode = mode, localDocumentsBeforeCore = documentsBeforeCore)
                     SupplementalDriveBackup.Result(true, "ok")
                 })
             assertTrue(result.message, result.isSuccess)
             repository.getAllReceiptsList().filter { !it.driveFileId.isNullOrBlank() }.forEach { drive.downloadReceiptOriginals("test-token", it) }
         }
         restore(RestoreMode.MERGE)
-        check("empty MERGE") { assertTrue("Exact golden diff: AFTER_RESTORE_1", before == snapshot("AFTER_RESTORE_1")) }
+        check("empty MERGE") { assertTrue("Restore contract diff: AFTER_RESTORE_1", compare("BEFORE", "AFTER_RESTORE_1", before, snapshot("AFTER_RESTORE_1"))) }
         restore(RestoreMode.MERGE)
-        check("second MERGE") { assertTrue("Exact golden diff: AFTER_RESTORE_2", before == snapshot("AFTER_RESTORE_2")) }
+        check("second MERGE") { assertTrue("Restore contract diff: AFTER_RESTORE_2", compare("BEFORE", "AFTER_RESTORE_2", before, snapshot("AFTER_RESTORE_2"))) }
+        check("repeat MERGE raw and contract") {
+            assertTrue(compare("AFTER_RESTORE_1", "AFTER_RESTORE_2", captured.getValue("AFTER_RESTORE_1"),
+                captured.getValue("AFTER_RESTORE_2"), exactRaw = true))
+        }
         check("original bytes") {
             originals.forEach { source ->
                 val restored = repository.getAllManagedDocuments().single { it.documentId == source.documentId }
@@ -307,11 +317,15 @@ class Phase10BPortfolioAcceptanceTest {
             DistanceEvidence(manualKm = 25.0, manuallyConfirmed = true), bookingKey = "e10b-new-local").getOrThrow()
         val local = snapshot("AFTER_LOCAL_CHANGES")
         restore(RestoreMode.MERGE)
-        check("MERGE preserves local") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_1", local == snapshot("AFTER_LOCAL_MERGE_1")) }
+        check("MERGE preserves local") { assertTrue("Restore contract diff: AFTER_LOCAL_MERGE_1", compare("AFTER_LOCAL_CHANGES", "AFTER_LOCAL_MERGE_1", local, snapshot("AFTER_LOCAL_MERGE_1"), exactRaw = true)) }
         restore(RestoreMode.MERGE)
-        check("second local MERGE") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_2", local == snapshot("AFTER_LOCAL_MERGE_2")) }
+        check("second local MERGE") { assertTrue("Restore contract diff: AFTER_LOCAL_MERGE_2", compare("AFTER_LOCAL_CHANGES", "AFTER_LOCAL_MERGE_2", local, snapshot("AFTER_LOCAL_MERGE_2"), exactRaw = true)) }
+        check("repeat local MERGE raw and contract") {
+            assertTrue(compare("AFTER_LOCAL_MERGE_1", "AFTER_LOCAL_MERGE_2", captured.getValue("AFTER_LOCAL_MERGE_1"),
+                captured.getValue("AFTER_LOCAL_MERGE_2"), exactRaw = true))
+        }
         restore(RestoreMode.REPLACE_FULL)
-        check("REPLACE_FULL returns golden") { assertTrue("Exact golden diff: AFTER_REPLACE_FULL", before == snapshot("AFTER_REPLACE_FULL")) }
+        check("REPLACE_FULL returns golden") { assertTrue("Restore contract diff: AFTER_REPLACE_FULL", compare("BEFORE", "AFTER_REPLACE_FULL", before, snapshot("AFTER_REPLACE_FULL"))) }
         val receiptIds = repository.getAllReceiptsList().map { it.id }.toSet()
         val orphans = db.logbookDao().getAllTrips().filter { it.expenseReceiptId !in receiptIds }
         File(output, "relation-integrity.json").writeText(JSONObject().put("orphanTrips", JSONArray(orphans.map {
@@ -353,9 +367,36 @@ class Phase10BPortfolioAcceptanceTest {
                 assertEquals(2027, yearEnd.first().year)
             }
         } })
+        // Additional complete persisted Room rows retain device paths, original-chain
+        // fields and OCR text too. No secret preferences or credentials are exported.
+        val roomRaw = JSONObject().put("receipts", JSONArray().apply {
+            val adapter = rawMoshi.adapter(Receipt::class.java)
+            repository.getAllReceiptsIncludingDeletedList().forEach { put(JSONObject(adapter.toJson(it))) }
+        }).put("managedDocuments", JSONArray().apply {
+            val adapter = rawMoshi.adapter(ManagedDocument::class.java)
+            repository.getAllManagedDocuments().forEach { put(JSONObject(adapter.toJson(it))) }
+        })
+        capturedRoom[label] = canonical(roomRaw)
+        File(output, "$label.ROOM-RAW.json").writeText(capturedRoom.getValue(label))
         val text = canonical(result)
         File(output, "$label.json").writeText(text)
+        File(output, "$label.CONTRACT.json").writeText(RestoreContractSnapshot.fromRaw(text).canonical())
+        captured[label] = text
         return text
+    }
+
+    private fun compare(beforeLabel: String, afterLabel: String, before: String, after: String, exactRaw: Boolean = false): Boolean {
+        val name = "$beforeLabel--$afterLabel"
+        val rawDiff = snapshotDiff(before, after)
+        val roomRawDiff = snapshotDiff(capturedRoom.getValue(beforeLabel), capturedRoom.getValue(afterLabel))
+        File(output, "$name.ROOM-RAW-DIFF.json").writeText(roomRawDiff.toString(2))
+        val contractDiff = snapshotDiff(RestoreContractSnapshot.fromRaw(before).canonical(), RestoreContractSnapshot.fromRaw(after).canonical())
+        File(output, "$name.RAW-DIFF.json").writeText(rawDiff.toString(2))
+        File(output, "$name.CONTRACT-DIFF.json").writeText(contractDiff.toString(2))
+        comparisonSummary.put(name, JSONObject().put("raw", rawDiff.length()).put("roomRaw", roomRawDiff.length()).put("contract", contractDiff.length()))
+        File(output, "comparison-summary.json").writeText(comparisonSummary.toString(2))
+        println("PHASE10D $name RAW=${rawDiff.length()} CONTRACT=${contractDiff.length()}")
+        return contractDiff.length() == 0 && (!exactRaw || rawDiff.length() == 0)
     }
 
     /** Compare every included value exactly. Entity arrays are sets; no numeric epsilon or field filtering. */

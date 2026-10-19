@@ -72,8 +72,10 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Each class now gets an isolated JVM; allow for measured startup work,
+      # rather than masking an individual test failure or adding retries.
       - name: Run unit tests
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
       - name: Verify actual test method execution
