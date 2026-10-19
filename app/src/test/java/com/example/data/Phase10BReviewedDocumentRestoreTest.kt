@@ -52,6 +52,10 @@ class Phase10BReviewedDocumentRestoreTest : Phase10CRestoreFixture() {
             assertEquals(before.propertyId, actual.propertyId)
             assertEquals(before.unitId, actual.unitId)
             assertEquals(before.receiptInternalId, actual.receiptInternalId)
+            assertEquals(before.reviewStatus, actual.reviewStatus)
+            assertEquals(before.source, actual.source)
+            assertEquals(before.createdAt, actual.createdAt)
+            assertEquals(before.updatedAt, actual.updatedAt)
             val actualFields = JSONObject(actual.extractedFieldsJson.ifBlank { "{}" })
             for (key in listOf("_displayDescription", "rechnungNummer")) {
                 val expected = JSONObject(before.extractedFieldsJson).getString(key)

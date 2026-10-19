@@ -64,13 +64,37 @@ jobs:
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon
 
+      # Only JVM tests need Java 21 for Robolectric SDK 36. Android build,
+      # lint, release and the emulator job keep the existing Java 17 runtime.
+      - name: Set up Java 21 for Robolectric
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Each class now gets an isolated JVM; allow for measured startup work,
+      # rather than masking an individual test failure or adding retries.
       - name: Run unit tests
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
-      - name: Preserve synthetic Phase10B evidence in job log
-        if: always() && github.head_ref == 'test/phase10b-portfolio-e2e-acceptance'
+      - name: Verify actual test method execution
+        if: always()
+        run: python3 .github/scripts/verify-test-execution.py
+
+      - name: Verify saved Phase 10B portfolio evidence
+        if: always()
+        run: python3 .github/scripts/phase10b-audit-evidence.py app/build app/build/reports/phase10b/audit-evidence.json
+
+      - name: Preserve synthetic Phase 10B evidence
+        if: always()
         run: python3 .github/scripts/phase10b-evidence.py
+
+      - name: Restore Java 17 for Android builds
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Build debug APK
         timeout-minutes: 10
@@ -219,6 +243,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel on
           script: bash .github/scripts/run-android-emulator-e2e.sh
 
+      - name: Preserve synthetic Phase 10B emulator execution evidence
+        if: always()
+        run: python3 .github/scripts/phase10b-evidence.py --emulator
+
       - name: Upload emulator reports and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -228,5 +256,6 @@ jobs:
             app/build/reports/androidTests/**
             app/build/outputs/androidTest-results/**
             app/build/emulator-e2e/**
+            app/build/reports/phase10b/emulator-ci-evidence-summary.json
           if-no-files-found: warn
           retention-days: 14

@@ -4,16 +4,17 @@ import android.app.Application
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ApplicationProvider
 import com.example.MainActivity
 import com.example.data.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
-import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -25,7 +26,13 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class PrimaryNavigationComposeTest {
     @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
-    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
+    // The Application is recreated for each Robolectric method. Its Room observers
+    // must use that same Application, not the previous method's static database.
+    @get:Rule(order = 1) val databaseIsolation = IsolatedAppDatabaseRule()
+    @get:Rule(order = 2) val fixture = object : ExternalResource() {
+        override fun before() = seedDatabase()
+    }
+    @get:Rule(order = 3) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
     private val fixtureContext get() = vm.getApplication<Application>()
     private lateinit var db: AppDatabase
@@ -37,19 +44,12 @@ class PrimaryNavigationComposeTest {
     private lateinit var preferenceSnapshot: Map<String, Map<String, *>>
     private val prefs = listOf("wohneinheiten_prefs", "rent_plan_prefs", "tenant_history_prefs", "google_drive_prefs")
 
-    private fun clearFixture() {
-        ui.runOnIdle { vm.navigateToPrimaryDestination(AppScreen.DASHBOARD) }
-        runBlocking(Dispatchers.IO) { db.clearAllTables() }
-        ui.waitUntilAndroidState(10000) { vm.properties.value.isEmpty() && vm.receipts.value.isEmpty() }
-        ui.waitForIdle()
-        prefs.forEach { fixtureContext.getSharedPreferences(it, 0).edit().clear().commit() }
-    }
-    @After fun cleanUpFixture() = clearFixture()
-
-    @Before fun seed() {
-        val application = fixtureContext
+    // Seed before Activity/ViewModel observers start. Clearing an observed database
+    // races its initial query/invalidation; the per-method rule owns teardown instead.
+    private fun seedDatabase() {
+        val application = ApplicationProvider.getApplicationContext<Application>()
         db = AppDatabase.getDatabase(application, CoroutineScope(Dispatchers.IO))
-        clearFixture()
+        prefs.forEach { application.getSharedPreferences(it, 0).edit().clear().commit() }
         runBlocking(Dispatchers.IO) {
             db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 84, propertyId = propertyId,
                 name = "Primärnavigation Haus", wohneinheiten = "WE 1"))
@@ -67,6 +67,9 @@ class PrimaryNavigationComposeTest {
                 mimeType = "text/plain", localUri = file.absolutePath, ocrText = "Erhaltene Unterlage")
             db.managedDocumentDao().upsert(storedDocument)
         }
+    }
+
+    @Before fun seed() {
         ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.propertyId == propertyId } && vm.receipts.value.any { it.id == 980 } }
         ui.runOnIdle { vm.selectProperty(propertyId) }
         ui.waitUntilAndroidState(10000) { vm.propertyMetadata.value?.propertyId == propertyId && vm.wohneinheitenStatus.value.isNotEmpty() }

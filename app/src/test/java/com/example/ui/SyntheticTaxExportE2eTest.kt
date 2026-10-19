@@ -40,7 +40,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], shadows = [AdvisorPdfDocumentShadow::class])
 class SyntheticTaxExportE2eTest {
     private lateinit var application: Application
     private lateinit var context: Context
@@ -58,7 +58,9 @@ class SyntheticTaxExportE2eTest {
             .putInt("receipt_${data.interestReceipt.id}", data.loan.id).commit()
         TenantHistoryStore.save(
             context,
-            "WE_01",
+            data.metadata.propertyId,
+            data.unit.unitId,
+            data.unit.name,
             listOf(TenantPeriod(1, "WE_01", "Testmieter", "2026-01-01", "2026-01-31", 850.0, 150.0, 0.0))
         )
     }
@@ -140,6 +142,12 @@ class SyntheticTaxExportE2eTest {
             }
             val startPdf = zip.getInputStream(zip.getEntry("00_Start/01_Jahresuebersicht.pdf")).readBytes()
             assertArrayEquals("%PDF".toByteArray(), startPdf.copyOfRange(0, 4))
+            org.apache.pdfbox.pdmodel.PDDocument.load(startPdf).use { pdf ->
+                assertTrue(pdf.numberOfPages > 0)
+                val text = org.apache.pdfbox.text.PDFTextStripper().getText(pdf)
+                assertTrue(text.contains("Jahresübersicht für den Steuerberater"))
+                assertTrue(text.contains(summary.propertyTitle))
+            }
             assertTrue(names.contains("03_Anlage_V/01_Anlage_V_Vorschau.csv"))
             assertTrue(names.contains("03_Anlage_V/02_Werteherkunft_und_Pruefstatus.csv"))
             val datevEntry = names.single { it.startsWith("01_DATEV/EXTF_Buchungsstapel_") }
@@ -243,6 +251,8 @@ class SyntheticTaxExportE2eTest {
                     beschreibung = description,
                     imageUrl = files.getValue(fixture).absolutePath,
                     wohneinheit = unit,
+                    propertyId = "property-tax-e2e",
+                    unitId = if (unit.isBlank()) "" else "unit-test-01",
                     internalId = "tax-e2e-$id",
                     displayId = "BLG-2026-${id.toString().padStart(5, '0')}",
                     driveFolderId = "legacy-category-folder-$id",
@@ -302,9 +312,10 @@ class SyntheticTaxExportE2eTest {
                 monatlicheRate = 2_100.0,
                 startDatum = "2025-10-01",
                 zinsbindungBis = "2035-10-01",
-                laufzeitBis = "2055-10-01"
+                laufzeitBis = "2055-10-01",
+                propertyId = "property-tax-e2e"
             ),
-            unit = WohneinheitStatus("WE_01", "Wohnung 1", "Vermietet", "Testmieter", 850.0, 80.0, "2026-01-01", "unit-test-01"),
+            unit = WohneinheitStatus("WE_01", "WE_01 / Wohnung 1", "Vermietet", "Testmieter", 850.0, 80.0, "2026-01-01", "unit-test-01"),
             interestReceipt = approved.single { it.id == 7 }
         )
     }

@@ -945,6 +945,7 @@ class ReceiptRepository(
         metadataFileId.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptsByMetadataFileId(it) }.orEmpty()
 
     suspend fun insert(receipt: Receipt): Long {
+        val previousReceipt = if (receipt.id > 0) receiptDao.getReceiptById(receipt.id) else null
         ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson)
         if (receipt.id > 0) {
             val existing = receiptDao.getReceiptById(receipt.id)
@@ -989,11 +990,12 @@ class ReceiptRepository(
                 bildPfad = finalReceipt.imageUrl
             )
         )
-        indexReceiptDocument(finalReceipt)
+        indexReceiptDocument(finalReceipt, previousReceipt)
         return id
     }
 
     suspend fun insertAll(receipts: List<Receipt>) {
+        val previousReceipts = receipts.filter { it.id > 0 }.associate { it.id to receiptDao.getReceiptById(it.id) }
         receipts.forEach { candidate ->
             ReceiptItemConverter.validateJsonForWrite(candidate.positionenJson)
             if (candidate.id > 0) receiptDao.getReceiptById(candidate.id)?.let { existing ->
@@ -1022,16 +1024,23 @@ class ReceiptRepository(
                     bildPfad = receipt.imageUrl
                 )
             )
-            indexReceiptDocument(receipt)
+            indexReceiptDocument(receipt, previousReceipts[receipt.id])
         }
     }
 
-    private suspend fun indexReceiptDocument(receipt: Receipt) {
+    private suspend fun indexReceiptDocument(receipt: Receipt, previousReceipt: Receipt?) {
         val dao = managedDocumentDao ?: return
         if (receipt.internalId.isBlank()) return
         val existing = dao.getById(StableDocumentIdentity.receiptDocumentId(receipt.internalId))
             ?: dao.getByReceiptId(receipt.internalId)
         val now = java.time.Instant.now().toString()
+        // File/cache/sync writes are not authored document versions. In particular,
+        // a restore download must not turn an old review into the newest conflict.
+        val propertyChanged = previousReceipt != null && previousReceipt.propertyId != receipt.propertyId
+        val unitChanged = previousReceipt != null && previousReceipt.unitId != receipt.unitId
+        val dateChanged = previousReceipt != null && previousReceipt.datum != receipt.datum
+        val issuerChanged = previousReceipt != null && previousReceipt.aussteller != receipt.aussteller
+        val authoredChange = propertyChanged || unitChanged || dateChanged || issuerChanged
         val propertyId = receipt.propertyId
         val localPath = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull().orEmpty().removePrefix("file://")
         val localFile = java.io.File(localPath)
@@ -1045,12 +1054,12 @@ class ReceiptRepository(
             aiAnalysisStatus = DocumentProcessingStatus.NICHT_ERFORDERLICH.name,
             reviewStatus = DocumentReviewStatus.GEPRUEFT.name
         )).copy(
-            propertyId = propertyId,
-            unitId = receipt.unitId.takeIf(String::isNotBlank),
-            documentType = ManagedDocumentType.RECHNUNG.name,
+            propertyId = if (existing == null || propertyChanged) propertyId else existing.propertyId,
+            unitId = if (existing == null || unitChanged) receipt.unitId.takeIf(String::isNotBlank) else existing.unitId,
+            documentType = existing?.documentType ?: ManagedDocumentType.RECHNUNG.name,
             documentCategory = existing?.documentCategory ?: "02_Belege/${receipt.datum.take(4)}",
-            documentDate = receipt.datum,
-            title = receipt.aussteller,
+            documentDate = if (existing == null || dateChanged) receipt.datum else existing.documentDate,
+            title = if (existing == null || issuerChanged) receipt.aussteller else existing.title,
             originalFilename = existing?.originalFilename?.takeIf(String::isNotBlank)
                 ?: com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull().orEmpty().substringAfterLast('/'),
             storedFilename = receipt.storedFilename ?: existing?.storedFilename.orEmpty(),
@@ -1060,7 +1069,7 @@ class ReceiptRepository(
             driveFolderId = receipt.driveFolderId ?: existing?.driveFolderId,
             sha256 = existing?.sha256?.takeIf(String::isNotBlank) ?: localBytes?.let(StableDocumentIdentity::sha256).orEmpty(),
             fileSizeBytes = receipt.fileSizeBytes ?: existing?.fileSizeBytes?.takeIf { it > 0 } ?: localBytes?.size?.toLong() ?: 0L,
-            updatedAt = now
+            updatedAt = if (existing == null || authoredChange) now else existing.updatedAt
         )
         dao.upsert(document)
         dao.deleteSearchEntry(document.documentId)
@@ -1080,9 +1089,11 @@ class ReceiptRepository(
                 driveFileId = null, driveFolderId = null,
                 originalFilename = file.name, storedFilename = file.name, sha256 = sha,
                 fileSizeBytes = file.length(), mimeType = format?.first ?: "application/octet-stream"
-            )).copy(propertyId = propertyId, unitId = receipt.unitId.takeIf(String::isNotBlank),
-                documentDate = receipt.datum, title = receipt.aussteller, localUri = path,
-                extractedFieldsJson = fields, updatedAt = now)
+            )).copy(propertyId = if (current == null || propertyChanged) propertyId else current.propertyId,
+                unitId = if (current == null || unitChanged) receipt.unitId.takeIf(String::isNotBlank) else current.unitId,
+                documentDate = if (current == null || dateChanged) receipt.datum else current.documentDate,
+                title = if (current == null || issuerChanged) receipt.aussteller else current.title, localUri = path,
+                extractedFieldsJson = fields, updatedAt = if (current == null || authoredChange) now else current.updatedAt)
             dao.upsert(page)
             dao.deleteSearchEntry(page.documentId)
             dao.insertSearchEntry(DocumentSearchFts(page.documentId, DocumentSearchTextBuilder.build(page, receipt)))

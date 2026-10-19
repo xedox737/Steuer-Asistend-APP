@@ -71,7 +71,12 @@ android {
 }
 
 tasks.withType<Test>().configureEach {
-  systemProperty("robolectric.enabledSdks", "35")
+  // Respect each test's @Config SDK (34/35/36); a global allow-list silently
+  // turns other SDK classes into Gradle suite placeholders without methods.
+  // SDK 34/35/36 native JNI registrations cannot share a worker JVM. Fresh
+  // workers preserve every class/method and avoid cross-SDK native state leaks.
+  forkEvery = 1
+  maxParallelForks = 2
   testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 }
 

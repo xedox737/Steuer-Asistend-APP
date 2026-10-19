@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.ui.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,6 +26,11 @@ class Phase10BPortfolioAcceptanceTest {
     private lateinit var drive: DrivePersistenceRepository
     private lateinit var fake: ManagedDocumentFakeDrive
     private lateinit var output: File
+    private val captured = linkedMapOf<String, String>()
+    private val capturedRoom = linkedMapOf<String, String>()
+    private val rawMoshi = com.squareup.moshi.Moshi.Builder()
+        .addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+    private val comparisonSummary = JSONObject()
     private val timestamp = "2026-10-01T12:00:00Z"
     private val config = DriveAppConfig(rootFolderId = "root", systemFolderId = "system", receiptsFolderId = "receipts",
         paymentsFolderId = "payments", exportsFolderId = "exports", transactionsFolderId = "transactions",
@@ -201,7 +207,15 @@ class Phase10BPortfolioAcceptanceTest {
                 kontoNr = "4800", beschreibung = if (n == 7) "Gutschrift" else "Testbeleg $n", propertyId = p.propertyId,
                 unitId = unit.unitId, wohneinheit = unit.name, imageUrl = file.absolutePath, driveFileId = "e10b-file-$n",
                 driveMetadataFileId = "meta-e10b-receipt-$n", originalMimeType = mime(format.key),
-                freigabestatus = if (n % 2 == 0) "FREIGEGEBEN" else "OFFEN")
+                freigabestatus = if (n % 2 == 0) "FREIGEGEBEN" else "OFFEN").let { receipt ->
+                if (n != 4) receipt else {
+                    val approved = com.example.util.DatevMappingService.confirmDatevPreview(receipt,
+                        com.example.util.DatevMappingService.buildDatevBookingRows(receipt, DatevProfile()))!!
+                    approved.copy(allocationsJson = " \n" + approved.allocationsJson,
+                        bookingProposalsJson = " \n" + approved.bookingProposalsJson,
+                        exportStatus = "EXPORTIERT", exportlaufId = "e10b-audit-0")
+                }
+            }
             repository.insert(r)
             val doc = ManagedDocument(documentId = "receipt:${r.internalId}", propertyId = p.propertyId, unitId = unit.unitId,
                 receiptInternalId = r.internalId, originalFilename = "Beleg, $n.${format.key}", storedFilename = "Beleg, $n.${format.key}",
@@ -211,6 +225,12 @@ class Phase10BPortfolioAcceptanceTest {
             fake.put(r.driveFileId!!, "receipts", doc.storedFilename, file.readBytes())
             doc
         }
+        val reviewService = ManagedDocumentService(context, repository)
+        val reviewDocument = originals.first().copy(title = "Fachlicher Titel vor Backup")
+        repository.upsertManagedDocument(reviewDocument)
+        reviewService.confirmReview(reviewDocument, ManagedDocumentType.RECHNUNG, "2026-01-15", reviewDocument.unitId,
+            JSONObject().put("_displayDescription", "Bestätigte Beschreibung vor Backup")
+                .put("rechnungNummer", "E10B-REVIEW-BACKUP").toString())
         renovation.saveRelation(RenovationReceiptRelation("e10b-receipt-2", properties[1].propertyId, "e10b-measure"))
         val store = LogbookBookingStore(db, repository)
         repeat(10) { index ->
@@ -233,7 +253,10 @@ class Phase10BPortfolioAcceptanceTest {
             db.bankDao().upsertAccount(resolved.account)
             return db.bankDao().insertTransactions(resolved.transactions).count { it != -1L }
         }
-        assertEquals(120, importRows("Bank.csv")); assertEquals(0, importRows("Bank.csv")); assertEquals(0, importRows("Anderer Name.csv"))
+        val importedRows = listOf(importRows("Bank.csv"), importRows("Bank.csv"), importRows("Anderer Name.csv"))
+        File(output, "bank-import-results.json").writeText(JSONObject().put("inserted", JSONArray(importedRows))
+            .put("errorRowsPerImport", 1).toString(2))
+        assertEquals(listOf(120, 0, 0), importedRows)
         val transactions = db.bankDao().getAllTransactions()
         transactions.take(6).forEachIndexed { index, tx ->
             val p = properties[index % 5]; val u = drive.getWohneinheitenFromPrefs(p).first()
@@ -277,21 +300,33 @@ class Phase10BPortfolioAcceptanceTest {
         originals.forEach { assertTrue(File(it.localUri).delete()) }
         withContext(Dispatchers.IO) { db.clearAllTables() }
         PersistentPreferenceInventory.stores.forEach { context.getSharedPreferences(it.name, 0).edit().clear().commit() }
+        val emptyTarget = JSONObject().put("receipts", repository.getAllReceiptsList().size)
+            .put("documents", repository.getAllManagedDocuments().size).put("properties", repository.getAllProperties().size)
+            .put("trips", db.logbookDao().getAllTrips().size).put("bankTransactions", db.bankDao().getAllTransactions().size)
+            .put("remainingOriginals", originals.count { File(it.localUri).exists() })
+            .put("preferenceEntries", PersistentPreferenceInventory.stores.sumOf { context.getSharedPreferences(it.name, 0).all.size })
+        File(output, "empty-target.json").writeText(emptyTarget.toString(2))
+        emptyTarget.keys().forEach { assertEquals("Empty target: $it", 0, emptyTarget.getInt(it)) }
         suspend fun restore(mode: RestoreMode) {
+            val documentsBeforeCore = repository.getAllManagedDocuments().associateBy { it.documentId }
             val result = FullRestoreCoordinator.execute(coreRestore = { drive.executeFullDriveRestore("test-token", config, mode) },
                 preflight = { SupplementalDriveBackup.validatePayload(JSONObject(fake.json("supplemental"))) },
                 supplementalRestore = {
                     SupplementalDriveBackup.restorePayload(context, db, JSONObject(fake.json("supplemental")),
-                        replaceManagedDocuments = mode == RestoreMode.REPLACE_FULL, restoreMode = mode)
+                        replaceManagedDocuments = mode == RestoreMode.REPLACE_FULL, restoreMode = mode, localDocumentsBeforeCore = documentsBeforeCore)
                     SupplementalDriveBackup.Result(true, "ok")
                 })
             assertTrue(result.message, result.isSuccess)
             repository.getAllReceiptsList().filter { !it.driveFileId.isNullOrBlank() }.forEach { drive.downloadReceiptOriginals("test-token", it) }
         }
         restore(RestoreMode.MERGE)
-        check("empty MERGE") { assertTrue("Exact golden diff: AFTER_RESTORE_1", before == snapshot("AFTER_RESTORE_1")) }
+        check("empty MERGE") { assertTrue("Restore contract diff: AFTER_RESTORE_1", compare("BEFORE", "AFTER_RESTORE_1", before, snapshot("AFTER_RESTORE_1"))) }
         restore(RestoreMode.MERGE)
-        check("second MERGE") { assertTrue("Exact golden diff: AFTER_RESTORE_2", before == snapshot("AFTER_RESTORE_2")) }
+        check("second MERGE") { assertTrue("Restore contract diff: AFTER_RESTORE_2", compare("BEFORE", "AFTER_RESTORE_2", before, snapshot("AFTER_RESTORE_2"))) }
+        check("repeat MERGE raw and contract") {
+            assertTrue(compare("AFTER_RESTORE_1", "AFTER_RESTORE_2", captured.getValue("AFTER_RESTORE_1"),
+                captured.getValue("AFTER_RESTORE_2"), exactRaw = true))
+        }
         check("original bytes") {
             originals.forEach { source ->
                 val restored = repository.getAllManagedDocuments().single { it.documentId == source.documentId }
@@ -301,17 +336,27 @@ class Phase10BPortfolioAcceptanceTest {
         val newer = db.bankDao().getAllTransactions().first().copy(category = "Lokale Korrektur", updatedAt = "2026-10-17T12:00:00Z")
         db.bankDao().upsertTransaction(newer)
         db.bankDao().deleteLink("e10b-link")
+        db.bankDao().upsertLink(BankReceiptLink("e10b-local-link", transactions.last().transactionId, 1, "e10b-receipt-1", 1.0))
+        val restoredDocument = repository.getManagedDocument(reviewDocument.documentId)!!
+        val reviewedLocal = reviewService.confirmReview(restoredDocument, ManagedDocumentType.RECHNUNG,
+            restoredDocument.documentDate, restoredDocument.unitId,
+            JSONObject(restoredDocument.extractedFieldsJson).put("rechnungNummer", "E10B-REVIEW-LOCAL").toString())
+        repository.upsertManagedDocument(reviewedLocal.copy(title = "Neuerer lokaler fachlicher Titel"))
         store.saveLogbookTrip(Receipt(aussteller = "Manuelle Fahrt", datum = "2026-10-17", uhrzeit = "11:00", bruttobetrag = 0.0,
             hauptkategorie = "", unterkategorie = "", kontoNr = "", beschreibung = "", propertyId = properties[0].propertyId),
             "Neue lokale Fahrt", "A", "B", listOf(TripStop("A", "Start", 0), TripStop("B", "Ziel", 1)), TripRouteMode.EINFACH, false,
             DistanceEvidence(manualKm = 25.0, manuallyConfirmed = true), bookingKey = "e10b-new-local").getOrThrow()
         val local = snapshot("AFTER_LOCAL_CHANGES")
         restore(RestoreMode.MERGE)
-        check("MERGE preserves local") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_1", local == snapshot("AFTER_LOCAL_MERGE_1")) }
+        check("MERGE preserves local") { assertTrue("Restore contract diff: AFTER_LOCAL_MERGE_1", compare("AFTER_LOCAL_CHANGES", "AFTER_LOCAL_MERGE_1", local, snapshot("AFTER_LOCAL_MERGE_1"), exactRaw = true)) }
         restore(RestoreMode.MERGE)
-        check("second local MERGE") { assertTrue("Exact golden diff: AFTER_LOCAL_MERGE_2", local == snapshot("AFTER_LOCAL_MERGE_2")) }
+        check("second local MERGE") { assertTrue("Restore contract diff: AFTER_LOCAL_MERGE_2", compare("AFTER_LOCAL_CHANGES", "AFTER_LOCAL_MERGE_2", local, snapshot("AFTER_LOCAL_MERGE_2"), exactRaw = true)) }
+        check("repeat local MERGE raw and contract") {
+            assertTrue(compare("AFTER_LOCAL_MERGE_1", "AFTER_LOCAL_MERGE_2", captured.getValue("AFTER_LOCAL_MERGE_1"),
+                captured.getValue("AFTER_LOCAL_MERGE_2"), exactRaw = true))
+        }
         restore(RestoreMode.REPLACE_FULL)
-        check("REPLACE_FULL returns golden") { assertTrue("Exact golden diff: AFTER_REPLACE_FULL", before == snapshot("AFTER_REPLACE_FULL")) }
+        check("REPLACE_FULL returns golden") { assertTrue("Restore contract diff: AFTER_REPLACE_FULL", compare("BEFORE", "AFTER_REPLACE_FULL", before, snapshot("AFTER_REPLACE_FULL"))) }
         val receiptIds = repository.getAllReceiptsList().map { it.id }.toSet()
         val orphans = db.logbookDao().getAllTrips().filter { it.expenseReceiptId !in receiptIds }
         File(output, "relation-integrity.json").writeText(JSONObject().put("orphanTrips", JSONArray(orphans.map {
@@ -353,9 +398,139 @@ class Phase10BPortfolioAcceptanceTest {
                 assertEquals(2027, yearEnd.first().year)
             }
         } })
+        // Additional complete persisted Room rows retain device paths, original-chain
+        // fields and OCR text too. No secret preferences or credentials are exported.
+        val roomRaw = JSONObject().put("receipts", JSONArray().apply {
+            val adapter = rawMoshi.adapter(Receipt::class.java)
+            repository.getAllReceiptsIncludingDeletedList().forEach { put(JSONObject(adapter.toJson(it))) }
+        }).put("managedDocuments", JSONArray().apply {
+            val adapter = rawMoshi.adapter(ManagedDocument::class.java)
+            repository.getAllManagedDocuments().forEach { put(JSONObject(adapter.toJson(it))) }
+        })
+        val chainEvidence = JSONObject()
+        val currentDocuments = repository.getAllManagedDocuments()
+        repository.getAllReceiptsIncludingDeletedList().forEach { receipt ->
+            chainEvidence.put(receipt.internalId, JSONObject().apply {
+                ReceiptOriginalChain.paths(receipt.imageUrl).forEachIndexed { rank, path ->
+                    val matching = currentDocuments.singleOrNull {
+                        it.receiptInternalId == receipt.internalId && it.localUri.removePrefix("file://") == path.removePrefix("file://")
+                    }
+                    val file = File(path.removePrefix("file://"))
+                    put(rank.toString(), JSONObject().put("documentId", matching?.documentId ?: "<unresolved>")
+                        .put("readable", file.isFile).put("sha256", if (file.isFile) StableDocumentIdentity.sha256(file.readBytes()) else "<missing>"))
+                }
+            })
+        }
+        roomRaw.put("receiptOriginalChains", chainEvidence)
+        capturedRoom[label] = canonical(roomRaw)
+        File(output, "$label.ROOM-RAW.json").writeText(capturedRoom.getValue(label))
         val text = canonical(result)
         File(output, "$label.json").writeText(text)
+        File(output, "$label.CONTRACT.json").writeText(RestoreContractSnapshot.fromRaw(text, capturedRoom.getValue(label)).canonical())
+        recordIntegrity(label)
+        captured[label] = text
         return text
+    }
+
+    /** Assert identities, physical originals and relations at every persisted checkpoint. */
+    private suspend fun recordIntegrity(label: String) {
+        val receipts = repository.getAllReceiptsList()
+        val documents = repository.getAllManagedDocuments()
+        val trips = db.logbookDao().getAllTrips()
+        val properties = repository.getAllProperties()
+        val transactions = db.bankDao().getAllTransactions()
+        val accounts = db.bankDao().getAllAccounts()
+        val links = db.bankDao().getAllLinks()
+        val assignments = db.bankRentAssignmentDao().getAll()
+        val receiptById = receipts.associateBy { it.id }
+        val receiptByInternalId = receipts.associateBy { it.internalId }
+        val propertyIds = properties.map { it.propertyId }.toSet()
+        val unitIds = properties.flatMap { p -> drive.getWohneinheitenFromPrefs(p).map { p.propertyId to it.unitId } }.toSet()
+        val problems = mutableListOf<String>()
+        fun requireRelation(valid: Boolean, message: String) { if (!valid) problems += message }
+        requireRelation(receipts.size == receiptById.size && receipts.size == receiptByInternalId.size, "duplicate receipt IDs")
+        requireRelation(documents.size == documents.map { it.documentId }.distinct().size, "duplicate document IDs")
+        receipts.forEach { r ->
+            requireRelation(r.propertyId in propertyIds, "receipt ${r.id}: missing property")
+            if (!r.unitId.isNullOrBlank()) requireRelation(r.propertyId to r.unitId in unitIds, "receipt ${r.id}: missing unit")
+        }
+        documents.forEach { d ->
+            requireRelation(d.propertyId in propertyIds, "document ${d.documentId}: missing property")
+            d.receiptInternalId?.let { id ->
+                val receipt = receiptByInternalId[id]
+                requireRelation(receipt != null && receipt.propertyId == d.propertyId && receipt.unitId.orEmpty() == d.unitId.orEmpty(),
+                    "document ${d.documentId}: missing/mismatched receipt scope")
+            }
+        }
+        trips.forEach { trip ->
+            requireRelation(trip.expenseReceiptId in receiptById, "trip ${trip.id}: missing expense receipt")
+            trip.sourceReceiptId?.let { requireRelation(it in receiptById, "trip ${trip.id}: missing source receipt") }
+            requireRelation(trip.propertyId in propertyIds, "trip ${trip.id}: missing property")
+        }
+        val transactionIds = transactions.map { it.transactionId }.toSet()
+        val accountIds = accounts.map { it.accountId }.toSet()
+        transactions.forEach { requireRelation(it.accountId in accountIds, "transaction ${it.transactionId}: missing account") }
+        links.forEach { link ->
+            requireRelation(link.transactionId in transactionIds && receiptById[link.receiptId]?.internalId == link.receiptInternalId,
+                "bank link ${link.linkId}: missing/mismatched parent")
+        }
+        assignments.forEach { a ->
+            requireRelation(a.transactionId in transactionIds && a.propertyId to a.unitId in unitIds, "assignment ${a.assignmentId}: missing scope")
+            a.receiptId?.let { requireRelation(it in receiptById, "assignment ${a.assignmentId}: missing receipt") }
+        }
+        val originals = JSONArray()
+        (1..60).forEach { n ->
+            val doc = documents.single { it.documentId == "receipt:e10b-receipt-$n" }
+            val file = File(doc.localUri.removePrefix("file://"))
+            val hash = if (file.isFile) StableDocumentIdentity.sha256(file.readBytes()) else "<missing>"
+            val expectedMime = mime(listOf("pdf", "jpg", "jpeg", "png", "webp")[(n - 1) % 5])
+            requireRelation(file.isFile && hash == doc.sha256 && file.length() == doc.fileSizeBytes && doc.mimeType == expectedMime &&
+                doc.receiptInternalId == "e10b-receipt-$n", "original $n: hash/size/MIME/receipt mismatch")
+            originals.put(JSONObject().put("documentId", doc.documentId).put("receiptInternalId", doc.receiptInternalId)
+                .put("sha256", hash).put("size", file.length()).put("mime", doc.mimeType).put("readable", file.isFile))
+        }
+        val local = label.startsWith("AFTER_LOCAL_")
+        val expectedTrips = if (local) 11 else 10
+        val evidence = JSONObject().put("receipts", receipts.size).put("documents", documents.size).put("properties", properties.size)
+            .put("units", unitIds.size).put("trips", trips.size).put("bankTransactions", transactions.size)
+            .put("bankAccounts", accounts.size).put("bankLinks", links.size).put("rentAssignments", assignments.size)
+            .put("loans", db.loanDao().getAllLoans().size).put("auditRuns", db.exportAuditDao().getAllRunsFlow().first().size)
+            .put("receiptIds", JSONArray(receipts.map { it.id }.sorted())).put("receiptInternalIds", JSONArray(receipts.map { it.internalId }.sorted()))
+            .put("documentIds", JSONArray(documents.map { it.documentId }.sorted())).put("tripIds", JSONArray(trips.map { it.id }.sorted()))
+            .put("originals", originals).put("orphans", JSONArray(problems))
+        File(output, "$label.INTEGRITY.json").writeText(evidence.toString(2))
+        assertTrue("$label: $problems", problems.isEmpty())
+        assertEquals("$label trip count", expectedTrips, trips.size)
+        assertEquals("$label receipt count", 60 + expectedTrips, receipts.size)
+        assertEquals("$label document count", 60 + expectedTrips, documents.size)
+        assertEquals(local, trips.any { it.id == 11L && it.expenseReceiptId == 71 })
+        assertEquals(local, receiptById.containsKey(71))
+        assertEquals(local, links.any { it.linkId == "e10b-local-link" })
+        assertEquals(!local, links.any { it.linkId == "e10b-link" })
+        val reviewed = documents.single { it.documentId == "receipt:e10b-receipt-1" }
+        assertEquals(DocumentReviewStatus.GEPRUEFT.name, reviewed.reviewStatus)
+        assertEquals("Bestätigte Beschreibung vor Backup", JSONObject(reviewed.extractedFieldsJson).getString("_displayDescription"))
+        assertEquals(if (local) "E10B-REVIEW-LOCAL" else "E10B-REVIEW-BACKUP", JSONObject(reviewed.extractedFieldsJson).getString("rechnungNummer"))
+        assertEquals(if (local) "Neuerer lokaler fachlicher Titel" else "Fachlicher Titel vor Backup", reviewed.title)
+        val approved = receipts.single { it.id == 4 }
+        assertTrue(com.example.util.DatevReceiptEligibility.isAccountingApproved(approved))
+        assertEquals("e10b-audit-0", approved.exportlaufId)
+        assertEquals("EXPORTIERT", approved.exportStatus)
+    }
+
+    private fun compare(beforeLabel: String, afterLabel: String, before: String, after: String, exactRaw: Boolean = false): Boolean {
+        val name = "$beforeLabel--$afterLabel"
+        val rawDiff = snapshotDiff(before, after)
+        val roomRawDiff = snapshotDiff(capturedRoom.getValue(beforeLabel), capturedRoom.getValue(afterLabel))
+        File(output, "$name.ROOM-RAW-DIFF.json").writeText(roomRawDiff.toString(2))
+        val contractDiff = snapshotDiff(RestoreContractSnapshot.fromRaw(before, capturedRoom.getValue(beforeLabel)).canonical(),
+            RestoreContractSnapshot.fromRaw(after, capturedRoom.getValue(afterLabel)).canonical())
+        File(output, "$name.RAW-DIFF.json").writeText(rawDiff.toString(2))
+        File(output, "$name.CONTRACT-DIFF.json").writeText(contractDiff.toString(2))
+        comparisonSummary.put(name, JSONObject().put("raw", rawDiff.length()).put("roomRaw", roomRawDiff.length()).put("contract", contractDiff.length()))
+        File(output, "comparison-summary.json").writeText(comparisonSummary.toString(2))
+        println("PHASE10D $name RAW=${rawDiff.length()} CONTRACT=${contractDiff.length()}")
+        return contractDiff.length() == 0 && (!exactRaw || (rawDiff.length() == 0 && roomRawDiff.length() == 0))
     }
 
     /** Compare every included value exactly. Entity arrays are sets; no numeric epsilon or field filtering. */

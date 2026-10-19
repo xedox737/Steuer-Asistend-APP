@@ -7,11 +7,18 @@ import io
 import json
 import os
 from pathlib import Path
+import sys
 import tarfile
 import xml.etree.ElementTree as ET
 
 root = Path("app/build")
-paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")))
+emulator = "--emulator" in sys.argv
+if emulator:
+    paths = sorted(set(root.glob("outputs/androidTest-results/**/*.xml")) |
+                   {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
+else:
+    paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |
+                   set(root.glob("reports/phase10d/*.json")))
 files = [p for p in paths if p.is_file()]
 totals = dict(tests=0, failures=0, errors=0, skipped=0)
 suites = []
@@ -27,7 +34,7 @@ summary = dict(head=os.environ.get("GITHUB_SHA"), run=os.environ.get("GITHUB_RUN
                sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in files])
 out = root / "reports/phase10b"
 out.mkdir(parents=True, exist_ok=True)
-summary_path = out / "ci-evidence-summary.json"
+summary_path = out / ("emulator-ci-evidence-summary.json" if emulator else "ci-evidence-summary.json")
 summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
 files.append(summary_path)
 buffer = io.BytesIO()
