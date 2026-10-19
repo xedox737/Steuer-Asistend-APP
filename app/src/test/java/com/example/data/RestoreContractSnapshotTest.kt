@@ -103,4 +103,18 @@ class RestoreContractSnapshotTest {
         assertNotEquals(contract(6.9, raw().toString()), contract(arithmetic, raw().toString()))
     }
 
+    @Test fun adjacentLargeDoubleMustNotHideChangedAuthoritativeCents() {
+        val cent = 9_000_000_000_000_000_000L
+        val source = raw().apply { getJSONArray("receipts").getJSONObject(0).put("cent", cent) }.toString()
+        fun contract(amount: Double): String {
+            val room = JSONObject().put("managedDocuments", JSONArray()).put("receipts", JSONArray()
+                .put(JSONObject().put("internalId", "r").put("bruttobetrag", amount)))
+            return RestoreContractSnapshot.fromRaw(source, room.toString()).canonical()
+        }
+        val exact = cent.toDouble() / 100.0
+        val adjacent = Math.nextDown(exact)
+        assertNotEquals(ReceiptMoney.toCent(exact), ReceiptMoney.toCent(adjacent))
+        assertNotEquals(contract(exact), contract(adjacent))
+    }
+
 }

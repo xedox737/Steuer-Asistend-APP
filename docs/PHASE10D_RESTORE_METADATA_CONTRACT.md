@@ -94,8 +94,9 @@ werden beim Lesen vor Import blockiert. Alte v2-Sicherungen ohne diese optionale
 lesbar; ihre ursprünglich nicht gesicherte Rohrepräsentation ist nicht rückwirkend rekonstruierbar.
 Room 34, Supplemental 15 und Receipt-Backup-Versionsnummer 2 bleiben unverändert.
 
-Die Reproduktion, Feldtabelle und der Vertragshelper sind erarbeitet; abschließende Roh-/Vertragszahlen,
-alle Regressionen/Builds und vollständige Emulator-CI werden noch nachgewiesen.
+Die Reproduktion, Feldtabelle und der Vertragshelper sind erarbeitet. Die unten datierten CI-Nachweise
+trennen Metadaten-/Vertragsergebnisse von Builds und Emulator; der verbindliche aktuelle Jobstatus
+ist zusätzlich unter [PR #142 / Checks](https://github.com/xedox737/Steuer-Asistend-APP/pull/142/checks) verlinkt.
 Room 34, Supplemental 15 und Receipt Backup 2 unverändert. Keine Freigabe vor vollständigem Nachweis.
 
 ## Verbindlicher Feldvertrag (A/B/C/D)
@@ -235,8 +236,9 @@ und beide Drive-Backupwriter speichern ausdrücklich Long-Cent (690/720), der Re
 Es gibt keinen Centverlust und keinen Anlass, dafür Produktcode oder historische Fixtures zu ändern.
 
 D ist **nur** zulässig, wenn für dieselbe internalId der unabhängig gesicherte Golden-Centwert
-vorliegt und der Room-Double entweder exakt Cent/100 oder dessen unmittelbar benachbarte
-IEEE-754-Zahl ist. Keine globale Rundung, kein Epsilon, keine Kanonisierung beliebiger Teilcentwerte.
+vorliegt, ReceiptMoney.toCent(Room-Double) exakt diesen Long-Centwert ergibt und der Room-Double
+entweder exakt Cent/100 oder dessen unmittelbar benachbarte IEEE-754-Zahl ist. Auch bei großen
+Beträgen darf eine Nachbarzahl keinen Cent ändern; eine eigene Gegenprobe erzwingt dies. Keine globale Rundung, kein Epsilon, keine Kanonisierung beliebiger Teilcentwerte.
 Der Rohdouble bleibt in ROOM-RAW sichtbar; CONTRACT speichert den belegten Centwert und die
 kanonische Double-Darstellung. Ein Cent Änderung, ein echter Teilcentbetrag (6.901), zwei Schritte
 IEEE-Abstand, fehlende Cent-Evidenz oder widersprechende Centwerte bleiben rot. Dies ergänzt die
@@ -267,7 +269,7 @@ native Android-PDF-Serialisierung. Der Adapter wird nicht in die App gepackt.
 - GreetingScreenshotTest: 1 executed, 0 failures/errors/skips; SDK 36.
 - RestoreSafetyTest: 2 executed, 0 failures/errors/skips; SDK 36.
 - AdvisorAnnualSummaryIntegrationTest: 11 executed, 0 failures/errors/skips; SDK 34.
-- SyntheticTaxExportE2eTest: 3 executed, 2 failures, 0 errors/skips; SDK 34. Endgültiger grüner Nachweis ausstehend.
+- SyntheticTaxExportE2eTest im ursprünglichen Reproduktionslauf: 3 executed, 2 failures, 0 errors/skips; SDK 34. In den Korrekturläufen 39189613225 und 39193577653: 3 executed, 0 failures/errors/skips.
 - Lokale Helper-Kompilierung und JUnit/Robolectric: 5/5 ausgeführt, 0 Fehler. E10D-02 vorher gezielt
   1/1 ausgeführt, Auditverweis tatsächlich verloren. Nach Korrektur 13 fokussierte Methoden
   ausgeführt, 0 Fehler, 0 ignoriert, einschließlich genau dieser Writer-/Reader-Probe.
@@ -283,7 +285,7 @@ native Android-PDF-Serialisierung. Der Adapter wird nicht in die App gepackt.
   nicht rückwirkend liefern. Für neue Backups ist die ursprüngliche Repräsentation verbindlich exakt.
 - PR #139 bleibt Draft. Der reine Diagnosestand #141 wird durch den eigenen Fix-PR ersetzt; NICHT MERGEN.
 
-### Abgeschlossener Korrekturlauf 39189613225 (Head a71ef321177a24661f8eca6caded71c17ba7a555)
+### Historischer Korrekturlauf 39189613225 (Head a71ef321177a24661f8eca6caded71c17ba7a555)
 
 Lint und Kompilierung grün. 1100 tatsächliche Methoden, zwei Fehler ausschließlich in
 PrimaryNavigationComposeTest.seed: Timeout in Zeile 70 beim Fixtureaufbau vor der Navigation.
@@ -306,6 +308,77 @@ gesetzt, und die vorhandene IsolatedAppDatabaseRule schließt ihre eigene DB nac
 keine Navigationsassertion, kein Timeout und kein Produkt-Navigationscode wird verändert.
 Der gezielte lokale Lauf mit vollständig isolierter Fixture führt alle 19 Methoden aus:
 19 bestanden, 0 failures, 0 ignored. Zusätzlich bestehen alle sieben aktuellen Helper-Gegenproben.
+Eine zusätzliche Großbetrags-Gegenprobe zeigt, dass IEEE-Nachbarschaft allein nicht reicht.
+Der Helper verlangt deshalb zusätzlich exakte Übereinstimmung mit ReceiptMoney.toCent;
+Produktcode wird dafür nicht geändert. Die achte Gegenprobe war vor dieser Verschärfung rot.
 Der vollständige Folge-CI-Lauf einschließlich Builds und Emulator wird vor Abschluss ausgewertet.
 Der finale Bericht mit Run-ID, Head und Jobresultaten wird im Draft-PR #142 veröffentlicht;
 dieses Dokument unterscheidet abgeschlossene historische Evidenz von noch laufenden Folgeprüfungen.
+
+### Vollständiger Room-Vertragsnachweis – Run 39193577653
+
+Geprüfter Implementierungshead `85bb8534774e5a24ed4d3fe3764b667390e2b8b7`, verify-Job
+117871397942 vollständig beendet. Lint erfolgreich, Unit-Task 1102 tatsächliche Methoden,
+2 failures, 0 errors, 0 skips, 0 Klassenplatzhalter. XML-Ausführungswächter erfolgreich.
+Alle 19 PrimaryNavigationComposeTest-Methoden jetzt erfolgreich. Die einzigen beiden Fehler sind
+RentOverviewComposeTest: Timeout im clearFixtureData (Zeile 44) beziehungsweise seed (Zeile 64).
+Die Fehler treten vor den fachlichen Bildschirmassertionen bei Room-Setup/Invalidierung auf.
+Builds und Emulator wurden deshalb übersprungen; dieser Lauf ist keine Gesamtfreigabe.
+
+| Zielklasse | SDK | Executed | Failures | Errors | Skips |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ExampleRobolectricTest | 36 | 1 | 0 | 0 | 0 |
+| GreetingScreenshotTest | 36 | 1 | 0 | 0 | 0 |
+| RestoreSafetyTest | 36 | 2 | 0 | 0 | 0 |
+| AdvisorAnnualSummaryIntegrationTest | 34 | 11 | 0 | 0 | 0 |
+| SyntheticTaxExportE2eTest | 34 | 3 | 0 | 0 | 0 |
+
+| Vergleich, für 17 und 21 Einheiten identisch | Bisheriger RAW | Vollständiger ROOM-RAW | CONTRACT inkl. Room und Originalkette |
+| --- | ---: | ---: | ---: |
+| BEFORE → Restore 1 | 8 | 402 | 0 |
+| BEFORE → Restore 2 | 8 | 402 | 0 |
+| Restore 1 → Restore 2 | 0 | 0 | 0 |
+| BEFORE → REPLACE_FULL | 0 | 402 | 0 |
+| lokale Änderungen → MERGE 1 / MERGE 2 | 0 | 0 | 0 |
+| MERGE 1 → MERGE 2 | 0 | 0 | 0 |
+
+Jeder der vier ursprünglichen Portfolio-Tests erfolgreich; Review-Restore 1/1, Phase10D-Metadaten/
+Freigabefälle 12/12 und Helper 7/7 erfolgreich. Phase10C 14/14, Phase10A 30/30, Phase9A 19/19,
+Phase9B 6/6, Phase9C 10/10 und Phase9D 20/20 erfolgreich. DATEV-/Bank-/Backup-/Restore-Suites
+haben keine Fehler. Pro Portfolio 70 Belege, 60 physisch geöffnete Originale, 60 lesbare Dateien,
+60 unveränderte SHA256; nach beiden Restores und REPLACE dieselben IDs und Reihenfolgen.
+Die 402 zusätzlichen Room-Rohdifferenzen sind vollständig oben aufgeschlüsselt; kein A/B-Feld
+wird dafür ausgeblendet. Aliasse und Geräte-/Syncdaten bleiben im RAW sichtbar.
+
+Artefakt 12162055567, SHA256 `f5d667f4d64da99bb199971b53af97c5ed86efa2a1a070d0541351b697e5889b`.
+
+Die RentOverview-Fixture erhält eine eigene Room-Instanz und leert Preferences vor dem Activitystart.
+Android-/Room-State wird mit dem vorhandenen waitUntilAndroidState einschließlich Main-Looper-
+Abarbeitung erwartet. Alle neun fachlichen Methoden, Screenshot-/Betrags-/Layoutassertionen und
+10-Sekunden-Timeouts bleiben erhalten. Keine Produktlogik geändert.
+Die achte Helper-Gegenprobe war vor der zusätzlichen Centbedingung lokal rot; nach Verschärfung
+alle acht Methoden ausgeführt, 0 failures, 0 ignored. Dieser Test verhindert, dass eine bei großen
+Beträgen wirtschaftlich relevante Double-Nachbarzahl durch den Vertrag verdeckt wird.
+
+### Abschlussentscheidung und Nachweisquelle
+
+Q10B-01: alle ursprünglichen 338/270 Gruppen klassifiziert; zwei vor Produktänderung reproduzierte
+P2-Befunde gezielt korrigiert. Neue P0=0, P1=0, P2=2 (E10D-01/02, korrigiert), P3=0.
+Q10B-02: Ausführungslücke der fünf Klassen mit 18 tatsächlichen Methoden geschlossen; deklarierte
+SDKs unverändert. Der vollständige Phase-10D-Abschluss erfordert zusätzlich erfolgreiche verify-
+und Emulatorjobs am aktuellen PR-Head. Deren versionsgebundene Run-ID, vollständige 61-Punkte-
+Abschlussauswertung und aktuelle Jobresultate werden im [Draft-PR #142](https://github.com/xedox737/Steuer-Asistend-APP/pull/142)
+geführt. Kein relevanter Lauf wird dafür abgebrochen, kein roter Lauf blind wiederholt.
+
+Produktänderungen: ja, ausschließlich E10D-01/02 in ReceiptRepository, Supplemental-Integration,
+ReceiptViewModel-Orchestrierung und Drive-Receipt-Codec. Keine Änderung an Bankliste/DATEV-Policy;
+Room 34, Supplemental 15 und Receipt-Backup-Version 2 erhalten (zwei optionale additive JSON-Felder).
+PR #139 unverändert Draft. Auch PR #142 wird nicht gemergt.
+
+Gezielter lokaler Nachweis der abschließenden RentOverview-Fixture: aktuelle Testquellen,
+ReceiptViewModel, FirestoreService und ReceiptUnitResolver direkt kompiliert; 9 ausgeführt,
+0 failures, 0 ignored, einschließlich beider in CI fehlgeschlagener Methoden und aller nativen
+Screenshot-/Betragsassertionen. Der vorbereitete ältere ViewModel-Binärcache konnte den strukturierten
+Phase10A-Unitvertrag nicht lesen und wurde für diesen Nachweis durch aktuelle Quellen ersetzt.
+Generierte Room-/Android-Artefakte bleiben lokal vorbereitet; erst der vollständige CI-Neubau
+belegt erneut AGP/KSP, Lint, sämtliche Unit-Tests, APKs und Emulator.

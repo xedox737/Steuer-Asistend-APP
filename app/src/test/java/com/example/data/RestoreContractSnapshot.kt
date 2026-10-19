@@ -81,8 +81,11 @@ internal data class RestoreContractSnapshot(
                         // D: ONLY the exact cent Double or its immediately adjacent
                         // IEEE-754 value, independently backed by the authoritative cents.
                         // Logbook's km * .30 produces these two observed neighbours.
+                        // Independently require the same cents even at large magnitudes,
+                        // where one IEEE neighbour can differ by whole euros.
                         // Sub-cent edits, larger drift and mismatched cents stay raw/red.
-                        if (amount.isFinite() && (amount == centRepresentation ||
+                        if (amount.isFinite() && runCatching { ReceiptMoney.toCent(amount) }.getOrNull() == backedCent &&
+                            (amount == centRepresentation ||
                                 Math.nextUp(amount) == centRepresentation || Math.nextDown(amount) == centRepresentation)) {
                             receipt.put("bruttobetrag", centRepresentation)
                             normalizedMoney.put(receiptId, backedCent)
