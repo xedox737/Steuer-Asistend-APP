@@ -1306,9 +1306,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val initResult = drivePersistenceRepository.initializeDriveStorage(token)
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     var supplementalPayload: org.json.JSONObject? = null
+                    var documentsBeforeCore = emptyMap<String, com.example.data.ManagedDocument>()
                     val outcome = com.example.data.FullRestoreCoordinator.execute(
                         preflight = {
                             supplementalPayload = com.example.data.SupplementalDriveBackup.loadValidatedPayload(token, initResult.config.systemFolderId)
+                            documentsBeforeCore = repository.getAllManagedDocuments().associateBy { it.documentId }
                             if (mode == com.example.data.RestoreMode.REPLACE_FULL) {
                                 com.example.data.SupplementalDriveBackup.validateFullRestoreCoverage(getApplication(), database, supplementalPayload)
                             }
@@ -1319,7 +1321,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                                 com.example.data.SupplementalDriveBackup.restorePayload(
                                     getApplication(), database, payload,
                                     replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL,
-                                    restoreMode = mode)
+                                    restoreMode = mode, localDocumentsBeforeCore = documentsBeforeCore)
                             }
                             com.example.data.SupplementalDriveBackup.Result(true, "Zusatzdaten vollständig geprüft und wiederhergestellt")
                         },

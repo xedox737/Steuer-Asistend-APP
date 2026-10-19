@@ -1,6 +1,10 @@
 # Immopilot – Prüfablauf für Änderungen
 
-Die Befehle beziehen sich auf die aktuelle CI-Konfiguration, die Gradle 9.3.1 mit Java 17 verwendet. Das Repository besitzt derzeit keinen eingecheckten Gradle-Wrapper; lokal deshalb ein kompatibles `gradle` verwenden oder die GitHub-CI als Referenz nutzen.
+Die CI verwendet Gradle 9.3.1. Der vollständige JVM-/Robolectric-Unit-Task benötigt Java 21
+für die ausdrücklich auf SDK 36 deklarierten Tests; Lint, Android-/Release-Build und Emulatorjob
+bleiben auf Java 17. Die SDK-34-/35-/36-Deklarationen dürfen nicht durch eine globale
+Erlaubnisliste ausgeblendet werden. Das Repository besitzt keinen eingecheckten Gradle-Wrapper;
+lokal ein kompatibles `gradle` verwenden oder die GitHub-CI als Referenz nutzen.
 
 ## Vor Beginn
 
@@ -22,14 +26,28 @@ git diff --stat origin/main...HEAD
 
 ## Standardprüfung
 
+Zuerst mit Java 21 ausführen:
+
 ```bash
 gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
+python3 .github/scripts/verify-test-execution.py
+```
+
+Danach für die Android-Prüfungen auf Java 17 wechseln:
+
+```bash
 gradle lintDebug --stacktrace --no-daemon
 gradle assembleDebug --stacktrace --no-daemon
+gradle assembleDebugAndroidTest --stacktrace --no-daemon
 git diff --check
 ```
 
 Relevante fokussierte Tests dürfen vorher laufen, ersetzen die Standardprüfung aber nicht.
+Der XML-Prüfer verlangt echte Methoden mit dem vollständigen Klassennamen und prüft
+Fehler/Skips. Ein `Gradle Test Run`-Klassenplatzhalter ist kein bestandener Test.
+Die Klasse erhält wegen SDK-übergreifender JNI-Zustände einen eigenen JVM-Worker;
+es werden weiterhin alle Tests ausgeführt. Details und Feldvertrag:
+[`PHASE10D_RESTORE_METADATA_CONTRACT.md`](PHASE10D_RESTORE_METADATA_CONTRACT.md).
 
 ## Nach Änderungen mit besonderen Risiken
 

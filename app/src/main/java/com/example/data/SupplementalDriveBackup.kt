@@ -79,7 +79,8 @@ object SupplementalDriveBackup {
         database: AppDatabase,
         root: JSONObject,
         replaceManagedDocuments: Boolean = false,
-        restoreMode: RestoreMode = if (replaceManagedDocuments) RestoreMode.REPLACE_FULL else RestoreMode.MERGE
+        restoreMode: RestoreMode = if (replaceManagedDocuments) RestoreMode.REPLACE_FULL else RestoreMode.MERGE,
+        localDocumentsBeforeCore: Map<String, ManagedDocument>? = null
     ) {
         require(root.backupInt("schemaVersion", 1) in 1..SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
         PersistentPreferenceInventory.validatePayload(root)
@@ -121,7 +122,11 @@ object SupplementalDriveBackup {
                 current.copy(bildPfad = current.bildPfad.takeIf { File(it).isFile } ?: localImage)
             } else property.copy(bildPfad = localImage)
         }
-        val existingDocuments = database.managedDocumentDao().getAll().associateBy { it.documentId }
+        // Full restore's core stage reconstructs original-chain rows. Those rows
+        // are not local user edits and must not compete with supplemental reviews
+        // at an equal/unknown version. Standalone supplemental restore uses Room.
+        val existingDocuments = localDocumentsBeforeCore
+            ?: database.managedDocumentDao().getAll().associateBy { it.documentId }
         database.withTransaction {
             val removedParents = if (restoreMode == RestoreMode.REPLACE_FULL) {
                 snapshotParentsRemovedByReplace(database, root).also { clearSnapshotDomains(database, root) }

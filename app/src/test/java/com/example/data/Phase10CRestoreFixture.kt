@@ -61,7 +61,9 @@ abstract class Phase10CRestoreFixture {
         mode: RestoreMode,
         legacyDocumentFlag: Boolean = false,
         supplemental: JSONObject? = payload
-    ): FullRestoreOutcome = FullRestoreCoordinator.execute(
+    ): FullRestoreOutcome {
+        val documentsBeforeCore = repository.getAllManagedDocuments().associateBy { it.documentId }
+        return FullRestoreCoordinator.execute(
             preflight = {
                 supplemental?.let(SupplementalDriveBackup::validatePayload)
                 if (mode == RestoreMode.REPLACE_FULL) SupplementalDriveBackup.validateFullRestoreCoverage(context, db, supplemental)
@@ -70,10 +72,11 @@ abstract class Phase10CRestoreFixture {
             supplementalRestore = {
                 // Explicit mode alone must enforce replace, even without the legacy document flag.
                 supplemental?.let {
-                    SupplementalDriveBackup.restorePayload(context, db, it, replaceManagedDocuments = legacyDocumentFlag, restoreMode = mode)
+                    SupplementalDriveBackup.restorePayload(context, db, it, replaceManagedDocuments = legacyDocumentFlag, restoreMode = mode, localDocumentsBeforeCore = documentsBeforeCore)
                 }
                 SupplementalDriveBackup.Result(true, "ok")
             })
+    }
     protected suspend fun seedProperty() {
         repository.updatePropertyMetadata(PropertyMetadata(id = 1, propertyId = "property-a", name = "Objekt",
             wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("unit-a", "WE 01, EG links")))))

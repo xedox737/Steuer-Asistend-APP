@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import com.example.MainActivity
@@ -16,6 +17,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -26,7 +28,16 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class RentOverviewComposeTest {
     @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
-    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 1) val databaseIsolation = IsolatedAppDatabaseRule()
+    @get:Rule(order = 2) val preferences = object : ExternalResource() {
+        override fun before() {
+            val context = ApplicationProvider.getApplicationContext<Application>()
+            listOf("rent_plan_prefs", "tenant_history_prefs", "wohneinheiten_prefs", "google_drive_prefs").forEach {
+                context.getSharedPreferences(it, 0).edit().clear().commit()
+            }
+        }
+    }
+    @get:Rule(order = 3) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
     private val fixtureContext get() = vm.getApplication<Application>()
     private val propertyId = "rent-a"
@@ -35,13 +46,10 @@ class RentOverviewComposeTest {
     private fun scroll(tag: String) { overview().performScrollToNode(hasTestTag(tag)); ui.waitForIdle() }
     private fun shell() { ui.onNodeWithText("ImmoPilot").assertIsDisplayed(); ui.onNodeWithTag("bottom_navigation").assertIsDisplayed() }
     private fun back() { ui.runOnIdle { ui.activity.onBackPressedDispatcher.onBackPressed() }; ui.waitForIdle() }
-    @Before fun clearFixtureData() {
-        val database = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
-        runBlocking(Dispatchers.IO) { database.clearAllTables() }
-        listOf("rent_plan_prefs", "tenant_history_prefs", "wohneinheiten_prefs", "google_drive_prefs").forEach {
-            fixtureContext.getSharedPreferences(it, 0).edit().clear().commit()
-        }
-        ui.waitUntil(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
+    @Before fun verifyEmptyFixture() {
+        // Own Room/Application before Activity launch; never clear a database
+        // while its first ViewModel queries/invalidation callbacks are running.
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
     }
     private fun settleEditorWindow() {
         // Native Robolectric does not settle a wrap-content text-input dialog window.
@@ -61,9 +69,9 @@ class RentOverviewComposeTest {
             db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 81, propertyId = propertyId, name = "Sulzerstraße 32", wohneinheiten = UnitIdentity.encode(listOf("OG links", "OG rechts", "DG rechts").map { UnitIdentity.Entry("u-$it", it) })))
             if (extraProperty) db.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 82, propertyId = "rent-b", name = "Zweites Haus", wohneinheiten = "OG links"))
         }
-        ui.waitUntil(10000) { vm.properties.value.any { it.propertyId == propertyId } }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.propertyId == propertyId } }
         ui.runOnIdle { vm.selectProperty(propertyId) }
-        ui.waitUntil(10000) { vm.propertyMetadata.value?.propertyId == propertyId && vm.wohneinheitenStatus.value.size == 3 }
+        ui.waitUntilAndroidState(10000) { vm.propertyMetadata.value?.propertyId == propertyId && vm.wohneinheitenStatus.value.size == 3 }
         ui.runOnIdle {
             vm.wohneinheitenStatus.value.forEachIndexed { i, unit ->
                 val updated = unit.copy(status = "Vermietet", mieter = listOf("Max Mustermann", "Anna Beispiel", "Mieter mit einem sehr langen Namen")[i],
@@ -91,7 +99,7 @@ class RentOverviewComposeTest {
             if (extraProperty) db.receiptDao().insertReceipt(Receipt(id = 1032, aussteller = "Anderes Haus", datum = "2026-01-01", uhrzeit = "", bruttobetrag = 5000.0,
                 hauptkategorie = "Miete, Nebenkosten & Kaution", unterkategorie = "Kaltmiete", kontoNr = "8100", beschreibung = "Andere Immobilie", wohneinheit = "OG links", propertyId = "rent-b"))
         }
-        ui.waitUntil(10000) { vm.receipts.value.any { it.id == 1031 } }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.any { it.id == 1031 } }
         if (open) { ui.onNodeWithTag("nav_item_more").performClick(); ui.onNodeWithText("Mieteingänge").performClick() }
         ui.waitForIdle()
     }
@@ -175,7 +183,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithTag("rent_plan_start").performTextReplacement("01.01.2026")
         ui.onNodeWithTag("rent_plan_utilities").performTextReplacement("175,25")
         ui.onNodeWithTag("rent_plan_save").performClick()
-        ui.waitUntil(10000) { vm.wohneinheitenStatus.value.first { it.name == "OG links" }.kaltmiete == 650.5 }
+        ui.waitUntilAndroidState(10000) { vm.wohneinheitenStatus.value.first { it.name == "OG links" }.kaltmiete == 650.5 }
         val unit = vm.wohneinheitenStatus.value.first { it.name == "OG links" }
         assertEquals(175.25, PropertyUnitScopedData.rentValue(fixtureContext, propertyId, unit, "nk"), .001)
         val history = TenantHistoryStore.load(ui.activity, propertyId, unit.unitId, unit.name)
@@ -191,7 +199,7 @@ class RentOverviewComposeTest {
         ui.onNodeWithTag("rent_plan_cold").performTextReplacement("620,50")
         ui.onNodeWithTag("rent_plan_utilities").performTextReplacement("99,25")
         ui.onNodeWithTag("rent_plan_save").performClick()
-        ui.waitUntil(10000) { vm.selectedPropertyId.value == propertyId &&
+        ui.waitUntilAndroidState(10000) { vm.selectedPropertyId.value == propertyId &&
             vm.getWohneinheitenForProperty(vm.properties.value.first { it.propertyId == "rent-b" }).single().kaltmiete == 620.5 }
         val b = vm.getWohneinheitenForProperty(vm.properties.value.first { it.propertyId == "rent-b" }).single()
         assertEquals(99.25, PropertyUnitScopedData.rentValue(fixtureContext, "rent-b", b, "nk"), .001)
@@ -203,7 +211,7 @@ class RentOverviewComposeTest {
         val db = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         val legacy = PropertyMetadata(id = 1, propertyId = StableDocumentIdentity.LEGACY_PROPERTY_ID, name = "Altbestand", wohneinheiten = "WE Alt")
         runBlocking { db.propertyDao().insertPropertyMetadata(legacy) }
-        ui.waitUntil(10000) { vm.properties.value.any { it.id == 1 && it.wohneinheiten == "WE Alt" } }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.id == 1 && it.wohneinheiten == "WE Alt" } }
         ui.runOnIdle {
             val unit = vm.getWohneinheitenForProperty(legacy).single()
             assertEquals(StableDocumentIdentity.legacyUnitId(legacy.propertyId, "WE Alt"), unit.unitId)
@@ -243,7 +251,7 @@ class RentOverviewComposeTest {
         val db = AppDatabase.getDatabase(fixtureContext, CoroutineScope(Dispatchers.IO))
         runBlocking { db.receiptDao().insertReceipt(Receipt(id = 1110, aussteller = "Großer Betrag", datum = "2026-01-01", uhrzeit = "", bruttobetrag = 12345678.90,
             hauptkategorie = "Miete, Nebenkosten & Kaution", unterkategorie = "Kaltmiete", kontoNr = "8100", beschreibung = "Layouttest", wohneinheit = "OG links", propertyId = propertyId)) }
-        ui.waitUntil(10000) { vm.receipts.value.any { it.id == 1110 } }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.any { it.id == 1110 } }
         val card = ui.onNodeWithTag("rent_metric_actual").fetchSemanticsNode().boundsInRoot
         val paired = ui.onNodeWithTag("rent_metric_expected").fetchSemanticsNode().boundsInRoot
         val amount = ui.onNode(hasText(NumberFormatter.format(12345678.90 + 26900.0)) and hasAnyAncestor(hasTestTag("rent_metric_actual"))).fetchSemanticsNode().boundsInRoot
