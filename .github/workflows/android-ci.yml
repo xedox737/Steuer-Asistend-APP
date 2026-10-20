@@ -82,6 +82,14 @@ jobs:
         if: always()
         run: python3 .github/scripts/verify-test-execution.py
 
+      - name: Verify saved Phase 10B portfolio evidence
+        if: always()
+        run: python3 .github/scripts/phase10b-audit-evidence.py app/build app/build/reports/phase10b/audit-evidence.json
+
+      - name: Preserve synthetic Phase 10B evidence
+        if: always()
+        run: python3 .github/scripts/phase10b-evidence.py
+
       - name: Restore Java 17 for Android builds
         uses: actions/setup-java@v4
         with:
@@ -235,6 +243,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel on
           script: bash .github/scripts/run-android-emulator-e2e.sh
 
+      - name: Preserve synthetic Phase 10B emulator execution evidence
+        if: always()
+        run: python3 .github/scripts/phase10b-evidence.py --emulator
+
       - name: Upload emulator reports and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -244,5 +256,6 @@ jobs:
             app/build/reports/androidTests/**
             app/build/outputs/androidTest-results/**
             app/build/emulator-e2e/**
+            app/build/reports/phase10b/emulator-ci-evidence-summary.json
           if-no-files-found: warn
           retention-days: 14
