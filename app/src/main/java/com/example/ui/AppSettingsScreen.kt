@@ -120,6 +120,7 @@ private fun SettingsOverview(state: AiProviderState, onBack: () -> Unit, onProvi
             SettingsRow("Fahrtenbuch-Adressen", "Startadresse und Adresse des aktuellen Objekts", Icons.Default.DirectionsCar, AccentBlue, "addresses") { onPage("addresses") }
             SettingsDivider()
             SettingsRow("Verwaltung & Belege", "Objekt, Mieter, Dokumentenstatus und Papierkorb", Icons.Default.Folder, WarmOrange, "management") { onPage("management") }
+            BuildVariantSettingsEntry()
         } }
     }
 }

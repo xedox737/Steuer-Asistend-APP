@@ -20,4 +20,10 @@ for units in (17, 21):
         (out / f"units-{units}-{label}.json").write_text(json.dumps(report, indent=2) + "\n")
         results.append(report)
         print(json.dumps(dict(units=units, label=label, ok=report["ok"], errors=report["errors"])))
+phone_seed = json.loads(Path("app/build/reports/phase11a-ui/unit-seed.json").read_text())
+# Same snapshot comparison validates all structural/original chains. No restart claim in this unit check.
+phone_report = qa.compare(phone_seed, phone_seed, 17)
+(out / "bundled-ui-seed-integrity.json").write_text(json.dumps(phone_report, indent=2) + "\n")
+results.append(phone_report)
+print(json.dumps(dict(label="bundled-ui-seed-structure-only", ok=phone_report["ok"], errors=phone_report["errors"])))
 sys.exit(0 if all(r["ok"] for r in results) else 1)

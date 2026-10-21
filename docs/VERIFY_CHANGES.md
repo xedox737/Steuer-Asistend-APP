@@ -93,3 +93,12 @@ zusätzlich parallele Installation, verschiedene UID, getrennte Room-/Preference
 und unveränderte Referenzdaten nach allen E2E-Tests. Das CI-Artefakt
 `phase11a-isolated-apks` enthält zusammen signierte App-/QA-APKs und ihre Binäranalyse.
 Vor echtem Drive-Test Package-/Zertifikatszulassung für OAuth gemäß Abnahmeprotokoll prüfen.
+
+Die Handy-Testwerkzeuge liegen ausschließlich in `src/debug`; Release besitzt nur eine
+leere Einstellungen-Erweiterung. UI und Instrumentation verwenden denselben Importer
+und für identische IDs die eingebettete ursprüngliche 17-Einheiten-ZIP. Nach dem Build
+`assembleDebug assembleRelease assembleDebugAndroidTest` zusätzlich
+`python3 .github/scripts/phase11a-check-ui-packaging.py` ausführen: tatsächliche Release-APK
+ohne Testoberfläche, Importer/Guard und Testdaten; Debug-APK mit unveränderter Fixture.
+Die CI führt nach der kompletten Suite zusätzlich einen UI-Seed-/Prozessneustartfall aus;
+dieser ist separat protokolliert und kein erneuter Versuch eines fehlgeschlagenen Tests.

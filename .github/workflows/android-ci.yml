@@ -121,6 +121,14 @@ jobs:
           KEY_ALIAS: ${{ env.RELEASE_KEY_ALIAS }}
         run: gradle assembleRelease --stacktrace --no-daemon
 
+      - name: Build unsigned release APK for QA when release signing is unavailable
+        if: env.RELEASE_KEYSTORE_BASE64 == '' || env.RELEASE_STORE_PASSWORD == '' || env.RELEASE_KEY_PASSWORD == '' || env.RELEASE_KEY_ALIAS == ''
+        timeout-minutes: 10
+        run: gradle assembleRelease --stacktrace --no-daemon
+
+      - name: Verify phone-only tools are absent from the actual release APK
+        run: python3 .github/scripts/phase11a-check-ui-packaging.py
+
       - name: Upload reports
         if: always()
         continue-on-error: true

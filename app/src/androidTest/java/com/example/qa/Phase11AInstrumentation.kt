@@ -9,7 +9,6 @@ import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.File
 import java.time.Instant
-import java.util.zip.ZipFile
 
 /** Explicit opt-in QA entry point, separate from the ordinary JUnit runner. */
 class Phase11AInstrumentation : AndroidJUnitRunner() {
@@ -78,76 +77,11 @@ class Phase11AInstrumentation : AndroidJUnitRunner() {
         }
     }
 
-    /** Preparation only. Never a Drive/restore acceptance result. Refuses occupied targets. */
     private suspend fun seed(db: AppDatabase) {
         require(qaArguments.getString("confirmEmptyTestInstallation") == "true")
-        // Include legacy/secondary/orphan domain tables, not just backup payloads.
-        // Only SQLite/Room/FTS structural metadata is exempt from the empty-target gate.
-        val sqlite = db.openHelper.readableDatabase
-        val tables = mutableListOf<String>()
-        sqlite.query("SELECT name FROM sqlite_master WHERE type='table'").use { cursor ->
-            while (cursor.moveToNext()) tables += cursor.getString(0)
-        }
-        tables.filterNot { it.startsWith("sqlite_") || it == "room_master_table" ||
-            it == "android_metadata" || it.startsWith("document_search_fts_") }.forEach { table ->
-            val quoted = "\"" + table.replace("\"", "\"\"") + "\""
-            sqlite.query("SELECT EXISTS(SELECT 1 FROM $quoted LIMIT 1)").use { cursor ->
-                require(cursor.moveToFirst() && cursor.getInt(0) == 0) { "Nichtleere Test-Datentabelle: $table" }
-            }
-        }
-        val empty = SupplementalDriveBackup.createPayload(targetContext, db)
-        for (key in empty.keys()) {
-            val value = empty.get(key)
-            require(value !is org.json.JSONArray || value.length() == 0) { "Nichtleerer Testbestand: $key" }
-            require(value !is JSONObject || value.length() == 0) { "Nichtleere Testeinstellungen: $key" }
-        }
-        require(db.receiptDao().getAllReceiptsIncludingDeletedList().isEmpty())
-        val bundle = File(targetContext.filesDir, "phase11a-input.zip")
-        require(StableDocumentIdentity.sha256(bundle.readBytes()) == qaArguments.getString("fixtureSha256"))
-        val repository = ReceiptRepository(db.receiptDao(), db.propertyDao(), db.receiptEntityDao(), db.belegDao(),
-            db.exportAuditDao(), db.receiptDocumentDao(), db.managedDocumentDao())
-        val drive = DrivePersistenceRepository(targetContext, repository)
-        ZipFile(bundle).use { zip ->
-            fun text(name: String) = zip.getInputStream(requireNotNull(zip.getEntry(name))).bufferedReader().use { it.readText() }
-            val payload = JSONObject(text("supplemental.json"))
-            SupplementalDriveBackup.validatePayload(payload)
-            val properties = payload.getJSONArray("properties")
-            require(properties.length() == 5)
-            for (i in 0 until properties.length()) require(properties.getJSONObject(i).getString("propertyId") == "e10b-property-${i + 1}")
-            val entries = zip.entries().asSequence().filter { it.name.startsWith("metadata/") && it.name.endsWith(".json") }.toList()
-            require(entries.size == 70)
-            val receipts = entries.map { with(drive) { parsePersistedReceipt(text(it.name)).toLocalReceipt(null) } }
-            require(receipts.map { it.internalId }.toSet().size == 70)
-            require(receipts.all { it.internalId.startsWith("e10b-") || it.propertyId.startsWith("e10b-property-") })
-            val docs = payload.getJSONArray("managedDocuments")
-            val files = mutableMapOf<String, File>()
-            // Verify every byte before importing any database row. Do not extract supplied paths.
-            for (i in 0 until docs.length()) {
-                val doc = docs.getJSONObject(i)
-                if (doc.getLong("fileSizeBytes") <= 0) continue
-                val id = doc.getString("driveFileId")
-                val candidates = zip.entries().asSequence().filter { it.name.startsWith("originals/$id.") }.toList()
-                require(candidates.size == 1)
-                val bytes = zip.getInputStream(candidates.single()).use { it.readBytes() }
-                require(StableDocumentIdentity.sha256(bytes) == doc.getString("sha256") && bytes.size.toLong() == doc.getLong("fileSizeBytes"))
-                val file = File(targetContext.filesDir, "phase11a-originals/${doc.getString("sha256")}")
-                file.parentFile!!.mkdirs()
-                file.writeBytes(bytes)
-                files[doc.getString("documentId")] = file
-                // Fake transport IDs from Phase10B are not valid live Drive IDs.
-                doc.put("driveFileId", JSONObject.NULL).put("driveFolderId", JSONObject.NULL)
-            }
-            require(files.size == 60)
-            receipts.forEach { receipt ->
-                repository.insert(receipt.copy(imageUrl = files["receipt:${receipt.internalId}"]?.absolutePath.orEmpty(),
-                    driveFileId = null, driveFolderId = null, driveMetadataFileId = null, driveRevision = null,
-                    syncStatus = "PENDING", lastSyncedAt = null, isArchivedToDrive = false))
-            }
-            SupplementalDriveBackup.restorePayload(targetContext, db, payload, replaceManagedDocuments = true,
-                restoreMode = RestoreMode.REPLACE_FULL, localDocumentsBeforeCore = emptyMap())
-            repository.getAllManagedDocuments().forEach { doc ->
-                files[doc.documentId]?.let { repository.upsertManagedDocument(doc.copy(localUri = it.absolutePath)) }
-            }
-        }
+        Phase11APortfolioSeeder.seed(targetContext, db,
+            File(targetContext.filesDir, "phase11a-input.zip"),
+            requireNotNull(qaArguments.getString("fixtureSha256")),
+            requireNotNull(qaArguments.getString("runId")))
     }
 }

@@ -78,6 +78,8 @@ python3 .github/scripts/phase11a-sandbox-check.py verify
 
 gradle connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.immopilotDisposableEmulator=true \
+  -Pandroid.testInstrumentationRunnerArguments.phase11aCommit="$GITHUB_SHA" \
   --stacktrace --no-daemon
 
+python3 .github/scripts/phase11a-ui-seed-smoke.py
 python3 .github/scripts/phase11a-sandbox-check.py final

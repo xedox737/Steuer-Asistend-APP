@@ -16,17 +16,25 @@ emulator = "--emulator" in sys.argv
 if emulator:
     paths = sorted(set(root.glob("outputs/androidTest-results/**/*.xml")) |
                    set(root.glob("emulator-e2e/phase11a-isolation/*.json")) |
+                   set(root.glob("emulator-e2e/phase11a-ui/**/*.json")) |
+                   set(root.glob("emulator-e2e/phase11a-ui/*.txt")) |
                    {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
 else:
     paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |
-                   set(root.glob("reports/phase10d/*.json")))
+                   set(root.glob("reports/phase10d/*.json")) | set(root.glob("reports/phase11a-ui/*.json")))
 files = [p for p in paths if p.is_file()]
 totals = dict(tests=0, failures=0, errors=0, skipped=0)
 suites = []
 for p in files:
     if p.suffix == ".xml":
         e = ET.parse(p).getroot()
-        row = dict(name=e.get("name"), **{k: int(e.get(k, 0)) for k in totals})
+        # Android emits <testsuites> around <testsuite>; root counters may be absent.
+        # Count actual methods once, including failures/skips, rather than trusting aggregates.
+        cases = list(e.iter("testcase"))
+        row = dict(name=e.get("name") or p.name, tests=len(cases),
+                   failures=sum(c.find("failure") is not None for c in cases),
+                   errors=sum(c.find("error") is not None for c in cases),
+                   skipped=sum(c.find("skipped") is not None for c in cases))
         suites.append(row)
         for k in totals:
             totals[k] += row[k]

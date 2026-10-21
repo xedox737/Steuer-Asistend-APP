@@ -68,7 +68,7 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
-  // QA helpers are compiled only into test APKs/JVM tests, never the app.
+  // Snapshot/contract helpers remain test-only. The shared seed/guard live in src/debug.
   sourceSets.getByName("test").kotlin.directories.add("src/qa/java")
   sourceSets.getByName("androidTest").kotlin.directories.add("src/qa/java")
   // The calendar intentionally uses German Material resources on every device locale.
