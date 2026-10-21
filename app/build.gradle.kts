@@ -21,7 +21,7 @@ android {
     versionCode = 1
     versionName = "1.0"
 
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    testInstrumentationRunner = "com.example.qa.Phase11AInstrumentation"
   }
 
   val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
@@ -53,7 +53,10 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      applicationIdSuffix = ".phase11a"
+      signingConfig = signingConfigs.getByName("debugConfig")
+    }
   }
   compileOptions {
     isCoreLibraryDesugaringEnabled = true
@@ -65,6 +68,9 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  // Snapshot/contract helpers remain test-only. The shared seed/guard live in src/debug.
+  sourceSets.getByName("test").kotlin.directories.add("src/qa/java")
+  sourceSets.getByName("androidTest").kotlin.directories.add("src/qa/java")
   // The calendar intentionally uses German Material resources on every device locale.
   // Keep them available in App Bundle installations as well as standalone APKs.
   bundle { language { enableSplit = false } }
