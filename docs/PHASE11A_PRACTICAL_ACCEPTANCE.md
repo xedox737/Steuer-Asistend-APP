@@ -6,7 +6,7 @@ Base-SHA: `69f35772b6480a958ca7479b024dbd4d8bd42fa1`, nach erfolgreichem `git fe
 
 Gelesen: AGENTS.md, PROJECT_STATUS.md, CODE_MAP.md, VERIFY_CHANGES.md und PHASE10D_RESTORE_METADATA_CONTRACT.md; analysiert: Phase10BPortfolioAcceptanceTest, RestoreContractSnapshot, SupplementalDriveBackup, DrivePersistenceRepository, bestehende Android-Teststrategie. `Immopilot_Work_Arbeitsanweisungen.md` und `Phase10B_Portfolio_E2E_Abnahme.md` fehlen im Checkout und in bereitgestellten Arbeitsordnern. Fundort angefragt; nicht als gelesen gewertet. Auch Phase 10D dokumentiert den fehlenden separaten 10B-Bericht. Die vorhandenen Tests und Originalartefakte bleiben die verfügbare Testbasis.
 
-Kein Produktcode in `app/src/main` geändert. Keine Banklisten-, DATEV-, Drive-Architektur- oder Migrationsänderung. Der QA-Runner erweitert AndroidJUnitRunner, delegiert normale Läufe unverändert an dessen Implementierung und verwendet den Evidence-Pfad nur bei `phase11aAction`. Der unveränderte Phase-10D-Vertragshelper wird jetzt aus `src/qa` für JVM- und Android-Tests gemeinsam kompiliert; er gelangt nicht ins App-APK. Nur die Testquellpfade sind zusätzlich in der Buildkonfiguration eingetragen.
+Kein Produktcode in `app/src/main` geändert. Keine Banklisten-, DATEV-, Drive-Architektur- oder Migrationsänderung. Der QA-Runner erweitert AndroidJUnitRunner, prüft zuerst das isolierte Debug-Package und delegiert danach normale Läufe an dessen Implementierung. Evidence benötigt `phase11aAction`. Der unveränderte Phase-10D-Vertragshelper wird aus `src/qa` für JVM- und Android-Tests gemeinsam kompiliert; er gelangt nicht ins App-APK. Die Buildkonfiguration enthält außerdem die unten beschriebene Debug-Isolation.
 
 **Entscheidung: KEINE PRAKTISCHE PORTFOLIOFREIGABE.**
 
@@ -32,6 +32,69 @@ Kein Produktcode in `app/src/main` geändert. Keine Banklisten-, DATEV-, Drive-A
 | APK-SHA256 / Installationsquelle | NOCH OFFEN | NOCH OFFEN |
 
 Keine echten Geräte-/Drive-Schritte durchgeführt. IDs, Counts, Orphans, Hashes, Datenverluste und alle praktischen Ergebnisse: **NOCH OFFEN**. Neue bestätigte Produktbefunde P0=0, P1=0, P2=0, P3=0; kein Beweis praktischer Fehlerfreiheit. Keine alten E10D-Befunde neu zählen.
+
+## Isolierte Installation – Folgeauftrag zu PR #143
+
+Startprüfung am 21.10.2026: Arbeitsbaum sauber, bestehender Arbeitsbranch; `git fetch origin` und expliziter Main-Fetch erfolgreich. Tatsächlicher `origin/main`/Base: `69f35772b6480a958ca7479b024dbd4d8bd42fa1`; tatsächlicher PR-Ausgangshead: `9ba32bc77e547aff9cab3c9d81f3da9c44fdc37d`. PR bleibt Draft. AGENTS.md und diese Anleitung erneut gelesen; `Immopilot_Work_Arbeitsanweisungen.md` weiterhin nicht vorhanden. Finale Commit-/CI-Zuordnung im versionsgebundenen PR-Bericht und in den generierten Evidence-Dateien.
+
+| Merkmal | Produkt / Release | Phase-11A-Debug |
+| --- | --- | --- |
+| applicationId | `com.aistudio.steuerassistent.vnhqkp` | `com.aistudio.steuerassistent.vnhqkp.phase11a` |
+| Launcher-/App-Name | `Steuer-Assistent Anlage V` (bisheriger Name unverändert) | `ImmoPilot Test` |
+| FileProvider | `com.aistudio.steuerassistent.vnhqkp.provider` | `com.aistudio.steuerassistent.vnhqkp.phase11a.provider` |
+| QA-Test-APK | kein produktiver Bestandteil | `com.aistudio.steuerassistent.vnhqkp.phase11a.test` |
+
+Umsetzung: ausschließlich Debug-`applicationIdSuffix = ".phase11a"` und Debug-Manifest-/Label-Ressource. Keine zusätzliche Build-Matrix; Release-DSL und Hauptmanifest unverändert. `namespace = com.example` bleibt der Kotlin-/Ressourcen-Namespace und ist **nicht** die Android-App-Identität.
+
+Room (`receipt_database`), sämtliche SharedPreferences, Android-Keystore, interne Dateien/Cache und app-spezifische externe Verzeichnisse werden vom jeweiligen App-Context/UID abgeleitet. Keine hart codierten produktiven internen Pfade und keine DataStore-Verwendung in den untersuchten Produktionsquellen. `provider_paths.xml` veröffentlicht ausschließlich den eigenen Cache und `files/managed_documents/`, nicht beliebige fremde Datenverzeichnisse. FileProvider-Aufrufer verwenden `context.packageName + ".provider"`. Weitere zusammengeführte Provider (MLKit, Firebase, AndroidX Startup) verwenden die applicationId. Kein gemeinsamer `sharedUserId`; kein eigener DocumentsProvider oder WorkManager-Initializer. Der vollständige Binärnachweis wird als `phase11a-isolation/apks.json` erzeugt.
+
+Das Hauptmanifest besitzt nur MAIN/LAUNCHER für MainActivity: keine eigenen Deep Links, empfangenden Share- oder File-Open-Filter. Das zusammengeführte Manifest enthält zusätzlich Firebase-Bibliotheksfilter für `genericidp://firebase.auth/` und `recaptcha://firebase.auth/`. Damit die Test-App diese gemeinsamen Browser-Callbacks nicht neben der Produkt-App beansprucht, setzt ausschließlich das Debug-Overlay `GenericIdpActivity`/`RecaptchaActivity` auf `exported=false` und entfernt dort deren Intent-Filter. Firebase-Browser-Provider-/Recaptcha-Callbacks sind damit in dieser Testinstallation nicht extern nutzbar; sie sind kein Bestandteil der bestehenden Drive-Play-Services-/WebView-Anmeldewege. Kein Release-Manifest-Eingriff. Ausgehende Import-/Öffnen-/Share-Intents bleiben unverändert und verwenden App-Context, MIME und temporäre URI-Grants. Beide Launcher-Einträge sind durch unterschiedliche Labels eindeutig. Externer Picker/Viewer bleibt ein **NOCH OFFENER** Praxistest. Exportierte Bibliotheks-/Debug-Komponenten und Permissions werden vollständig aus den APKs erfasst; der APK-Checker verweigert externe BROWSABLE-Callbacks der Test-App.
+
+### Installation und Guard
+
+Für echte Geräte **nur** das Artefakt `phase11a-isolated-apks` des freigegebenen CI-Laufs verwenden: App-APK, passendes QA-APK und `apks.json` gehören zusammen und haben dieselbe Signatur. Das allgemeine `app-debug`-Artefakt stammt aus einem anderen CI-Job mit eigenem Debug-Schlüssel und darf nicht mit dem QA-APK gemischt werden. Alternativ beide APKs gemeinsam lokal mit demselben verwalteten Debug-Schlüssel bauen. APK-SHA256 und öffentliche Zertifikats-SHA1/SHA256 stehen in `apks.json`; vor Installation gegen die heruntergeladenen Bytes prüfen. Keine Schlüssel oder Tokens einchecken.
+
+```bash
+gradle assembleDebug assembleDebugAndroidTest
+adb -s SERIAL_A install -t /path/app-debug.apk
+adb -s SERIAL_A install -t /path/app-debug-androidTest.apk
+adb -s SERIAL_A shell pm list packages -U com.aistudio.steuerassistent.vnhqkp
+adb -s SERIAL_A shell am start -n com.aistudio.steuerassistent.vnhqkp.phase11a/com.example.MainActivity
+```
+
+Bei bereits belegter Test-App keine Installation überschreiben, Daten löschen oder umbenennen: separaten sicheren Testlauf planen. Die normale App wird für echte Gerätetests weder ersetzt noch zurückgesetzt. Sämtliche Seed-/Snapshot-/Force-stop-Kommandos beziehen sich ausschließlich auf `.phase11a`.
+
+`Phase11AIsolation.requireTestPackage` läuft im Runner vor jedem QA-/JUnit-Einstieg und nochmals vor dem datenbereinigenden Emulator-Setup. Produkt-ID führt zu genau:
+
+```text
+Phase 11A evidence/seed is not allowed on the production applicationId.
+```
+
+Kein Öffnen einer Room-Datenbank, kein Lesen/Schreiben von QA-Dateien oder Preferences durch diesen Pfad. Unbekannte Packages und nicht debuggable Builds werden ebenfalls abgewiesen. Der Host-Helfer prüft das tatsächlich installierte Instrumentation-Ziel vor dem Übertragen der Seed-ZIP und erfasst die tatsächliche applicationId im Snapshot/Provenienzbericht. Bei ausschließlich installierter Produkt-App: harter Abbruch, kein Fallback. Normale E2E-Testbereinigung bleibt ausschließlich auf dem ausdrücklich freigegebenen isolierten Wegwerf-Emulator erlaubt, niemals auf Bestandsgeräten.
+
+### Automatisierter Parallel-/Sandbox-Nachweis
+
+CI baut mittels ausdrücklich übergebenem `-I .github/scripts/phase11a-reference.init.gradle` einmal eine Debug-Referenz mit unveränderter Produkt-ID und Produktlabel, danach ohne Init-Script die isolierten App-/Test-APKs. Das Init-Script wird nicht vom normalen Build geladen; es erzeugt keinen neuen BuildType. Es verlangt `GITHUB_ACTIONS=true` und erlaubt ausschließlich die beiden Assemble-Tasks, keine Installation/Deinstallation/Connected-Tests. Referenz-APKs werden **nicht** als Geräte-Testinstallation veröffentlicht. Ihr QA-Runner enthält dieselbe Produktionssperre.
+
+`phase11a-sandbox-check.py prepare` verlangt GitHub Actions, Emulator-Hardware, User 0 und ein **noch nicht installiertes** Produkt-Package. Es installiert die Referenz ohne `-r`, startet die echte MainActivity und legt vor der Baseline ausschließlich synthetische Referenz-Sentinels an. Kein `pm clear`, keine Deinstallation, keine DB-/Preferences-/Dateilöschung. Room/Dateien/Preferences und Cache-Sentinel werden gehasht. Echte Instrumentation-Aufrufe `seed` und `snapshot` gegen die Referenz müssen mit obigem Guard-Fehler abbrechen und alle gespeicherten Referenz-Bytes unverändert lassen.
+
+Nach dem vorhandenen Portfolio-Smoke prüft `verify` beide installierten Packages, unterschiedliche UID und Datenverzeichnisse. Der isolierte Probe-Einstieg prüft echte Room-Integrität und 5 Objekte/70 Belege, eigene Preferences und Dateien/Cache/externe Verzeichnisse sowie verweigerten Zugriff auf existierende Referenzdateien, Referenz-DB und Referenz-FileProvider. Die Referenz bleibt bei 0 Objekten/0 Belegen und ihren ursprünglichen Preference-/Dateiwerten. Nach sämtlichen bisherigen E2E-Tests vergleicht `final` erneut alle Referenz-Hashes. Ergebnisse: `phase11a-isolation/baseline.json`, `sandbox.json`, `apks.json`, Screenshot und vorhandene Emulator-Diagnostik. Bis zum tatsächlich beendeten CI-Lauf gilt der neue Emulatornachweis als **NOCH OFFEN**; der PR-Bericht nennt danach die tatsächlichen Resultate.
+
+### Google Drive / OAuth: vor echtem Gerätetest konfigurieren
+
+**Direkte Nutzbarkeit der neuen Test-App mit echtem Drive: NOCH OFFEN, nicht bestätigt.** Lokale Sandbox-Isolation trennt keine Cloudkonten. Ausschließlich synthetische Portfolios und möglichst ein separates Google-Testkonto verwenden; Zugriff auf produktive Drive-Dateien weder voraussetzen noch testen.
+
+Die alternative Play-Services-Anmeldung in `ReceiptAppUi.kt` verwendet `GoogleSignInOptions.DEFAULT_SIGN_IN`, E-Mail und Scope `https://www.googleapis.com/auth/drive.file`. Android-OAuth-Zulassung hängt an **Package plus Signatur-SHA1**, nicht am Kotlin-Namespace. Ein Android-Client für die Produkt-ID deckt `.phase11a` nicht ab. In den verfügbaren Quellen gibt es keine `google-services.json` und keinen überprüfbaren Console-Nachweis für das neue Package.
+
+Erforderliche manuelle Prüfung/Einrichtung im zugehörigen Google-Cloud-Projekt:
+
+1. Android-OAuth-Client für exakt `com.aistudio.steuerassistent.vnhqkp.phase11a` und die **SHA1 des tatsächlich installierten App-APK-Zertifikats** aus `apks.json` anlegen/registrieren. Bei lokalem Build SHA1 des verwendeten lokalen Debug-Zertifikats verwenden. CI erzeugt pro Job/Lauf einen neuen Schlüssel; ein Client für einen früheren APK-Fingerprint reicht daher nicht. Für dauerhafte Gerätetests einen stabilen verwalteten Testsignierschlüssel nutzen, ohne ihn zu committen.
+2. Drive API im selben Projekt aktiv prüfen. OAuth-Zustimmungsbildschirm, `drive.file`-Scope und separates Testkonto als Testnutzer bei App-Status „Testing“ konfigurieren. Bestehende Freigaben sind hier nicht einsehbar, daher nicht als fehlend bewiesen oder erledigt markieren.
+3. Falls Firebase/Google-Services-Konfiguration verwendet wird: separate Android-App mit der Test-ID und Test-SHA1 registrieren; passende Konfiguration ausschließlich für Debug bereitstellen, z.B. lokal `app/src/debug/google-services.json`. Keine Produktionskonfiguration ersetzen, keine Secrets committen. Das native Sign-in benötigt für die Package-/Zertifikatsregistrierung keinen Produktcode-Umbau.
+
+Die Standard-UI besitzt außerdem einen bestehenden WebView-OAuth-Weg mit Web-Client und Firebase-Redirect. Dieser Weg ist nicht wie ein Android-Client an die applicationId gebunden, verlangt aber weiterhin gültige Web-Client-/Redirect-/Consent-Konfiguration und Googles Zulassung des tatsächlichen Anmeldewegs. Ein manueller Access-Token-Weg ist ebenfalls vorhanden. Keiner dieser Wege wurde live authentifiziert; keiner ersetzt einen echten Transport-/Restore-/Persistenznachweis. Keine OAuth- oder Drive-Architekturänderung in diesem Auftrag.
+
+Für `P11A-DRIVE-01`: isolierte Test-App technisch vorbereiten und Sandbox-Nachweis abschließen; dann Testsignatur/OAuth-Zulassung und Testkonto real verifizieren. Bis dahin **keine Drive-Bereitschaft oder praktische Drive-Freigabe** behaupten.
 
 ## Testbasis und sichere Vorbereitung
 
@@ -107,7 +170,7 @@ Backup/Restore jeweils Start-/Endzeit und Run-Schritt-ID erfassen; Wiederholunge
 3. Backup zweimal; Drive-Inventar vorher/nachher vergleichen. Keine unerwarteten zusätzlichen Dateien/Metadatensätze. Snapshot `after-drive-backup` als gespeicherte Restore-Referenz und ursprünglichen Baselinevergleich aufbewahren.
 4. App schließen; nur den eindeutig identifizierten synthetischen lokalen Testbestand gezielt zurücksetzen. Keinen Cloudbestand löschen. Falls kein sicherer lokaler Reset verfügbar ist, frische isolierte Testinstallation/neues Profil verwenden und abweichenden Ablauf dokumentieren. Helfer bietet bewusst keinen Löschbefehl.
 5. Restore über echte Drive-UI starten und vollständig abschließen; alle Originale laden, nicht nur Vorschauen.
-6. App aus Recent Apps entfernen, Prozess vollständig beenden, neu per Launcher öffnen. Beispiel für die gewählte Testinstallation: `adb -s SERIAL_A shell am force-stop --user 0 com.aistudio.steuerassistent.vnhqkp`. PID-Wechsel und sichtbare Daten prüfen, dann `phase11a-after-drive-restore.json` aufnehmen.
+6. App aus Recent Apps entfernen, Prozess vollständig beenden, neu per Launcher öffnen. Beispiel für die gewählte Testinstallation: `adb -s SERIAL_A shell am force-stop --user 0 com.aistudio.steuerassistent.vnhqkp.phase11a`. PID-Wechsel und sichtbare Daten prüfen, dann `phase11a-after-drive-restore.json` aufnehmen.
 7. Checker gegen unveränderte Baseline **und** gegen After-Backup-Referenz; erwartete initiale Transportänderungen getrennt berichten. Restorevergleich: alle fachlichen IDs/Counts gleich, 60/60 SHA256, keine Dubletten/Orphans, Contractabweichungen 0.
 8. Zweiten echten Restore durchführen, Prozessneustart, `phase11a-after-drive-restore-2.json`; gegen Referenz und Restore 1 vergleichen. RAW/ROOM-RAW-Differenzen bei Wiederholung zusätzlich prüfen; keine stillen fachlichen Änderungen.
 
@@ -173,3 +236,22 @@ CI führt alle vorhandenen Lint-/Unit-/Robolectric-/Ausführungswächter-/Build-
 - Der im Record-Modus erzeugte Greeting-Referenzbild-Diff wurde nicht übernommen. Keine Screenshot-Goldens oder Assertions für diese Phase geändert.
 - Anfängliche lokale Toolchain-/Cacheprobleme: fehlende SDK-/JDK-Werkzeuge und schreibgeschütztes Benutzerverzeichnis. Werkzeuge und Java-/Robolectric-Caches im Workspace eingerichtet; frühere fehlgeschlagene Starts zählen nicht als Erfolg. Lokaler adb-Start scheitert weiterhin am schreibgeschützten Standard-Benutzerverzeichnis; kein lokaler Emulatornachweis, kein `/dev/kvm` und kein echter Gerätezugriff bereitgestellt. Android-Ausführung folgt über CI.
 - GitHub-CI und Emulator-Smoke bleiben bis zum tatsächlich beendeten Lauf offen; versionsgebundene Run-ID, Head und Resultate im Draft-PR/Abschlussbericht. Alle echten Praxisfälle unverändert **NOCH OFFEN**.
+
+### Lokaler Nachweis des Isolations-Folgeauftrags am 21.10.2026
+
+**AUTOMATISIERT BESTANDEN:** 24 Python-Methoden; 16 gezielte Kotlin-Methoden; vollständige Unit-/Robolectric-Suite mit 1107 tatsächlichen Methoden, 0 failures/errors/skips/Platzhalter. SDK-Ausführungswächter und bestehender Phase-10B-Audit grün, sechs Portfolio-Snapshotvergleiche grün. Kein Screenshot-Golden übernommen. Java 17 / Gradle 9.3.1: Referenz-App/-Test-APK, danach isolierte `assembleDebug assembleDebugAndroidTest`, `lintDebug` und `processReleaseManifest` grün. Referenz-Init-Script außerhalb von CI und für `installDebug --dry-run` nachweislich abgewiesen; keine Installation ausgelöst.
+
+Die anschließende Binäranalyse bestätigt VersionName **1.0**, VersionCode **1**, die oben genannten Produkt-/Test-IDs und Launcher-Labels, fehlenden sharedUserId und vier jeweils eigene, untereinander kollisionsfreie Provider-Authorities (`.provider`, `.mlkitinitprovider`, `.firebaseinitprovider`, `.androidx-startup`). Alle vier Provider sind nicht exportiert; nur FileProvider erteilt temporäre URI-Grants. Zusammengeführtes Release-Manifest: ursprüngliche Produkt-ID, ursprüngliche Label-Ressource, nicht debuggable, ursprüngliche Authorities.
+
+Lokale APK-Hashes dieses Android-Code-Stands (lokaler Testschlüssel; **nicht** die künftig separat signierten CI-APKs):
+
+| Datei | SHA256 |
+| --- | --- |
+| isoliertes App-APK | `e258e97d67cf3acad34e9ab752aef0a7ca1326a4e40d0c150c82ebe413258ac7` |
+| passendes QA-APK | `c79afc15a51c9ba7bb491c0d22287c441d8191b59216849e583c4206848c902c` |
+
+Öffentliche lokale Zertifikats-SHA1 beider APKs: `7b30129dc53f6b2adb4c188b03bd2b39feb52e19`. Ausschließlich für **diese lokalen APKs** zur OAuth-Registrierung verwenden. Finale Code-Commit-/CI-Run-Zuordnung und die tatsächlich bereitgestellten CI-APK-Hashes/Fingerprints stehen im [versionsgebundenen Abschlussbericht von PR #143](https://github.com/xedox737/Steuer-Asistend-APP/pull/143) sowie im `apks.json` des zugehörigen Artefakts. CI-Merge-Commit und PR-Head gesondert abgleichen; keine ungeprüfte APK aus einem älteren Lauf installieren.
+
+Isolierte App-Permissions: INTERNET, CAMERA, ACCESS_NETWORK_STATE, `com.google.android.providers.gsf.permission.READ_GSERVICES` und die eigene `com.aistudio.steuerassistent.vnhqkp.phase11a.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`. Exportiert: MainActivity, Compose PreviewActivity, androidx.activity.ComponentActivity, Google RevocationBoundService (geschützt durch `com.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION`) und ProfileInstallReceiver (DUMP-geschützt). Keine externen BROWSABLE-Filter. Vollständige Komponenten-/Permission-/Zertifikatsliste einschließlich QA-APK in `apks.json`.
+
+Kein lokales `/dev/kvm`/echtes Android-Gerät; deshalb lokale UID-/Parallel-/Room-/Preference-Isolationsausführung **NOCH OFFEN**. Dafür ist der vollständige CI-Emulatorjob vorbereitet; nur dessen tatsächlich beendete Resultate gelten als automatisierter Nachweis. OAuth, echter Drive und alle neun echten Praxisfälle bleiben **NOCH OFFEN**. Neue bestätigte Produktbefunde P0/P1/P2/P3 jeweils 0. Kein Produktfix, keine praktische Freigabe.

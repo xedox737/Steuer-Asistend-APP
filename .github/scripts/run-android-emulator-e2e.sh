@@ -72,8 +72,12 @@ adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.H
 
 # Exercise the opt-in QA entry point on this fresh emulator before ordinary
 # fixtures start. Their existing guarded rule clears all test tables/preferences.
+python3 .github/scripts/phase11a-sandbox-check.py prepare
 python3 .github/scripts/phase11a-emulator-smoke.py
+python3 .github/scripts/phase11a-sandbox-check.py verify
 
 gradle connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.immopilotDisposableEmulator=true \
   --stacktrace --no-daemon
+
+python3 .github/scripts/phase11a-sandbox-check.py final

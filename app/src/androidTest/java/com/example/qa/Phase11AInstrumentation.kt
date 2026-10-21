@@ -20,12 +20,28 @@ class Phase11AInstrumentation : AndroidJUnitRunner() {
     }
 
     override fun onStart() {
+        try {
+            Phase11AIsolation.requireTestPackage(targetContext.packageName, com.example.BuildConfig.DEBUG)
+        } catch (failure: IllegalStateException) {
+            finish(1, Bundle().apply { putString("error", failure.message) })
+            return
+        }
         if (!qaArguments.containsKey("phase11aAction")) {
             super.onStart()
             return
         }
         val result = Bundle()
         try {
+            if (qaArguments.getString("phase11aAction") == "isolation") {
+                check(qaArguments.getString("immopilotDisposableEmulator") == "true")
+                check(qaArguments.getString("testPortfolioOnly") == "true")
+                val run = requireNotNull(qaArguments.getString("runId"))
+                require(Regex("""P11A-\d{4}-\d{2}-\d{2}-[A-Za-z0-9-]+""").matches(run))
+                result.putString("isolation", Phase11ASandboxProbe.capture(targetContext).put("runId", run).toString())
+                Log.i("Phase11A", "$run isolated sandbox probe completed")
+                finish(0, result)
+                return
+            }
             runBlocking(Dispatchers.IO) {
                 val run = requireNotNull(qaArguments.getString("runId"))
                 require(Regex("""P11A-\d{4}-\d{2}-\d{2}-[A-Za-z0-9-]+""").matches(run))
@@ -43,6 +59,7 @@ class Phase11AInstrumentation : AndroidJUnitRunner() {
                     .put("capturedAt", Instant.now().toString()).put("device", Build.MODEL)
                     .put("android", Build.VERSION.RELEASE).put("sdk", Build.VERSION.SDK_INT)
                     .put("appVersion", info.versionName).put("source", "DEVICE_INSTRUMENTATION")
+                    .put("applicationId", targetContext.packageName).put("uid", android.os.Process.myUid())
                 val snapshot = Phase11ASnapshot.capture(targetContext, db, meta)
                 val dir = File(targetContext.filesDir, "phase11a/$run").apply { mkdirs() }
                 val name = if (label == "baseline") "phase11a-baseline.json" else "phase11a-after-$label.json"

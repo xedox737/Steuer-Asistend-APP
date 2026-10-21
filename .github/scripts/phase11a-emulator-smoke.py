@@ -43,7 +43,7 @@ refused = subprocess.run([sys.executable, helper, "seed", *common, "--label", "r
 assert refused.returncode == 2 and "Nichtleere Test-Datentabelle" in refused.stderr, refused.stderr
 print("Occupied seed target correctly refused; existing test portfolio preserved")
 print(call(sys.executable, helper, "snapshot", *common, "--label", "baseline"))
-call("adb", "-s", serial, "shell", "am", "force-stop", "--user", user, "com.aistudio.steuerassistent.vnhqkp")
+call("adb", "-s", serial, "shell", "am", "force-stop", "--user", user, "com.aistudio.steuerassistent.vnhqkp.phase11a")
 print(call(sys.executable, helper, "snapshot", *common, "--label", "emulator-process-restart"))
 print(call(sys.executable, ".github/scripts/phase11a-integrity-check.py", str(output / run_id / "phase11a-baseline.json"),
            str(output / run_id / "phase11a-after-emulator-process-restart.json"), "--units", "17",

@@ -8,8 +8,22 @@ import re
 import subprocess
 import sys
 
-PACKAGE = "com.aistudio.steuerassistent.vnhqkp"
+PRODUCTION_PACKAGE = "com.aistudio.steuerassistent.vnhqkp"
+PACKAGE = PRODUCTION_PACKAGE + ".phase11a"
 RUNNER = PACKAGE + ".test/com.example.qa.Phase11AInstrumentation"
+PRODUCTION_ERROR = "Phase 11A evidence/seed is not allowed on the production applicationId."
+
+
+def require_isolated_runner(output):
+    if PACKAGE == PRODUCTION_PACKAGE:
+        raise RuntimeError(PRODUCTION_ERROR)
+    bindings = re.findall(r"instrumentation:(\S+) \(target=([^\s)]+)\)", output)
+    if (RUNNER, PACKAGE) in bindings:
+        return
+    for runner, target in bindings:
+        if target == PRODUCTION_PACKAGE and runner.endswith("/com.example.qa.Phase11AInstrumentation"):
+            raise RuntimeError(PRODUCTION_ERROR)
+    raise RuntimeError("Expected isolated Phase 11A instrumentation/package is not installed; refusing device action")
 
 
 def main():
@@ -45,6 +59,8 @@ def main():
               prefix.with_suffix(".log") if a.action == "logs" else directory / name)
     if target.exists():
         raise RuntimeError("Evidence exists; use another label/run; refusing overwrite before device action")
+    # Inspect the actual installed runner target before writing even the input ZIP.
+    require_isolated_runner(call("shell", "pm", "list", "instrumentation").decode())
     provenance = None
     if a.action == "screenshot":
         target, content = prefix.with_suffix(".png"), call("exec-out", "screencap", "-p")
@@ -77,10 +93,11 @@ def main():
         apk_paths = call("shell", "pm", "path", "--user", str(a.user), PACKAGE).decode().splitlines()
         if len(apk_paths) != 1 or not apk_paths[0].startswith("package:"):
             raise RuntimeError("Expected one universal debug APK; record split-APK provenance separately")
-        if snapshot["meta"]["runId"] != a.run_id or snapshot["meta"]["commit"] != a.commit:
+        if (snapshot["meta"]["runId"] != a.run_id or snapshot["meta"]["commit"] != a.commit
+                or snapshot["meta"]["applicationId"] != PACKAGE):
             raise RuntimeError("device snapshot provenance mismatch")
         # Preserve the exact bytes hashed in the device log. Host metadata is separate.
-        provenance = dict(runId=a.run_id, androidUser=a.user, deviceAlias=a.serial,
+        provenance = dict(runId=a.run_id, androidUser=a.user, deviceAlias=a.serial, applicationId=PACKAGE,
             snapshotSha256=hashlib.sha256(content).hexdigest(),
             apkSha256=hashlib.sha256(call("exec-out", *runas, "cat", apk_paths[0].removeprefix("package:"))).hexdigest())
     if target.exists():

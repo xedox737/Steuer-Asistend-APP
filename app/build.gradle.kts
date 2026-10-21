@@ -53,7 +53,10 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      applicationIdSuffix = ".phase11a"
+      signingConfig = signingConfigs.getByName("debugConfig")
+    }
   }
   compileOptions {
     isCoreLibraryDesugaringEnabled = true

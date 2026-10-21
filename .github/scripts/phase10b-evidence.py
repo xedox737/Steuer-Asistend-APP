@@ -15,6 +15,7 @@ root = Path("app/build")
 emulator = "--emulator" in sys.argv
 if emulator:
     paths = sorted(set(root.glob("outputs/androidTest-results/**/*.xml")) |
+                   set(root.glob("emulator-e2e/phase11a-isolation/*.json")) |
                    {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
 else:
     paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |

@@ -1,0 +1,17 @@
+// CI-only reference APK, explicitly requested with -I. No extra product variant.
+// The normal debug build always keeps its Phase 11A suffix and launcher label.
+// The reference instrumentation retains the production-package refusal guard.
+if (System.getenv('GITHUB_ACTIONS') != 'true' ||
+    !gradle.startParameter.taskNames ||
+    !gradle.startParameter.taskNames.every { it.tokenize(':').last() in ['assembleDebug', 'assembleDebugAndroidTest'] }) {
+    throw new GradleException('Phase 11A reference is CI-only and assemble-only; installation tasks are forbidden.')
+}
+
+allprojects {
+    plugins.withId('com.android.application') {
+        extensions.getByName('androidComponents').finalizeDsl { android ->
+            android.buildTypes.getByName('debug').applicationIdSuffix = ''
+            android.sourceSets.getByName('debug').manifest.srcFile('src/main/AndroidManifest.xml')
+        }
+    }
+}

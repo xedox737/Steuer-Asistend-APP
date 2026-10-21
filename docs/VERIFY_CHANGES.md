@@ -85,3 +85,11 @@ wird in JVM-/Android-Testquellen eingebunden, nicht in die App. Der zusätzliche
 `Phase11AInstrumentation`-Einstieg ist ausschließlich manuell aufzurufen; er zählt
 nicht als automatisch durchgeführte Geräteabnahme. Ablauf und Prüfgrenzen:
 [`PHASE11A_PRACTICAL_ACCEPTANCE.md`](PHASE11A_PRACTICAL_ACCEPTANCE.md).
+
+Debug hat die getrennte applicationId `com.aistudio.steuerassistent.vnhqkp.phase11a`
+und den Launcher-Namen `ImmoPilot Test`; Release-ID/-Name bleiben unverändert.
+Seed/Evidence verweigern das Produkt-Package. Der vollständige Emulatorjob prüft
+zusätzlich parallele Installation, verschiedene UID, getrennte Room-/Preference-/Dateidaten
+und unveränderte Referenzdaten nach allen E2E-Tests. Das CI-Artefakt
+`phase11a-isolated-apks` enthält zusammen signierte App-/QA-APKs und ihre Binäranalyse.
+Vor echtem Drive-Test Package-/Zertifikatszulassung für OAuth gemäß Abnahmeprotokoll prüfen.

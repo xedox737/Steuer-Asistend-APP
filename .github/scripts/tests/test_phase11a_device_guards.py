@@ -37,20 +37,55 @@ class DeviceGuardTests(unittest.TestCase):
             self.assertEqual(1, call.call_count)
 
     def test_untrusted_fixture_never_reaches_device(self):
-        with tempfile.TemporaryDirectory() as folder, patch.object(device.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"10\n")) as call:
+        outputs = [subprocess.CompletedProcess([], 0, b"10\n"), self.runner_output()]
+        with tempfile.TemporaryDirectory() as folder, patch.object(device.subprocess, "run", side_effect=outputs) as call:
             fixture = Path(folder) / "fixture.zip"
             fixture.write_bytes(b"untrusted")
             with self.assertRaises(SystemExit):
                 self.invoke(folder, ["--fixture", str(fixture), "--fixture-sha256", "b"*64, "--confirm-empty-test-installation"], action="seed")
-            self.assertEqual(1, call.call_count)
+            self.assertEqual(2, call.call_count)
 
     def test_android_instrumentation_failure_is_not_success(self):
         outputs = [subprocess.CompletedProcess([], 0, b"10\n"),
+                   self.runner_output(),
                    subprocess.CompletedProcess([], 0, b"INSTRUMENTATION_RESULT: error=failed\nINSTRUMENTATION_CODE: 0\n")]
         with tempfile.TemporaryDirectory() as folder, patch.object(device.subprocess, "run", side_effect=outputs):
             with self.assertRaisesRegex(RuntimeError, "instrumentation failed"):
                 self.invoke(folder)
             self.assertFalse(any(Path(folder).rglob("*.json")))
+
+    @staticmethod
+    def runner_output(target=None):
+        return subprocess.CompletedProcess([], 0,
+            f"instrumentation:{device.RUNNER} (target={target or device.PACKAGE})\n".encode())
+
+    def test_production_binding_refused_before_any_seed_write(self):
+        outputs = [subprocess.CompletedProcess([], 0, b"10\n"), self.runner_output(device.PRODUCTION_PACKAGE)]
+        with tempfile.TemporaryDirectory() as folder, patch.object(device.subprocess, "run", side_effect=outputs) as call:
+            with self.assertRaisesRegex(RuntimeError, "not allowed on the production applicationId"):
+                self.invoke(folder, action="seed")
+            self.assertEqual(2, call.call_count)
+            self.assertFalse(any("instrument" in args.args[0] or "run-as" in args.args[0] for args in call.call_args_list))
+
+    def test_only_product_installation_refused(self):
+        legacy = device.PRODUCTION_PACKAGE + ".test/com.example.qa.Phase11AInstrumentation"
+        outputs = [subprocess.CompletedProcess([], 0, b"10\n"),
+                   subprocess.CompletedProcess([], 0, f"instrumentation:{legacy} (target={device.PRODUCTION_PACKAGE})\n".encode())]
+        with tempfile.TemporaryDirectory() as folder, patch.object(device.subprocess, "run", side_effect=outputs) as call:
+            with self.assertRaisesRegex(RuntimeError, "not allowed on the production applicationId"):
+                self.invoke(folder, action="seed")
+            self.assertEqual(2, call.call_count)
+
+    def test_parallel_product_and_test_installation_selects_only_test(self):
+        legacy = device.PRODUCTION_PACKAGE + ".test/com.example.qa.Phase11AInstrumentation"
+        device.require_isolated_runner(
+            f"instrumentation:{legacy} (target={device.PRODUCTION_PACKAGE})\n"
+            f"instrumentation:{device.RUNNER} (target={device.PACKAGE})\n")
+
+    def test_misconfigured_host_product_package_is_rejected(self):
+        with patch.object(device, "PACKAGE", device.PRODUCTION_PACKAGE):
+            with self.assertRaisesRegex(RuntimeError, "not allowed on the production applicationId"):
+                device.require_isolated_runner("")
 
     def test_run_initializer_opens_all_tests_and_preserves_existing_run(self):
         with tempfile.TemporaryDirectory() as folder:

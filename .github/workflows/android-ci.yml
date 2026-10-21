@@ -210,9 +210,31 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000
 
       # Catch instrumentation compilation errors before paying for an emulator boot.
+      - name: Build guarded production-ID reference for parallel sandbox proof
+        timeout-minutes: 15
+        run: |
+          gradle -I .github/scripts/phase11a-reference.init.gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+          mkdir -p app/build/phase11a-reference
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/phase11a-reference/app-reference.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk app/build/phase11a-reference/app-reference-androidTest.apk
+
       - name: Build app and instrumentation APKs
         timeout-minutes: 15
-        run: gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+        run: gradle assembleDebug assembleDebugAndroidTest processReleaseManifest --stacktrace --no-daemon
+
+      - name: Inspect isolated and reference APK identities and provider authorities
+        run: python3 .github/scripts/phase11a-inspect-apks.py
+
+      - name: Upload matched isolated app and QA APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase11a-isolated-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            app/build/emulator-e2e/phase11a-isolation/apks.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Download this run's Phase 10B fixture for QA instrumentation smoke
         uses: actions/download-artifact@v4
