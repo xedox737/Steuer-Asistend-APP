@@ -71,3 +71,17 @@ Zusätzlich manuell prüfen:
 4. CI vollständig grün abwarten.
 5. Offene Geräte-/Cloud-Prüfgrenzen im PR nennen.
 6. Merge nur mit ausdrücklicher Freigabe, wenn der Auftrag dies verlangt.
+
+## Phase-11A-Evidence-Helfer
+
+```bash
+python3 -m unittest discover -s .github/scripts/tests -p 'test_phase11a*.py' -v
+# Nach den vollständigen Unit-Tests, mit den tatsächlich erzeugten Portfolio-Snapshots:
+python3 .github/scripts/phase11a-audit-ci.py
+```
+
+Der bestehende Phase-10D-Vertragshelper liegt unverändert unter `app/src/qa/java` und
+wird in JVM-/Android-Testquellen eingebunden, nicht in die App. Der zusätzliche
+`Phase11AInstrumentation`-Einstieg ist ausschließlich manuell aufzurufen; er zählt
+nicht als automatisch durchgeführte Geräteabnahme. Ablauf und Prüfgrenzen:
+[`PHASE11A_PRACTICAL_ACCEPTANCE.md`](PHASE11A_PRACTICAL_ACCEPTANCE.md).

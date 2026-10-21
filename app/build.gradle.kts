@@ -21,7 +21,7 @@ android {
     versionCode = 1
     versionName = "1.0"
 
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    testInstrumentationRunner = "com.example.qa.Phase11AInstrumentation"
   }
 
   val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
@@ -65,6 +65,9 @@ android {
     buildConfig = true
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
+  // QA helpers are compiled only into test APKs/JVM tests, never the app.
+  sourceSets.getByName("test").kotlin.directories.add("src/qa/java")
+  sourceSets.getByName("androidTest").kotlin.directories.add("src/qa/java")
   // The calendar intentionally uses German Material resources on every device locale.
   // Keep them available in App Bundle installations as well as standalone APKs.
   bundle { language { enableSplit = false } }

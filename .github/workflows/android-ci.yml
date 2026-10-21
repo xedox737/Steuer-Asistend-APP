@@ -60,6 +60,9 @@ jobs:
               -validity 10000
           fi
 
+      - name: Test Phase 11A evidence helpers
+        run: python3 -m unittest discover -s .github/scripts/tests -p 'test_phase11a*.py' -v
+
       - name: Run lint
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon
@@ -85,6 +88,10 @@ jobs:
       - name: Verify saved Phase 10B portfolio evidence
         if: always()
         run: python3 .github/scripts/phase10b-audit-evidence.py app/build app/build/reports/phase10b/audit-evidence.json
+
+      - name: Verify Phase 11A snapshot and integrity plumbing
+        if: always()
+        run: python3 .github/scripts/phase11a-audit-ci.py
 
       - name: Preserve synthetic Phase 10B evidence
         if: always()
@@ -206,6 +213,12 @@ jobs:
       - name: Build app and instrumentation APKs
         timeout-minutes: 15
         run: gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+
+      - name: Download this run's Phase 10B fixture for QA instrumentation smoke
+        uses: actions/download-artifact@v4
+        with:
+          name: android-reports
+          path: app/build/phase11a-ci-input
 
       - name: Enable KVM
         run: |

@@ -70,6 +70,10 @@ adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.H
   "$e2e_sdk_root/emulator/emulator" -no-window -noaudio -accel-check
 } > "$artifact_dir/device-environment.txt" 2>&1
 
+# Exercise the opt-in QA entry point on this fresh emulator before ordinary
+# fixtures start. Their existing guarded rule clears all test tables/preferences.
+python3 .github/scripts/phase11a-emulator-smoke.py
+
 gradle connectedDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.immopilotDisposableEmulator=true \
   --stacktrace --no-daemon
