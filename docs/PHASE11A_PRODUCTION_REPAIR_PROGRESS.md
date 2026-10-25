@@ -61,3 +61,25 @@ exportieren und vollständig prüfen.
 
 Vollständige Regressionen, Lint/APKs, CI, E11A-01/E11A-02 sowie Phase C/D
 stehen noch aus. Kein vollständiger Abschluss und keine Freigabe.
+
+## Versionierter E11A-03-Nachweis
+
+Die oben beschriebene Metadaten-Prüfgrenze ist im erneuten echten Testlauf
+behoben: derselbe unveränderte Testcode wurde mit tatsächlichem App-Commit
+cb2a2413279f422c1bb6f0fe86b59f68607d22c6 erneut ausgeführt (kein Umschreiben
+der exportierten Metadaten, kein gelockerter Checker).
+17 tatsächliche Methoden bestanden, 0 Fehler/Skips. Der unveränderte strikte
+Checker bestätigt den gespeicherten Zustand nach zweimal Sync/zweimal MERGE:
+`ok=true`, 0 Strukturfehler, alle 60 Originalhashes korrekt.
+Counts: 5 Immobilien, 17 Einheiten, 17 Mietverhältnisse, 120 Bankbuchungen,
+70 Belege/Dokumente, 10 Fahrten, 60 Originale. Der strukturelle Selbstvergleich
+ist kein vollständiger Vorher-/Nachher-Vertragsvergleich und keine Full-Restore-
+oder praktische Google-Drive-Freigabe. Die normativen HTTP-Tests prüfen den
+Erhalt aller fachlichen Dokumentfelder gesondert vor/nach den Operationen.
+
+Lokale Evidence im Reparatur-Worktree:
+`app/build/reports/e11a03-repair/preserved-after-two-merges.json`,
+`app/build/reports/e11a03-repair/strict-structure.json`,
+`app/build/test-results/testDebugUnitTest/`.
+Testlog: `/tmp/immopilot-e11a03-versioned.log`.
+E11A-01/E11A-02 und die vollständigen Phasen B–D bleiben ausstehend.
