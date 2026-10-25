@@ -47,7 +47,7 @@ class EmulatorEnvironmentRule(private val fontScale: () -> Float) : ExternalReso
             "Diese Tests dürfen ausschließlich auf einem isolierten Debug-Emulator laufen."
         }
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        check(context.packageName == "com.aistudio.steuerassistent.vnhqkp")
+        com.example.qa.Phase11AIsolation.requireTestPackage(context.packageName, BuildConfig.DEBUG)
         check(InstrumentationRegistry.getArguments().getString("immopilotDisposableEmulator") == "true") {
             "Testdatenbereinigung benötigt -Pandroid.testInstrumentationRunnerArguments.immopilotDisposableEmulator=true"
         }

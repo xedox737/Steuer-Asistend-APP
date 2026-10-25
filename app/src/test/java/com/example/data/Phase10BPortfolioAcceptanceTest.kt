@@ -31,6 +31,8 @@ class Phase10BPortfolioAcceptanceTest {
     private val rawMoshi = com.squareup.moshi.Moshi.Builder()
         .addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
     private val comparisonSummary = JSONObject()
+    private val evidenceRun = "P11A-${java.time.LocalDate.now(java.time.ZoneOffset.UTC)}-CI-" +
+        (System.getenv("GITHUB_RUN_ID") ?: java.util.UUID.randomUUID().toString()) + "-${System.getenv("GITHUB_RUN_ATTEMPT") ?: "1"}"
     private val timestamp = "2026-10-01T12:00:00Z"
     private val config = DriveAppConfig(rootFolderId = "root", systemFolderId = "system", receiptsFolderId = "receipts",
         paymentsFolderId = "payments", exportsFolderId = "exports", transactionsFolderId = "transactions",
@@ -428,6 +430,14 @@ class Phase10BPortfolioAcceptanceTest {
         File(output, "$label.json").writeText(text)
         File(output, "$label.CONTRACT.json").writeText(RestoreContractSnapshot.fromRaw(text, capturedRoom.getValue(label)).canonical())
         recordIntegrity(label)
+        // Synthetic plumbing evidence only; never a practical device/Drive result.
+        if (label == "BEFORE" || label.startsWith("AFTER_RESTORE_") || label == "AFTER_REPLACE_FULL") {
+            val meta = JSONObject().put("runId", "$evidenceRun-${output.name}")
+                .put("label", label).put("commit", System.getenv("GITHUB_SHA") ?: "0".repeat(40))
+                .put("capturedAt", java.time.Instant.now().toString()).put("device", "Robolectric")
+                .put("android", "SDK 35").put("appVersion", "1.0").put("source", "AUTOMATED_SYNTHETIC")
+            File(output, "$label.PHASE11A.json").writeText(Phase11ASnapshot.capture(context, db, meta).toString(2))
+        }
         captured[label] = text
         return text
     }

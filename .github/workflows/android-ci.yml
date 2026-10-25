@@ -60,6 +60,9 @@ jobs:
               -validity 10000
           fi
 
+      - name: Test Phase 11A evidence helpers
+        run: python3 -m unittest discover -s .github/scripts/tests -p 'test_phase11a*.py' -v
+
       - name: Run lint
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon
@@ -85,6 +88,10 @@ jobs:
       - name: Verify saved Phase 10B portfolio evidence
         if: always()
         run: python3 .github/scripts/phase10b-audit-evidence.py app/build app/build/reports/phase10b/audit-evidence.json
+
+      - name: Verify Phase 11A snapshot and integrity plumbing
+        if: always()
+        run: python3 .github/scripts/phase11a-audit-ci.py
 
       - name: Preserve synthetic Phase 10B evidence
         if: always()
@@ -113,6 +120,14 @@ jobs:
           KEY_PASSWORD: ${{ env.RELEASE_KEY_PASSWORD }}
           KEY_ALIAS: ${{ env.RELEASE_KEY_ALIAS }}
         run: gradle assembleRelease --stacktrace --no-daemon
+
+      - name: Build unsigned release APK for QA when release signing is unavailable
+        if: env.RELEASE_KEYSTORE_BASE64 == '' || env.RELEASE_STORE_PASSWORD == '' || env.RELEASE_KEY_PASSWORD == '' || env.RELEASE_KEY_ALIAS == ''
+        timeout-minutes: 10
+        run: gradle assembleRelease --stacktrace --no-daemon
+
+      - name: Verify phone-only tools are absent from the actual release APK
+        run: python3 .github/scripts/phase11a-check-ui-packaging.py
 
       - name: Upload reports
         if: always()
@@ -203,9 +218,37 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000
 
       # Catch instrumentation compilation errors before paying for an emulator boot.
+      - name: Build guarded production-ID reference for parallel sandbox proof
+        timeout-minutes: 15
+        run: |
+          gradle -I .github/scripts/phase11a-reference.init.gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+          mkdir -p app/build/phase11a-reference
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/phase11a-reference/app-reference.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk app/build/phase11a-reference/app-reference-androidTest.apk
+
       - name: Build app and instrumentation APKs
         timeout-minutes: 15
-        run: gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+        run: gradle assembleDebug assembleDebugAndroidTest processReleaseManifest --stacktrace --no-daemon
+
+      - name: Inspect isolated and reference APK identities and provider authorities
+        run: python3 .github/scripts/phase11a-inspect-apks.py
+
+      - name: Upload matched isolated app and QA APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase11a-isolated-apks
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            app/build/emulator-e2e/phase11a-isolation/apks.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Download this run's Phase 10B fixture for QA instrumentation smoke
+        uses: actions/download-artifact@v4
+        with:
+          name: android-reports
+          path: app/build/phase11a-ci-input
 
       - name: Enable KVM
         run: |

@@ -7,6 +7,7 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.time.Instant
 import androidx.room.withTransaction
+import com.example.api.DriveEnvironment
 import com.example.api.GoogleDriveClient
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,7 +26,7 @@ object SupplementalDriveBackup {
             val result = if (existing != null) GoogleDriveClient.updateJson(accessToken, existing.id, root.toString(4))
             else GoogleDriveClient.uploadJson(
                 accessToken, systemFolderId, FILE_NAME, root.toString(4),
-                mapOf("appName" to "ImmobilienBelegApp", "entityType" to ENTITY_TYPE, "schemaVersion" to SCHEMA_VERSION.toString())
+                mapOf("appName" to DriveEnvironment.appIdentifier, "entityType" to ENTITY_TYPE, "schemaVersion" to SCHEMA_VERSION.toString())
             )
             Result(result.success, result.errorMessage ?: if (result.success) "Zusatzdaten gesichert" else "Zusatzdaten-Backup fehlgeschlagen")
         } catch (e: Exception) {

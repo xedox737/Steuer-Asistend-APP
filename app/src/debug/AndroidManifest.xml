@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application android:label="@string/phase11a_app_name" tools:replace="android:label">
+        <activity android:name="com.example.MainActivity"
+            android:label="@string/phase11a_app_name" tools:replace="android:label" />
+        <!-- Library-wide schemes collide with the product installation. Phase 11A
+             Drive uses Play Services or the existing in-app WebView, not Firebase
+             browser callbacks. Keep the test app out of external callback resolution. -->
+        <activity android:name="com.google.firebase.auth.internal.GenericIdpActivity"
+            android:exported="false" tools:replace="android:exported">
+            <intent-filter tools:node="removeAll" />
+        </activity>
+        <activity android:name="com.google.firebase.auth.internal.RecaptchaActivity"
+            android:exported="false" tools:replace="android:exported">
+            <intent-filter tools:node="removeAll" />
+        </activity>
+    </application>
+</manifest>
