@@ -1585,6 +1585,12 @@ class DrivePersistenceRepository(
                 localRepository.insert(currentReceipt)
             }
 
+            // Reject contradictory associations before any remote folder/file mutation.
+            ReceiptDocumentSyncState.requireIdentity(
+                localRepository.getManagedDocument(StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId)),
+                StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId), currentReceipt.propertyId, currentReceipt.internalId
+            )
+
             val targetFolderId = getReceiptTargetFolderId(
                 accessToken, config.rootFolderId, currentReceipt, config.systemFolderId, context,
                 localRepository.getPropertyMetadata()
@@ -1882,6 +1888,7 @@ class DrivePersistenceRepository(
             val receiptManagedDocument = ManagedDocument(
                 documentId = StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId),
                 propertyId = currentReceipt.propertyId,
+                unitId = currentReceipt.unitId.takeIf(String::isNotBlank),
                 receiptInternalId = currentReceipt.internalId,
                 documentType = ManagedDocumentType.RECHNUNG.name,
                 documentCategory = if ((actualDriveFolderId ?: targetFolderId) == targetFolderId) "02_Belege/${currentReceipt.datum.take(4)}" else "LEGACY_BELEGABLAGE",
@@ -1905,7 +1912,7 @@ class DrivePersistenceRepository(
                 source = DocumentSource.RECEIPT.name,
                 legacyDriveFolderId = actualDriveFolderId?.takeIf { it != targetFolderId }
             )
-            localRepository.upsertManagedDocument(receiptManagedDocument)
+            localRepository.upsertManagedDocument(ReceiptDocumentSyncState.merge(existingManaged, receiptManagedDocument))
             if (!syncReceiptOriginalAttachments(accessToken, config, currentReceipt)) {
                 localRepository.insert(currentReceipt.copy(syncStatus = "ERROR", syncError = "Nicht alle Originalseiten konnten gesichert werden."))
                 return@run false
