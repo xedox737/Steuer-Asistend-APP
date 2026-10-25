@@ -4,7 +4,7 @@ Base: 69f35772b6480a958ca7479b024dbd4d8bd42fa1.
 Branch: fix/phase11a-production-data-integrity.
 Audit: 321a8c30cd8ec5c9b20ad02e4758504976cd787b.
 
-Dieser Stand ist keine fertige Reparatur und keine Freigabe.
+Dieser Verlauf dokumentiert lokale Zwischenstände. Der verbindliche finale Prüfstand steht im Reparatur-PR und im dort verlinkten Abschlussbericht. Keine praktische Freigabe ohne Geräte-/Drive-Nachweise.
 
 ## E11A-03 – begonnen
 
@@ -243,3 +243,18 @@ Alle fachlichen Assertions und der vollständige Feldvergleich bleiben bestehen.
 Der separate vorhandene Sync-Fall prüft weiterhin die Erhaltung lokalen
 nichtleeren OCR-Texts. Keine Produkt-/Backup-Vertragsänderung und keine neue
 Normalisierungs-/Ignore-Regel; der verstärkte Fall wird erneut ausgeführt.
+
+## Verstärkte Referenzprüfung bestanden
+
+Auf b509e2b: fünf echte HTTP-/Portfolio-Methoden, 0 Fehler/Errors/Skips.
+Nichtleere Mieter-, Darlehens-, Sanierungs-, Review- und Confidence-Referenzen
+bleiben auch im frischen Full-Restore, Download aller Originale und zweimaligem
+MERGE erhalten. Unveränderter Checker: 60/60 Hashes, 0 Contract-Abweichungen,
+0 fehlende/unerwartete IDs, 0 Dubletten, 0 Relationsfehler/Orphans.
+Produktquellen sind seit dem vollständigen grünen 1.139er-Lauf unverändert.
+Die zusätzliche APK-Prüfung besteht für Produkt-Debug und unsignierten Release.
+Main erneut abgerufen: weiterhin 69f35772b6480a958ca7479b024dbd4d8bd42fa1.
+PR #143 weiterhin Draft, ungemergt, Head 8ddd556.
+
+Nächster Schritt: Reparaturbranch pushen, Draft-PR und vollständige Android-CI.
+Phase C erst nach erfolgreicher Produkt-CI auf eigenem vorläufigen Branch.
