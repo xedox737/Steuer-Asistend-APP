@@ -1,0 +1,1148 @@
+{
+  "targets": {
+    "main-final": {
+      "standalone-result": {
+        "runId": "P11A-2026-10-25-COMPARE-2c0f6617-2e91-4492-9e93-518bc01e68e0",
+        "label": "standalone",
+        "source": "UNIT_TEST",
+        "commit": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+        "capturedAt": "2026-10-25T16:23:47.589700048Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "documentId": "comparison-rental-document",
+        "unitId": "e10b-property-1-unit-1",
+        "tenantReference": "synthetic-tenant-reference",
+        "unitAndTenantPreserved": true,
+        "syncPasses": 2,
+        "mergePasses": 2
+      },
+      "portfolio-result": {
+        "runId": "P11A-2026-10-25-COMPARE-c1a38a78-785c-40ec-a05e-6a957aab6da7",
+        "label": "portfolio",
+        "source": "UNIT_TEST",
+        "commit": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+        "capturedAt": "2026-10-25T16:23:55.164035155Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "firstLossStage": "FIRST_RECEIPT_UPLOAD_BEFORE_ANY_RESTORE",
+        "affectedDocumentIds": [
+          "receipt:e10b-receipt-1",
+          "receipt:e10b-receipt-10",
+          "receipt:e10b-receipt-11",
+          "receipt:e10b-receipt-12",
+          "receipt:e10b-receipt-13",
+          "receipt:e10b-receipt-14",
+          "receipt:e10b-receipt-15",
+          "receipt:e10b-receipt-16",
+          "receipt:e10b-receipt-17",
+          "receipt:e10b-receipt-18",
+          "receipt:e10b-receipt-19",
+          "receipt:e10b-receipt-2",
+          "receipt:e10b-receipt-20",
+          "receipt:e10b-receipt-21",
+          "receipt:e10b-receipt-22",
+          "receipt:e10b-receipt-23",
+          "receipt:e10b-receipt-24",
+          "receipt:e10b-receipt-25",
+          "receipt:e10b-receipt-26",
+          "receipt:e10b-receipt-27",
+          "receipt:e10b-receipt-28",
+          "receipt:e10b-receipt-29",
+          "receipt:e10b-receipt-3",
+          "receipt:e10b-receipt-30",
+          "receipt:e10b-receipt-31",
+          "receipt:e10b-receipt-32",
+          "receipt:e10b-receipt-33",
+          "receipt:e10b-receipt-34",
+          "receipt:e10b-receipt-35",
+          "receipt:e10b-receipt-36",
+          "receipt:e10b-receipt-37",
+          "receipt:e10b-receipt-38",
+          "receipt:e10b-receipt-39",
+          "receipt:e10b-receipt-4",
+          "receipt:e10b-receipt-40",
+          "receipt:e10b-receipt-41",
+          "receipt:e10b-receipt-42",
+          "receipt:e10b-receipt-43",
+          "receipt:e10b-receipt-44",
+          "receipt:e10b-receipt-45",
+          "receipt:e10b-receipt-46",
+          "receipt:e10b-receipt-47",
+          "receipt:e10b-receipt-48",
+          "receipt:e10b-receipt-49",
+          "receipt:e10b-receipt-5",
+          "receipt:e10b-receipt-50",
+          "receipt:e10b-receipt-51",
+          "receipt:e10b-receipt-52",
+          "receipt:e10b-receipt-53",
+          "receipt:e10b-receipt-54",
+          "receipt:e10b-receipt-55",
+          "receipt:e10b-receipt-56",
+          "receipt:e10b-receipt-57",
+          "receipt:e10b-receipt-58",
+          "receipt:e10b-receipt-59",
+          "receipt:e10b-receipt-6",
+          "receipt:e10b-receipt-60",
+          "receipt:e10b-receipt-7",
+          "receipt:e10b-receipt-8",
+          "receipt:e10b-receipt-9"
+        ],
+        "missingSourceReceiptIds": [
+          "0e340cbf-b43e-4bb7-bc54-932f116ef033",
+          "3a54daf8-78bb-436a-8f91-622fecbb73bd",
+          "6a61995f-bf0f-44a5-abe7-f9159c508935",
+          "6ea354a2-2806-42e8-8367-e41941be80ee",
+          "b259b516-8c17-4b98-ae64-73e4de0d5ea7",
+          "c51a6b6d-4e06-424c-8b2c-864e89c98b34",
+          "d90b1e14-f7a3-4077-9d31-03dd4f71b7dd",
+          "da714918-73bd-4a8f-9e51-d0472892c534",
+          "e4d25037-be9d-4589-b8dc-43ed56c0894a",
+          "fa6cd41c-0eec-4168-86ae-36bd039cddc7"
+        ],
+        "originalHashesMatched": 60,
+        "unchangedDomains": [
+          "properties",
+          "loans",
+          "bankTransactions",
+          "bankAccounts",
+          "bankRentAssignments",
+          "logbookTrips",
+          "tenantHistoryPrefs",
+          "confirmedAfaValuesPrefs",
+          "renovationReviewPrefs"
+        ],
+        "rawDomainChecks": {
+          "properties": true,
+          "loans": true,
+          "bankTransactions": true,
+          "bankAccounts": true,
+          "bankRentAssignments": true,
+          "logbookTrips": true,
+          "tenantHistoryPrefs": true,
+          "propertyUnitPrefs": false,
+          "confirmedAfaValuesPrefs": true,
+          "renovationReviewPrefs": true
+        },
+        "receiptUnitsUnchanged": true,
+        "backupPasses": 2,
+        "mergePasses": 2,
+        "cloudOrphans": 0,
+        "databaseReopenPreservesDefect": true,
+        "beforeCounts": {
+          "loans": 1,
+          "properties": 5,
+          "logbookTrips": 10,
+          "exportAuditRuns": 100,
+          "standardRoutes": 0,
+          "managedDocuments": 70,
+          "bankAccounts": 1,
+          "bankTransactions": 120,
+          "bankReceiptLinks": 1,
+          "bankLearningRules": 0,
+          "bankRuleEvidence": 0,
+          "bankRentAssignments": 6,
+          "bankLoanAssignments": 0,
+          "bankRecurringPatterns": 0,
+          "receipts": 70,
+          "roomReceipts": 70,
+          "roomDocuments": 70,
+          "units": 17,
+          "afa": 5,
+          "tenancies": 17,
+          "originals": 60,
+          "belege": 70,
+          "receiptEntities": 70
+        },
+        "afterUploadCounts": {
+          "loans": 1,
+          "properties": 5,
+          "logbookTrips": 10,
+          "exportAuditRuns": 100,
+          "standardRoutes": 0,
+          "managedDocuments": 70,
+          "bankAccounts": 1,
+          "bankTransactions": 120,
+          "bankReceiptLinks": 1,
+          "bankLearningRules": 0,
+          "bankRuleEvidence": 0,
+          "bankRentAssignments": 6,
+          "bankLoanAssignments": 0,
+          "bankRecurringPatterns": 0,
+          "receipts": 70,
+          "roomReceipts": 70,
+          "roomDocuments": 70,
+          "units": 17,
+          "afa": 5,
+          "tenancies": 17,
+          "originals": 60,
+          "belege": 70,
+          "receiptEntities": 70
+        }
+      },
+      "foreign-ids-result": {
+        "runId": "P11A-2026-10-25-COMPARE-33792ae0-6859-4673-920a-c5f5dc3dd51c",
+        "label": "foreign-ids",
+        "source": "UNIT_TEST",
+        "commit": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+        "capturedAt": "2026-10-25T16:23:44.160765810Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "precondition": "explicit foreign IDs / poisoned local category mapping",
+        "foreignReadAllowed": true,
+        "foreignWriteAllowed": true,
+        "foreignDeleteAllowed": true,
+        "foreignMoveAllowed": true,
+        "foreignMappingAccepted": true,
+        "foreignInventoryUnchanged": false
+      },
+      "review-loss-result": {
+        "runId": "P11A-2026-10-25-COMPARE-7a65fccf-8e9e-4399-9c73-382c3eba0a62",
+        "label": "review-loss",
+        "source": "UNIT_TEST",
+        "commit": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+        "capturedAt": "2026-10-25T16:23:43.155519275Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "before": {
+          "documentId": "receipt:e10b-receipt-1",
+          "propertyId": "e10b-property-1",
+          "unitId": "e10b-property-1-unit-1",
+          "receiptInternalId": "e10b-receipt-1",
+          "documentType": "MIETVERTRAG",
+          "documentCategory": "01_Einheiten/e10b-property-1-unit-1/Mietvertrag",
+          "documentDate": "2026-09-30",
+          "title": "Fachlicher Titel vor Backup",
+          "originalFilename": "Beleg, 1.pdf",
+          "storedFilename": "Mietvertrag_Fachlicher_Titel_vor_Backup_2026-09-30_receipte.pdf",
+          "mimeType": "application/pdf",
+          "localUri": "/tmp/robolectric-BranchComparisonTest_authoredReceiptLinkedReviewAndOptionalReferencesAreOverwrittenByReceiptUpload8214481580704924401/com.aistudio.steuerassistent.vnhqkp-dataDir/files/managed_documents/comparison-cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd.pdf",
+          "sha256": "cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd",
+          "fileSizeBytes": 1390,
+          "createdAt": "",
+          "updatedAt": "2026-10-25T16:23:42.869392657Z",
+          "ocrStatus": "AUSSTEHEND",
+          "ocrText": "synthetic-reviewed-ocr",
+          "aiAnalysisStatus": "AUSSTEHEND",
+          "aiConfidence": 0.91,
+          "reviewStatus": "GEPRUEFT",
+          "source": "DATEIIMPORT",
+          "extractedFieldsJson": "{\"_displayDescription\":\"Best\u00e4tigte Beschreibung vor Backup\"}",
+          "loanId": 71,
+          "tenantReference": "synthetic-tenant-reference",
+          "renovationReference": "synthetic-renovation-reference",
+          "migrationStatus": "DRIVE_REORGANIZATION_PENDING"
+        },
+        "after": {
+          "documentId": "receipt:e10b-receipt-1",
+          "propertyId": "e10b-property-1",
+          "receiptInternalId": "e10b-receipt-1",
+          "documentType": "RECHNUNG",
+          "documentCategory": "02_Belege/2026",
+          "documentDate": "2026-01-15",
+          "title": "Testhandwerk \u00c4\u00d6\u00dc 1",
+          "originalFilename": "Beleg, 1.pdf",
+          "storedFilename": "2026-01-15_Testhandwerk_AOU_1_1-25EUR_BLG-E10B-1.pdf",
+          "mimeType": "application/pdf",
+          "localUri": "/tmp/robolectric-BranchComparisonTest_authoredReceiptLinkedReviewAndOptionalReferencesAreOverwrittenByReceiptUpload8214481580704924401/com.aistudio.steuerassistent.vnhqkp-dataDir/files/managed_documents/comparison-cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd.pdf",
+          "driveFileId": "created-18",
+          "driveFolderId": "created-17",
+          "sha256": "cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd",
+          "fileSizeBytes": 1390,
+          "createdAt": "",
+          "updatedAt": "2026-10-25T16:23:42.973777339Z",
+          "ocrStatus": "AUSSTEHEND",
+          "ocrText": "",
+          "aiAnalysisStatus": "NICHT_ERFORDERLICH",
+          "aiConfidence": 0,
+          "reviewStatus": "GEPRUEFT",
+          "source": "RECEIPT",
+          "extractedFieldsJson": "{\"_displayDescription\":\"Best\u00e4tigte Beschreibung vor Backup\"}",
+          "migrationStatus": ""
+        },
+        "referencesAreExplicitSyntheticPrecondition": true
+      },
+      "source-variants-result": {
+        "runId": "P11A-2026-10-25-COMPARE-21ad5cab-bad2-4714-8e49-f3c942ad488d",
+        "label": "source-variants",
+        "source": "UNIT_TEST",
+        "commit": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+        "capturedAt": "2026-10-25T16:23:45.784736439Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "scenarios": [
+          {
+            "scenario": "blank",
+            "receiptId": "comparison-source-blank",
+            "sync": false,
+            "localRowPreserved": true,
+            "error": "Keine lokale Quelldatei gefunden oder Datei ist leer."
+          },
+          {
+            "scenario": "missing",
+            "receiptId": "comparison-source-missing",
+            "sync": false,
+            "localRowPreserved": true,
+            "error": "Keine lokale Quelldatei gefunden oder Datei ist leer."
+          },
+          {
+            "scenario": "empty",
+            "receiptId": "comparison-source-empty",
+            "sync": false,
+            "localRowPreserved": true,
+            "error": "Keine lokale Quelldatei gefunden oder Datei ist leer."
+          }
+        ],
+        "localRowsDeleted": 0
+      },
+      "discovery-result": {
+        "runId": "P11A-2026-10-25-COMPARE-f5753a12-7d3f-472c-9b8b-958e0fd19e52",
+        "label": "discovery",
+        "source": "UNIT_TEST",
+        "commit": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+        "capturedAt": "2026-10-25T16:23:45.965885787Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "ownRoot": "Steuerassistent Belege",
+        "foreignInventoryUnchanged": true,
+        "foreignConfigContentRead": false,
+        "newForeignTagFound": false,
+        "legacyMixedProductFileFound": true
+      },
+      "integrityStages": {
+        "portfolio-before": {
+          "ok": true,
+          "errors": 0,
+          "hashes": 60
+        },
+        "portfolio-after-first-upload": {
+          "ok": false,
+          "errors": 4,
+          "hashes": 60
+        },
+        "portfolio-after-upload-1": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-upload-2": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-read-only-download": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-merge-1": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-merge-2": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-database-reopen": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        }
+      },
+      "aliasDifference": {
+        "before": 102,
+        "after": 110,
+        "added": {
+          "property_e10b-property-1_unit_WE 01, EG links_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-1"
+          },
+          "property_e10b-property-1_unit_WE 03; rechts_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-3"
+          },
+          "property_e10b-property-1_unit_WE 02_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-2"
+          },
+          "property_e10b-property-1_unit_WE 6_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-6"
+          },
+          "property_e10b-property-1_unit_WE 04_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-4"
+          },
+          "property_e10b-property-1_unit_WE 8_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-8"
+          },
+          "property_e10b-property-1_unit_WE 7_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-7"
+          },
+          "property_e10b-property-1_unit_WE 05_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-5"
+          }
+        },
+        "removed": 0,
+        "changedExisting": 0,
+        "classification": "RAW_DIFFERENCE_COMPATIBILITY_ALIASES_NOT_DOMAIN_LOSS"
+      },
+      "junit": {
+        "actualMethods": 20,
+        "passed": 19,
+        "failed": 1,
+        "skipped": 0,
+        "cases": [
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "partialLegacySnapshotCannotDeleteParentOfOmittedLocalChildDomain",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "productionReplaceRemovesLocalPropertyAfaReferenceWithDocument",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "explicitReplaceModeWithoutLegacyFlagStillReplacesDocuments",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "preferenceRelationsAlreadyReplaceRenovationTenancyTasksAndUnitDataTogether",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "absentLegacyArraysDoNotMeanEmptyAndMergeFlagCannotDeleteDocuments",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "bankAndTripVersionsSurviveRestoreAndOrderBothFurtherMerges",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "replaceMustKeepConfirmedMetadataAndProvenance",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "freshDoubleMergeMustKeepConfirmedMetadataAndProvenance",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "technicalReceiptReindexMustNotInventANewerDocumentVersion",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "legacyBindingsRemainCompatibilityAliasesAcrossRestoreAndRename",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "authoredReceiptChangeStillAdvancesDocumentVersion",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "actualSupplementalMergeUsesDocumentVersions",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "originalDownloadMustPreserveVersionAndSubsequentMergeOrdering",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10BReviewedDocumentRestoreTest",
+            "name": "confirmedDescriptionAndReviewFieldsMustSurviveFreshDoubleMergeAndReplace",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "authoredReceiptLinkedReviewAndOptionalReferencesAreOverwrittenByReceiptUpload",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "explicitForeignIdsAndPoisonedMappingsAreBlockedOnlyByTestFence",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "missingAndEmptySourcesAlsoRejectOrdinaryReceiptsAndPreserveRows",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "normalDiscoveryUsesOwnRootAndTagsWhileLegacyMixedProductFilesRemainProductData",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "standaloneRentalDocumentKeepsUnitAndTenantThroughOwnSyncAndSupplementalMerge",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "completePortfolioPinpointsUploadLossBeforeDownloadMergeAndPersistsAfterDatabaseReopen",
+            "failure": "org.junit.ComparisonFailure: propertyUnitPrefs expected:<...e10b-property-1_unit[]id_e10b-property-1-u...> but was:<...e10b-property-1_unit[_WE 01, EG links_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-1\"},\"property_e10b-property-1_unit_WE 02_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-2\"},\"property_e10b-property-1_unit_WE 03; rechts_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-3\"},\"property_e10b-property-1_unit_WE 04_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-4\"},\"property_e10b-property-1_unit_WE 05_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-5\"},\"property_e10b-property-1_unit_WE 6_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-6\"},\"property_e10b-property-1_unit_WE 7_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-7\"},\"property_e10b-property-1_unit_WE 8_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-8\"},\"property_e10b-property-1_unit]id_e10b-property-1-u...>",
+            "skipped": false,
+            "error": false
+          }
+        ]
+      },
+      "receiptBusinessValuesUnitsAndTenanciesUnchanged": true
+    },
+    "test-final": {
+      "standalone-result": {
+        "runId": "P11A-2026-10-25-COMPARE-b71264cf-e7f2-4ff4-b472-ccbea83ae618",
+        "label": "standalone",
+        "source": "UNIT_TEST",
+        "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+        "capturedAt": "2026-10-25T16:22:02.033748943Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "documentId": "comparison-rental-document",
+        "unitId": "e10b-property-1-unit-1",
+        "tenantReference": "synthetic-tenant-reference",
+        "unitAndTenantPreserved": true,
+        "syncPasses": 2,
+        "mergePasses": 2
+      },
+      "portfolio-result": {
+        "runId": "P11A-2026-10-25-COMPARE-2c64fbb5-e27b-4cdc-912f-1c837759a51e",
+        "label": "portfolio",
+        "source": "UNIT_TEST",
+        "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+        "capturedAt": "2026-10-25T16:22:09.947175615Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "firstLossStage": "FIRST_RECEIPT_UPLOAD_BEFORE_ANY_RESTORE",
+        "affectedDocumentIds": [
+          "receipt:e10b-receipt-1",
+          "receipt:e10b-receipt-10",
+          "receipt:e10b-receipt-11",
+          "receipt:e10b-receipt-12",
+          "receipt:e10b-receipt-13",
+          "receipt:e10b-receipt-14",
+          "receipt:e10b-receipt-15",
+          "receipt:e10b-receipt-16",
+          "receipt:e10b-receipt-17",
+          "receipt:e10b-receipt-18",
+          "receipt:e10b-receipt-19",
+          "receipt:e10b-receipt-2",
+          "receipt:e10b-receipt-20",
+          "receipt:e10b-receipt-21",
+          "receipt:e10b-receipt-22",
+          "receipt:e10b-receipt-23",
+          "receipt:e10b-receipt-24",
+          "receipt:e10b-receipt-25",
+          "receipt:e10b-receipt-26",
+          "receipt:e10b-receipt-27",
+          "receipt:e10b-receipt-28",
+          "receipt:e10b-receipt-29",
+          "receipt:e10b-receipt-3",
+          "receipt:e10b-receipt-30",
+          "receipt:e10b-receipt-31",
+          "receipt:e10b-receipt-32",
+          "receipt:e10b-receipt-33",
+          "receipt:e10b-receipt-34",
+          "receipt:e10b-receipt-35",
+          "receipt:e10b-receipt-36",
+          "receipt:e10b-receipt-37",
+          "receipt:e10b-receipt-38",
+          "receipt:e10b-receipt-39",
+          "receipt:e10b-receipt-4",
+          "receipt:e10b-receipt-40",
+          "receipt:e10b-receipt-41",
+          "receipt:e10b-receipt-42",
+          "receipt:e10b-receipt-43",
+          "receipt:e10b-receipt-44",
+          "receipt:e10b-receipt-45",
+          "receipt:e10b-receipt-46",
+          "receipt:e10b-receipt-47",
+          "receipt:e10b-receipt-48",
+          "receipt:e10b-receipt-49",
+          "receipt:e10b-receipt-5",
+          "receipt:e10b-receipt-50",
+          "receipt:e10b-receipt-51",
+          "receipt:e10b-receipt-52",
+          "receipt:e10b-receipt-53",
+          "receipt:e10b-receipt-54",
+          "receipt:e10b-receipt-55",
+          "receipt:e10b-receipt-56",
+          "receipt:e10b-receipt-57",
+          "receipt:e10b-receipt-58",
+          "receipt:e10b-receipt-59",
+          "receipt:e10b-receipt-6",
+          "receipt:e10b-receipt-60",
+          "receipt:e10b-receipt-7",
+          "receipt:e10b-receipt-8",
+          "receipt:e10b-receipt-9"
+        ],
+        "missingSourceReceiptIds": [
+          "0e340cbf-b43e-4bb7-bc54-932f116ef033",
+          "3a54daf8-78bb-436a-8f91-622fecbb73bd",
+          "6a61995f-bf0f-44a5-abe7-f9159c508935",
+          "6ea354a2-2806-42e8-8367-e41941be80ee",
+          "b259b516-8c17-4b98-ae64-73e4de0d5ea7",
+          "c51a6b6d-4e06-424c-8b2c-864e89c98b34",
+          "d90b1e14-f7a3-4077-9d31-03dd4f71b7dd",
+          "da714918-73bd-4a8f-9e51-d0472892c534",
+          "e4d25037-be9d-4589-b8dc-43ed56c0894a",
+          "fa6cd41c-0eec-4168-86ae-36bd039cddc7"
+        ],
+        "originalHashesMatched": 60,
+        "unchangedDomains": [
+          "properties",
+          "loans",
+          "bankTransactions",
+          "bankAccounts",
+          "bankRentAssignments",
+          "logbookTrips",
+          "tenantHistoryPrefs",
+          "confirmedAfaValuesPrefs",
+          "renovationReviewPrefs"
+        ],
+        "rawDomainChecks": {
+          "properties": true,
+          "loans": true,
+          "bankTransactions": true,
+          "bankAccounts": true,
+          "bankRentAssignments": true,
+          "logbookTrips": true,
+          "tenantHistoryPrefs": true,
+          "propertyUnitPrefs": false,
+          "confirmedAfaValuesPrefs": true,
+          "renovationReviewPrefs": true
+        },
+        "receiptUnitsUnchanged": true,
+        "backupPasses": 2,
+        "mergePasses": 2,
+        "cloudOrphans": 0,
+        "databaseReopenPreservesDefect": true,
+        "beforeCounts": {
+          "loans": 1,
+          "properties": 5,
+          "logbookTrips": 10,
+          "exportAuditRuns": 100,
+          "standardRoutes": 0,
+          "managedDocuments": 70,
+          "bankAccounts": 1,
+          "bankTransactions": 120,
+          "bankReceiptLinks": 1,
+          "bankLearningRules": 0,
+          "bankRuleEvidence": 0,
+          "bankRentAssignments": 6,
+          "bankLoanAssignments": 0,
+          "bankRecurringPatterns": 0,
+          "receipts": 70,
+          "roomReceipts": 70,
+          "roomDocuments": 70,
+          "units": 17,
+          "afa": 5,
+          "tenancies": 17,
+          "originals": 60,
+          "belege": 70,
+          "receiptEntities": 70
+        },
+        "afterUploadCounts": {
+          "loans": 1,
+          "properties": 5,
+          "logbookTrips": 10,
+          "exportAuditRuns": 100,
+          "standardRoutes": 0,
+          "managedDocuments": 70,
+          "bankAccounts": 1,
+          "bankTransactions": 120,
+          "bankReceiptLinks": 1,
+          "bankLearningRules": 0,
+          "bankRuleEvidence": 0,
+          "bankRentAssignments": 6,
+          "bankLoanAssignments": 0,
+          "bankRecurringPatterns": 0,
+          "receipts": 70,
+          "roomReceipts": 70,
+          "roomDocuments": 70,
+          "units": 17,
+          "afa": 5,
+          "tenancies": 17,
+          "originals": 60,
+          "belege": 70,
+          "receiptEntities": 70
+        }
+      },
+      "foreign-ids-result": {
+        "runId": "P11A-2026-10-25-COMPARE-4ecc61b5-85d7-495b-a534-26073182e8aa",
+        "label": "foreign-ids",
+        "source": "UNIT_TEST",
+        "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+        "capturedAt": "2026-10-25T16:21:57.068175308Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "precondition": "explicit foreign IDs / poisoned local category mapping",
+        "foreignReadAllowed": false,
+        "foreignWriteAllowed": false,
+        "foreignDeleteAllowed": false,
+        "foreignMoveAllowed": false,
+        "foreignMappingAccepted": false,
+        "foreignInventoryUnchanged": true
+      },
+      "review-loss-result": {
+        "runId": "P11A-2026-10-25-COMPARE-c7efef3b-8098-452d-807c-b7d721ee8bca",
+        "label": "review-loss",
+        "source": "UNIT_TEST",
+        "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+        "capturedAt": "2026-10-25T16:21:55.941316320Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "before": {
+          "documentId": "receipt:e10b-receipt-1",
+          "propertyId": "e10b-property-1",
+          "unitId": "e10b-property-1-unit-1",
+          "receiptInternalId": "e10b-receipt-1",
+          "documentType": "MIETVERTRAG",
+          "documentCategory": "01_Einheiten/e10b-property-1-unit-1/Mietvertrag",
+          "documentDate": "2026-09-30",
+          "title": "Fachlicher Titel vor Backup",
+          "originalFilename": "Beleg, 1.pdf",
+          "storedFilename": "Mietvertrag_Fachlicher_Titel_vor_Backup_2026-09-30_receipte.pdf",
+          "mimeType": "application/pdf",
+          "localUri": "/tmp/robolectric-BranchComparisonTest_authoredReceiptLinkedReviewAndOptionalReferencesAreOverwrittenByReceiptUpload555645320836215126/com.aistudio.steuerassistent.vnhqkp.phase11a-dataDir/files/managed_documents/comparison-cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd.pdf",
+          "sha256": "cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd",
+          "fileSizeBytes": 1390,
+          "createdAt": "",
+          "updatedAt": "2026-10-25T16:21:55.531564805Z",
+          "ocrStatus": "AUSSTEHEND",
+          "ocrText": "synthetic-reviewed-ocr",
+          "aiAnalysisStatus": "AUSSTEHEND",
+          "aiConfidence": 0.91,
+          "reviewStatus": "GEPRUEFT",
+          "source": "DATEIIMPORT",
+          "extractedFieldsJson": "{\"_displayDescription\":\"Best\u00e4tigte Beschreibung vor Backup\"}",
+          "loanId": 71,
+          "tenantReference": "synthetic-tenant-reference",
+          "renovationReference": "synthetic-renovation-reference",
+          "migrationStatus": "DRIVE_REORGANIZATION_PENDING"
+        },
+        "after": {
+          "documentId": "receipt:e10b-receipt-1",
+          "propertyId": "e10b-property-1",
+          "receiptInternalId": "e10b-receipt-1",
+          "documentType": "RECHNUNG",
+          "documentCategory": "02_Belege/2026",
+          "documentDate": "2026-01-15",
+          "title": "Testhandwerk \u00c4\u00d6\u00dc 1",
+          "originalFilename": "Beleg, 1.pdf",
+          "storedFilename": "2026-01-15_Testhandwerk_AOU_1_1-25EUR_BLG-E10B-1.pdf",
+          "mimeType": "application/pdf",
+          "localUri": "/tmp/robolectric-BranchComparisonTest_authoredReceiptLinkedReviewAndOptionalReferencesAreOverwrittenByReceiptUpload555645320836215126/com.aistudio.steuerassistent.vnhqkp.phase11a-dataDir/files/managed_documents/comparison-cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd.pdf",
+          "driveFileId": "created-18",
+          "driveFolderId": "created-17",
+          "sha256": "cd9244396d568069f41af204b3bfa044fc1124544a2106641326c031fa81e2cd",
+          "fileSizeBytes": 1390,
+          "createdAt": "",
+          "updatedAt": "2026-10-25T16:21:55.764325877Z",
+          "ocrStatus": "AUSSTEHEND",
+          "ocrText": "",
+          "aiAnalysisStatus": "NICHT_ERFORDERLICH",
+          "aiConfidence": 0,
+          "reviewStatus": "GEPRUEFT",
+          "source": "RECEIPT",
+          "extractedFieldsJson": "{\"_displayDescription\":\"Best\u00e4tigte Beschreibung vor Backup\"}",
+          "migrationStatus": ""
+        },
+        "referencesAreExplicitSyntheticPrecondition": true
+      },
+      "source-variants-result": {
+        "runId": "P11A-2026-10-25-COMPARE-3e7feb6e-60d1-46a8-a602-4bb513b747c0",
+        "label": "source-variants",
+        "source": "UNIT_TEST",
+        "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+        "capturedAt": "2026-10-25T16:21:59.864841711Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "scenarios": [
+          {
+            "scenario": "blank",
+            "receiptId": "comparison-source-blank",
+            "sync": false,
+            "localRowPreserved": true,
+            "error": "Keine lokale Quelldatei gefunden oder Datei ist leer."
+          },
+          {
+            "scenario": "missing",
+            "receiptId": "comparison-source-missing",
+            "sync": false,
+            "localRowPreserved": true,
+            "error": "Keine lokale Quelldatei gefunden oder Datei ist leer."
+          },
+          {
+            "scenario": "empty",
+            "receiptId": "comparison-source-empty",
+            "sync": false,
+            "localRowPreserved": true,
+            "error": "Keine lokale Quelldatei gefunden oder Datei ist leer."
+          }
+        ],
+        "localRowsDeleted": 0
+      },
+      "discovery-result": {
+        "runId": "P11A-2026-10-25-COMPARE-19451297-f5d8-4802-ba5f-48d7cce8cc9a",
+        "label": "discovery",
+        "source": "UNIT_TEST",
+        "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+        "capturedAt": "2026-10-25T16:22:00.146744522Z",
+        "device": "Robolectric JVM, isolated synthetic Room",
+        "android": "15",
+        "appVersion": "1.0",
+        "buildType": "debug",
+        "applicationId": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+        "transport": "IN_MEMORY_HTTP_ONLY",
+        "practicalStatus": "NOCH OFFEN",
+        "ownRoot": "ImmoPilot Phase11A Testdaten",
+        "foreignInventoryUnchanged": true,
+        "foreignConfigContentRead": false,
+        "newForeignTagFound": false,
+        "legacyMixedProductFileFound": false
+      },
+      "integrityStages": {
+        "portfolio-before": {
+          "ok": true,
+          "errors": 0,
+          "hashes": 60
+        },
+        "portfolio-after-first-upload": {
+          "ok": false,
+          "errors": 4,
+          "hashes": 60
+        },
+        "portfolio-after-upload-1": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-upload-2": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-read-only-download": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-merge-1": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-merge-2": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        },
+        "portfolio-after-database-reopen": {
+          "ok": false,
+          "errors": 240,
+          "hashes": 60
+        }
+      },
+      "aliasDifference": {
+        "before": 102,
+        "after": 110,
+        "added": {
+          "property_e10b-property-1_unit_WE 01, EG links_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-1"
+          },
+          "property_e10b-property-1_unit_WE 03; rechts_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-3"
+          },
+          "property_e10b-property-1_unit_WE 02_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-2"
+          },
+          "property_e10b-property-1_unit_WE 6_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-6"
+          },
+          "property_e10b-property-1_unit_WE 04_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-4"
+          },
+          "property_e10b-property-1_unit_WE 8_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-8"
+          },
+          "property_e10b-property-1_unit_WE 7_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-7"
+          },
+          "property_e10b-property-1_unit_WE 05_id": {
+            "type": "string",
+            "value": "e10b-property-1-unit-5"
+          }
+        },
+        "removed": 0,
+        "changedExisting": 0,
+        "classification": "RAW_DIFFERENCE_COMPATIBILITY_ALIASES_NOT_DOMAIN_LOSS"
+      },
+      "junit": {
+        "actualMethods": 20,
+        "passed": 19,
+        "failed": 1,
+        "skipped": 0,
+        "cases": [
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "partialLegacySnapshotCannotDeleteParentOfOmittedLocalChildDomain",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "productionReplaceRemovesLocalPropertyAfaReferenceWithDocument",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "explicitReplaceModeWithoutLegacyFlagStillReplacesDocuments",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "preferenceRelationsAlreadyReplaceRenovationTenancyTasksAndUnitDataTogether",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10CPortfolioRelationRestoreTest",
+            "name": "absentLegacyArraysDoNotMeanEmptyAndMergeFlagCannotDeleteDocuments",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "bankAndTripVersionsSurviveRestoreAndOrderBothFurtherMerges",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "replaceMustKeepConfirmedMetadataAndProvenance",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "freshDoubleMergeMustKeepConfirmedMetadataAndProvenance",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "technicalReceiptReindexMustNotInventANewerDocumentVersion",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "legacyBindingsRemainCompatibilityAliasesAcrossRestoreAndRename",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "authoredReceiptChangeStillAdvancesDocumentVersion",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "actualSupplementalMergeUsesDocumentVersions",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10DRestoreMetadataTest",
+            "name": "originalDownloadMustPreserveVersionAndSubsequentMergeOrdering",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.data.Phase10BReviewedDocumentRestoreTest",
+            "name": "confirmedDescriptionAndReviewFieldsMustSurviveFreshDoubleMergeAndReplace",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "authoredReceiptLinkedReviewAndOptionalReferencesAreOverwrittenByReceiptUpload",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "explicitForeignIdsAndPoisonedMappingsAreBlockedOnlyByTestFence",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "missingAndEmptySourcesAlsoRejectOrdinaryReceiptsAndPreserveRows",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "normalDiscoveryUsesOwnRootAndTagsWhileLegacyMixedProductFilesRemainProductData",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "standaloneRentalDocumentKeepsUnitAndTenantThroughOwnSyncAndSupplementalMerge",
+            "failure": null,
+            "skipped": false,
+            "error": false
+          },
+          {
+            "class": "com.example.comparison.BranchComparisonTest",
+            "name": "completePortfolioPinpointsUploadLossBeforeDownloadMergeAndPersistsAfterDatabaseReopen",
+            "failure": "org.junit.ComparisonFailure: propertyUnitPrefs expected:<...e10b-property-1_unit[]id_e10b-property-1-u...> but was:<...e10b-property-1_unit[_WE 01, EG links_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-1\"},\"property_e10b-property-1_unit_WE 02_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-2\"},\"property_e10b-property-1_unit_WE 03; rechts_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-3\"},\"property_e10b-property-1_unit_WE 04_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-4\"},\"property_e10b-property-1_unit_WE 05_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-5\"},\"property_e10b-property-1_unit_WE 6_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-6\"},\"property_e10b-property-1_unit_WE 7_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-7\"},\"property_e10b-property-1_unit_WE 8_id\":{\"type\":\"string\",\"value\":\"e10b-property-1-unit-8\"},\"property_e10b-property-1_unit]id_e10b-property-1-u...>",
+            "skipped": false,
+            "error": false
+          }
+        ]
+      },
+      "receiptBusinessValuesUnitsAndTenanciesUnchanged": true
+    }
+  },
+  "realDriveUsed": false,
+  "realUserDataAccessed": false
+}

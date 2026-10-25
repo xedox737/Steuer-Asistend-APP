@@ -1,0 +1,86 @@
+{
+  "commits": {
+    "main": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+    "test": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1"
+  },
+  "files": {
+    "app/src/main/java/com/example/data/DrivePersistenceRepository.kt": {
+      "main": "54ffa7061498c6f8f67ce5823bd12d20657c0dc7f84454c7110482c3d0835f24",
+      "test": "a778657396a97eddb55cbda1894f08dad87529799ee452b61f4a2fb3eaadda97",
+      "identical": false
+    },
+    "app/src/main/java/com/example/api/GoogleDriveClient.kt": {
+      "main": "31710921e601a5151120e1f8a3087fcccc147d5720275355bfa6fa564f78bd8f",
+      "test": "b88c3d40fe8e49ae9a3d2b9bf796d2c9851ae6ab32e04407a06c1525df42dca8",
+      "identical": false
+    },
+    "app/src/main/java/com/example/data/DocumentModels.kt": {
+      "main": "e9db6fadd7f0e2ab1024c60d1a5e54a22543ab6e3eabdc96518172103453891e",
+      "test": "e9db6fadd7f0e2ab1024c60d1a5e54a22543ab6e3eabdc96518172103453891e",
+      "identical": true
+    },
+    "app/src/main/java/com/example/data/SupplementalDriveBackup.kt": {
+      "main": "a2c6e72eb7b2df1807c5099475eff459cc96db6253e085e5bac80dc129974adc",
+      "test": "0ddeb6fd45d37a924a3fa286ca5248097bd77fd8667f1f81c4a374669f1a1764",
+      "identical": false
+    },
+    "app/src/main/java/com/example/data/ManagedDocumentService.kt": {
+      "main": "86b27be257132eb740ed188ab69e9c691943dfa8516ddfdb8f7459a746892ffb",
+      "test": "86b27be257132eb740ed188ab69e9c691943dfa8516ddfdb8f7459a746892ffb",
+      "identical": true
+    },
+    "app/src/main/java/com/example/data/ReceiptDatabase.kt": {
+      "main": "d5884d9e53c693412eef85aac7fe214a8aed4261fadc5ae1d69beee511793306",
+      "test": "d5884d9e53c693412eef85aac7fe214a8aed4261fadc5ae1d69beee511793306",
+      "identical": true
+    },
+    "app/src/main/java/com/example/ui/ReceiptViewModel.kt": {
+      "main": "d72e2043442d0054058a908441130f8bea9dcd6335336f337da99ab8a3eb0de6",
+      "test": "d72e2043442d0054058a908441130f8bea9dcd6335336f337da99ab8a3eb0de6",
+      "identical": true
+    },
+    "app/build.gradle.kts": {
+      "main": "71bc53407db9fead7d2860f72cf6ab7349dec7027b8a221bfb1bd0d70caf3b0d",
+      "test": "6d11cb96a2ca7be9b01f1ba587094eeef13b8e9a6126f97caa41dca1aa782f0a",
+      "identical": false
+    }
+  },
+  "blocks": {
+    "receiptManagedConstructor": {
+      "byteIdentical": true,
+      "identicalAfterNamespaceTagNormalization": true,
+      "lines": {
+        "main": 1882,
+        "test": 1885
+      },
+      "sha256": {
+        "main": "910081810cd5a0d7472b86818082c747fe4b6720ee5afe6c04846a29f4f0ca70",
+        "test": "910081810cd5a0d7472b86818082c747fe4b6720ee5afe6c04846a29f4f0ca70"
+      }
+    },
+    "receiptMissingSource": {
+      "byteIdentical": true,
+      "identicalAfterNamespaceTagNormalization": true,
+      "lines": {
+        "main": 1858,
+        "test": 1861
+      },
+      "sha256": {
+        "main": "41e796bfdef8b3e181a8fa5aa323041f78393a3e361a0e56e4c95ddf907b8cfd",
+        "test": "41e796bfdef8b3e181a8fa5aa323041f78393a3e361a0e56e4c95ddf907b8cfd"
+      }
+    },
+    "receiptSync": {
+      "byteIdentical": false,
+      "identicalAfterNamespaceTagNormalization": true,
+      "lines": {
+        "main": 1506,
+        "test": 1509
+      },
+      "sha256": {
+        "main": "4e04e1a8ba09244037547013b49e14bff88196680932a03378d624dc3e58996f",
+        "test": "9665f1b424f835a35d1e1ee6a5a8aaa2c5550a715380068908149ac1c8a51ea4"
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "ComparisonDriveHttpFixture.kt": {
+    "source": "app/src/qa/java/com/example/qa/Phase11ADriveHttpFixture.kt",
+    "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+    "originalSha256": "9ce2d06a395f6f0e9c8074a0dd5241d150d885f2e323cd5f503a58ea5acfd0be",
+    "equivalentExceptNames": true
+  },
+  "ComparisonSnapshot.kt": {
+    "source": "app/src/qa/java/com/example/data/Phase11ASnapshot.kt",
+    "commit": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+    "originalSha256": "dce7a4d58d89e952b1c4df28acd7027320219d6cf368ee814d3e5c99c4bda86e",
+    "equivalentExceptNames": true
+  }
+}

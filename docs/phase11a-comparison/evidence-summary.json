@@ -1,0 +1,15 @@
+{
+  "main": "69f35772b6480a958ca7479b024dbd4d8bd42fa1",
+  "test": "8ddd556061d6d9a5ed607163aff42dbf3578f8c1",
+  "archive": "ImmoPilot-Fehlervergleich-Evidence.zip",
+  "archiveSha256": "31b5910eee28263a21c34d64d9ba061b9c75ba963c367b265dbde18df284df8d",
+  "files": 87,
+  "methodsPerTarget": 20,
+  "passedPerTarget": 19,
+  "failedPerTarget": 1,
+  "skipped": 0,
+  "failReason": "propertyUnitPrefs: 8 added compatibility aliases; strict assertion preserved",
+  "productSourceChanged": false,
+  "realDriveUsed": false,
+  "installedProductAppUsed": false
+}

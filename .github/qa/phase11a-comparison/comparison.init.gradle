@@ -1,0 +1,12 @@
+// JVM-only audit overlay. No application sources, manifests, signing or packages are changed.
+def qaRoot = new File(System.getProperty('comparison.qaRoot'))
+allprojects {
+    plugins.withId('com.android.application') {
+        android.sourceSets.getByName('test').kotlin.directories.add(new File(qaRoot, 'kotlin').absolutePath)
+    }
+    tasks.withType(Test).configureEach {
+        ['fixture','commit','variant','output'].each { key ->
+            systemProperty "comparison.${key}", System.getProperty("comparison.${key}")
+        }
+    }
+}
