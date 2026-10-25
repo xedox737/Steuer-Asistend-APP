@@ -227,3 +227,19 @@ bestätigte Dokumentprüfung mit nichtleeren Mieter-/Darlehens-/Sanierungs- und
 Review-/OCR-Referenzen vor ihrer Baseline verstärkt. Das Darlehen stammt aus
 dem bestehenden Portfolio und gehört zum selben Objekt. Diese zusätzliche
 Teständerung wird separat geprüft; Produktquellen seit d9ba35a unverändert.
+
+## Korrektur der ergänzenden OCR-Testannahme
+
+Die verstärkte Referenzprüfung auf 05ca546 führte fünf Methoden aus; vier
+bestanden. Im frischen Restore fehlte ausschließlich der zusätzlich als
+Fixturewert gesetzte OCR-Cachetext. Sämtliche nichtleeren fachlichen Referenzen
+und Review-Felder blieben erhalten. Der verbindliche Phase10D-Vertrag (Tabelle,
+Klasse C: ManagedDocument.localUri / DocumentSearchFts / ocrText) klassifiziert
+OCR ausdrücklich als aus unveränderten Originalen rekonstruierbaren Cache.
+SupplementalDriveBackup sichert OCR-Text absichtlich nicht. Das war eine falsche
+zusätzliche Testannahme, kein neuer Produktfehler. Die neue Referenz-Fixture
+setzt deshalb keinen künstlich gefüllten OCR-Cache vor dem frischen Restore.
+Alle fachlichen Assertions und der vollständige Feldvergleich bleiben bestehen.
+Der separate vorhandene Sync-Fall prüft weiterhin die Erhaltung lokalen
+nichtleeren OCR-Texts. Keine Produkt-/Backup-Vertragsänderung und keine neue
+Normalisierungs-/Ignore-Regel; der verstärkte Fall wird erneut ausgeführt.

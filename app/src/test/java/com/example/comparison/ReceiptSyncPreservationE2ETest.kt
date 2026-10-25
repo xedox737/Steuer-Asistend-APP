@@ -186,8 +186,10 @@ class ReceiptSyncPreservationE2ETest {
         val property = repo.getAllProperties().single { it.propertyId == referencedReceipt.propertyId }
         val unit = drive.getWohneinheitenFromPrefs(property).single { it.unitId == referencedReceipt.unitId }
         assertTrue(unit.mieter.isNotBlank())
+        // OCR text is explicitly a reconstructible class-C cache in the existing
+        // Phase10D contract. Local OCR retention is tested separately during sync.
         val withReferences = referencedDocument.copy(loanId = loan.id, tenantReference = unit.mieter,
-            renovationReference = "E10B-Sanierung-bestätigt", ocrText = "Synthetischer geprüfter Vertrag", aiConfidence = 0.91)
+            renovationReference = "E10B-Sanierung-bestätigt", aiConfidence = 0.91)
         repo.upsertManagedDocument(withReferences)
         ManagedDocumentService(context, repo).confirmReview(withReferences, ManagedDocumentType.MIETVERTRAG,
             "2026-09-30", referencedReceipt.unitId, "{\"confirmed\":true}")
