@@ -4,6 +4,7 @@ import base64
 import gzip
 import hashlib
 import io
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -13,15 +14,38 @@ import xml.etree.ElementTree as ET
 
 root = Path("app/build")
 emulator = "--emulator" in sys.argv
+# Additional post-sync diagnosis is deliberately separate from the unchanged Phase10
+# acceptance fixtures. Persist the strict failure too; namespace success is not portfolio approval.
+namespace_snapshot = root / "reports/phase11a-drive/after-merge-2.json"
+if not emulator and namespace_snapshot.exists():
+    spec = importlib.util.spec_from_file_location("phase11a_integrity", Path(__file__).with_name("phase11a-integrity-check.py"))
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    snapshot = json.loads(namespace_snapshot.read_text())
+    diagnosis = checker.compare(snapshot, snapshot, 17)
+    diagnosis["diagnosticScope"] = "POST_SYNC_PORTFOLIO_STRUCTURE_ONLY"
+    diagnostic_path = namespace_snapshot.with_name("post-sync-integrity-diagnostic.json")
+    diagnostic_path.write_text(json.dumps(diagnosis, indent=2) + "\n")
+    namespace = json.loads(namespace_snapshot.with_name("namespace.json").read_text())
+    namespace_snapshot.with_name("scope-summary.json").write_text(json.dumps(dict(
+        runId=diagnosis["runId"], namespaceScope="DRIVE_NAMESPACE_ONLY",
+        namespaceStatus=namespace["status"], fullUiSyncSuccess=namespace["fullUiSyncSuccess"],
+        portfolioIntegrityOk=diagnosis["ok"], portfolioIntegrityErrors=len(diagnosis["errors"]),
+        originalHashesMatched=diagnosis["originalHashesMatched"], practicalStatus="NOCH OFFEN"), indent=2) + "\n")
+    print("PHASE11A_POST_SYNC_INTEGRITY_DIAGNOSTIC " + json.dumps(dict(
+        ok=diagnosis["ok"], errors=len(diagnosis["errors"]), originalHashesMatched=diagnosis["originalHashesMatched"],
+        practicalStatus="NOCH OFFEN", report=str(diagnostic_path))), flush=True)
 if emulator:
     paths = sorted(set(root.glob("outputs/androidTest-results/**/*.xml")) |
                    set(root.glob("emulator-e2e/phase11a-isolation/*.json")) |
                    set(root.glob("emulator-e2e/phase11a-ui/**/*.json")) |
                    set(root.glob("emulator-e2e/phase11a-ui/*.txt")) |
+                   set(root.glob("emulator-e2e/phase11a-drive-namespace.json")) |
                    {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
 else:
     paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |
-                   set(root.glob("reports/phase10d/*.json")) | set(root.glob("reports/phase11a-ui/*.json")))
+                   set(root.glob("reports/phase10d/*.json")) | set(root.glob("reports/phase11a-ui/*.json")) |
+                   set(root.glob("reports/phase11a-drive/*.json")))
 files = [p for p in paths if p.is_file()]
 totals = dict(tests=0, failures=0, errors=0, skipped=0)
 suites = []

@@ -13,7 +13,8 @@ def main():
     asset = Path("app/src/debug/assets/phase11a/qa-transport-snapshot.zip")
     expected = asset.with_suffix(".sha256").read_text().strip()
     assert hashlib.sha256(asset.read_bytes()).hexdigest() == expected
-    markers = (b"Phase11APortfolioSeeder", b"Phase11ATestToolsViewModel", b"Phase 11A Testwerkzeuge")
+    markers = (b"Phase11APortfolioSeeder", b"Phase11ATestToolsViewModel", b"Phase 11A Testwerkzeuge",
+               b"DriveNamespacePolicy", b"ImmoPilot Phase11A Testdaten", b"Test-Datenspeicher:", b"ImmoPilotPhase11ATest")
     debug = Path("app/build/outputs/apk/debug/app-debug.apk")
     releases = list(Path("app/build/outputs/apk/release").glob("*.apk"))
     assert len(releases) == 1, "one actual release APK required"

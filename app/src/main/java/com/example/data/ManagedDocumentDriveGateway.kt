@@ -3,6 +3,7 @@ package com.example.data
 import android.content.Context
 import com.example.api.DriveFileResult
 import com.example.api.DriveManagedFile
+import com.example.api.DriveEnvironment
 import com.example.api.GoogleDriveClient
 
 /** Narrow seam for exercising the production ManagedDocument sync without a real Drive account. */
@@ -134,7 +135,7 @@ class GoogleManagedDocumentDriveGateway(private val context: Context) : ManagedD
                 filename,
                 json,
                 mapOf(
-                    "appName" to "ImmobilienBelegApp",
+                    "appName" to DriveEnvironment.appIdentifier,
                     "entityType" to entityType,
                     "schemaVersion" to "1"
                 )
