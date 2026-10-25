@@ -179,3 +179,51 @@ den tatsächlich gespeicherten Nachweis und dessen Indexfelder; der Phase10C-
 Transport enthält auch die tatsächlich erzeugte Supplemental-Sicherung.
 Keine fachliche Assertion oder Fehlerprüfung wurde entfernt. Ein erneuter
 vollständiger Lauf des korrigierten Stands ist erforderlich und noch offen.
+
+## Gezielte Folgeprüfung auf d9ba35a
+
+27 echte JVM-Methoden (Original-Metadaten, Phase10B Normal/Stress,
+Phase10C Relationen/Rollback, bestehende ManagedDocument-E2E sowie reale
+Client-/Repository-Portfoliofälle): 0 Fehler, 0 Skips.
+Der unveränderte Phase11A-Checker besteht den Vorher-/Nachher-Vergleich:
+60/60 Originalhashes, Contract-Abweichungen 0, fehlende/unerwartete IDs 0,
+Dubletten 0, Relationsfehler/Orphans 0. Bestand: 5 Objekte, 17 Einheiten,
+70 Belege/Dokumente, 120 Bankbuchungen, 10 Fahrten, 17 Mietverhältnisse,
+5 AfA-Einträge und 1 Darlehen. Das ist simulierter HTTP-Transport, keine
+praktische Drive-Abnahme. Der neue vollständige JVM-Lauf läuft noch.
+
+Lokale Infrastruktur: Gleichzeitige Kotlin-Kompilierung zweier Checkouts
+und der Testlauf überschritten die tatsächliche 8-GiB-cgroup-Grenze.
+Der APK-Builddaemon wurde vom System beendet (oom=1, oom_kill=1);
+dieser Build ist fehlgeschlagen und kein Produktfehlernachweis. Die
+27 Testmethoden liefen erfolgreich zu Ende. Der APK-Build wird mit einem
+Worker, ohne parallele Gradle-Projekte und 3-GiB-Heap erneut ausgeführt.
+Keine Tests deaktiviert, kein GitHub-CI-Lauf abgebrochen.
+
+## Vollständige lokale Produktregression auf d9ba35a
+
+1.139 einzigartige echte Methoden, 0 Failures, 0 Errors, 0 Skips und
+0 Suite-Platzhalter. Testausführungswächter, Phase10B-Portfolio-/DATEV-Audit
+und neuer Reparaturwächter grün. Alle 36 Reparaturmethoden tatsächlich gelaufen;
+60 Originalhashes, vollständiger Restore und zwei MERGEs ohne Vertragsfehler.
+Auch Normal-/Stressportfolio mit 17/21 Einheiten grün. Roboelectric meldete
+beim Aufräumen eines temporären Native-Verzeichnisses eine Warnung; alle
+JUnit-XMLs und Wächter sind fehlerfrei. Keine Warnung als Test übersprungen.
+
+Lint: 0 Fehler, 116 Warnungen. assembleDebug, assembleDebugAndroidTest und
+assembleRelease im separaten Checkout desselben SHAs grün. Dieser lokale
+Release-Build ist mangels Produktionsschlüssels unsigniert. Der begrenzte
+Build lief ohne weiteren OOM-Kill zu Ende. Diese lokalen Läufe teilten sich
+CPU/RAM; aus ihrer Dauer folgt keine CI-Timeoutänderung.
+
+Das tatsächliche Produkt-Debug-APK behält ID
+com.aistudio.steuerassistent.vnhqkp, Label Steuer-Assistent Anlage V,
+Version 1.0/1 und vier eigene Provider-Authorities. Ein zusätzlicher
+CI-Helfer prüft diese tatsächlichen APK-Eigenschaften und protokolliert
+SHA256, Permissions und Komponenten. Keine Produkt-UI-Umbenennung.
+
+Die vollständige HTTP-Portfolio-Prüfung wird zusätzlich um eine tatsächliche
+bestätigte Dokumentprüfung mit nichtleeren Mieter-/Darlehens-/Sanierungs- und
+Review-/OCR-Referenzen vor ihrer Baseline verstärkt. Das Darlehen stammt aus
+dem bestehenden Portfolio und gehört zum selben Objekt. Diese zusätzliche
+Teständerung wird separat geprüft; Produktquellen seit d9ba35a unverändert.

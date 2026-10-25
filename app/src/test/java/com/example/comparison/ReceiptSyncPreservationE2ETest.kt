@@ -178,6 +178,19 @@ class ReceiptSyncPreservationE2ETest {
     }
     @Test fun allSeventyReceiptsRestoreIntoFreshPrivateProfileWithoutInventedOriginals() = runBlocking {
         loadOriginalPortfolio(); val config = initialize()
+        // A real review before the baseline: nonempty references must survive the full
+        // path, not only the upload. Bind the existing loan to its actual property.
+        val loan = db.loanDao().getAllLoans().single()
+        val referencedReceipt = repo.getAllReceiptsList().first { it.propertyId == loan.propertyId && it.imageUrl.isNotBlank() }
+        val referencedDocument = repo.getManagedDocument("receipt:${referencedReceipt.internalId}")!!
+        val property = repo.getAllProperties().single { it.propertyId == referencedReceipt.propertyId }
+        val unit = drive.getWohneinheitenFromPrefs(property).single { it.unitId == referencedReceipt.unitId }
+        assertTrue(unit.mieter.isNotBlank())
+        val withReferences = referencedDocument.copy(loanId = loan.id, tenantReference = unit.mieter,
+            renovationReference = "E10B-Sanierung-bestätigt", ocrText = "Synthetischer geprüfter Vertrag", aiConfidence = 0.91)
+        repo.upsertManagedDocument(withReferences)
+        ManagedDocumentService(context, repo).confirmReview(withReferences, ManagedDocumentType.MIETVERTRAG,
+            "2026-09-30", referencedReceipt.unitId, "{\"confirmed\":true}")
         snapshot("seed-before-first-sync")
         val expectedDocuments = repo.getAllManagedDocuments().associate { it.documentId to authored(it) }
         val expectedReceipts = repo.getAllReceiptsList().associate { it.internalId to (it.propertyId to it.unitId) }
