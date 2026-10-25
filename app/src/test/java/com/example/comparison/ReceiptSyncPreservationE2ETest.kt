@@ -37,7 +37,7 @@ class ReceiptSyncPreservationE2ETest {
     private val ownRoot get() = if (isTest) TEST_ROOT else PRODUCT_ROOT
     private val foreignRoot get() = if (isTest) PRODUCT_ROOT else TEST_ROOT
     private val token = "synthetic-comparison-account"
-    private val runId = "P11A-2026-10-25-COMPARE-${java.util.UUID.randomUUID()}"
+    private val runId = "P11A-${java.time.LocalDate.now(java.time.ZoneOffset.UTC)}-REPAIR-${java.util.UUID.randomUUID()}"
     private val output get() = File("build/reports/e11a03-repair")
     private val originalPaths = linkedMapOf<String, File>()
 
@@ -181,6 +181,7 @@ class ReceiptSyncPreservationE2ETest {
     }
     @Test fun allSeventyReceiptsRestoreIntoFreshPrivateProfileWithoutInventedOriginals() = runBlocking {
         loadOriginalPortfolio(); val config = initialize()
+        snapshot("seed-before-first-sync")
         val expectedDocuments = repo.getAllManagedDocuments().associate { it.documentId to authored(it) }
         val expectedReceipts = repo.getAllReceiptsList().associate { it.internalId to (it.propertyId to it.unitId) }
         repeat(2) {
@@ -197,6 +198,7 @@ class ReceiptSyncPreservationE2ETest {
             assertEquals("deletions", remote.entries.getValue(id).name)
             assertEquals(config.systemFolderId, remote.entries.getValue(id).parent)
         }
+        snapshot("before-fresh-full-backed")
         val cloudIds = remote.entries.keys.toSet()
         val preview = drive.checkDriveInventoryForRestore(token, config)
         assertTrue(preview.toString(), preview.success)

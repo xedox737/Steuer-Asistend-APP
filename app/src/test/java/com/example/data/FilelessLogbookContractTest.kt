@@ -20,7 +20,12 @@ class FilelessLogbookContractTest {
 
     @Test fun ordinaryReceiptNeverGetsAttachmentExemption() {
         assertNull(FilelessLogbookContract.create(receipt.copy(unterkategorie="Reparatur"),trip))
-        assertNull(FilelessLogbookContract.create(receipt.copy(kontoNr="4800"),trip))
+        assertNull(FilelessLogbookContract.create(receipt.copy(id=62),trip))
+    }
+
+    @Test fun confirmedTripMayUseItsActualConfiguredAccountWithoutReclassifyingTheDocument() {
+        val proof = FilelessLogbookContract.create(receipt.copy(kontoNr="6670"),trip)!!
+        assertEquals("6670",FilelessLogbookContract.decode(proof).account)
     }
 
     @Test fun existingOrMissingExplicitOriginalIsNotConvertedToFilelessReceipt() {

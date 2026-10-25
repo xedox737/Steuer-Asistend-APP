@@ -36,7 +36,16 @@ internal class DriveNamespacePolicy(
         if (id.isNotEmpty()) {
             val meta = owned(id, token, send)
             // The root itself is only a container; do not rename, move, overwrite or delete it.
-            if (meta.getString("name") == rootFolderName && request.method != "GET") denied()
+            if (request.method != "GET" && protectedContainer(meta, token, send)) denied()
+            if (meta.optString("mimeType") == FOLDER && url.queryParameter("uploadType") == "media") denied()
+            if (meta.optString("mimeType") == FOLDER && request.method == "DELETE") {
+                val q = java.net.URLEncoder.encode("'${meta.getString("id")}' in parents", "UTF-8")
+                val children = Request.Builder().url("https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id)&pageSize=1")
+                    .header("Authorization", token).build()
+                send(children).use {
+                    if (!it.isSuccessful || JSONObject(it.body?.string().orEmpty()).getJSONArray("files").length() != 0) denied()
+                }
+            }
             url.queryParameter("addParents")?.split(',')?.forEach { folder(it, token, send) }
             url.queryParameter("removeParents")?.let {
                 it.split(',').forEach { parent -> folder(parent, token, send) }
@@ -94,12 +103,13 @@ internal class DriveNamespacePolicy(
         val fields = setOf("rootFolderId", "systemFolderId", "receiptsFolderId", "paymentsFolderId", "exportsFolderId",
             "transactionsFolderId", "backupsFolderId", "driveFileId", "driveFolderId", "driveMetadataFileId",
             "metadataFileId", "mainDriveFileId", "previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
-        val ids = mutableSetOf<String>()
+        val references = mutableSetOf<Triple<String, Boolean, Boolean>>()
+        val historical = setOf("previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
         fun walk(value: Any?) {
             when (value) {
                 is JSONObject -> value.keys().forEach { key ->
                     val item = value.opt(key)
-                    if (key in fields && item is String && item.isNotBlank()) ids += item
+                    if (key in fields && item is String && item.isNotBlank()) references += Triple(item, key.endsWith("FolderId"), key in historical)
                     walk(item)
                 }
                 is org.json.JSONArray -> (0 until value.length()).forEach { walk(value.opt(it)) }
@@ -108,7 +118,25 @@ internal class DriveNamespacePolicy(
         walk(org.json.JSONTokener(json).nextValue())
         // Reuse ancestor metadata only within this one JSON check, never across operations.
         val proof = mutableMapOf<String, JSONObject>()
-        ids.forEach { owned(it, "Bearer $token", send, proof) }
+        references.forEach { (id, folderExpected, historyOnly) ->
+            try {
+                val meta = owned(id, "Bearer $token", send, proof)
+                if ((meta.optString("mimeType") == FOLDER) != folderExpected) denied()
+            } catch (missing: MissingReference) {
+                // A tombstone may name a file already deleted. This grants no access to it.
+                // Missing ancestors and every current data/config reference still fail closed.
+                if (!historyOnly || missing.id != id) throw missing
+            }
+        }
+    }
+
+    private fun protectedContainer(meta: JSONObject, token: String, send: (Request) -> Response): Boolean {
+        if (meta.optString("mimeType") != FOLDER) return false
+        if (meta.getString("name") == rootFolderName) return true
+        val parent = readMetadata(meta.getJSONArray("parents").getString(0), token, send)
+        if (meta.getString("name") == "_BelegApp-Daten" && parent.optString("name") == rootFolderName) return true
+        return parent.optString("name") == "_BelegApp-Daten" && meta.getString("name") in
+            setOf("receipts", "payments", "exports", "transactions", "backups", "deletions")
     }
 
     private fun metadata(request: Request): JSONObject {
@@ -168,6 +196,7 @@ internal class DriveNamespacePolicy(
         val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/$id?fields=id,name,mimeType,parents,trashed,shortcutDetails,appProperties")
             .header("Authorization", token).build()
         return send(request).use { response ->
+            if (response.code == 404) throw MissingReference(id)
             if (!response.isSuccessful) denied()
             JSONObject(response.body?.string().orEmpty()).also {
                 if (it.optBoolean("trashed") || it.has("shortcutDetails") || it.optString("id").isBlank()) denied()
@@ -177,6 +206,8 @@ internal class DriveNamespacePolicy(
             }
         }
     }
+
+    private class MissingReference(val id: String) : IOException("Drive-Sicherheitsabbruch: Datei nicht erreichbar.")
 
     private fun denied(): Nothing = throw IOException("Drive-Sicherheitsabbruch: Zugriff außerhalb des zu dieser App gehörenden Datenspeichers verweigert. Fremde Daten werden nicht übernommen oder verändert.")
 

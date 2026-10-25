@@ -1650,6 +1650,11 @@ class DrivePersistenceRepository(
                 StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId), currentReceipt.propertyId, currentReceipt.internalId
             )
 
+            GoogleDriveClient.validateDataReferences(accessToken, JSONObject()
+                .put("driveFileId", currentReceipt.driveFileId ?: JSONObject.NULL)
+                .put("driveFolderId", currentReceipt.driveFolderId ?: JSONObject.NULL)
+                .put("driveMetadataFileId", currentReceipt.driveMetadataFileId ?: JSONObject.NULL).toString())
+
             val filelessEvidence = filelessEvidenceFor(currentReceipt)
             if (filelessEvidence != null) return@run syncFilelessReceipt(accessToken, config, currentReceipt, filelessEvidence)
 
@@ -2615,6 +2620,16 @@ class DrivePersistenceRepository(
         config: DriveAppConfig?,
         receipt: Receipt
     ): PermanentDeleteResult {
+        if (!accessToken.isNullOrBlank() && config != null) {
+            try {
+                GoogleDriveClient.validateStorageConfig(accessToken, config)
+                GoogleDriveClient.validateDataReferences(accessToken, JSONObject()
+                    .put("driveFileId", receipt.driveFileId ?: JSONObject.NULL)
+                    .put("driveMetadataFileId", receipt.driveMetadataFileId ?: JSONObject.NULL).toString())
+            } catch (e: Exception) {
+                return PermanentDeleteResult.Error("Sicherheitsprüfung fehlgeschlagen: Fremde oder ungültige Drive-Referenz. Es wurden keine Daten gelöscht.")
+            }
+        }
         // Requirement 9 Safety Checks
         val allReceipts = localRepository.getAllReceiptsIncludingDeletedList()
         val otherReceiptsWithMainFile = allReceipts.filter { it.id != receipt.id && !it.driveFileId.isNullOrBlank() && it.driveFileId == receipt.driveFileId }

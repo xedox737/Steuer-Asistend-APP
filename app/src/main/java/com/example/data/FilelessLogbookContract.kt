@@ -6,11 +6,11 @@ import java.time.LocalDate
 /** Explicit attachment exemption for an actually booked, confirmed trip, never a generic skip flag. */
 internal object FilelessLogbookContract {
     data class Evidence(val tripId: Long, val expenseReceiptId: Int, val internalId: String,
-        val propertyId: String, val date: String, val distanceKm: Double, val source: String, val bookingKey: String) {
+        val propertyId: String, val date: String, val distanceKm: Double, val source: String, val bookingKey: String, val account: String) {
         fun json(): JSONObject = JSONObject().put("version", 1).put("tripId", tripId)
             .put("expenseReceiptId", expenseReceiptId).put("internalId", internalId).put("propertyId", propertyId)
             .put("date", date).put("distanceKm", distanceKm).put("source", source).put("bookingKey", bookingKey)
-            .put("manuallyConfirmed", true).put("cancelledAt", "")
+            .put("account", account).put("manuallyConfirmed", true).put("cancelledAt", "")
         val cents: Long get() = ReceiptMoney.toCent(distanceKm * 0.30)
     }
 
@@ -20,8 +20,8 @@ internal object FilelessLogbookContract {
         val id = j.backupLong("expenseReceiptId")
         require(id in 1..Int.MAX_VALUE.toLong())
         return Evidence(j.backupLong("tripId"), id.toInt(), j.getString("internalId"), j.getString("propertyId"),
-            j.getString("date"), j.backupDouble("distanceKm"), j.getString("source"), j.getString("bookingKey")).also {
-            require(it.tripId > 0 && it.internalId.isNotBlank() && it.propertyId.isNotBlank() && it.bookingKey.isNotBlank())
+            j.getString("date"), j.backupDouble("distanceKm"), j.getString("source"), j.getString("bookingKey"), j.optString("account", "4670")).also {
+            require(it.tripId > 0 && it.internalId.isNotBlank() && it.propertyId.isNotBlank() && it.bookingKey.isNotBlank() && it.account.isNotBlank())
             LocalDate.parse(it.date)
             require(it.distanceKm.isFinite() && it.distanceKm >= 0)
             require(KilometerSource.valueOf(it.source) != KilometerSource.KI_GESCHAETZT)
@@ -37,10 +37,10 @@ internal object FilelessLogbookContract {
     fun create(receipt: Receipt, trip: LogbookTrip): String? = runCatching {
         require(receipt.id > 0 && trip.expenseReceiptId == receipt.id && trip.manuallyConfirmed && trip.cancelledAt.isBlank())
         require(receipt.imageUrl.isBlank() && receipt.driveFileId.isNullOrBlank())
-        require(receipt.unterkategorie == "Fahrtkosten" && receipt.kontoNr == "4670")
+        require(receipt.unterkategorie == "Fahrtkosten" && receipt.kontoNr.isNotBlank())
         require(receipt.propertyId == trip.propertyId && receipt.datum == trip.date)
         val e = decode(Evidence(trip.id, receipt.id, receipt.internalId, trip.propertyId, trip.date,
-            trip.taxDistanceKm, trip.kilometerSource, trip.bookingKey).json().toString())
+            trip.taxDistanceKm, trip.kilometerSource, trip.bookingKey, receipt.kontoNr).json().toString())
         require(e.cents == ReceiptMoney.toCent(receipt.bruttobetrag))
         e.json().toString()
     }.getOrNull()
@@ -55,7 +55,7 @@ internal object FilelessLogbookContract {
         val value = receipt.filelessLogbookEvidence ?: return
         val e = decode(value)
         require(receipt.receiptId == e.expenseReceiptId && receipt.internalId == e.internalId && receipt.propertyId == e.propertyId &&
-            receipt.datum == e.date && receipt.bruttobetragCent == e.cents && receipt.kontoNr == "4670" && receipt.unterkategorie == "Fahrtkosten") {
+            receipt.datum == e.date && receipt.bruttobetragCent == e.cents && receipt.kontoNr == e.account && receipt.unterkategorie == "Fahrtkosten") {
             "Dateiloser Fahrtbeleg widerspricht seiner bestätigten Fahrt."
         }
         require(receipt.driveFileId.isBlank() && receipt.documents.isEmpty() && receipt.originalDocuments.isEmpty()) {

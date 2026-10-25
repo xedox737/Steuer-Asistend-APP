@@ -34,6 +34,9 @@ object GoogleDriveClient {
     private fun executeDriveRequest(request: Request): okhttp3.Response =
         DriveEnvironment.execute(request) { client.newCall(it).execute() }
 
+    internal fun validateDataReferences(accessToken: String, json: String) =
+        DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+
     fun validateStorageConfig(accessToken: String, config: com.example.data.DriveAppConfig, rootId: String? = null, systemId: String? = null) =
         DriveEnvironment.validateConfig(config, accessToken, rootId, systemId) { client.newCall(it).execute() }
 
@@ -764,7 +767,7 @@ object GoogleDriveClient {
             .build()
 
         return try {
-            DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+            validateDataReferences(accessToken, json)
             executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
@@ -795,7 +798,7 @@ object GoogleDriveClient {
             .build()
 
         return try {
-            DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+            validateDataReferences(accessToken, json)
             executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     DriveFileResult(true, fileId, null)
@@ -843,7 +846,7 @@ object GoogleDriveClient {
         executeDriveRequest(request).use { response ->
             if (response.isSuccessful) {
                 val json = response.body?.string() ?: ""
-                DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+                validateDataReferences(accessToken, json)
                 return json
             } else {
                 throw IOException("Download failed with status ${response.code}: ${response.message}")

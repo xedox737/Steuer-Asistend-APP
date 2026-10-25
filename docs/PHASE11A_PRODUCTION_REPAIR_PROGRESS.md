@@ -130,3 +130,30 @@ Keine bestehende Assertion entfernt oder abgeschwächt.
 Vollständige Regression, Lint/APKs/CI und vorläufige Integration weiterhin offen.
 Keine echte Google-/Gerätefreigabe; alle Cloudnachweise dieses Abschnitts nutzen
 simulierten HTTP-Transport und ausschließlich synthetische Daten.
+
+## Zusätzliche ID-Schutzfälle und verbindlicher Portfolio-Wächter
+
+Datei-/Ordnerrollen werden auch in JSON-Verweisen unterschieden. Geschützte
+Root-/System-/Backupcontainer können nicht über manipulierte Datei-IDs gelöscht
+oder überschrieben werden. Nichtleere Ordner werden nicht gelöscht; die bestehende
+Bereinigung tatsächlich leerer Kategorien bleibt möglich. Ein fremder/ungültiger
+Cloudverweis verhindert endgültiges lokales Löschen des Belegs vor jeder Mutation.
+Reine historische Tombstone-/Legacyverweise dürfen bereits fehlen; dies gewährt
+keinen Dateizugriff. Aktuelle Referenzen und existierende fremde historische
+Referenzen bleiben gesperrt. Scope-Prüfung und Rollenprüfung gelten gemeinsam.
+
+Die bestehende Kontierung eines bestätigten Fahrtbelegs bleibt erhalten; auch
+abweichend konfigurierte gültige Konten benötigen keine erfundene Anlage.
+Der Vertrag schreibt kein DATEV-Konto um. Die explizite Fahrtbindung bleibt Pflicht.
+
+Ein zusätzlicher CI-Wächter verlangt sämtliche neuen echten Testmethoden sowie
+den unveränderten strikten Vergleich zwischen gesichertem Quellbestand und
+frischem Full-Restore-Ziel nach erneutem Download/twice-MERGE. Der Seedzustand
+vor erster Cloud-ID-Vergabe wird gesondert gespeichert, nicht mit einer bereits
+hochgeladenen Cloud-ID-Baseline verwechselt. Der Checker wurde unverändert aus
+der Referenz übernommen, keine Felder oder Fehler ausgeblendet. Der vorhandene
+Evidence-Transport enthält die neuen JSONs und zählt echte XML-testcase-Knoten,
+auch innerhalb verschachtelter Android-testsuites.
+
+Vollständige Regression und Buildprüfung laufen als nächster Schritt; noch kein
+Push und keine Freigabe. Phase C bleibt bis dahin unberührt.

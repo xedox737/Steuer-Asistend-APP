@@ -86,6 +86,10 @@ jobs:
         if: always()
         run: python3 .github/scripts/phase10b-audit-evidence.py app/build app/build/reports/phase10b/audit-evidence.json
 
+      - name: Verify repaired Drive portfolio contracts and actual methods
+        if: always()
+        run: python3 .github/scripts/e11a-verify-repair.py
+
       - name: Preserve synthetic Phase 10B evidence
         if: always()
         run: python3 .github/scripts/phase10b-evidence.py
