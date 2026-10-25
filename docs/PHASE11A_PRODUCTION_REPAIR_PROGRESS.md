@@ -83,3 +83,20 @@ Lokale Evidence im Reparatur-Worktree:
 `app/build/test-results/testDebugUnitTest/`.
 Testlog: `/tmp/immopilot-e11a03-versioned.log`.
 E11A-01/E11A-02 und die vollständigen Phasen B–D bleiben ausstehend.
+
+## E11A-01 – gemeinsamer Zugriffsschutz implementiert, gezielt geprüft
+
+DriveNamespacePolicy liegt jetzt im gemeinsamen Produktcode und gilt für beide
+App-Identitäten, einschließlich Release. Produktroot und Produktkennung bleiben
+unverändert. Dateioperationen, JSON-Verweise und sämtliche Configrollen werden
+gegen aktuelle Elternketten geprüft; Caches/Mappings sind Account-/Root-/Parent-
+gebunden und werden vor Nutzung geprüft. Keine Migration oder Datenbereinigung.
+Metadaten mit ausdrücklich fremder appName-Kennung werden ebenfalls abgewiesen.
+Normale Legacydateien ohne Zusatzkennung innerhalb des gültigen Produktroots
+bleiben zulässig. Historisch als Produktdaten markierte Testdateien im Produktroot
+sind ohne Herkunftsnachweis nicht sicher unterscheidbar: kein automatischer Eingriff.
+
+Der Zugriffsschutz der Referenz-Test-App wurde in eine gemeinsame Implementierung
+überführt; die spätere vorläufige Integration muss die bisherigen variantenlokalen
+Policydateien entfernen, damit keine doppelte Fach-/Sicherheitslogik entsteht.
+Gezielte Namespace- und E11A-03-Tests bestanden; vollständige Regression ausstehend.

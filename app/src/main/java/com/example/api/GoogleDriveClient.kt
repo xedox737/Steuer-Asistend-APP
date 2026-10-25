@@ -29,7 +29,14 @@ import kotlinx.coroutines.sync.withLock
 
 object GoogleDriveClient {
     private const val TAG = "GoogleDriveClient"
-    private val client = OkHttpClient()
+    // Private transport; QA replaces it reflectively with an in-memory HTTP interceptor.
+    private var client = OkHttpClient()
+    private fun executeDriveRequest(request: Request): okhttp3.Response =
+        DriveEnvironment.execute(request) { client.newCall(it).execute() }
+
+    fun validateStorageConfig(accessToken: String, config: com.example.data.DriveAppConfig, rootId: String? = null, systemId: String? = null) =
+        DriveEnvironment.validateConfig(config, accessToken, rootId, systemId) { client.newCall(it).execute() }
+
     private val folderCache = ConcurrentHashMap<String, String>()
 
     fun clearFolderCache() {
@@ -109,7 +116,7 @@ object GoogleDriveClient {
                     filename = "category-folder-mappings.json",
                     json = newJsonStr,
                     appProperties = mapOf(
-                        "appName" to "ImmobilienBelegApp",
+                        "appName" to DriveEnvironment.appIdentifier,
                         "entityType" to "categoryFolderMappings",
                         "schemaVersion" to "1"
                     )
@@ -126,7 +133,7 @@ object GoogleDriveClient {
         receiptInternalId: String,
         documentRole: String = "ORIGINAL"
     ): DriveFile? {
-        val q = "'$folderId' in parents and appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
+        val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
         try {
             val encodedQ = URLEncoder.encode(q, "UTF-8")
             val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
@@ -134,7 +141,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)
@@ -157,13 +164,13 @@ object GoogleDriveClient {
         documentRole: String = "ORIGINAL"
     ): DriveFile? {
         if (receiptInternalId.isBlank()) return null
-        val q = "appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
+        val q = "appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
         return searchFiles(accessToken, q).singleOrNull()
     }
 
     suspend fun getOrCreateFolder(
         accessToken: String,
-        folderName: String = "Steuerassistent Belege",
+        folderName: String = DriveEnvironment.rootFolderName,
         parentId: String? = null,
         canonicalPathKey: String? = null,
         systemFolderId: String? = null,
@@ -173,15 +180,26 @@ object GoogleDriveClient {
         val parentKey = parentId ?: "root"
         
         // Cache key
-        val cacheKey = if (canonicalPathKey != null) {
+        val legacyCacheKey = if (canonicalPathKey != null) {
             "path#$canonicalPathKey"
         } else {
             "$trimmedName#$parentKey"
         }
 
+        // Account, root and parent belong to the test cache identity. Never trust an old mapping.
+        val cacheKey = if (DriveEnvironment.namespaceGuardEnabled) {
+            val accountKey = java.security.MessageDigest.getInstance("SHA-256").digest(accessToken.toByteArray()).joinToString("") { "%02x".format(it) }
+            "$accountKey#${DriveEnvironment.rootFolderName}#$parentKey#$legacyCacheKey"
+        } else legacyCacheKey
+        suspend fun checked(id: String): String {
+            if (DriveEnvironment.namespaceGuardEnabled && getFileMetadata(accessToken, id)?.mimeType != "application/vnd.google-apps.folder") {
+                throw IOException("Drive-Sicherheitsabbruch: Gespeicherte Ordner-ID ist für diese App nicht zulässig.")
+            }
+            return id
+        }
         folderCache[cacheKey]?.let { cachedId ->
             DiagnosticLog.d(TAG, "Using cached folder ID for '")
-            return cachedId
+            return checked(cachedId)
         }
 
         // Check local SharedPreferences mappings if context is provided
@@ -191,7 +209,7 @@ object GoogleDriveClient {
             if (!mappedId.isNullOrBlank()) {
                 DiagnosticLog.d(TAG, "Using SharedPreferences mapped folder ID for path '")
                 folderCache[cacheKey] = mappedId
-                return mappedId
+                return checked(mappedId)
             }
         }
 
@@ -205,14 +223,15 @@ object GoogleDriveClient {
         val mutex = getFolderMutex(lockKey)
         return mutex.withLock {
             // Check cache again after acquiring lock
-            folderCache[cacheKey]?.let { return@withLock it }
+            folderCache[cacheKey]?.let { return@withLock checked(it) }
 
             // 1. Search for existing folder
             var folderId: String? = null
             
             if (canonicalPathKey != null) {
                 // Search by app properties first
-                val q = "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$canonicalPathKey' } and trashed = false"
+                val q = "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$canonicalPathKey' } and trashed = false" +
+                    if (DriveEnvironment.namespaceGuardEnabled) " and '$parentId' in parents" else ""
                 try {
                     val encodedQ = URLEncoder.encode(q, "UTF-8")
                     val searchUrl = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
@@ -221,7 +240,7 @@ object GoogleDriveClient {
                         .addHeader("Authorization", "Bearer $accessToken")
                         .build()
                     
-                    client.newCall(searchRequest).execute().use { response ->
+                    executeDriveRequest(searchRequest).use { response ->
                         if (response.isSuccessful) {
                             val responseBody = response.body?.string() ?: ""
                             val json = JSONObject(responseBody)
@@ -244,6 +263,8 @@ object GoogleDriveClient {
                 var q = "name = '$escapedName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
                 if (!parentId.isNullOrEmpty()) {
                     q += " and '$parentId' in parents"
+                } else if (DriveEnvironment.namespaceGuardEnabled) {
+                    q += " and 'root' in parents"
                 }
                 try {
                     val encodedQ = URLEncoder.encode(q, "UTF-8")
@@ -253,7 +274,7 @@ object GoogleDriveClient {
                         .addHeader("Authorization", "Bearer $accessToken")
                         .build()
                     
-                    client.newCall(searchRequest).execute().use { response ->
+                    executeDriveRequest(searchRequest).use { response ->
                         if (response.isSuccessful) {
                             val responseBody = response.body?.string() ?: ""
                             val json = JSONObject(responseBody)
@@ -284,7 +305,7 @@ object GoogleDriveClient {
                 }
                 if (canonicalPathKey != null) {
                     val appPropsJson = JSONObject().apply {
-                        put("appName", "ImmobilienBelegApp")
+                        put("appName", DriveEnvironment.appIdentifier)
                         put("folderRole", "CATEGORY")
                         put("canonicalPathKey", canonicalPathKey)
                         put("parentFolderId", parentId ?: "")
@@ -301,7 +322,7 @@ object GoogleDriveClient {
                 .build()
             
             try {
-                val response = client.newCall(createRequest).execute()
+                val response = executeDriveRequest(createRequest)
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
                     response.close()
@@ -319,14 +340,15 @@ object GoogleDriveClient {
 
                     // Danach erneut prüfen, ob parallel ein zweiter Ordner entstanden ist
                     if (canonicalPathKey != null) {
-                        val qCheck = "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$canonicalPathKey' } and trashed = false"
+                        val qCheck = "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$canonicalPathKey' } and trashed = false" +
+                            if (DriveEnvironment.namespaceGuardEnabled) " and '$parentId' in parents" else ""
                         val encodedQCheck = URLEncoder.encode(qCheck, "UTF-8")
                         val searchUrlCheck = "https://www.googleapis.com/drive/v3/files?q=$encodedQCheck&fields=files(id,createdTime)&orderBy=createdTime asc"
                         val searchRequestCheck = Request.Builder()
                             .url(searchUrlCheck)
                             .addHeader("Authorization", "Bearer $accessToken")
                             .build()
-                        val checkRes = client.newCall(searchRequestCheck).execute()
+                        val checkRes = executeDriveRequest(searchRequestCheck)
                         if (checkRes.isSuccessful) {
                             val checkBody = checkRes.body?.string() ?: ""
                             checkRes.close()
@@ -371,7 +393,7 @@ object GoogleDriveClient {
     }
 
     suspend fun uploadReceipt(accessToken: String, mainFolderId: String, receipt: Receipt): Boolean {
-        // Hierarchy: Steuerassistent Belege -> [Jahr] -> [Hauptkategorie] -> [Unterkategorie]
+        // Hierarchy: active app root -> [Jahr] -> [Hauptkategorie] -> [Unterkategorie]
         val yearName = extractYear(receipt.datum)
         val hauptkategorieName = receipt.hauptkategorie.trim().ifEmpty { "Sonstiges" }
         val unterkategorieName = receipt.unterkategorie.trim().ifEmpty { "Allgemein" }
@@ -576,7 +598,7 @@ object GoogleDriveClient {
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
             
-            client.newCall(searchRequest).execute().use { response ->
+            executeDriveRequest(searchRequest).use { response ->
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
                     val json = JSONObject(responseBody)
@@ -643,7 +665,7 @@ object GoogleDriveClient {
         }
 
         return try {
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     DiagnosticLog.d(TAG, "File")
                     true
@@ -659,7 +681,7 @@ object GoogleDriveClient {
     }
 
     suspend fun findAppDataFolder(accessToken: String): DriveFolder? {
-        val mainFolderId = getOrCreateFolder(accessToken, "Steuerassistent Belege") ?: return null
+        val mainFolderId = getOrCreateFolder(accessToken, DriveEnvironment.rootFolderName) ?: return null
         val q = "name = '_BelegApp-Daten' and mimeType = 'application/vnd.google-apps.folder' and '$mainFolderId' in parents and trashed = false"
         try {
             val encodedQ = URLEncoder.encode(q, "UTF-8")
@@ -668,7 +690,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)
@@ -686,7 +708,7 @@ object GoogleDriveClient {
     }
 
     suspend fun createAppDataFolder(accessToken: String): DriveFolder {
-        val mainFolderId = getOrCreateFolder(accessToken, "Steuerassistent Belege") ?: throw IOException("Could not find or create main folder")
+        val mainFolderId = getOrCreateFolder(accessToken, DriveEnvironment.rootFolderName) ?: throw IOException("Could not find or create main folder")
         val folderId = getOrCreateFolder(accessToken, "_BelegApp-Daten", mainFolderId) ?: throw IOException("Could not find or create system folder _BelegApp-Daten")
         return DriveFolder(folderId, "_BelegApp-Daten")
     }
@@ -742,7 +764,8 @@ object GoogleDriveClient {
             .build()
 
         return try {
-            client.newCall(request).execute().use { response ->
+            DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
                     val resJson = JSONObject(responseBody)
@@ -772,7 +795,8 @@ object GoogleDriveClient {
             .build()
 
         return try {
-            client.newCall(request).execute().use { response ->
+            DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     DriveFileResult(true, fileId, null)
                 } else {
@@ -797,7 +821,7 @@ object GoogleDriveClient {
             .build()
 
         return try {
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 response.isSuccessful || response.code == 404
             }
         } catch (e: Exception) {
@@ -816,9 +840,11 @@ object GoogleDriveClient {
             .addHeader("Authorization", "Bearer $accessToken")
             .build()
 
-        client.newCall(request).execute().use { response ->
+        executeDriveRequest(request).use { response ->
             if (response.isSuccessful) {
-                return response.body?.string() ?: ""
+                val json = response.body?.string() ?: ""
+                DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+                return json
             } else {
                 throw IOException("Download failed with status ${response.code}: ${response.message}")
             }
@@ -826,6 +852,12 @@ object GoogleDriveClient {
     }
 
     suspend fun searchFiles(accessToken: String, q: String): List<DriveFile> {
+        if (DriveEnvironment.namespaceGuardEnabled && !Regex("'[^']+' in parents").containsMatchIn(q)) {
+            val root = getOrCreateFolder(accessToken) ?: return emptyList()
+            val folders = listOf(root) + listAppTreeFiles(accessToken, root)
+                .filter { it.mimeType == "application/vnd.google-apps.folder" }.map { it.id }
+            return folders.flatMap { searchFiles(accessToken, "($q) and '$it' in parents") }.distinctBy { it.id }
+        }
         return withContext(Dispatchers.IO) {
             val list = mutableListOf<DriveFile>()
             try {
@@ -835,7 +867,7 @@ object GoogleDriveClient {
                     .url(url)
                     .addHeader("Authorization", "Bearer $accessToken")
                     .build()
-                client.newCall(request).execute().use { response ->
+                executeDriveRequest(request).use { response ->
                     if (response.isSuccessful) {
                         val body = response.body?.string()
                         if (body != null) {
@@ -868,7 +900,7 @@ object GoogleDriveClient {
             .build()
 
         try {
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     return response.body?.bytes()
                 } else {
@@ -890,7 +922,7 @@ object GoogleDriveClient {
             .addHeader("Authorization", "Bearer $accessToken")
             .build()
         return try {
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (!response.isSuccessful) return null
                 val json = JSONObject(response.body?.string().orEmpty())
                 if (json.optBoolean("trashed", false)) return null
@@ -942,7 +974,7 @@ object GoogleDriveClient {
                 if (pageToken.isNotBlank()) append("&pageToken=").append(URLEncoder.encode(pageToken, "UTF-8"))
             }
             val request = Request.Builder().url(url).addHeader("Authorization", "Bearer $accessToken").build()
-            val responseJson = client.newCall(request).execute().use { response ->
+            val responseJson = executeDriveRequest(request).use { response ->
                 if (!response.isSuccessful) throw IOException("Drive-Inventur fehlgeschlagen (${response.code})")
                 JSONObject(response.body?.string().orEmpty())
             }
@@ -994,7 +1026,7 @@ object GoogleDriveClient {
             .addHeader("Authorization", "Bearer $accessToken")
             .build()
         return try {
-            client.newCall(request).execute().use { it.isSuccessful }
+            executeDriveRequest(request).use { it.isSuccessful }
         } catch (e: Exception) {
             DiagnosticLog.e(TAG, "Could not move Drive file during document migration")
             false
@@ -1022,7 +1054,7 @@ object GoogleDriveClient {
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
 
-            client.newCall(metaReq).execute().use { response ->
+            executeDriveRequest(metaReq).use { response ->
                 if (response.isSuccessful) {
                     val bodyStr = response.body?.string() ?: ""
                     val json = JSONObject(bodyStr)
@@ -1067,7 +1099,7 @@ object GoogleDriveClient {
                 .addHeader("Range", "bytes=0-${maxHeaderBytes - 1}")
                 .build()
 
-            client.newCall(mediaReq).execute().use { response ->
+            executeDriveRequest(mediaReq).use { response ->
                 if (response.isSuccessful || response.code == 206) {
                     val bytes = response.body?.bytes()
                     if (bytes != null) {
@@ -1097,7 +1129,7 @@ object GoogleDriveClient {
         folderId: String,
         entityType: String
     ): DriveFile? {
-        val q = "'$folderId' in parents and appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
+        val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
         try {
             val encodedQ = URLEncoder.encode(q, "UTF-8")
             val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
@@ -1105,7 +1137,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)
@@ -1130,7 +1162,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)
@@ -1158,7 +1190,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)
@@ -1192,7 +1224,7 @@ object GoogleDriveClient {
                 .build()
             
             try {
-                client.newCall(mediaRequest).execute().use { response ->
+                executeDriveRequest(mediaRequest).use { response ->
                     if (!response.isSuccessful) {
                         DiagnosticLog.e(TAG, "Update file media content failed")
                         return null
@@ -1217,7 +1249,7 @@ object GoogleDriveClient {
                     .addHeader("Authorization", "Bearer $accessToken")
                     .build()
                 
-                client.newCall(metaRequest).execute().use { response ->
+                executeDriveRequest(metaRequest).use { response ->
                     if (response.isSuccessful) {
                         val body = response.body?.string() ?: ""
                         val json = JSONObject(body)
@@ -1279,7 +1311,7 @@ object GoogleDriveClient {
         }
 
         return try {
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     DiagnosticLog.d(TAG, "File uploaded successfully")
@@ -1328,10 +1360,11 @@ object GoogleDriveClient {
         var systemFolderId = ""
         var testFileId = ""
 
-        // 1. Search for main folder "Steuerassistent Belege" in visible Drive ("Meine Ablage")
-        val mainFolderName = "Steuerassistent Belege"
+        // 1. Search the active build root in visible Drive ("Meine Ablage").
+        val mainFolderName = DriveEnvironment.rootFolderName
         val escapedMainName = mainFolderName.replace("\\", "\\\\").replace("'", "\\'")
-        val mainQ = "name = '$escapedMainName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        val mainQ = "name = '$escapedMainName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false" +
+            if (DriveEnvironment.namespaceGuardEnabled) " and 'root' in parents" else ""
 
         try {
             val encodedQ = URLEncoder.encode(mainQ, "UTF-8")
@@ -1341,7 +1374,7 @@ object GoogleDriveClient {
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.code == 401 || response.code == 403) {
                     return DriveTestApiResult(
                         affectedAction = "Suche Hauptordner",
@@ -1385,7 +1418,7 @@ object GoogleDriveClient {
                     .addHeader("Authorization", "Bearer $accessToken")
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeDriveRequest(request).use { response ->
                     if (response.code == 401 || response.code == 403) {
                         return DriveTestApiResult(
                             affectedAction = "Erstellung Hauptordner",
@@ -1425,7 +1458,7 @@ object GoogleDriveClient {
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
 
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.code == 401 || response.code == 403) {
                     return DriveTestApiResult(
                         mainFolderId = mainFolderId,
@@ -1473,7 +1506,7 @@ object GoogleDriveClient {
                     .addHeader("Authorization", "Bearer $accessToken")
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                executeDriveRequest(request).use { response ->
                     if (response.code == 401 || response.code == 403) {
                         return DriveTestApiResult(
                             mainFolderId = mainFolderId,
@@ -1508,7 +1541,7 @@ object GoogleDriveClient {
         val timestampStr = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).format(Date())
         val uploadJsonObj = JSONObject().apply {
             put("test", true)
-            put("app", "ImmobilienBelegApp")
+            put("app", DriveEnvironment.appIdentifier)
             put("message", "Echter Google-Drive-Upload erfolgreich")
             put("createdAt", timestampStr)
         }
@@ -1525,7 +1558,7 @@ object GoogleDriveClient {
                 .url(searchUrl)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val json = JSONObject(response.body?.string() ?: "")
                     val files = json.optJSONArray("files")
@@ -1582,7 +1615,7 @@ object GoogleDriveClient {
         }
 
         try {
-            client.newCall(uploadRequest).execute().use { response ->
+            executeDriveRequest(uploadRequest).use { response ->
                 if (response.code == 401 || response.code == 403) {
                     return DriveTestApiResult(
                         mainFolderId = mainFolderId,
@@ -1636,7 +1669,7 @@ object GoogleDriveClient {
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
 
-            client.newCall(downloadRequest).execute().use { response ->
+            executeDriveRequest(downloadRequest).use { response ->
                 if (response.code == 401 || response.code == 403) {
                     return DriveTestApiResult(
                         mainFolderId = mainFolderId,
@@ -1714,7 +1747,7 @@ object GoogleDriveClient {
         folderId: String,
         receiptInternalId: String
     ): DriveFile? {
-        val q = "'$folderId' in parents and appProperties has { key='appName' and value='ImmobilienBelegApp' } and appProperties has { key='entityType' and value='receiptMetadata' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and trashed = false"
+        val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='receiptMetadata' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and trashed = false"
         try {
             val encodedQ = URLEncoder.encode(q, "UTF-8")
             val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
@@ -1722,7 +1755,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)
@@ -1752,7 +1785,7 @@ object GoogleDriveClient {
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
-            client.newCall(request).execute().use { response ->
+            executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
                     val json = JSONObject(body)

@@ -1,5 +1,7 @@
 package com.example.data
 
+import com.example.api.DriveEnvironment
+
 import com.example.util.DiagnosticLog
 
 import android.content.Context
@@ -536,7 +538,7 @@ class DrivePersistenceRepository(
             GoogleDriveClient.updateJson(accessToken, file.id, json)
         } else {
             val appProperties = mapOf(
-                "appName" to "ImmobilienBelegApp",
+                "appName" to DriveEnvironment.appIdentifier,
                 "entityType" to entityType,
                 "schemaVersion" to "1"
             )
@@ -563,7 +565,7 @@ class DrivePersistenceRepository(
         try {
             DiagnosticLog.d(TAG, "Initializing Google Drive storage...")
             // 1. Search for existing main folder "Steuerassistent Belege"
-            val rootFolderId = GoogleDriveClient.getOrCreateFolder(accessToken, "Steuerassistent Belege")
+            val rootFolderId = GoogleDriveClient.getOrCreateFolder(accessToken, DriveEnvironment.rootFolderName)
                 ?: return DriveInitializationResult.Failure("Hauptordner 'Steuerassistent Belege' konnte nicht gefunden oder erstellt werden.")
 
             // 2. Search for existing app data system folder "_BelegApp-Daten"
@@ -576,6 +578,7 @@ class DrivePersistenceRepository(
                 if (appConfigFile != null) {
                     val configJson = GoogleDriveClient.downloadJson(accessToken, appConfigFile.id)
                     val config = parseDriveAppConfig(configJson)
+                    GoogleDriveClient.validateStorageConfig(accessToken, config, rootFolderId, systemFolder.id)
                     DiagnosticLog.d(TAG, "Loaded existing app configuration from Drive. Schema version")
 
                     // Check schema compatibility
@@ -618,7 +621,7 @@ class DrivePersistenceRepository(
 
             val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
             val newConfig = DriveAppConfig(
-                appIdentifier = "ImmobilienBelegApp",
+                appIdentifier = DriveEnvironment.appIdentifier,
                 schemaVersion = 1,
                 rootFolderId = rootFolderId,
                 systemFolderId = newSystemFolder.id,
@@ -631,6 +634,8 @@ class DrivePersistenceRepository(
                 updatedAt = now
             )
 
+            GoogleDriveClient.validateStorageConfig(accessToken, newConfig, rootFolderId, newSystemFolder.id)
+
             // Save new app-config.json to Drive
             val uploadRes = GoogleDriveClient.uploadJson(
                 accessToken = accessToken,
@@ -638,7 +643,7 @@ class DrivePersistenceRepository(
                 filename = "app-config.json",
                 json = newConfig.toJson(),
                 appProperties = mapOf(
-                    "appName" to "ImmobilienBelegApp",
+                    "appName" to DriveEnvironment.appIdentifier,
                     "entityType" to "appConfig",
                     "schemaVersion" to "1"
                 )
@@ -1284,7 +1289,7 @@ class DrivePersistenceRepository(
                     filename = "app-config.json",
                     json = jsonStr,
                     appProperties = mapOf(
-                        "appName" to "ImmobilienBelegApp",
+                        "appName" to DriveEnvironment.appIdentifier,
                         "entityType" to "appConfig",
                         "schemaVersion" to "1"
                     )
@@ -1761,7 +1766,7 @@ class DrivePersistenceRepository(
                             } else {
                                 DiagnosticLog.d(TAG, "Idempotency check: File on Drive differs. Updating existing file.")
                                 val appProperties = mapOf(
-                                    "appName" to "ImmobilienBelegApp",
+                                    "appName" to DriveEnvironment.appIdentifier,
                                     "receiptInternalId" to currentReceipt.internalId,
                                     "displayId" to (currentReceipt.displayId ?: ""),
                                     "documentRole" to "ORIGINAL",
@@ -1804,7 +1809,7 @@ class DrivePersistenceRepository(
 
                 if (needsCreate) {
                     val appProperties = mapOf(
-                        "appName" to "ImmobilienBelegApp",
+                        "appName" to DriveEnvironment.appIdentifier,
                         "receiptInternalId" to currentReceipt.internalId,
                         "displayId" to (currentReceipt.displayId ?: ""),
                         "documentRole" to "ORIGINAL",
@@ -2296,7 +2301,7 @@ class DrivePersistenceRepository(
             }.toString(4)
 
             val appProps = mapOf(
-                "appName" to "ImmobilienBelegApp",
+                "appName" to DriveEnvironment.appIdentifier,
                 "entityType" to "tombstone",
                 "receiptInternalId" to tombstone.internalId,
                 "deletionId" to tombstone.deletionId,
@@ -2628,6 +2633,14 @@ class DrivePersistenceRepository(
     suspend fun buildRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot {
         val warnings = mutableListOf<RestoreWarning>()
         val errors = mutableListOf<RestoreError>()
+
+        if (managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway) {
+            try { GoogleDriveClient.validateStorageConfig(accessToken, config) }
+            catch (e: Exception) {
+                return RestoreSnapshot(errors = listOf(RestoreError("DRIVE_NAMESPACE_MISMATCH",
+                    e.message ?: "Drive-Konfiguration gehört nicht zu dieser App.", isBlocking = true)))
+            }
+        }
 
         if (config.schemaVersion > 1) {
             errors.add(RestoreError("UNSUPPORTED_SCHEMA", "Schema-Version ${config.schemaVersion} wird nicht unterstützt", isBlocking = true))
@@ -3546,7 +3559,9 @@ class DrivePersistenceRepository(
         val systemFolder = GoogleDriveClient.findAppDataFolder(accessToken) ?: return null
         val configFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig") ?: return null
         return try {
-            parseDriveAppConfig(GoogleDriveClient.downloadJson(accessToken, configFile.id))
+            parseDriveAppConfig(GoogleDriveClient.downloadJson(accessToken, configFile.id)).also {
+                GoogleDriveClient.validateStorageConfig(accessToken, it)
+            }
         } catch (e: Exception) {
             DiagnosticLog.e(TAG, "Bestehende Drive-Konfiguration konnte nicht gelesen werden")
             null
@@ -3631,7 +3646,7 @@ class DrivePersistenceRepository(
                 }
                 val uploadRes = managedDocumentDriveGateway.writeReceiptJson(
                     accessToken, driveMetadataFileId, config.receiptsFolderId, metadataFilename,
-                    persistedReceipt.toJson(), mapOf("appName" to "ImmobilienBelegApp", "entityType" to "receiptMetadata",
+                    persistedReceipt.toJson(), mapOf("appName" to DriveEnvironment.appIdentifier, "entityType" to "receiptMetadata",
                         "receiptInternalId" to persistedReceipt.internalId, "displayId" to persistedReceipt.displayId.orEmpty(), "schemaVersion" to "2"))
 
                 if (uploadRes.success) {
@@ -4157,7 +4172,7 @@ class DrivePersistenceRepository(
         val fileId = managedDocumentDriveGateway.uploadFile(
             accessToken, folderId, document.storedFilename, document.mimeType, bytes,
             appProperties = mapOf(
-                "appName" to "ImmobilienBelegApp", "entityType" to "managedDocument",
+                "appName" to DriveEnvironment.appIdentifier, "entityType" to "managedDocument",
                 "documentId" to document.documentId, "propertyId" to document.propertyId,
                 "contentSha256" to hash, "schemaVersion" to "1"
             )
