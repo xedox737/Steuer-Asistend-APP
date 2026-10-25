@@ -157,3 +157,25 @@ auch innerhalb verschachtelter Android-testsuites.
 
 Vollständige Regression und Buildprüfung laufen als nächster Schritt; noch kein
 Push und keine Freigabe. Phase C bleibt bis dahin unberührt.
+
+## Strikter Wiederherstellungsvertrag – ergänzende Korrektur
+
+Der unveränderte Phase11A-Checker meldete nach frischem Full-Restore und zwei
+MERGEs zwei Contract-Abweichungen desselben geprüften Dokument-JSONs (Room und
+Supplemental). Der bisherige Original-Metadatenparser rekonstruierte ausschließlich
+`_receiptOriginalOrder`; der folgende Merge fügte diesen technischen Schlüssel
+in die bestätigte Beschreibung ein. Die Original-Metadaten übertragen nun
+`extractedFieldsJson` exakt; alte Backups ohne dieses optionale Feld behalten
+die bisherige Rangrekonstruktion. Drei zusätzliche Fälle prüfen unverändertes
+geprüftes Einzeloriginal, geprüfte Mehrseitenreihenfolge und Legacy-Ranglesbarkeit.
+Die neue vollständige HTTP-Prüfung vergleicht jetzt auch den Rangschlüssel strikt;
+der unabhängige Checker bleibt unverändert.
+
+Der erste vollständige Regressionslauf auf 0fe306d wird vollständig ausgewertet.
+Er zeigte sechs Fehler in alten manuell aufgebauten Testindizes: Die wirkliche
+Metadatenschreibfunktion enthält jetzt einen gebundenen Fahrtnachweis, während
+die Testindizes diesen wegließen. Die Phase10B/10C-Aufbauten übernehmen nun
+den tatsächlich gespeicherten Nachweis und dessen Indexfelder; der Phase10C-
+Transport enthält auch die tatsächlich erzeugte Supplemental-Sicherung.
+Keine fachliche Assertion oder Fehlerprüfung wurde entfernt. Ein erneuter
+vollständiger Lauf des korrigierten Stands ist erforderlich und noch offen.
