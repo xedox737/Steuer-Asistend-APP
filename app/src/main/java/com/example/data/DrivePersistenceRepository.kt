@@ -820,6 +820,7 @@ class DrivePersistenceRepository(
             put("displayId", displayId)
             
             put("driveFileId", driveFileId)
+            filelessLogbookEvidence?.let { put("filelessLogbookEvidence", JSONObject(it)) }
             put("driveFolderId", driveFolderId ?: JSONObject.NULL)
             put("filename", filename)
             put("mimeType", mimeType)
@@ -1107,6 +1108,7 @@ class DrivePersistenceRepository(
         } else null
         
         return PersistedReceipt(
+            filelessLogbookEvidence = FilelessLogbookContract.read(json),
             schemaVersion = receiptSchema,
             receiptId = if (!json.has("receiptId") || json.isNull("receiptId")) null else json.backupInt("receiptId").also { require(it > 0) },
             unitId = if (json.has("unitId")) json.getString("unitId") else "",
@@ -1167,7 +1169,7 @@ class DrivePersistenceRepository(
             lastSyncedAt = if (json.isNull("lastSyncedAt")) null else json.getString("lastSyncedAt"),
             rawAllocationsJson = rawAllocations,
             rawBookingProposalsJson = rawProposals
-        )
+        ).also { FilelessLogbookContract.validateMetadata(it) }
     }
 
     fun PersistedReceipt.toLocalReceipt(metadataFileId: String?): Receipt {
@@ -1338,9 +1340,16 @@ class DrivePersistenceRepository(
         val internalIds = mutableSetOf<String>()
         val metadataFileIds = mutableSetOf<String>()
         val mainDriveFileIds = mutableSetOf<String>()
+        val filelessTripIds = mutableSetOf<Long>()
         val displayIdToInternalId = mutableMapOf<String, String>()
 
         for (entry in entries) {
+            if (entry.filelessLogbookEvidence != null) {
+                if (!FilelessLogbookContract.validIndex(entry) ||
+                    !filelessTripIds.add(FilelessLogbookContract.decode(entry.filelessLogbookEvidence).tripId)) {
+                    return IndexValidationResult(false, "Ungültiger oder mehrfach belegter Fahrtnachweis im Index.")
+                }
+            }
             if (entry.internalId.isBlank()) {
                 return IndexValidationResult(false, "Indexeintrag ohne internalId gefunden.")
             }
@@ -1355,10 +1364,10 @@ class DrivePersistenceRepository(
                 return IndexValidationResult(false, "Doppelte metadataFileId im Index: ${entry.metadataFileId}")
             }
 
-            if (entry.mainDriveFileId.isBlank()) {
+            if (entry.mainDriveFileId.isBlank() && !FilelessLogbookContract.validIndex(entry)) {
                 return IndexValidationResult(false, "Indexeintrag ohne mainDriveFileId (internalId=${entry.internalId})")
             }
-            if (!mainDriveFileIds.add(entry.mainDriveFileId)) {
+            if (entry.mainDriveFileId.isNotBlank() && !mainDriveFileIds.add(entry.mainDriveFileId)) {
                 return IndexValidationResult(false, "Doppelte mainDriveFileId im Index: ${entry.mainDriveFileId}")
             }
 
@@ -1397,6 +1406,7 @@ class DrivePersistenceRepository(
                                 displayId = if (obj.isNull("displayId")) null else obj.getString("displayId"),
                                 metadataFileId = obj.getString("metadataFileId"),
                                 mainDriveFileId = obj.getString("mainDriveFileId"),
+                            filelessLogbookEvidence = FilelessLogbookContract.read(obj),
                                 aussteller = if (obj.isNull("aussteller")) null else obj.getString("aussteller"),
                                 rechnungsnummer = if (obj.isNull("rechnungsnummer")) null else obj.getString("rechnungsnummer"),
                                 datum = if (obj.isNull("datum")) null else obj.getString("datum"),
@@ -1446,6 +1456,7 @@ class DrivePersistenceRepository(
                     put("displayId", entry.displayId ?: JSONObject.NULL)
                     put("metadataFileId", entry.metadataFileId)
                     put("mainDriveFileId", entry.mainDriveFileId)
+                    entry.filelessLogbookEvidence?.let { put("filelessLogbookEvidence", JSONObject(it)) }
                     put("aussteller", entry.aussteller ?: JSONObject.NULL)
                     put("rechnungsnummer", entry.rechnungsnummer ?: JSONObject.NULL)
                     put("datum", entry.datum ?: JSONObject.NULL)
@@ -1507,6 +1518,49 @@ class DrivePersistenceRepository(
         }
         return documents.size >= com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).filter { it.isNotBlank() }.distinct().size
     }
+
+    private suspend fun filelessEvidenceFor(receipt: Receipt): String? {
+        if (receipt.imageUrl.isNotBlank() || !receipt.driveFileId.isNullOrBlank()) return null
+        if (localRepository.getDocumentsForReceipt(receipt.internalId).isNotEmpty()) return null
+        if (localRepository.getAllManagedDocuments().any { it.receiptInternalId == receipt.internalId &&
+                (it.fileSizeBytes > 0 || it.sha256.isNotBlank() || !it.driveFileId.isNullOrBlank() || it.localUri.isNotBlank()) }) return null
+        val db = AppDatabase.getDatabase(context, CoroutineScope(Dispatchers.IO))
+        val trip = db.logbookDao().getAllTrips().singleOrNull { it.expenseReceiptId == receipt.id } ?: return null
+        return FilelessLogbookContract.create(receipt, trip)
+    }
+
+    private suspend fun syncFilelessReceipt(token: String, config: DriveAppConfig, receipt: Receipt, proof: String): Boolean {
+        val metadataId = upsertReceiptMetadata(token, config, receipt) ?: throw IOException("Fahrtbeleg-Metadaten konnten nicht gesichert werden.")
+        val persisted = parsePersistedReceipt(managedDocumentDriveGateway.downloadJson(token, metadataId))
+        require(persisted.filelessLogbookEvidence == proof) { "Fahrtnachweis wurde nicht vollständig gesichert." }
+        val entry = receiptIndexEntry(persisted, metadataId, "")
+        require(updateReceiptIndexInDrive(token, config, entry)) { "Fahrtbeleg-Index konnte nicht gesichert werden." }
+        val latest = localRepository.getReceiptByInternalId(receipt.internalId) ?: throw IOException("Lokaler Fahrtbeleg fehlt.")
+        localRepository.insert(latest.copy(syncStatus = "SYNCED", syncError = null, driveMetadataFileId = metadataId,
+            driveRevision = persisted.revision, lastSyncedAt = persisted.lastSyncedAt, isArchivedToDrive = true))
+        return true
+    }
+
+    private fun receiptIndexEntry(persistedReceipt: PersistedReceipt, metadataId: String, mainId: String): ReceiptIndexEntry = ReceiptIndexEntry(
+                filelessLogbookEvidence = persistedReceipt.filelessLogbookEvidence,
+                internalId = persistedReceipt.internalId,
+                displayId = persistedReceipt.displayId,
+                metadataFileId = metadataId,
+                mainDriveFileId = mainId,
+                aussteller = persistedReceipt.aussteller,
+                rechnungsnummer = persistedReceipt.rechnungsnummer,
+                datum = persistedReceipt.datum,
+                bruttobetragCent = persistedReceipt.bruttobetragCent,
+                hauptkategorie = persistedReceipt.hauptkategorie,
+                unterkategorie = persistedReceipt.unterkategorie,
+                wohneinheit = persistedReceipt.wohneinheit,
+                massnahme = persistedReceipt.massnahme,
+                pruefstatus = persistedReceipt.pruefstatus,
+                freigabestatus = persistedReceipt.freigabestatus,
+                exportstatus = persistedReceipt.exportstatus,
+                syncStatus = "SYNCED",
+                updatedAt = persistedReceipt.updatedAt
+            )
 
     suspend fun syncReceiptToDrive(
         accessToken: String,
@@ -1595,6 +1649,9 @@ class DrivePersistenceRepository(
                 localRepository.getManagedDocument(StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId)),
                 StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId), currentReceipt.propertyId, currentReceipt.internalId
             )
+
+            val filelessEvidence = filelessEvidenceFor(currentReceipt)
+            if (filelessEvidence != null) return@run syncFilelessReceipt(accessToken, config, currentReceipt, filelessEvidence)
 
             val targetFolderId = getReceiptTargetFolderId(
                 accessToken, config.rootFolderId, currentReceipt, config.systemFolderId, context,
@@ -1981,25 +2038,7 @@ class DrivePersistenceRepository(
                 return@run false
             }
 
-            val indexEntry = ReceiptIndexEntry(
-                internalId = persistedReceipt.internalId,
-                displayId = persistedReceipt.displayId,
-                metadataFileId = driveMetadataFileId!!,
-                mainDriveFileId = driveFileId!!,
-                aussteller = persistedReceipt.aussteller,
-                rechnungsnummer = persistedReceipt.rechnungsnummer,
-                datum = persistedReceipt.datum,
-                bruttobetragCent = persistedReceipt.bruttobetragCent,
-                hauptkategorie = persistedReceipt.hauptkategorie,
-                unterkategorie = persistedReceipt.unterkategorie,
-                wohneinheit = persistedReceipt.wohneinheit,
-                massnahme = persistedReceipt.massnahme,
-                pruefstatus = persistedReceipt.pruefstatus,
-                freigabestatus = persistedReceipt.freigabestatus,
-                exportstatus = persistedReceipt.exportstatus,
-                syncStatus = "SYNCED",
-                updatedAt = persistedReceipt.updatedAt
-            )
+            val indexEntry = receiptIndexEntry(persistedReceipt, driveMetadataFileId!!, driveFileId!!)
 
             val indexSuccess = updateReceiptIndexInDrive(accessToken, config, indexEntry)
             
@@ -2110,6 +2149,7 @@ class DrivePersistenceRepository(
                                 displayId = if (obj.isNull("displayId")) null else obj.optString("displayId"),
                                 metadataFileId = obj.optString("metadataFileId", ""),
                                 mainDriveFileId = obj.optString("mainDriveFileId", ""),
+                            filelessLogbookEvidence = FilelessLogbookContract.read(obj),
                                 aussteller = obj.optString("aussteller", ""),
                                 rechnungsnummer = obj.optString("rechnungsnummer", ""),
                                 datum = obj.optString("datum", ""),
@@ -2153,10 +2193,10 @@ class DrivePersistenceRepository(
                             duplicateCount++
                         }
 
-                        if (entry.mainDriveFileId.isBlank()) {
+                        if (entry.mainDriveFileId.isBlank() && !FilelessLogbookContract.validIndex(entry)) {
                             entryIssues.add("Fehlende mainDriveFileId")
                             missingFileCount++
-                        } else if (!seenMainFileIds.add(entry.mainDriveFileId)) {
+                        } else if (entry.mainDriveFileId.isNotBlank() && !seenMainFileIds.add(entry.mainDriveFileId)) {
                             entryIssues.add("Doppelte mainDriveFileId (${entry.mainDriveFileId})")
                             duplicateCount++
                         }
@@ -2166,6 +2206,7 @@ class DrivePersistenceRepository(
                             try {
                                 val metaJson = GoogleDriveClient.downloadJson(accessToken, entry.metadataFileId)
                                 val parsed = parsePersistedReceipt(metaJson)
+                                FilelessLogbookContract.validatePair(entry, parsed)
                                 if (parsed.bruttobetragCent != null) {
                                     metaReachable = true
                                     metadataFileCount++
@@ -2707,6 +2748,7 @@ class DrivePersistenceRepository(
                             displayId = if (obj.isNull("displayId")) null else obj.optString("displayId"),
                             metadataFileId = obj.optString("metadataFileId", ""),
                             mainDriveFileId = obj.optString("mainDriveFileId", ""),
+                            filelessLogbookEvidence = FilelessLogbookContract.read(obj),
                             aussteller = obj.optString("aussteller", ""),
                             rechnungsnummer = obj.optString("rechnungsnummer", ""),
                             datum = obj.optString("datum", ""),
@@ -2757,6 +2799,7 @@ class DrivePersistenceRepository(
                     try {
                         val metaJson = managedDocumentDriveGateway.downloadJson(accessToken, entry.metadataFileId)
                         val persisted = parsePersistedReceipt(metaJson)
+                        FilelessLogbookContract.validatePair(entry, persisted)
 
                         val candidate = persisted.toLocalReceipt(entry.metadataFileId)
                         val amountValid = persisted.bruttobetragCent != null &&
@@ -2767,7 +2810,7 @@ class DrivePersistenceRepository(
                             errors.add(RestoreError("INVALID_AMOUNT", "Ungültiger Bruttobetrag (${persisted.bruttobetragCent}) in Beleg '${persisted.displayId ?: persisted.internalId}'", targetId = persisted.internalId, isBlocking = true))
                         }
 
-                        if (entry.mainDriveFileId.isBlank()) {
+                        if (entry.mainDriveFileId.isBlank() && !FilelessLogbookContract.validIndex(entry)) {
                             warnings.add(RestoreWarning("MISSING_MAIN_DOC", "Hauptdokument fehlt für Beleg '${persisted.displayId ?: persisted.internalId}'", targetId = persisted.internalId))
                         }
 
@@ -2797,6 +2840,17 @@ class DrivePersistenceRepository(
         }
 
         val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+        if (receipts.any { it.filelessLogbookEvidence != null }) {
+            try {
+                val supplemental = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "supplementalBackup")
+                    ?: throw IOException("Fahrtenbuch-Sicherung für dateilose Belege fehlt.")
+                FilelessLogbookContract.validateSupplemental(receipts,
+                    JSONObject(managedDocumentDriveGateway.downloadJson(accessToken, supplemental.id)))
+            } catch (e: Exception) {
+                errors.add(RestoreError("FILELESS_LOGBOOK_MISMATCH", e.message ?: "Fahrtnachweis ist unvollständig.", isBlocking = true))
+            }
+        }
+
         return RestoreSnapshot(
             schemaVersion = config.schemaVersion,
             createdAt = nowStr,
@@ -3012,7 +3066,8 @@ class DrivePersistenceRepository(
             val metadataFileId: String,
             val mainDriveFileId: String,
             val aussteller: String?,
-            val datum: String?
+            val datum: String?,
+            val filelessLogbookEvidence: String? = null
         )
 
         val indexEntries = mutableListOf<AuditCandidate>()
@@ -3030,6 +3085,7 @@ class DrivePersistenceRepository(
                             displayId = if (obj.isNull("displayId")) null else obj.optString("displayId"),
                             metadataFileId = obj.optString("metadataFileId"),
                             mainDriveFileId = obj.optString("mainDriveFileId"),
+                            filelessLogbookEvidence = FilelessLogbookContract.read(obj),
                             aussteller = if (obj.isNull("aussteller")) null else obj.optString("aussteller"),
                             datum = if (obj.isNull("datum")) null else obj.optString("datum")
                         )
@@ -3062,6 +3118,14 @@ class DrivePersistenceRepository(
 
         // Process each receipt index entry (100% READ-ONLY)
         for (entry in indexEntries) {
+            if (entry.filelessLogbookEvidence != null) {
+                val verified = runCatching {
+                    val persisted = parsePersistedReceipt(GoogleDriveClient.downloadJson(accessToken, entry.metadataFileId))
+                    require(entry.mainDriveFileId.isBlank() && entry.internalId == persisted.internalId &&
+                        entry.filelessLogbookEvidence == persisted.filelessLogbookEvidence)
+                }.isSuccess
+                if (verified) continue // No original exists or is required; never manufacture one.
+            }
             val internalId = entry.internalId
             val localMatch = localReceipts[internalId]
 
@@ -3590,10 +3654,12 @@ class DrivePersistenceRepository(
                 var driveMetadataFileId = currentReceipt.driveMetadataFileId
 
                 // 2. Prepare metadata content
+                val filelessEvidence = filelessEvidenceFor(currentReceipt)
                 val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
                 val originals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == currentReceipt.internalId }
                 val persistedReceipt = PersistedReceipt(
                     schemaVersion = 2,
+                    filelessLogbookEvidence = filelessEvidence,
                     receiptId = currentReceipt.id,
                     unitId = currentReceipt.unitId, exportlaufId = currentReceipt.exportlaufId,
                     kontoNr = currentReceipt.kontoNr, isEigenleistungSanierung = currentReceipt.isEigenleistungSanierung,
@@ -3605,8 +3671,8 @@ class DrivePersistenceRepository(
                     revision = (currentReceipt.driveRevision ?: 0L) + 1L,
                     internalId = currentReceipt.internalId,
                     displayId = currentReceipt.displayId,
-                    documents = allDocs,
-                    originalDocuments = originals,
+                    documents = if (filelessEvidence == null) allDocs else emptyList(),
+                    originalDocuments = if (filelessEvidence == null) originals else emptyList(),
                     driveFileId = currentReceipt.driveFileId ?: "",
                     driveFolderId = currentReceipt.driveFolderId,
                     filename = currentReceipt.storedFilename ?: "",
@@ -3911,6 +3977,7 @@ class DrivePersistenceRepository(
                         displayId = if (obj.isNull("displayId")) null else obj.optString("displayId"),
                         metadataFileId = obj.optString("metadataFileId", ""),
                         mainDriveFileId = obj.optString("mainDriveFileId", ""),
+                            filelessLogbookEvidence = FilelessLogbookContract.read(obj),
                         aussteller = obj.optString("aussteller", ""),
                         rechnungsnummer = obj.optString("rechnungsnummer", ""),
                         datum = obj.optString("datum", ""),
@@ -4501,7 +4568,8 @@ data class PersistedReceipt(
     val updatedAt: String,
     val lastSyncedAt: String?,
     val rawAllocationsJson: String? = null,
-    val rawBookingProposalsJson: String? = null
+    val rawBookingProposalsJson: String? = null,
+    val filelessLogbookEvidence: String? = null
 )
 
 data class PersistedAiAnalysis(
@@ -4599,7 +4667,8 @@ data class ReceiptIndexEntry(
     val freigabestatus: String?,
     val exportstatus: String?,
     val syncStatus: String,
-    val updatedAt: String
+    val updatedAt: String,
+    val filelessLogbookEvidence: String? = null
 )
 
 data class DocumentIndexEntry(

@@ -20,7 +20,8 @@ import java.util.zip.ZipFile
 /** Characterization only: expected defects stay explicit in JSON; a green method is not a bug fix. */
 @RunWith(RobolectricTestRunner::class)
 class ReceiptSyncPreservationE2ETest {
-    private val context get() = ApplicationProvider.getApplicationContext<Context>()
+    private var freshContext: Context? = null
+    private val context get() = freshContext ?: ApplicationProvider.getApplicationContext<Context>()
     private lateinit var db: AppDatabase
     private lateinit var remote: ComparisonDriveHttpFixture
     private lateinit var client: OkHttpClient
@@ -147,7 +148,7 @@ class ReceiptSyncPreservationE2ETest {
         repeat(2) {
             for (r in repo.getAllReceiptsList()) {
                 val success = drive.syncReceiptToDrive(token, config, r)
-                assertEquals(r.internalId, r.imageUrl.isNotBlank(), success)
+                assertTrue(r.internalId, success)
             }
             for (d in repo.getAllManagedDocuments()) assertEquals(d.documentId, authored(before.getValue(d.documentId)), authored(d))
             assertTrue(drive.saveStammdatenToDrive(token, config))
@@ -178,6 +179,138 @@ class ReceiptSyncPreservationE2ETest {
             assertEquals(authored(reviewed),authored(repo.getManagedDocument(d.documentId)!!))
         }
     }
+    @Test fun allSeventyReceiptsRestoreIntoFreshPrivateProfileWithoutInventedOriginals() = runBlocking {
+        loadOriginalPortfolio(); val config = initialize()
+        val expectedDocuments = repo.getAllManagedDocuments().associate { it.documentId to authored(it) }
+        val expectedReceipts = repo.getAllReceiptsList().associate { it.internalId to (it.propertyId to it.unitId) }
+        repeat(2) {
+            for (r in repo.getAllReceiptsList()) assertTrue(r.internalId, drive.syncReceiptToDrive(token, config, r))
+            assertTrue(drive.saveStammdatenToDrive(token, config))
+            assertTrue(SupplementalDriveBackup.backup(context, db, token, config.systemFolderId).success)
+        }
+        val beforeInitialization = remote.entries.keys.toSet()
+        val prepared = drive.buildRestoreSnapshot(token, config)
+        assertTrue(prepared.errors.toString(), prepared.errors.none { it.isBlocking })
+        assertEquals(70, prepared.receipts.size)
+        // Existing tombstone lookup initializes its standard folder once; no other file may appear.
+        for (id in remote.entries.keys - beforeInitialization) {
+            assertEquals("deletions", remote.entries.getValue(id).name)
+            assertEquals(config.systemFolderId, remote.entries.getValue(id).parent)
+        }
+        val cloudIds = remote.entries.keys.toSet()
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertTrue(preview.toString(), preview.success)
+        assertEquals(70, preview.inventory.receiptCountInIndex)
+        assertEquals(70, preview.inventory.metadataFileCount)
+        assertEquals(60, preview.inventory.mainDocCount)
+        assertEquals(0, preview.inventory.missingFileCount)
+        val audit = drive.auditOriginalReceipts(token, config)
+        assertEquals(60, audit.totalChecked)
+        assertEquals(0, audit.invalidCount)
+
+        // New JVM-only profile: own empty Room, preferences, files and cache. Never an installed app.
+        val previous = context
+        val prefix = "fresh-${java.util.UUID.randomUUID()}"
+        freshContext = object : android.content.ContextWrapper(previous) {
+            override fun getApplicationContext(): Context = this
+            override fun getFilesDir(): File = File(previous.filesDir, "$prefix/files").apply { mkdirs() }
+            override fun getCacheDir(): File = File(previous.cacheDir, "$prefix/cache").apply { mkdirs() }
+            override fun getDatabasePath(name: String): File = File(previous.getDatabasePath(name).parentFile, "$prefix-$name")
+            override fun getSharedPreferences(name: String, mode: Int): android.content.SharedPreferences =
+                previous.getSharedPreferences("$prefix-$name", mode)
+        }
+        db.close()
+        databaseName = "comparison-fresh-${java.util.UUID.randomUUID()}.db"
+        db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).build()
+        singleton.set(null, db)
+        assertTrue(repo.getAllReceiptsList().isEmpty())
+        assertTrue(context.filesDir.listFiles().isNullOrEmpty())
+        val restored = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+        assertTrue(restored.errors.toString(), restored.isSuccess)
+        assertTrue(SupplementalDriveBackup.restore(context, db, token, config.systemFolderId,
+            replaceManagedDocuments=true, restoreMode=RestoreMode.REPLACE_FULL).success)
+        assertEquals(expectedReceipts, repo.getAllReceiptsList().associate { it.internalId to (it.propertyId to it.unitId) })
+        assertEquals(expectedDocuments, repo.getAllManagedDocuments().associate { it.documentId to authored(it) })
+        assertEquals(5, db.propertyDao().getAllProperties().size)
+        assertEquals(120, db.bankDao().getAllTransactions().size)
+        assertEquals(10, db.logbookDao().getAllTrips().size)
+        val originals = repo.getAllManagedDocuments().filter { it.fileSizeBytes > 0 }
+        assertEquals(60, originals.size)
+        assertTrue(originals.all { it.localUri.isBlank() })
+        for (r in repo.getAllReceiptsList().filter { !it.driveFileId.isNullOrBlank() }) drive.downloadDocumentOnDemand(token, r)
+        for (d in repo.getAllManagedDocuments().filter { it.fileSizeBytes > 0 }) {
+            assertTrue(d.documentId, File(d.localUri).isFile)
+            assertEquals(d.sha256, StableDocumentIdentity.sha256(File(d.localUri).readBytes()))
+        }
+        repeat(2) {
+            assertTrue(drive.executeFullDriveRestore(token, config, RestoreMode.MERGE).isSuccess)
+            assertTrue(SupplementalDriveBackup.restore(context, db, token, config.systemFolderId, restoreMode=RestoreMode.MERGE).success)
+        }
+        assertEquals(expectedDocuments, repo.getAllManagedDocuments().associate { it.documentId to authored(it) })
+        for (r in repo.getAllReceiptsList()) assertTrue(r.internalId, drive.syncReceiptToDrive(token, config, r))
+        assertEquals(cloudIds, remote.entries.keys.toSet())
+        assertEquals(10, repo.getAllReceiptsList().count { it.imageUrl.isBlank() && it.driveFileId.isNullOrBlank() })
+        assertTrue(ReceiptDocumentSyncState.scan(repo).isEmpty())
+        snapshot("after-fresh-full-and-two-merges")
+        Unit
+    }
+
+    @Test fun ordinaryReceiptWithAbsentMissingOrEmptyOriginalStillFails() = runBlocking {
+        loadOriginalPortfolio(); val config = initialize()
+        val source = repo.getReceiptByInternalId("e10b-receipt-1")!!
+        val empty = File(context.cacheDir, "empty.pdf").apply { writeBytes(byteArrayOf()) }
+        for (path in listOf("", File(context.cacheDir,"missing.pdf").absolutePath, empty.absolutePath)) {
+            val r = source.copy(imageUrl=path,driveFileId=null)
+            repo.insert(r)
+            assertFalse(drive.syncReceiptToDrive(token,config,r))
+            val actual = repo.getReceiptByInternalId(r.internalId)!!
+            assertEquals(r.unitId,actual.unitId)
+            assertEquals("Keine lokale Quelldatei gefunden oder Datei ist leer.",actual.syncError)
+        }
+        assertTrue(remote.entries.values.none { it.properties["documentRole"]=="ORIGINAL" })
+    }
+
+    @Test fun inconsistentFilelessIndexMetadataOrTripBlocksFullRestoreBeforeLocalReplacement() = runBlocking {
+        loadOriginalPortfolio(); val config = initialize()
+        for (r in repo.getAllReceiptsList()) assertTrue(drive.syncReceiptToDrive(token,config,r))
+        assertTrue(drive.saveStammdatenToDrive(token,config))
+        assertTrue(SupplementalDriveBackup.backup(context,db,token,config.systemFolderId).success)
+        assertTrue(drive.buildRestoreSnapshot(token,config).errors.none { it.isBlocking })
+        val fileless = repo.getAllReceiptsList().first { it.imageUrl.isBlank() }
+        val metadata = remote.entries.getValue(fileless.driveMetadataFileId!!)
+        val index = remote.entries.values.single { it.properties["entityType"]=="receiptIndex" }
+        val supplemental = remote.entries.values.single { it.properties["entityType"]=="supplementalBackup" }
+        val originalMeta = metadata.bytes.copyOf(); val originalIndex = index.bytes.copyOf(); val originalSupplemental = supplemental.bytes.copyOf()
+        val before = canonicalJson(SupplementalDriveBackup.createPayload(context,db))
+        val beforeReceipts = repo.getAllReceiptsList()
+        try {
+            val badMeta = JSONObject(originalMeta.toString(Charsets.UTF_8))
+            badMeta.getJSONObject("filelessLogbookEvidence").put("propertyId","foreign-property")
+            metadata.bytes = badMeta.toString().toByteArray()
+            assertFalse(drive.executeFullDriveRestore(token,config,RestoreMode.REPLACE_FULL).isSuccess)
+            metadata.bytes = originalMeta
+            val badIndex = JSONObject(originalIndex.toString(Charsets.UTF_8))
+            val entries = badIndex.getJSONArray("entries")
+            for (n in 0 until entries.length()) if (entries.getJSONObject(n).getString("internalId")==fileless.internalId) {
+                entries.getJSONObject(n).remove("filelessLogbookEvidence")
+            }
+            index.bytes = badIndex.toString().toByteArray()
+            assertFalse(drive.executeFullDriveRestore(token,config,RestoreMode.REPLACE_FULL).isSuccess)
+            index.bytes = originalIndex
+            val badSupplemental = JSONObject(originalSupplemental.toString(Charsets.UTF_8))
+            val trips = badSupplemental.getJSONArray("logbookTrips")
+            for (n in 0 until trips.length()) if (trips.getJSONObject(n).getInt("expenseReceiptId")==fileless.id) {
+                trips.getJSONObject(n).put("expenseReceiptId",99999)
+            }
+            supplemental.bytes = badSupplemental.toString().toByteArray()
+            assertFalse(drive.executeFullDriveRestore(token,config,RestoreMode.REPLACE_FULL).isSuccess)
+        } finally {
+            metadata.bytes=originalMeta; index.bytes=originalIndex; supplemental.bytes=originalSupplemental
+        }
+        assertEquals(before,canonicalJson(SupplementalDriveBackup.createPayload(context,db)))
+        assertEquals(beforeReceipts,repo.getAllReceiptsList())
+    }
+
     companion object {
         const val PRODUCT_ROOT = "Steuerassistent Belege"
         const val TEST_ROOT = "ImmoPilot Phase11A Testdaten"

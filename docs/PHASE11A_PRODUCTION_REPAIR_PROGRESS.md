@@ -100,3 +100,33 @@ Der Zugriffsschutz der Referenz-Test-App wurde in eine gemeinsame Implementierun
 überführt; die spätere vorläufige Integration muss die bisherigen variantenlokalen
 Policydateien entfernen, damit keine doppelte Fach-/Sicherheitslogik entsteht.
 Gezielte Namespace- und E11A-03-Tests bestanden; vollständige Regression ausstehend.
+
+## E11A-02 – expliziter Vertrag und vollständiger frischer Restore geprüft
+
+Ein dateiloser Fahrtbeleg wird nur anhand seiner tatsächlichen bestätigten,
+nicht stornierten Fahrtenbuch-Buchung freigestellt. IDs, Immobilie, Datum,
+Kilometerquelle und Betrag müssen zusammenpassen; bestehende Originalreferenzen
+oder explizite Dateipfade verhindern die Ausnahme. Keine Ersatzdateien.
+Der vorhandene Metadatenserializer wird für beide Belegformen verwendet; Index
+und Metadaten speichern denselben typisierten Fahrtnachweis. Alte JSONs ohne
+Nachweis behalten ihre bisherige Originalpflicht. Keine Room-Schemaänderung.
+Vor Full-Restore werden Index, Metadaten und Supplemental-Fahrtenbuch gemeinsam
+geprüft. Inkonsistenz blockiert vor dem lokalen Ersetzen.
+
+38 tatsächliche gezielte Methoden bestanden (0 Fehler/Skips): 11 Namespace-,
+5 reale Client-/Repository-HTTP-, 5 Fahrtvertrags-, 6 Dokumentzustands-,
+2 lesende Room-Audit- sowie 9 bestehende Metadaten-/Restorekontrollen.
+Der frische JVM-Testprofilfall prüft 70 Belege, 70 Dokumente, 5 Immobilien,
+17 Einheiten, 120 Bankbuchungen, 10 Fahrten und 60 Originale. Dateien und
+Preferences dieses Profils sind leer und vom Quellprofil getrennt. Nach
+Full-Restore werden alle 60 Originale wirklich erneut vom simulierten Drive
+heruntergeladen und gehasht; danach zweimal MERGE und erneuter Sync ohne
+neue Cloud-IDs. Die bestehende Tombstone-Ordnerinitialisierung wird vor der
+Idempotenz-Baseline ausdrücklich geprüft (nur ein eigener deletions-Ordner).
+Normale Rechnungen mit leerer/fehlender/leerer Quelldatei bleiben Fehler.
+Die JSON-Contract-Tests laufen unter Robolectric mit echten Android-JSON-Typen.
+Keine bestehende Assertion entfernt oder abgeschwächt.
+
+Vollständige Regression, Lint/APKs/CI und vorläufige Integration weiterhin offen.
+Keine echte Google-/Gerätefreigabe; alle Cloudnachweise dieses Abschnitts nutzen
+simulierten HTTP-Transport und ausschließlich synthetische Daten.
