@@ -16,7 +16,7 @@ spec.loader.exec_module(checker)
 try:
     expected = set()
     names = ("ProductionDriveNamespaceTest", "ReceiptSyncPreservationE2ETest", "ReceiptDocumentSyncStateTest",
-             "ReceiptDocumentIntegrityAuditTest", "FilelessLogbookContractTest")
+             "ReceiptDocumentIntegrityAuditTest", "FilelessLogbookContractTest", "ReceiptOriginalMetadataPreservationTest")
     for name in names:
         source = next(Path("app/src/test/java").rglob(name + ".kt")).read_text()
         package = re.search(r"^package (\S+)", source, re.M)[1]

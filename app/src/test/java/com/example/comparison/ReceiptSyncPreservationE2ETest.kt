@@ -133,10 +133,7 @@ class ReceiptSyncPreservationE2ETest {
         val moshi = com.squareup.moshi.Moshi.Builder().addLast(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
         val json = JSONObject(moshi.adapter(ManagedDocument::class.java).toJson(document))
         listOf("storedFilename", "mimeType", "localUri", "driveFileId", "driveFolderId", "sha256", "fileSizeBytes", "legacyDriveFolderId").forEach(json::remove)
-        // Original-chain rank is technical metadata added by the existing attachment sync.
-        // Its value is asserted separately; all authored extracted fields remain compared.
         val fields = JSONObject(document.extractedFieldsJson.ifBlank { "{}" })
-        fields.remove("_receiptOriginalOrder")
         json.put("extractedFieldsJson", canonicalJson(fields))
         return canonicalJson(json)
     }
@@ -161,7 +158,7 @@ class ReceiptSyncPreservationE2ETest {
         }
         originalPaths.forEach { (id,f) ->
             assertEquals(before.getValue(id).sha256, StableDocumentIdentity.sha256(f.readBytes()))
-            assertEquals(0, JSONObject(repo.getManagedDocument(id)!!.extractedFieldsJson).getInt("_receiptOriginalOrder"))
+            assertEquals(before.getValue(id).extractedFieldsJson, repo.getManagedDocument(id)!!.extractedFieldsJson)
         }
         snapshot("preserved-after-two-merges")
         Unit
