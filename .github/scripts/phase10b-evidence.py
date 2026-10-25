@@ -41,6 +41,7 @@ if emulator:
                    set(root.glob("emulator-e2e/phase11a-ui/**/*.json")) |
                    set(root.glob("emulator-e2e/phase11a-ui/*.txt")) |
                    set(root.glob("emulator-e2e/phase11a-drive-namespace.json")) |
+                   set(root.glob("emulator-e2e/*failure*.txt")) |
                    {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
 else:
     paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |
