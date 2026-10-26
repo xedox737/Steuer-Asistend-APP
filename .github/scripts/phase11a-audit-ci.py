@@ -3,13 +3,31 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
+import xml.etree.ElementTree as ET
 
 spec = importlib.util.spec_from_file_location("integrity", Path(__file__).with_name("phase11a-integrity-check.py"))
 qa = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(qa)
 out = Path("app/build/reports/phase11a")
 out.mkdir(parents=True, exist_ok=True)
+expected = set()
+for source in Path("app/src/testDebug/java").rglob("*.kt"):
+    text = source.read_text()
+    methods = re.findall(r"@Test\s+fun\s+(\w+)\s*\(", text)
+    if methods:
+        package = re.search(r"^package (\S+)", text, re.M)[1]
+        expected.update((package + "." + source.stem, method) for method in methods)
+actual = []
+for path in Path("app/build/test-results/testDebugUnitTest").glob("*.xml"):
+    for case in ET.parse(path).getroot().iter("testcase"):
+        key = (case.get("classname"), case.get("name"))
+        if key in expected:
+            assert all(case.find(k) is None for k in ("failure", "error", "skipped")), key
+            actual.append(key)
+assert expected and len(actual) == len(set(actual)) == len(expected) and set(actual) == expected, "Missing/repeated Phase11A methods"
+print(json.dumps(dict(phase11aActualMethods=len(actual), ok=True)))
 results = []
 for units in (17, 21):
     folder = Path(f"app/build/reports/phase10b/units-{units}")

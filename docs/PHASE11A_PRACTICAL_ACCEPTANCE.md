@@ -409,3 +409,43 @@ Damit wurden die Methoden dieser Klasse noch nicht ausgeführt. Das ist ein
 QA-Signaturfehler, kein Produktfehler und kein bestandener Namespace-Nachweis.
 Die Signatur wird durch abschließendes Unit korrigiert; alle Assertions bleiben
 bestehen. Die tatsächlichen Methoden werden anschließend erneut geprüft.
+
+### Lokale vorläufige Integration geprüft
+
+Auf f5534ef: vollständiger JVM-Lauf mit 1.166 tatsächlichen Methoden,
+0 Fehler/Errors/Skips/Platzhaltern. Alle 36 gemeinsamen Reparaturmethoden und
+27 bestehenden Phase11A-Methoden tatsächlich ausgeführt; der neue Wächter
+verlangt deren vollständige Namen. Python-Helfer: 29 Tests grün. Normal-/
+Stressportfolio, Handy-Seed-Struktur, zweimal synchronisierter/gesicherter
+Handy-Seed, zwei MERGEs und gemeinsamer frischer Full-Restore grün.
+60/60 Originalhashes, 0 Contract-Abweichungen, 0 Orphans/Dubletten.
+
+Lint: 0 Fehler/Fatal, 118 Warnungen. assembleDebug, assembleDebugAndroidTest
+und assembleRelease grün. Release ist lokal unsigniert; Test-Debug-APK signiert,
+Package com.aistudio.steuerassistent.vnhqkp.phase11a, Label ImmoPilot Test,
+vier eigene Authorities. Tatsächliche Release-APK ohne Testwerkzeuge/Assets,
+mit demselben produktiven Drive-Guard. Kein weiterer OOM-Kill. Der lokale
+Gradle-Daemon meldete vor Ablauf eine Metaspace-Warnung und beendete den Build
+erfolgreich; Repository-/CI-Speicherwerte wurden nicht verändert.
+
+Main-Quellen weichen gegenüber dem grünen Reparatur-Head 6dd94ec ausschließlich
+um den exakt übernommenen bestehenden Einstellungen-/Backup-Hook-Patch ab
+(SHA256 65b3edaad7e5939fa703eb17ad61e12a96357b4e112f763b330aed6355fffccd).
+Der CI-Wächter prüft dies gegen den gepinnten Produktstand. API, Datenzugriff,
+Fachlogik, Modelle, Migrationen, Bank/DATEV/AfA bleiben gemeinsam.
+Vollständige Integrations-CI inklusive Emulator folgt; kein praktischer Erfolg
+wird aus diesen lokalen Nachweisen abgeleitet.
+
+### OAuth und Signatur der tatsächlich heruntergeladenen APK
+
+Der verify-Job protokolliert im APK-Bericht den SHA256 der angebotenen Test-APK
+sowie deren verifizierte öffentliche Zertifikat-SHA1/SHA256. Für Android-OAuth
+muss genau die Kombination aus com.aistudio.steuerassistent.vnhqkp.phase11a und
+dieser Zertifikat-SHA1 im verwendeten Google-Projekt zugelassen sein (Drive API,
+Consent-/Testnutzer-Konfiguration entsprechend dem verwendeten Projekt).
+Deren reale Verfügbarkeit ist nicht automatisiert bestätigt. CI-Jobs erzeugen
+jeweils Debug-Schlüssel; eine Emulator-APK kann deshalb ein anderes Zertifikat
+als die herunterladbare verify-APK haben. Für das Telefon gilt der Bericht der
+tatsächlich heruntergeladenen APK. Keine Secrets werden eingecheckt, keine
+Produkt-OAuth-Konfiguration geändert. Bestehende anders signierte Installationen
+nicht durch Datenlöschung ersetzen; getrennte leere Testumgebung vorbereiten.
