@@ -513,7 +513,7 @@ wurde lokal ohne Fehler/Skips erneut ausgeführt; anschließend vollständige CI
 
 ## Phase 11B – gemeinsamer Initialisierungsfix, Issue #145
 
-Dieser Integrationsbranch basiert auf dem Produkt-Fix 2a2303f aus aktuellem
+Dieser Integrationsbranch basiert auf dem Produkt-Fix e2c15f2 aus aktuellem
 main 6d58dba (PR #144 inzwischen gemergt). Bestehende QA/UI/Seed-Funktionen
 aus 4c65911 sind weiterverwendet; keine zweite Fachimplementierung.
 Gemeinsamer Source-Guard prüft alle Main-Differenzen gegen die bestehenden

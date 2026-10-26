@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 
-PRODUCT = "2a2303fc309e7ba82d08744a91cb44bf00f41b16"
+PRODUCT = "e2c15f22959f663ff6dcba813c0ca8e64d0c338d"
 expected = Path(".github/qa/phase11a-integration-ui-hooks.patch").read_bytes()
 actual = subprocess.check_output(["git", "diff", "--unified=0", "--no-ext-diff", "--no-color", "--src-prefix=a/",
                                  "--dst-prefix=b/", PRODUCT, "--", "app/src/main"])

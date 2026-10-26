@@ -62,7 +62,7 @@ jobs:
 
       - name: Verify shared repaired product sources
         run: |
-          git fetch --no-tags --depth=1 origin 2a2303fc309e7ba82d08744a91cb44bf00f41b16
+          git fetch --no-tags --depth=1 origin e2c15f22959f663ff6dcba813c0ca8e64d0c338d
           python3 .github/scripts/phase11a-check-shared-product.py
 
       - name: Test Phase 11A evidence helpers
