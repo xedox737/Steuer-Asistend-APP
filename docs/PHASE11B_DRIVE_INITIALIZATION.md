@@ -97,3 +97,14 @@ verlangt weiterhin ein tatsächlich enthaltenes positives ID-Ergebnis.
 Zwei zusätzliche Methoden sichern leere Projektion und malformed-200-Antworten;
 insgesamt 15 neue SDK36-Initialisierungsmethoden. Keine HTTP- oder Ownership-
 Fehler werden in ein leeres Suchergebnis umgewandelt.
+
+## Gemeinsame native QA-Bereitschaft
+
+Auch die bereits im Phase11A-Emulatorlauf 40184584401 nachgewiesene reine
+Phase6B-Testbereitschaftskorrektur wird in den Produkt-Testaufbau übernommen:
+vor der unveränderten Sichtbarkeitsassertion auf die tatsächlich sichtbare
+Sanierungsübersicht warten. Bestehendes 10s-Limit, keine Assertion entfernt,
+kein Timeout erhöht, keine Produkt-/Sanierungslogikänderung. Drei QA-Zeilen,
+entsprechen exakt dem bestehenden Test-App-Stand. Native Ausführung erfolgt
+mangels lokalem KVM in der vollständigen GitHub-CI; noch nicht als bestanden
+behauptet.
