@@ -116,11 +116,12 @@ internal class DriveNamespacePolicy(
             }
         }
         walk(org.json.JSONTokener(json).nextValue())
-        // Reuse ancestor metadata only within this one JSON check, never across operations.
+        // Reuse ancestor metadata and root attestation only within this JSON check, never across operations.
         val proof = mutableMapOf<String, JSONObject>()
+        val rootProofs = mutableSetOf<String>()
         references.forEach { (id, folderExpected, historyOnly) ->
             try {
-                val meta = owned(id, "Bearer $token", send, proof)
+                val meta = owned(id, "Bearer $token", send, proof, rootProofs)
                 if ((meta.optString("mimeType") == FOLDER) != folderExpected) denied()
             } catch (missing: MissingReference) {
                 // A tombstone may name a file already deleted. This grants no access to it.
@@ -170,7 +171,8 @@ internal class DriveNamespacePolicy(
     }
 
     private fun owned(id: String, token: String, send: (Request) -> Response,
-        proof: MutableMap<String, JSONObject> = mutableMapOf()): JSONObject {
+        proof: MutableMap<String, JSONObject> = mutableMapOf(),
+        rootProofs: MutableSet<String> = mutableSetOf()): JSONObject {
         fun read(key: String) = proof.getOrPut(key) { readMetadata(key, token, send) }
         val original = read(id)
         var current = original
@@ -183,7 +185,11 @@ internal class DriveNamespacePolicy(
             if (current.optString("name") == rootFolderName && current.optString("mimeType") == FOLDER) {
                 // drive.file need not expose files.get("root"). Prove top-level membership
                 // with the same server-filtered root search used during discovery instead.
-                if (!topLevelRoot(current.getString("id"), token, send)) denied()
+                val rootId = current.getString("id")
+                if (rootId !in rootProofs) {
+                    if (!topLevelRoot(rootId, token, send)) denied()
+                    rootProofs += rootId
+                }
                 return original
             }
             current = read(parentId)

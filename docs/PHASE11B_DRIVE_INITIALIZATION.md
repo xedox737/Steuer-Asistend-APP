@@ -108,3 +108,18 @@ kein Timeout erhöht, keine Produkt-/Sanierungslogikänderung. Drei QA-Zeilen,
 entsprechen exakt dem bestehenden Test-App-Stand. Native Ausführung erfolgt
 mangels lokalem KVM in der vollständigen GitHub-CI; noch nicht als bestanden
 behauptet.
+
+## Root-Nachweis je JSON-Operation begrenzt
+
+Zusätzlicher gezielter Aufrufzähltest auf e2c15f2: eine Methode tatsächlich
+ausgeführt, erwarteter Root-Nachweis 1, tatsächlich 2 bei zwei Referenzen.
+Das ist unnötiger Netzwerkaufwand in großen Indizes, kein bewiesener Grund
+für eine konkrete Laufzeit-/Geräteabweichung. XML root-proof-red-regression.xml.
+Die bestehende ausschließlich operationslokale Metadaten-Wiederverwendung
+führt jetzt auch die bereits geprüften Roots in einem lokalen Set. Ein
+Root-Nachweis je JSON-Prüfung, kein globaler/persistenter Ownership-Cache.
+Jede Folgeoperation liest Metadaten und Zugehörigkeit erneut. Der neue
+16. SDK36-Fall verlangt zusätzlich die Abweisung einer extern verschobenen
+Datei bei der nächsten Prüfung; keine Aktualitätsprüfung abgeschaltet.
+Die bereits laufende Produkt-CI wird einschließlich Emulator abgewartet;
+der endgültige Stand erhält danach eine vollständige neue CI.

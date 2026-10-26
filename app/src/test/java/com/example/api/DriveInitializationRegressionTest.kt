@@ -271,4 +271,23 @@ class DriveInitializationRegressionTest {
         }
     }
 
+    @Test fun oneJsonCheckReusesRootProofButNextCheckRejectsAnExternallyMovedFile() = runBlocking {
+        val c = config(drive.initializeDriveStorage(token))
+        remote.put("own-reference-a", "a.json", c.receiptsFolderId)
+        remote.put("own-reference-b", "b.json", c.receiptsFolderId)
+        val json = org.json.JSONArray().put(org.json.JSONObject().put("driveFileId","own-reference-a"))
+            .put(org.json.JSONObject().put("driveFileId","own-reference-b")).toString()
+        remote.requests.clear()
+        GoogleDriveClient.validateDataReferences(token,json)
+        val rootQueries = remote.requests.count { it.url.queryParameter("q") ==
+            "name = '${DriveEnvironment.rootFolderName}' and mimeType = '$folder' and trashed = false and 'root' in parents" }
+        assertEquals("The same root must be attested only once within one JSON check",1,rootQueries)
+        val foreignName = if (DriveEnvironment.isIsolatedTest) DriveEnvironment.PRODUCTION_ROOT else DriveNamespacePolicy.TEST_ROOT
+        remote.put("foreign-move-root",foreignName,remote.myDrive,mime=folder)
+        remote.entries.getValue("own-reference-b").parent = "foreign-move-root"
+        val denied = assertThrows(DriveAccessFailure::class.java) { GoogleDriveClient.validateDataReferences(token,json) }
+        assertEquals(DriveAccessFailure.Reason.NAMESPACE,denied.reason)
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
 }
