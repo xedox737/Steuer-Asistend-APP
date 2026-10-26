@@ -469,3 +469,24 @@ sowie echte lokale Test-APK-Inspektion grün. Keine Produkt-/Fachlogikänderung,
 keine Testabschaltung und keine abgeschwächte Signaturprüfung. Die vollständige
 CI wird nach dieser gezielten QA-Korrektur erneut ausgeführt; kein laufender
 Emulatorjob wurde abgebrochen.
+
+### Zweite CI und Ausgabe-unabhängige Zertifikatprüfung
+
+CI 40259203340 auf 8022c15 bestand erneut alle 1.166 JVM-Methoden,
+36 Reparaturmethoden, 27 Phase11A-Methoden und Integritätswächter mit eigener
+neuer Run-ID. Er scheiterte danach erneut am nicht gefundenen textuellen
+SHA1-Fingerprint; der Emulator war abhängig übersprungen. Auch dieser Lauf
+ist kein vollständiger CI-Erfolg. Die tatsächliche APK-Signatur war verifiziert.
+
+Die endgültige QA-Auswertung fordert nun von apksigner das öffentliche
+PEM-Zertifikat an und berechnet SHA1/SHA256 direkt über dessen DER-Bytes.
+Menschenlesbare Signer-/SDK-/Digestbezeichnungen werden nicht mehr ausgewertet.
+Signaturprüfung bleibt Pflicht; fehlende, kaputte oder mehrere verschiedene
+Zertifikate bleiben Fehler. Identische Wiederholungen desselben Zertifikats
+werden eindeutig erkannt. Das zusätzliche Prüfbeispiel ist ausschließlich ein
+öffentliches Android-Debug-Zertifikat (kein privater Schlüssel), dessen bekannte
+Fingerprints unabhängig mit build-tools 36 geprüft wurden. Portfolio/Original-
+fixture/Fachlogik bleiben unverändert. 32 Python-Tests und reale lokale APK-
+Auswertung grün. APK-Auswertung wird in der CI vor den JVM-Tests ausgeführt,
+sodass deren Werkzeuge vorab geprüft werden; kein bestehender Check entfällt.
+Alle CI-Prüfungen einschließlich Emulator werden erneut abgewartet.

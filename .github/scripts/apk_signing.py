@@ -1,18 +1,23 @@
-"""Parse public apksigner fingerprints without assuming a specific signer label."""
+"""Derive public fingerprints from PEM certificates emitted after apksigner verification."""
+import base64
+import binascii
+import hashlib
 import re
 
 
 def certificate_fingerprints(output):
-    result = {}
-    for algorithm, length, key in (("SHA-?1", 40, "signingSha1"), ("SHA-?256", 64, "signingSha256")):
-        # Newer build-tools label SDK-specific signers rather than using 'Signer #1'.
-        # The same certificate can appear for multiple SDK ranges. A different
-        # certificate or a missing digest must fail closed, not select one arbitrarily.
-        values = set(value.lower() for value in re.findall(
-            r"^\s*Signer\b[^\n]*?certificate\s+" + algorithm +
-            r"\s+digest:\s*([0-9a-f]{" + str(length) + r"})\s*$",
-            output, re.I | re.M))
-        if len(values) != 1:
-            raise ValueError("Expected exactly one verified signing certificate for " + key)
-        result[key] = values.pop()
-    return result
+    certificates = set()
+    for value in re.findall(r"-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----", output):
+        try:
+            certificate = base64.b64decode(re.sub(r"\s+", "", value), validate=True)
+        except (ValueError, binascii.Error) as error:
+            raise ValueError("Malformed public signing certificate") from error
+        if not certificate:
+            raise ValueError("Empty public signing certificate")
+        certificates.add(certificate)
+    if len(certificates) != 1:
+        raise ValueError("Expected one unambiguous verified public signing certificate; found " + str(len(certificates)))
+    certificate = certificates.pop()
+    # SHA1 is an Android OAuth certificate identifier, not the APK signature algorithm.
+    return dict(signingSha1=hashlib.sha1(certificate, usedforsecurity=False).hexdigest(),
+                signingSha256=hashlib.sha256(certificate).hexdigest())

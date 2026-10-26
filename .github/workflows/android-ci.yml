@@ -72,6 +72,13 @@ jobs:
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon
 
+      - name: Build debug APK
+        timeout-minutes: 10
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Verify actual isolated APK identity and provider authorities
+        run: python3 .github/scripts/e11a-inspect-apk.py app/build/outputs/apk/debug/app-debug.apk --package com.aistudio.steuerassistent.vnhqkp.phase11a
+
       # Only JVM tests need Java 21 for Robolectric SDK 36. Android build,
       # lint, release and the emulator job keep the existing Java 17 runtime.
       - name: Set up Java 21 for Robolectric
@@ -111,13 +118,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-
-      - name: Build debug APK
-        timeout-minutes: 10
-        run: gradle assembleDebug --stacktrace --no-daemon
-
-      - name: Verify actual isolated APK identity and provider authorities
-        run: python3 .github/scripts/e11a-inspect-apk.py app/build/outputs/apk/debug/app-debug.apk --package com.aistudio.steuerassistent.vnhqkp.phase11a
 
       - name: Prepare release keystore
         if: env.RELEASE_KEYSTORE_BASE64 != '' && env.RELEASE_STORE_PASSWORD != '' && env.RELEASE_KEY_PASSWORD != '' && env.RELEASE_KEY_ALIAS != ''

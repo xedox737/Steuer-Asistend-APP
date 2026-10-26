@@ -40,7 +40,7 @@ def inspect(path):
                 exported=component.get(ANDROID + "exported", "false"),
                 permission=component.get(ANDROID + "permission"),
                 intentFilters=[ET.tostring(f, encoding="unicode") for f in component.findall("intent-filter")]))
-    certificates = call(build_tools / "apksigner", "verify", "--print-certs", path)
+    certificates = call(build_tools / "apksigner", "verify", "--print-certs-pem", path)
     label = re.search(r"^application-label:'([^']*)'", badging, re.M)
     launcher = re.search(r"^launchable-activity:.*? label='([^']*)'", badging, re.M)
     return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest(),

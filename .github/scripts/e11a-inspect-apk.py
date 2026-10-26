@@ -64,7 +64,7 @@ def main():
     with args.apk.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    signer = subprocess.run([str(aapt.with_name("apksigner")), "verify", "--print-certs", str(args.apk)],
+    signer = subprocess.run([str(aapt.with_name("apksigner")), "verify", "--print-certs-pem", str(args.apk)],
                             text=True, capture_output=True)
     signed = signer.returncode == 0
     assert signed or (args.allow_unsigned and package == PRODUCTION), "APK signature verification failed"
