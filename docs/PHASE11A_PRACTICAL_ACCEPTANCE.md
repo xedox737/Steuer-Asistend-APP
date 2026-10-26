@@ -513,7 +513,7 @@ wurde lokal ohne Fehler/Skips erneut ausgeführt; anschließend vollständige CI
 
 ## Phase 11B – gemeinsamer Initialisierungsfix, Issue #145
 
-Dieser Integrationsbranch basiert auf dem Produkt-Fix 3154bf4 aus aktuellem
+Dieser Integrationsbranch basiert auf dem Produkt-Fix 2a2303f aus aktuellem
 main 6d58dba (PR #144 inzwischen gemergt). Bestehende QA/UI/Seed-Funktionen
 aus 4c65911 sind weiterverwendet; keine zweite Fachimplementierung.
 Gemeinsamer Source-Guard prüft alle Main-Differenzen gegen die bestehenden
@@ -521,7 +521,7 @@ zwei UI-Hooks. Der gespeicherte Patch ist jetzt ohne Kontextzeilen, damit
 Patch-Kontext-Leerzeichen nicht selbst als Quellcode-Whitespacefehler gelten;
 keine Main-Differenz wird dadurch ignoriert.
 
-13 neue Initialisierungsregressionen werden mit dem tatsächlichen Test-Package
+15 neue SDK36-Initialisierungsregressionen werden mit dem tatsächlichen Test-Package
 ausgeführt. Der Android-Namespace-Fall simuliert zusätzlich einen vorhandenen
 leeren eigenen Testroot bei HTTP404 für allgemeine MyDrive-Root-Metadaten.
 Produktinventar bleibt unverändert; Testroot muss wiederverwendet werden.
