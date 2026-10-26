@@ -258,3 +258,20 @@ PR #143 weiterhin Draft, ungemergt, Head 8ddd556.
 
 Nächster Schritt: Reparaturbranch pushen, Draft-PR und vollständige Android-CI.
 Phase C erst nach erfolgreicher Produkt-CI auf eigenem vorläufigen Branch.
+
+
+## Abgeschlossener CI-Nachweis und vorläufige Testintegration (26.10.2026)
+
+Produkt-Head 6dd94ec: vollständige CI 40232280781 grün, 1139 tatsächliche
+JVM-Methoden und 70 Emulatorfälle ohne Fehler/Errors/Skips. Vorläufiger
+Integrationshead 4c65911 auf eigenem Branch: CI 40263818931 vollständig grün,
+1166 tatsächliche JVM-Methoden und 73 eindeutige Emulatorfälle, zusätzlich
+ein nativer Seed-/Prozessfall. Gemeinsame Fachlogik per Commitvergleich
+identisch; 60 Originalhashes, 0 fachliche Contract-Abweichungen im Full-Restore.
+Keine Produktdaten und kein Merge. main bleibt 69f3577.
+
+[Abschlussbericht](ImmoPilot-Produktreparatur-und-TestApp.md) und
+[PDF](ImmoPilot-Produktreparatur-und-TestApp.pdf) enthalten vollständige
+Commit-/CI-/APK-Zuordnung, Fehlerverlauf und SHA256-geprüfte Evidence.
+Diese Berichtsbereitstellung verändert keine geprüften Codeheads.
+Echte Google-/Geräteprüfungen bleiben NOCH OFFEN; keine praktische Freigabe.
