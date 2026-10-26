@@ -1,0 +1,34 @@
+diff --git a/app/src/main/java/com/example/ui/AppSettingsScreen.kt b/app/src/main/java/com/example/ui/AppSettingsScreen.kt
+index 7070aa5..0c2a6e9 100644
+--- a/app/src/main/java/com/example/ui/AppSettingsScreen.kt
++++ b/app/src/main/java/com/example/ui/AppSettingsScreen.kt
+@@ -120,6 +120,7 @@ private fun SettingsOverview(state: AiProviderState, onBack: () -> Unit, onProvi
+             SettingsRow("Fahrtenbuch-Adressen", "Startadresse und Adresse des aktuellen Objekts", Icons.Default.DirectionsCar, AccentBlue, "addresses") { onPage("addresses") }
+             SettingsDivider()
+             SettingsRow("Verwaltung & Belege", "Objekt, Mieter, Dokumentenstatus und Papierkorb", Icons.Default.Folder, WarmOrange, "management") { onPage("management") }
++            BuildVariantSettingsEntry()
+         } }
+     }
+ }
+diff --git a/app/src/main/java/com/example/ui/ReceiptAppUi.kt b/app/src/main/java/com/example/ui/ReceiptAppUi.kt
+index 696ec7d..46e95a0 100644
+--- a/app/src/main/java/com/example/ui/ReceiptAppUi.kt
++++ b/app/src/main/java/com/example/ui/ReceiptAppUi.kt
+@@ -6862,6 +6862,8 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
+                 )
+             }
+ 
++            BuildVariantDriveNotice()
++
+             Spacer(modifier = Modifier.height(8.dp))
+ 
+             if (!isConnected) {
+@@ -11954,7 +11956,7 @@ fun ConfirmRepairDocumentDialog(
+                         Text("Format: ${validation.formatName} (${validation.mimeType})", fontSize = 11.sp, color = SlateGray)
+                         Text("Größe: ${android.text.format.Formatter.formatShortFileSize(context, validation.sizeBytes)}", fontSize = 11.sp, color = SlateGray)
+                         Text("SHA-256: ${validation.sha256.take(20)}...", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = SlateGray)
+-                        Text("Ziel: Steuerassistent Belege / ${receipt.datum.take(4)} / ${receipt.hauptkategorie}", fontSize = 10.sp, color = AccentBlue)
++                        Text("Ziel: ${com.example.api.DriveEnvironment.rootFolderName} / ${receipt.datum.take(4)} / ${receipt.hauptkategorie}", fontSize = 10.sp, color = AccentBlue)
+                     }
+                 }
+ 
