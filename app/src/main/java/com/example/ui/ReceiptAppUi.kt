@@ -6862,6 +6862,8 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                 )
             }
 
+            BuildVariantDriveNotice()
+
             Spacer(modifier = Modifier.height(8.dp))
 
             if (!isConnected) {
@@ -11954,7 +11956,7 @@ fun ConfirmRepairDocumentDialog(
                         Text("Format: ${validation.formatName} (${validation.mimeType})", fontSize = 11.sp, color = SlateGray)
                         Text("Größe: ${android.text.format.Formatter.formatShortFileSize(context, validation.sizeBytes)}", fontSize = 11.sp, color = SlateGray)
                         Text("SHA-256: ${validation.sha256.take(20)}...", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = SlateGray)
-                        Text("Ziel: Steuerassistent Belege / ${receipt.datum.take(4)} / ${receipt.hauptkategorie}", fontSize = 10.sp, color = AccentBlue)
+                        Text("Ziel: ${com.example.api.DriveEnvironment.rootFolderName} / ${receipt.datum.take(4)} / ${receipt.hauptkategorie}", fontSize = 10.sp, color = AccentBlue)
                     }
                 }
 

@@ -11,6 +11,6 @@ class ExampleInstrumentedTest {
   @Test
   fun useAppContext() {
     val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-    assertEquals("com.aistudio.steuerassistent.vnhqkp", appContext.packageName)
+    assertEquals(com.example.qa.Phase11AIsolation.EXPECTED, appContext.packageName)
   }
 }

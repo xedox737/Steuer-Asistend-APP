@@ -71,3 +71,69 @@ Zusätzlich manuell prüfen:
 4. CI vollständig grün abwarten.
 5. Offene Geräte-/Cloud-Prüfgrenzen im PR nennen.
 6. Merge nur mit ausdrücklicher Freigabe, wenn der Auftrag dies verlangt.
+
+## Phase-11A-Evidence-Helfer
+
+```bash
+python3 -m unittest discover -s .github/scripts/tests -p 'test_phase11a*.py' -v
+# Nach den vollständigen Unit-Tests, mit den tatsächlich erzeugten Portfolio-Snapshots:
+python3 .github/scripts/phase11a-audit-ci.py
+```
+
+Der bestehende Phase-10D-Vertragshelper liegt unverändert unter `app/src/qa/java` und
+wird in JVM-/Android-Testquellen eingebunden, nicht in die App. Der zusätzliche
+`Phase11AInstrumentation`-Einstieg ist ausschließlich manuell aufzurufen; er zählt
+nicht als automatisch durchgeführte Geräteabnahme. Ablauf und Prüfgrenzen:
+[`PHASE11A_PRACTICAL_ACCEPTANCE.md`](PHASE11A_PRACTICAL_ACCEPTANCE.md).
+
+Debug hat die getrennte applicationId `com.aistudio.steuerassistent.vnhqkp.phase11a`
+und den Launcher-Namen `ImmoPilot Test`; Release-ID/-Name bleiben unverändert.
+Seed/Evidence verweigern das Produkt-Package. Der vollständige Emulatorjob prüft
+zusätzlich parallele Installation, verschiedene UID, getrennte Room-/Preference-/Dateidaten
+und unveränderte Referenzdaten nach allen E2E-Tests. Das CI-Artefakt
+`phase11a-isolated-apks` enthält zusammen signierte App-/QA-APKs und ihre Binäranalyse.
+Vor echtem Drive-Test Package-/Zertifikatszulassung für OAuth gemäß Abnahmeprotokoll prüfen.
+
+Die Handy-Testwerkzeuge liegen ausschließlich in `src/debug`; Release besitzt nur eine
+leere Einstellungen-Erweiterung. UI und Instrumentation verwenden denselben Importer
+und für identische IDs die eingebettete ursprüngliche 17-Einheiten-ZIP. Nach dem Build
+`assembleDebug assembleRelease assembleDebugAndroidTest` zusätzlich
+`python3 .github/scripts/phase11a-check-ui-packaging.py` ausführen: tatsächliche Release-APK
+ohne Testoberfläche, Importer/Guard und Testdaten; Debug-APK mit unveränderter Fixture.
+Die CI führt nach der kompletten Suite zusätzlich einen UI-Seed-/Prozessneustartfall aus;
+dieser ist separat protokolliert und kein erneuter Versuch eines fehlgeschlagenen Tests.
+
+
+## Phase-11A-Drive-Namespace nach Produktreparatur
+
+Die vorläufige Integration basiert auf Produktreparatur-PR #144 (6dd94ec).
+Debug verwendet weiterhin `ImmoPilot Phase11A Testdaten`, Release unverändert
+`Steuerassistent Belege`. Beide verwenden denselben produktiven Drive-Guard in
+`src/main`: Live-Elternketten, App-Kennung, Rollen und JSON-Drive-IDs werden vor
+Inhaltszugriffen/Mutationen geprüft. Die alten variantenabhängigen Guardkopien
+entfallen. Produktqueries ohne gültigen Scope werden ebenfalls gesperrt.
+
+Gezielt: `testDebugUnitTest --tests com.example.api.Phase11ADriveNamespaceTest`
+und die gemeinsamen `ProductionDriveNamespaceTest` / `ReceiptSyncPreservationE2ETest`.
+Der Emulatorfall prüft Backup-Screen und Android-HTTP-Pfad im simulierten Konto.
+Echte Google-/OAuth-/Gerätefreigaben bleiben offen.
+
+Die Python-Wächter verlangen genau die drei zentralen gesicherten HTTP-Callbacks.
+Der tatsächliche Release-APK-Check verbietet Testwerkzeuge, Seeder, Debug-Guard,
+Cloudhinweis und Fixture-Assets und verlangt zugleich den gemeinsamen produktiven
+Namespace-Guard. Dessen Testroot-Konstante dient der Gegenrichtungsabsicherung;
+sie ist kein Testmenü im Produktbuild. APK-Identitäten/Authorities werden auch
+unabhängig gegen die jeweils erwartete Package-ID geprüft.
+
+Der frühere Zustand auf 8ddd556 mit abgewiesenen Fahrtbelegen (E11A-02),
+fehlender Dokument-unitId (E11A-03) und produktivem Guard-Passthrough (E11A-01)
+ist im Audit/Praktikumsbericht historisch dokumentiert. Die Tests verlangen jetzt
+alle 70 erfolgreichen Synchronisierungen einschließlich zehn nachgewiesener
+Fahrtbelege, zweimal Backup/MERGE, 60 Hashes, unverändertes Produktinventar,
+keine Dubletten/Orphans und einen grünen unveränderten Strukturchecker.
+
+Zusätzlich verlangt der gemeinsame Reparaturwächter einen strikten
+Vorher-/Nachher-Vertrag über frischen Full-Restore, erneuten Download aller
+60 Originale und zweimal MERGE, einschließlich nichtleerer fachlicher Referenzen.
+Die vorhandenen Phase10B-Restorevergleiche und Seed-/Isolationsprüfungen bleiben
+verpflichtend. Keine Fehler oder autoritativen Felder im Checker ausblenden.
