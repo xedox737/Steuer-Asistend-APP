@@ -30,3 +30,29 @@ Nutzergeräts. Die bisherige Simulation gab Root-Metadaten stets erfolgreich
 zurück. Sicherheit muss stattdessen durch serverseitig auf Top-Level-Eltern
 begrenzte Suche bewiesen werden. Fremde/nested Roots bleiben gesperrt.
 API-/Berechtigungsfehler dürfen niemals als leeres Suchergebnis gelten.
+
+## Gezielter Fix und erster grüner Lauf
+
+32 tatsächliche Methoden (13 Initialisierung, 14 bestehende Namespacefälle,
+5 vollständige Dokument-/Restore-Portfolioprüfungen), keine Fehler/Skips.
+Kein Test entfernt oder abgeschwächt. Produktcode auf Basis von #144.
+
+Die allgemeine Root-Metadatenabfrage wird durch eine serverseitig auf den
+Top-Level-Eltern `root` begrenzte Suche nach dem aktiven App-Root ersetzt.
+Die gesuchte Root-ID muss darin vorkommen. Name, MIME, Tags, eindeutige
+Elternkette, Shortcuts und fremde Roots werden weiterhin überprüft; kein
+Fallback auf Produktroot, keine neue OAuth-Berechtigung und keine Migration.
+
+Initialisierungssuche wertet Fehler strikt aus; nur erfolgreich vollständig
+leere Suchergebnisse erlauben neue Ordner. Gesuchte, erstellte und gecachte
+Ordner werden vor Nutzung geprüft. Cache ist Token-/Root-/Elterngebunden.
+HTTP404 bleibt mehrdeutig und löst keine Mappinglöschung aus. Nur eigene,
+nachweislich ungültige Test-Mappings (Syntax/MIME/Ort) werden einzeln entfernt;
+keine Preferences-Löschung, kein Produkt-Mappingreset, keine Cloudmutation
+an bestehenden Dateien. Fehlertexte enthalten keine IDs/Tokens/Antwortbodys.
+
+Der erste separat gestartete strikte Evidence-Checker verweigerte die lokalen
+Snapshots wegen fehlendem App-Commit (`missing app commit`). Das ist kein
+grüner Integritätsnachweis. Versionierte CI-Evidence wird mit echtem Commit
+neu erzeugt; Metadaten werden nicht nachträglich normalisiert/erfunden.
+Vollständige JVM-/Lint-/APK-/CI-Prüfungen und echte Geräteprüfung noch offen.

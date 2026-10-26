@@ -181,8 +181,9 @@ internal class DriveNamespacePolicy(
             if (parents.length() != 1) denied()
             val parentId = parents.getString(0)
             if (current.optString("name") == rootFolderName && current.optString("mimeType") == FOLDER) {
-                val myDrive = read("root")
-                if (parentId != myDrive.getString("id")) denied()
+                // drive.file need not expose files.get("root"). Prove top-level membership
+                // with the same server-filtered root search used during discovery instead.
+                if (!topLevelRoot(current.getString("id"), token, send)) denied()
                 return original
             }
             current = read(parentId)
@@ -191,25 +192,50 @@ internal class DriveNamespacePolicy(
         denied()
     }
 
+    private fun topLevelRoot(id: String, token: String, send: (Request) -> Response): Boolean {
+        val query = "name = '$rootFolderName' and mimeType = '$FOLDER' and trashed = false and 'root' in parents"
+        var page: String? = null
+        repeat(100) {
+            val url = okhttp3.HttpUrl.Builder().scheme("https").host("www.googleapis.com")
+                .addPathSegments("drive/v3/files").addQueryParameter("q", query)
+                .addQueryParameter("fields", "nextPageToken,incompleteSearch,files(id)").addQueryParameter("pageSize", "1000")
+                .apply { page?.let { addQueryParameter("pageToken", it) } }.build()
+            val request = Request.Builder().url(url).header("Authorization", token).build()
+            val json = readResponse(send(request))
+            if (json.optBoolean("incompleteSearch")) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+            val files = json.optJSONArray("files") ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            if ((0 until files.length()).any { files.getJSONObject(it).optString("id") == id }) return true
+            page = json.optString("nextPageToken").takeIf(String::isNotBlank)
+            if (page == null) return false
+        }
+        throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+    }
+
+    private fun readResponse(response: Response): JSONObject = response.use {
+        if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
+        try { JSONObject(it.body?.string().orEmpty()) }
+        catch (_: org.json.JSONException) { throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA) }
+    }
+
     private fun readMetadata(id: String, token: String, send: (Request) -> Response): JSONObject {
-        if (!Regex("[A-Za-z0-9_-]+").matches(id)) denied()
+        if (!Regex("[A-Za-z0-9_-]+").matches(id)) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_ID)
         val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/$id?fields=id,name,mimeType,parents,trashed,shortcutDetails,appProperties")
             .header("Authorization", token).build()
-        return send(request).use { response ->
-            if (response.code == 404) throw MissingReference(id)
-            if (!response.isSuccessful) denied()
-            JSONObject(response.body?.string().orEmpty()).also {
-                if (it.optBoolean("trashed") || it.has("shortcutDetails") || it.optString("id").isBlank()) denied()
-                val tag = it.optJSONObject("appProperties")?.optString("appName").orEmpty()
-                if (tag.isNotBlank() && tag != appIdentifier) denied()
-                if (id != "root" && it.optString("id") != id) denied()
-            }
+        val response = send(request)
+        if (response.code == 404) { response.close(); throw MissingReference(id) }
+        return readResponse(response).also {
+            if (it.optString("mimeType").isBlank() || it.optString("name").isBlank() || it.optString("id").isBlank())
+                throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            if (it.optBoolean("trashed") || it.has("shortcutDetails")) denied()
+            val tag = it.optJSONObject("appProperties")?.optString("appName").orEmpty()
+            if (tag.isNotBlank() && tag != appIdentifier) denied()
+            if (it.optString("id") != id) denied()
         }
     }
 
-    private class MissingReference(val id: String) : IOException("Drive-Sicherheitsabbruch: Datei nicht erreichbar.")
+    private class MissingReference(val id: String) : DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 404)
 
-    private fun denied(): Nothing = throw IOException("Drive-Sicherheitsabbruch: Zugriff außerhalb des zu dieser App gehörenden Datenspeichers verweigert. Fremde Daten werden nicht übernommen oder verändert.")
+    private fun denied(): Nothing = throw DriveAccessFailure(DriveAccessFailure.Reason.NAMESPACE)
 
     companion object {
         const val TEST_PACKAGE = "com.aistudio.steuerassistent.vnhqkp.phase11a"

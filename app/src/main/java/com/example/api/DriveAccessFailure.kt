@@ -1,0 +1,19 @@
+package com.example.api
+
+import java.io.IOException
+
+/** Stable, privacy-safe diagnostics: never includes a token, account, Drive ID or response body. */
+internal open class DriveAccessFailure(val reason: Reason, val httpStatus: Int? = null) : IOException(
+    "Drive-Prüfung [${if (httpStatus != null) "HTTP_$httpStatus" else reason.name}]: " + when (reason) {
+        Reason.HTTP -> "Google Drive ist nicht erreichbar oder der Zugriff ist nicht erlaubt. Keine Ersatzstruktur angelegt."
+        Reason.NETWORK -> "Netzwerkverbindung unterbrochen. Bitte erneut versuchen."
+        Reason.INVALID_ID -> "Die gespeicherte Drive-ID hat ein ungültiges Format."
+        Reason.INVALID_METADATA -> "Die Antwort von Google Drive enthält keine gültigen Metadaten."
+        Reason.WRONG_MIME -> "Die gespeicherte Ordner-ID bezeichnet keinen Ordner."
+        Reason.WRONG_LOCATION -> "Der gespeicherte Ordner gehört nicht zum erwarteten Elternordner oder Namen."
+        Reason.NAMESPACE -> "Drive-Sicherheitsabbruch: Zugriff außerhalb des eigenen App-Datenspeichers verweigert."
+        Reason.INCOMPLETE_SEARCH -> "Die Drive-Suche ist unvollständig. Keine Ersatzstruktur angelegt."
+    }
+) {
+    enum class Reason { HTTP, NETWORK, INVALID_ID, INVALID_METADATA, WRONG_MIME, WRONG_LOCATION, NAMESPACE, INCOMPLETE_SEARCH }
+}

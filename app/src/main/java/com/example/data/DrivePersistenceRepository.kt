@@ -533,7 +533,7 @@ class DrivePersistenceRepository(
         filename: String,
         json: String
     ): DriveFileResult {
-        val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, entityType)
+        val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, entityType, failOnError = true)
         return if (file != null) {
             GoogleDriveClient.updateJson(accessToken, file.id, json)
         } else {
@@ -566,7 +566,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.d(TAG, "Initializing Google Drive storage...")
             // 1. Search for existing main folder "Steuerassistent Belege"
             val rootFolderId = GoogleDriveClient.getOrCreateFolder(accessToken, DriveEnvironment.rootFolderName)
-                ?: return DriveInitializationResult.Failure("Hauptordner 'Steuerassistent Belege' konnte nicht gefunden oder erstellt werden.")
+                ?: return DriveInitializationResult.Failure("Hauptordner '${DriveEnvironment.rootFolderName}' konnte nicht gefunden oder erstellt werden.")
 
             // 2. Search for existing app data system folder "_BelegApp-Daten"
             val systemFolder = GoogleDriveClient.findAppDataFolder(accessToken)
@@ -574,7 +574,7 @@ class DrivePersistenceRepository(
             if (systemFolder != null) {
                 // Existing backup setup found
                 DiagnosticLog.d(TAG, "Found existing app system folder")
-                val appConfigFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig")
+                val appConfigFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig", failOnError = true)
                 if (appConfigFile != null) {
                     val configJson = GoogleDriveClient.downloadJson(accessToken, appConfigFile.id)
                     val config = parseDriveAppConfig(configJson)
@@ -3636,7 +3636,7 @@ class DrivePersistenceRepository(
     /** Loads existing Drive configuration without creating folders or restoring local data. */
     suspend fun getExistingDriveAppConfigReadOnly(accessToken: String): DriveAppConfig? {
         val systemFolder = GoogleDriveClient.findAppDataFolder(accessToken) ?: return null
-        val configFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig") ?: return null
+        val configFile = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolder.id, "appConfig", failOnError = true) ?: return null
         return try {
             parseDriveAppConfig(GoogleDriveClient.downloadJson(accessToken, configFile.id)).also {
                 GoogleDriveClient.validateStorageConfig(accessToken, it)
