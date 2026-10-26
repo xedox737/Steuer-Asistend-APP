@@ -91,6 +91,7 @@ class Phase11ADriveNamespaceTest {
         assertThrows(java.io.IOException::class.java) {
             DriveNamespacePolicy(DriveNamespacePolicy.TEST_PACKAGE).execute(request) { raw.newCall(it).execute() }.close()
         }
+        Unit
     }
 
     @Test fun existingProductStructureIsNotLoadedAndRepeatedInitializationHasOwnSevenFolderIds() = runBlocking {

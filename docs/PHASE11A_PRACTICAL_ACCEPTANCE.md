@@ -399,3 +399,13 @@ Der zusätzliche Native-UI-/Prozess-Persistenzfall und abschließende Produkt-Sa
 Android-UIDs Produkt/Test **10209/10211**, getrennte Room-/Datei-/Preferencebereiche und kollisionsfreie Provider. Produktreferenz nach sämtlichen E2Es unverändert. Vollständiger Test-App-Prozess beendet (PID 10889 weg), per Launcher neuer PID 10958; UI-Seed-Bestand bleibt nach striktem Snapshotvergleich erhalten: 60 Originalhashes, keine ID-/Relations-/Vertragsabweichungen. Diese erfolgreiche Seed-Persistenz ist **nicht** der fehlgeschlagene Post-Sync-Portfolionachweis: E11A-02/E11A-03 bleiben unverändert offen.
 
 Bei der Artefaktauswertung wurde der Diagnose-Unterpfad präzisiert: `adb pull` legt einzelne Instrumentation-Dateien unter `emulator-e2e/device/` ab. Die neuen Transport-Globs werden rekursiv, damit sowohl `phase11a-drive-namespace.json` als auch Failure-Tree-/Window-Texte dort tatsächlich in den gehashten Logtransport gelangen. Ein vorhandener Python-Integrationstest prüft jetzt die Originalbytes beider verschachtelter Dateien im erzeugten, SHA256-validierten TAR. Alle 29 Python-Methoden lokal grün. Ausschließlich QA-/Evidence-Code, keine weitere Android-/Produktänderung. Der finale CI-Lauf/Download wird nach tatsächlichem Abschluss versionsgebunden im PR-Bericht eingetragen; weiterhin Draft, kein Merge und keine praktische Portfoliofreigabe.
+
+### Lokaler Integrations-Testaufbau
+
+Der erste gezielte Lauf des vorläufigen Integrationsbranches meldete einen
+JUnit-Initialisierungsfehler: Der neue strikte Produktions-Guard-Test gab durch
+seinen letzten assertThrows-Ausdruck einen Exception-Wert statt Unit/void zurück.
+Damit wurden die Methoden dieser Klasse noch nicht ausgeführt. Das ist ein
+QA-Signaturfehler, kein Produktfehler und kein bestandener Namespace-Nachweis.
+Die Signatur wird durch abschließendes Unit korrigiert; alle Assertions bleiben
+bestehen. Die tatsächlichen Methoden werden anschließend erneut geprüft.
