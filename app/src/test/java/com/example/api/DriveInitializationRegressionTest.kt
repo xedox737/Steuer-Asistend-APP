@@ -13,9 +13,11 @@ import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /** API-contract simulation only; no real OAuth or Google account is used. */
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class DriveInitializationRegressionTest {
     @get:Rule val isolation = IsolatedAppDatabaseRule()
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
@@ -39,6 +41,7 @@ class DriveInitializationRegressionTest {
     private val folder = ComparisonDriveHttpFixture.FOLDER
 
     @Before fun setup() {
+        assertEquals("Issue 145 device reports Android 16", 36, android.os.Build.VERSION.SDK_INT)
         previous = transport.get(null) as OkHttpClient
         remote = ComparisonDriveHttpFixture()
         transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->

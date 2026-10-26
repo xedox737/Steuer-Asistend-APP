@@ -56,3 +56,22 @@ Snapshots wegen fehlendem App-Commit (`missing app commit`). Das ist kein
 grüner Integritätsnachweis. Versionierte CI-Evidence wird mit echtem Commit
 neu erzeugt; Metadaten werden nicht nachträglich normalisiert/erfunden.
 Vollständige JVM-/Lint-/APK-/CI-Prüfungen und echte Geräteprüfung noch offen.
+
+## Nachgereichter Gerätebefund
+
+Nutzerangabe vom 26.10.2026: POCO X8 Pro, Android 16, „die letzte Build-Version“.
+Dies belegt Modell/OS laut Nutzerbericht, aber keinen exakten APK-Hash/Commit
+der installierten Original-App. Keine eigene praktische Geräteprüfung behauptet.
+
+## Ergänzte QA-/Kompatibilitätsabsicherung
+
+Die Fehlermeldung beweist keine persistierte Alt-ID: der gerade erzeugte Root
+wird bereits innerhalb desselben Init-Aufrufs im Memory-Cache wiederverwendet.
+Ein leerer eigener Root ist ohne alte Preferences reproduzierbar.
+Die bisherige Kategorie-Race-Behandlung (ältesten gültigen Treffer verwenden,
+keine parallelen Ordner löschen) bleibt erhalten. Die neuen 13 Methoden
+werden ausdrücklich unter SDK36/Android16 ausgeführt und prüfen den SDK im
+Setup. Die zuvor im Test-App-Branch belegte Phase5B-Testbereitschaft wird
+unverändert auch für den Produkt-Testaufbau übernommen: drei separate Flows
+vor der Bankzeile abwarten, unveränderte Frist und alle Assertions erhalten.
+Keine Bank-/Navigationslogikänderung.

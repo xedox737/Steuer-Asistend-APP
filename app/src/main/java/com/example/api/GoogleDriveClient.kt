@@ -177,14 +177,14 @@ object GoogleDriveClient {
         catch (_: IOException) { throw DriveAccessFailure(DriveAccessFailure.Reason.NETWORK) }
         catch (_: org.json.JSONException) { throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA) }
 
-    private fun initializationSearch(accessToken: String, query: String): List<JSONObject> = initializationCall {
+    private fun initializationSearch(accessToken: String, query: String, orderBy: String? = null): List<JSONObject> = initializationCall {
         val found = mutableListOf<JSONObject>()
         var page: String? = null
         repeat(100) {
             val url = okhttp3.HttpUrl.Builder().scheme("https").host("www.googleapis.com")
                 .addPathSegments("drive/v3/files").addQueryParameter("q", query)
                 .addQueryParameter("fields", "nextPageToken,incompleteSearch,files(id,name)").addQueryParameter("pageSize", "1000")
-                .apply { page?.let { addQueryParameter("pageToken", it) } }.build()
+                .apply { page?.let { addQueryParameter("pageToken", it) }; orderBy?.let { addQueryParameter("orderBy", it) } }.build()
             val request = Request.Builder().url(url).header("Authorization", "Bearer $accessToken").build()
             val json = executeDriveRequest(request).use {
                 if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
@@ -267,10 +267,14 @@ object GoogleDriveClient {
                 }
             }
             checked(created)
-            folderCache[cacheKey] = created
+            // Preserve cross-client category race handling: reuse the oldest valid match,
+            // without deleting, moving or renaming any concurrently created folder.
+            val selected = byPath?.let { initializationSearch(accessToken, it, "createdTime asc").firstOrNull() }
+                ?.getString("id")?.let { checked(it) } ?: created
+            folderCache[cacheKey] = selected
             if (canonicalPathKey != null && systemFolderId != null && context != null)
-                saveCategoryMapping(accessToken, systemFolderId, canonicalPathKey, created, context)
-            created
+                saveCategoryMapping(accessToken, systemFolderId, canonicalPathKey, selected, context)
+            selected
         }
     }
 

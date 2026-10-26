@@ -118,11 +118,20 @@ class Phase5BComposeWorkflowTest {
                 BankSplitPaymentType.RENT, createdAt = "2026-10-03", updatedAt = "2026-10-03"))
         }
         try {
-            ui.waitUntil(10000) { vm.receipts.value.size == 2 && vm.bankRentAssignments.value.size == 1 }
+            // Room publishes these independent flows separately. Expenses/assignments
+            // alone do not mean the bank-backed ledger row exists yet.
+            ui.waitUntil(10000) {
+                vm.receipts.value.map { it.id }.toSet() == setOf(901, 902) &&
+                    vm.bankRentAssignments.value.singleOrNull()?.assignmentId == "a" &&
+                    vm.bankTransactions.value.singleOrNull()?.transactionId == "tx"
+            }
         } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
             val storedReceipts = runBlocking(Dispatchers.IO) { db.receiptDao().getAllReceiptsList().map { it.id } }
-            throw AssertionError("Fixture store receipts=$storedReceipts; flows: receipts=${vm.receipts.value.map { it.id }}, assignments=${vm.bankRentAssignments.value.size}, screen=${vm.currentScreen.value}", failure)
+            throw AssertionError("Fixture store receipts=$storedReceipts; flows: receipts=${vm.receipts.value.map { it.id }}, assignments=${vm.bankRentAssignments.value.map { it.assignmentId }}, transactions=${vm.bankTransactions.value.map { it.transactionId }}, screen=${vm.currentScreen.value}", failure)
         }
+        assertTrue("Loaded fixture must derive the bank row before UI navigation",
+            LedgerPaymentPresentation.entries(vm.receipts.value, vm.bankRentAssignments.value,
+                vm.bankReceiptLinks.value, vm.bankTransactions.value).any { it.tag == "ledger_bank_bank-a" })
         ui.runOnIdle { vm.setScreen(AppScreen.LEDGER) }; ui.waitForIdle()
         ui.onNode(hasText(LedgerPresentation.money(3000.0)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
         ledgerScroll("ledger_property"); ui.onNodeWithTag("ledger_property").performClick()

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 
 source = Path('app/src/test/java/com/example/api/DriveInitializationRegressionTest.kt')
@@ -20,7 +21,8 @@ for path in Path('app/build/test-results/testDebugUnitTest').glob('*.xml'):
 assert len(actual) == len(set(actual)) == len(expected) and set(actual) == expected, 'Incomplete/repeated methods'
 report = dict(status='AUTOMATISIERT BESTANDEN', practicalStatus='NOCH OFFEN', issue=145,
               commit=os.environ.get('GITHUB_SHA', 'LOCAL'), ciRunId=os.environ.get('GITHUB_RUN_ID', 'LOCAL'),
-              actualMethods=len(actual), methods=sorted(actual), testSourceSha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+              actualMethods=len(actual), methods=sorted(actual), sdk=36,
+              runId='P11B-'+datetime.now(timezone.utc).strftime('%Y-%m-%d')+'-'+os.environ.get('GITHUB_RUN_ID','LOCAL')+'-'+os.environ.get('GITHUB_RUN_ATTEMPT','1')+'-init', testSourceSha256=hashlib.sha256(source.read_bytes()).hexdigest(),
               transport='IN_MEMORY_HTTP', realOAuthVerified=False)
 out = Path('app/build/reports/phase11b'); out.mkdir(parents=True, exist_ok=True)
 (out/'initialization.json').write_text(json.dumps(report, indent=2)+'\n')
