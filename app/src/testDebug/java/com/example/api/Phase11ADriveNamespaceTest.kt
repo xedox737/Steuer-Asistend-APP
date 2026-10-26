@@ -223,7 +223,11 @@ class Phase11ADriveNamespaceTest {
         assertEquals(setOf("prod-category"), productLookup("appProperties has { key='canonicalPathKey' and value='2026/Material' }"))
         assertEquals(setOf("prod-original"), productLookup("appProperties has { key='receiptInternalId' and value='same-receipt' }"))
         assertEquals(original, GoogleDriveClient.findFileByReceiptPropertiesGlobally(token, "same-receipt")!!.id)
-        assertNull(GoogleDriveClient.getOrCreateFolder(token, DriveEnvironment.PRODUCTION_ROOT, config.rootFolderId))
+        val deniedRoot = assertThrows(DriveAccessFailure::class.java) { runBlocking {
+            GoogleDriveClient.getOrCreateFolder(token, DriveEnvironment.PRODUCTION_ROOT, config.rootFolderId)
+        } }
+        assertEquals(DriveAccessFailure.Reason.NAMESPACE, deniedRoot.reason)
+        assertFalse(remote.entries.values.any { it.name == DriveEnvironment.PRODUCTION_ROOT && it.parent == config.rootFolderId })
         assertNull(GoogleDriveClient.uploadFile(token, category, "bad.pdf", "application/pdf", byteArrayOf(1),
             appProperties = mapOf("appName" to DriveEnvironment.PRODUCTION_APP_IDENTIFIER)))
         assertEquals(before, remote.inventory("prod-root"))

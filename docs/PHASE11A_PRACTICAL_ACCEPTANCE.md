@@ -527,3 +527,16 @@ leeren eigenen Testroot bei HTTP404 für allgemeine MyDrive-Root-Metadaten.
 Produktinventar bleibt unverändert; Testroot muss wiederverwendet werden.
 Vollständige neue CI noch ausstehend, keine Gerätefreigabe.
 Siehe PHASE11B_DRIVE_INITIALIZATION.md und abschließenden PDF-Bericht.
+
+## Lokaler Phase11B-Testvertrag für abgewiesene Fremdordner
+
+Die erste vollständige lokale Test-App-Ausführung auf 946e3ec meldete im
+vorhandenen Namespacefall einen bisherigen assertNull-Aufruf als Fehler:
+der gemeinsame strikte getOrCreateFolder-Pfad wirft nun absichtlich eine
+DriveAccessFailure mit Reason.NAMESPACE, statt Sicherheitsfehler zu verschlucken.
+Quelle/Funktion geprüft: verweigerte POST-Anlage eines Produkt-Rootnamens
+innerhalb des Testroots. Keine Produktmutation, kein abgeschalteter Guard.
+Die Assertion verlangt jetzt exakt diesen Namespace-Fehler und zusätzlich,
+dass kein solcher Fremdordner angelegt wurde. Bisherige Upload-Abweisung,
+Inventar-/Bytegleichheit und No-Cross-Read/Mutation-Assertions bleiben bestehen.
+Gesamtlauf wird vollständig ausgewertet; noch kein neuer voller Erfolg behauptet.
