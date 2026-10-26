@@ -123,3 +123,23 @@ Jede Folgeoperation liest Metadaten und Zugehörigkeit erneut. Der neue
 Datei bei der nächsten Prüfung; keine Aktualitätsprüfung abgeschaltet.
 Die bereits laufende Produkt-CI wird einschließlich Emulator abgewartet;
 der endgültige Stand erhält danach eine vollständige neue CI.
+
+## Cache-Schlüsselarten erhalten
+
+Zusätzlicher SDK36-Fall auf d53d929: ein normaler Ordnername und ein anderer
+kanonischer Pfad mit gleichem Schlüsseltext konnten im neuen Suchhelfer
+denselben Memory-Cacheeintrag treffen (1 tatsächlicher Test, 1 Fehler).
+Primärnachweis cache-identity-red-regression.xml. Die bereits vor Phase11B
+vorhandene Unterscheidung der Schlüsselarten wird explizit erhalten: name#
+und path#, weiterhin mit Token-/Root-/Elternbindung. Keine persistenten
+Schlüssel oder Cloudnamen werden migriert, keine vorhandenen Ordner verändert.
+Der 17. Fall prüft getrennte IDs und wiederholte korrekte Wiederverwendung.
+
+Erste Produkt-CI 40319032256 auf e2c15f2 vollständig grün einschließlich
+Emulator; 1154 JVM-Methoden/15 neue Initialisierungsfälle sind belegt.
+Dieser Lauf wird getrennt vom nachfolgenden endgültigen Stand dokumentiert.
+Kein relevanter CI-Job wurde abgebrochen.
+
+Die getrennten Cache-Schlüsselarten behalten den bisherigen gemeinsamen
+logischen Mutex (Elternordner + Name/kanonischer Pfad) bei. So ändern die
+Schlüsselpräfixe nicht die bisherige Serialisierung gleichartiger Anlagen.

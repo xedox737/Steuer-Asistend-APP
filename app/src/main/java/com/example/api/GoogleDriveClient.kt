@@ -210,7 +210,8 @@ object GoogleDriveClient {
         val name = folderName.trim().ifEmpty { "Sonstiges" }
         val accountKey = java.security.MessageDigest.getInstance("SHA-256").digest(accessToken.toByteArray())
             .joinToString("") { "%02x".format(it) }
-        val cacheKey = "$accountKey#${DriveEnvironment.rootFolderName}#${parentId ?: "root"}#${canonicalPathKey ?: name}"
+        val requestKey = if (canonicalPathKey != null) "path#$canonicalPathKey" else "name#$name"
+        val cacheKey = "$accountKey#${DriveEnvironment.rootFolderName}#${parentId ?: "root"}#$requestKey"
         val prefs = if (canonicalPathKey != null && context != null)
             context.getSharedPreferences("category_folder_mappings_prefs", Context.MODE_PRIVATE) else null
         suspend fun checked(id: String): String {
@@ -222,7 +223,9 @@ object GoogleDriveClient {
         }
         fun invalidLocalMapping(e: DriveAccessFailure) = e.reason in setOf(
             DriveAccessFailure.Reason.WRONG_MIME, DriveAccessFailure.Reason.WRONG_LOCATION, DriveAccessFailure.Reason.INVALID_ID)
-        return getFolderMutex(cacheKey).withLock {
+        // Keep the original logical name/path lock shared across cache entry kinds.
+        val lockKey = "$accountKey#${DriveEnvironment.rootFolderName}#${parentId ?: "root"}#${canonicalPathKey ?: name}"
+        return getFolderMutex(lockKey).withLock {
             folderCache[cacheKey]?.let { id ->
                 try { return@withLock checked(id) }
                 catch (e: DriveAccessFailure) {

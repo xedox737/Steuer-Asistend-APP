@@ -290,4 +290,15 @@ class DriveInitializationRegressionTest {
         assertTrue(remote.requests.all { it.method == "GET" })
     }
 
+    @Test fun folderNameCacheAndCanonicalPathCacheCannotAliasDifferentRequests() = runBlocking {
+        val c = config(drive.initializeDriveStorage(token))
+        val named = GoogleDriveClient.getOrCreateFolder(token,"2026/Material",c.rootFolderId)!!
+        val category = GoogleDriveClient.getOrCreateFolder(token,"Material",c.rootFolderId,"2026/Material",c.systemFolderId,context)!!
+        assertNotEquals("A plain folder name must not impersonate a canonical path key",named,category)
+        assertEquals("Material",remote.entries.getValue(category).name)
+        assertEquals(named,GoogleDriveClient.getOrCreateFolder(token,"2026/Material",c.rootFolderId))
+        assertEquals(category,GoogleDriveClient.getOrCreateFolder(token,"Material",c.rootFolderId,"2026/Material",c.systemFolderId,context))
+        assertEquals(1,ownRoots().size)
+    }
+
 }
