@@ -63,6 +63,9 @@ class Phase6BWorkflowEmulatorTest : EmulatorTestSupport() {
         clickTab(AppScreen.PROPERTIES)
         ui.onNodeWithTag("property_card_${property.propertyId}").performScrollTo().performClick()
         ui.onNode(hasText("Sanierung & 15%-Prüfung") and hasClickAction()).performScrollTo().performClick()
+        // The screen first shows its loading state while the independent summary flow catches up.
+        // Keep the display assertion, but synchronize with the actual destination like below after save.
+        ui.waitUntil(10_000) { ui.onNodeWithTag("renovation_overview").isDisplayed() }
         ui.onNodeWithTag("renovation_overview").assertIsDisplayed()
         ui.onNodeWithTag("renovation_add_measure").performScrollTo().performClick()
         ui.onNodeWithText("Abbrechen").performClick()

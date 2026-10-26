@@ -171,6 +171,34 @@ object GoogleDriveClient {
         return searchFiles(accessToken, q).singleOrNull()
     }
 
+    /** Errors must not be mistaken for an empty search: that would create duplicate backup structures. */
+    private inline fun <T> initializationCall(block: () -> T): T = try { block() }
+        catch (e: DriveAccessFailure) { throw e }
+        catch (_: IOException) { throw DriveAccessFailure(DriveAccessFailure.Reason.NETWORK) }
+        catch (_: org.json.JSONException) { throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA) }
+
+    private fun initializationSearch(accessToken: String, query: String, orderBy: String? = null): List<JSONObject> = initializationCall {
+        val found = mutableListOf<JSONObject>()
+        var page: String? = null
+        repeat(100) {
+            val url = okhttp3.HttpUrl.Builder().scheme("https").host("www.googleapis.com")
+                .addPathSegments("drive/v3/files").addQueryParameter("q", query)
+                .addQueryParameter("fields", "nextPageToken,incompleteSearch,files(id,name)").addQueryParameter("pageSize", "1000")
+                .apply { page?.let { addQueryParameter("pageToken", it) }; orderBy?.let { addQueryParameter("orderBy", it) } }.build()
+            val request = Request.Builder().url(url).header("Authorization", "Bearer $accessToken").build()
+            val json = executeDriveRequest(request).use {
+                if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
+                JSONObject(it.body?.string().orEmpty())
+            }
+            if (json.optBoolean("incompleteSearch")) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+            val files = json.driveFileListItems()
+            repeat(files.length()) { found += files.getJSONObject(it) }
+            page = json.optString("nextPageToken").takeIf(String::isNotBlank)
+            if (page == null) return@initializationCall found
+        }
+        throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+    }
+
     suspend fun getOrCreateFolder(
         accessToken: String,
         folderName: String = DriveEnvironment.rootFolderName,
@@ -179,209 +207,77 @@ object GoogleDriveClient {
         systemFolderId: String? = null,
         context: Context? = null
     ): String? {
-        val trimmedName = folderName.trim().ifEmpty { "Sonstiges" }
-        val parentKey = parentId ?: "root"
-        
-        // Cache key
-        val legacyCacheKey = if (canonicalPathKey != null) {
-            "path#$canonicalPathKey"
-        } else {
-            "$trimmedName#$parentKey"
-        }
-
-        // Account, root and parent belong to the test cache identity. Never trust an old mapping.
-        val cacheKey = if (DriveEnvironment.namespaceGuardEnabled) {
-            val accountKey = java.security.MessageDigest.getInstance("SHA-256").digest(accessToken.toByteArray()).joinToString("") { "%02x".format(it) }
-            "$accountKey#${DriveEnvironment.rootFolderName}#$parentKey#$legacyCacheKey"
-        } else legacyCacheKey
+        val name = folderName.trim().ifEmpty { "Sonstiges" }
+        val accountKey = java.security.MessageDigest.getInstance("SHA-256").digest(accessToken.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val requestKey = if (canonicalPathKey != null) "path#$canonicalPathKey" else "name#$name"
+        val cacheKey = "$accountKey#${DriveEnvironment.rootFolderName}#${parentId ?: "root"}#$requestKey"
+        val prefs = if (canonicalPathKey != null && context != null)
+            context.getSharedPreferences("category_folder_mappings_prefs", Context.MODE_PRIVATE) else null
         suspend fun checked(id: String): String {
-            if (DriveEnvironment.namespaceGuardEnabled && getFileMetadata(accessToken, id)?.mimeType != "application/vnd.google-apps.folder") {
-                throw IOException("Drive-Sicherheitsabbruch: Gespeicherte Ordner-ID ist für diese App nicht zulässig.")
-            }
+            val meta = getFileMetadataChecked(accessToken, id)
+            if (meta.mimeType != "application/vnd.google-apps.folder") throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_MIME)
+            if ((parentId != null && meta.parentIds != listOf(parentId)) || (canonicalPathKey == null && meta.name != name))
+                throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_LOCATION)
             return id
         }
-        folderCache[cacheKey]?.let { cachedId ->
-            DiagnosticLog.d(TAG, "Using cached folder ID for '")
-            return checked(cachedId)
-        }
-
-        // Check local SharedPreferences mappings if context is provided
-        if (canonicalPathKey != null && context != null) {
-            val prefs = context.getSharedPreferences("category_folder_mappings_prefs", Context.MODE_PRIVATE)
-            val mappedId = prefs.getString(canonicalPathKey, null)
-            if (!mappedId.isNullOrBlank()) {
-                DiagnosticLog.d(TAG, "Using SharedPreferences mapped folder ID for path '")
-                folderCache[cacheKey] = mappedId
-                return checked(mappedId)
-            }
-        }
-
-        // Lock per parentFolderId + canonicalPathKey
-        val lockKey = if (canonicalPathKey != null) {
-            "$parentKey#$canonicalPathKey"
-        } else {
-            "$parentKey#$trimmedName"
-        }
-
-        val mutex = getFolderMutex(lockKey)
-        return mutex.withLock {
-            // Check cache again after acquiring lock
-            folderCache[cacheKey]?.let { return@withLock checked(it) }
-
-            // 1. Search for existing folder
-            var folderId: String? = null
-            
-            if (canonicalPathKey != null) {
-                // Search by app properties first
-                val q = "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$canonicalPathKey' } and trashed = false" +
-                    if (DriveEnvironment.namespaceGuardEnabled) " and '$parentId' in parents" else ""
-                try {
-                    val encodedQ = URLEncoder.encode(q, "UTF-8")
-                    val searchUrl = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
-                    val searchRequest = Request.Builder()
-                        .url(searchUrl)
-                        .addHeader("Authorization", "Bearer $accessToken")
-                        .build()
-                    
-                    executeDriveRequest(searchRequest).use { response ->
-                        if (response.isSuccessful) {
-                            val responseBody = response.body?.string() ?: ""
-                            val json = JSONObject(responseBody)
-                            val files = json.optJSONArray("files")
-                            if (files != null && files.length() > 0) {
-                                // "bei einem eindeutigen Treffer dessen ID verwenden"
-                                folderId = files.getJSONObject(0).getString("id")
-                                DiagnosticLog.d(TAG, "Found existing category folder by appProperties")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    DiagnosticLog.e(TAG, "Error searching category folder by properties")
+        fun invalidLocalMapping(e: DriveAccessFailure) = e.reason in setOf(
+            DriveAccessFailure.Reason.WRONG_MIME, DriveAccessFailure.Reason.WRONG_LOCATION, DriveAccessFailure.Reason.INVALID_ID)
+        // Keep the original logical name/path lock shared across cache entry kinds.
+        val lockKey = "$accountKey#${DriveEnvironment.rootFolderName}#${parentId ?: "root"}#${canonicalPathKey ?: name}"
+        return getFolderMutex(lockKey).withLock {
+            folderCache[cacheKey]?.let { id ->
+                try { return@withLock checked(id) }
+                catch (e: DriveAccessFailure) {
+                    // Only confirmed invalid cached identity/type/location; not HTTP404 (possibly permissions),
+                    // HTTP401/403, network errors, foreign roots or ownership failures.
+                    if (!invalidLocalMapping(e)) throw e
+                    folderCache.remove(cacheKey, id)
                 }
             }
-
-            // Fallback to name search if properties search didn't find anything or wasn't applicable
-            if (folderId == null) {
-                val escapedName = trimmedName.replace("\\", "\\\\").replace("'", "\\'")
-                var q = "name = '$escapedName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-                if (!parentId.isNullOrEmpty()) {
-                    q += " and '$parentId' in parents"
-                } else if (DriveEnvironment.namespaceGuardEnabled) {
-                    q += " and 'root' in parents"
-                }
-                try {
-                    val encodedQ = URLEncoder.encode(q, "UTF-8")
-                    val searchUrl = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id)"
-                    val searchRequest = Request.Builder()
-                        .url(searchUrl)
-                        .addHeader("Authorization", "Bearer $accessToken")
-                        .build()
-                    
-                    executeDriveRequest(searchRequest).use { response ->
-                        if (response.isSuccessful) {
-                            val responseBody = response.body?.string() ?: ""
-                            val json = JSONObject(responseBody)
-                            val files = json.optJSONArray("files")
-                            if (files != null && files.length() > 0) {
-                                folderId = files.getJSONObject(0).getString("id")
-                                DiagnosticLog.d(TAG, "Found existing folder by name")
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    DiagnosticLog.e(TAG, "Error searching folder by name")
+            prefs?.getString(canonicalPathKey, null)?.takeIf(String::isNotBlank)?.let { id ->
+                try { return@withLock checked(id).also { folderCache[cacheKey] = it } }
+                catch (e: DriveAccessFailure) {
+                    if (!DriveEnvironment.isIsolatedTest || !invalidLocalMapping(e)) throw e
+                    // One verified invalid test mapping only; never clear stores or delete/move Drive data.
+                    prefs.edit().remove(canonicalPathKey).commit()
                 }
             }
-
-            if (folderId != null) {
-                folderCache[cacheKey] = folderId!!
-                return@withLock folderId
+            val escapedName = name.replace("\\", "\\\\").replace("'", "\\'")
+            val parentQuery = "'${parentId ?: "root"}' in parents"
+            val byName = "name = '$escapedName' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and $parentQuery"
+            val byPath = canonicalPathKey?.let {
+                val escaped = it.replace("\\", "\\\\").replace("'", "\\'")
+                "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$escaped' } and trashed = false and $parentQuery"
             }
-
-            // 2. Create folder if not found
-            val createUrl = "https://www.googleapis.com/drive/v3/files"
-            val bodyJson = JSONObject().apply {
-                put("name", trimmedName)
-                put("mimeType", "application/vnd.google-apps.folder")
-                if (!parentId.isNullOrEmpty()) {
-                    put("parents", JSONArray().put(parentId))
-                }
-                if (canonicalPathKey != null) {
-                    val appPropsJson = JSONObject().apply {
-                        put("appName", DriveEnvironment.appIdentifier)
-                        put("folderRole", "CATEGORY")
-                        put("canonicalPathKey", canonicalPathKey)
-                        put("parentFolderId", parentId ?: "")
-                        put("schemaVersion", "1")
-                    }
-                    put("appProperties", appPropsJson)
+            val found = byPath?.let { initializationSearch(accessToken, it) }.orEmpty().ifEmpty {
+                initializationSearch(accessToken, byName)
+            }
+            if (found.isNotEmpty()) return@withLock checked(found.first().getString("id")).also { folderCache[cacheKey] = it }
+            val body = JSONObject().put("name", name).put("mimeType", "application/vnd.google-apps.folder").apply {
+                parentId?.let { put("parents", JSONArray().put(it)) }
+                if (canonicalPathKey != null) put("appProperties", JSONObject()
+                    .put("appName", DriveEnvironment.appIdentifier).put("folderRole", "CATEGORY")
+                    .put("canonicalPathKey", canonicalPathKey).put("parentFolderId", parentId.orEmpty()).put("schemaVersion", "1"))
+            }
+            val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files")
+                .header("Authorization", "Bearer $accessToken")
+                .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+            val created = initializationCall {
+                executeDriveRequest(request).use {
+                    if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
+                    JSONObject(it.body?.string().orEmpty()).getString("id")
                 }
             }
-            val requestBody = bodyJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val createRequest = Request.Builder()
-                .url(createUrl)
-                .post(requestBody)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-            
-            try {
-                val response = executeDriveRequest(createRequest)
-                if (response.isSuccessful) {
-                    val responseBody = response.body?.string() ?: ""
-                    response.close()
-                    val json = JSONObject(responseBody)
-                    val createdId = json.getString("id")
-                    DiagnosticLog.d(TAG, "Created new folder")
-                    
-                    folderId = createdId
-                    folderCache[cacheKey] = createdId
-
-                    // Save mapping immediately to category-folder-mappings.json and locally
-                    if (canonicalPathKey != null && systemFolderId != null && context != null) {
-                        saveCategoryMapping(accessToken, systemFolderId, canonicalPathKey, createdId, context)
-                    }
-
-                    // Danach erneut prüfen, ob parallel ein zweiter Ordner entstanden ist
-                    if (canonicalPathKey != null) {
-                        val qCheck = "mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='folderRole' and value='CATEGORY' } and appProperties has { key='canonicalPathKey' and value='$canonicalPathKey' } and trashed = false" +
-                            if (DriveEnvironment.namespaceGuardEnabled) " and '$parentId' in parents" else ""
-                        val encodedQCheck = URLEncoder.encode(qCheck, "UTF-8")
-                        val searchUrlCheck = "https://www.googleapis.com/drive/v3/files?q=$encodedQCheck&fields=files(id,createdTime)&orderBy=createdTime asc"
-                        val searchRequestCheck = Request.Builder()
-                            .url(searchUrlCheck)
-                            .addHeader("Authorization", "Bearer $accessToken")
-                            .build()
-                        val checkRes = executeDriveRequest(searchRequestCheck)
-                        if (checkRes.isSuccessful) {
-                            val checkBody = checkRes.body?.string() ?: ""
-                            checkRes.close()
-                            val checkJson = JSONObject(checkBody)
-                            val checkFiles = checkJson.optJSONArray("files")
-                            if (checkFiles != null && checkFiles.length() > 1) {
-                                // A parallel duplicate was created! Use the oldest one.
-                                val oldestId = checkFiles.getJSONObject(0).getString("id")
-                                DiagnosticLog.w(TAG, "Parallel duplicate detected for '")
-                                folderId = oldestId
-                                folderCache[cacheKey] = oldestId
-                                if (systemFolderId != null && context != null) {
-                                    saveCategoryMapping(accessToken, systemFolderId, canonicalPathKey, oldestId, context)
-                                }
-                            }
-                        } else {
-                            checkRes.close()
-                        }
-                    }
-
-                    return@withLock folderId
-                } else {
-                    response.close()
-                    DiagnosticLog.e(TAG, "Create folder failed")
-                }
-            } catch (e: Exception) {
-                DiagnosticLog.e(TAG, "Error creating folder")
-            }
-            
-            return@withLock null
+            checked(created)
+            // Preserve cross-client category race handling: reuse the oldest valid match,
+            // without deleting, moving or renaming any concurrently created folder.
+            val selected = byPath?.let { initializationSearch(accessToken, it, "createdTime asc").firstOrNull() }
+                ?.getString("id")?.let { checked(it) } ?: created
+            folderCache[cacheKey] = selected
+            if (canonicalPathKey != null && systemFolderId != null && context != null)
+                saveCategoryMapping(accessToken, systemFolderId, canonicalPathKey, selected, context)
+            selected
         }
     }
 
@@ -684,30 +580,13 @@ object GoogleDriveClient {
     }
 
     suspend fun findAppDataFolder(accessToken: String): DriveFolder? {
-        val mainFolderId = getOrCreateFolder(accessToken, DriveEnvironment.rootFolderName) ?: return null
-        val q = "name = '_BelegApp-Daten' and mimeType = 'application/vnd.google-apps.folder' and '$mainFolderId' in parents and trashed = false"
-        try {
-            val encodedQ = URLEncoder.encode(q, "UTF-8")
-            val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-            executeDriveRequest(request).use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = JSONObject(body)
-                    val files = json.optJSONArray("files")
-                    if (files != null && files.length() > 0) {
-                        val fileObj = files.getJSONObject(0)
-                        return DriveFolder(fileObj.getString("id"), fileObj.getString("name"))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            DiagnosticLog.e(TAG, "Error finding AppData folder")
-        }
-        return null
+        val main = getOrCreateFolder(accessToken, DriveEnvironment.rootFolderName) ?: return null
+        val q = "name = '_BelegApp-Daten' and mimeType = 'application/vnd.google-apps.folder' and '$main' in parents and trashed = false"
+        val found = initializationSearch(accessToken, q).firstOrNull() ?: return null
+        val meta = getFileMetadataChecked(accessToken, found.getString("id"))
+        if (meta.mimeType != "application/vnd.google-apps.folder") throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_MIME)
+        if (meta.parentIds != listOf(main) || meta.name != "_BelegApp-Daten") throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_LOCATION)
+        return DriveFolder(meta.id, meta.name)
     }
 
     suspend fun createAppDataFolder(accessToken: String): DriveFolder {
@@ -918,31 +797,28 @@ object GoogleDriveClient {
     }
 
     /** Metadata used by the non-destructive document-layout migration. */
-    suspend fun getFileMetadata(accessToken: String, fileId: String): DriveManagedFile? {
-        if (fileId.isBlank()) return null
+    suspend fun getFileMetadata(accessToken: String, fileId: String): DriveManagedFile? = try {
+        getFileMetadataChecked(accessToken, fileId)
+    } catch (_: Exception) {
+        DiagnosticLog.e(TAG, "Could not read Drive metadata for document migration")
+        null
+    }
+
+    /** Strict variant for identity checks: HTTP, permission, MIME and namespace failures stay distinct. */
+    internal suspend fun getFileMetadataChecked(accessToken: String, fileId: String): DriveManagedFile = initializationCall {
+        if (!Regex("[A-Za-z0-9_-]+").matches(fileId)) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_ID)
         val request = Request.Builder()
             .url("https://www.googleapis.com/drive/v3/files/$fileId?fields=id,name,mimeType,size,parents,trashed,appProperties")
-            .addHeader("Authorization", "Bearer $accessToken")
-            .build()
-        return try {
-            executeDriveRequest(request).use { response ->
-                if (!response.isSuccessful) return null
-                val json = JSONObject(response.body?.string().orEmpty())
-                if (json.optBoolean("trashed", false)) return null
-                DriveManagedFile(
-                    id = json.optString("id"),
-                    name = json.optString("name"),
-                    mimeType = json.optString("mimeType"),
-                    sizeBytes = json.optLong("size", 0L),
-                    parentIds = json.optJSONArray("parents")?.let { array ->
-                        (0 until array.length()).map { array.optString(it) }.filter(String::isNotBlank)
-                    }.orEmpty(),
-                    appProperties = json.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty()
-                )
-            }
-        } catch (e: Exception) {
-            DiagnosticLog.e(TAG, "Could not read Drive metadata for document migration")
-            null
+            .header("Authorization", "Bearer $accessToken").build()
+        executeDriveRequest(request).use {
+            if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
+            val json = JSONObject(it.body?.string().orEmpty())
+            if (json.optBoolean("trashed")) throw DriveAccessFailure(DriveAccessFailure.Reason.NAMESPACE)
+            if (json.optString("id") != fileId || json.optString("name").isBlank() || json.optString("mimeType").isBlank())
+                throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            DriveManagedFile(fileId, json.getString("name"), json.getString("mimeType"), json.optLong("size", 0L),
+                json.optJSONArray("parents")?.let { array -> (0 until array.length()).map { i -> array.getString(i) } }.orEmpty(),
+                json.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty())
         }
     }
 
@@ -1130,8 +1006,16 @@ object GoogleDriveClient {
     suspend fun findFileByAppProperty(
         accessToken: String,
         folderId: String,
-        entityType: String
+        entityType: String,
+        failOnError: Boolean = false
     ): DriveFile? {
+        if (failOnError) {
+            val query = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
+            val found = initializationSearch(accessToken, query).ifEmpty {
+                initializationSearch(accessToken, "name = '${getFilenameForEntityType(entityType)}' and '$folderId' in parents and trashed = false")
+            }.firstOrNull() ?: return null
+            return initializationCall { DriveFile(found.getString("id"), found.getString("name")) }
+        }
         val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
         try {
             val encodedQ = URLEncoder.encode(q, "UTF-8")

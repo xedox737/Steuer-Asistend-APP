@@ -60,6 +60,9 @@ jobs:
               -validity 10000
           fi
 
+      - name: Test public APK certificate evidence parser
+        run: python3 -m unittest discover -s .github/scripts/tests -v
+
       - name: Run lint
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon
@@ -89,6 +92,10 @@ jobs:
       - name: Verify repaired Drive portfolio contracts and actual methods
         if: always()
         run: python3 .github/scripts/e11a-verify-repair.py
+
+      - name: Verify actual Issue 145 initialization regression execution
+        if: always()
+        run: python3 .github/scripts/phase11b-verify-initialization.py
 
       - name: Preserve synthetic Phase 10B evidence
         if: always()

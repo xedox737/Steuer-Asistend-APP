@@ -18,7 +18,7 @@ if emulator:
                    {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
 else:
     paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |
-                   set(root.glob("reports/phase10d/*.json")) | set(root.glob("reports/e11a03-repair/*.json")))
+                   set(root.glob("reports/phase10d/*.json")) | set(root.glob("reports/e11a03-repair/*.json")) | set(root.glob("reports/phase11b/*.json")))
 files = [p for p in paths if p.is_file()]
 totals = dict(tests=0, failures=0, errors=0, skipped=0)
 suites = []
