@@ -490,3 +490,22 @@ fixture/Fachlogik bleiben unverändert. 32 Python-Tests und reale lokale APK-
 Auswertung grün. APK-Auswertung wird in der CI vor den JVM-Tests ausgeführt,
 sodass deren Werkzeuge vorab geprüft werden; kein bestehender Check entfällt.
 Alle CI-Prüfungen einschließlich Emulator werden erneut abgewartet.
+
+### Dritte CI: Zertifikat grün, Testfixture-Bereitschaft ergänzt
+
+CI 40261085185 auf 9caefc2 bestand die neue PEM-/Zertifikatauswertung und führte
+alle 1.166 JVM-Methoden aus. Ein vorhandener Phase5B-Compose-Test fand die
+Bankzeile ledger_bank_bank-a nicht; deshalb Gesamt-CI rot und Emulator abhängig
+übersprungen. Die 36 Reparaturmethoden, 27 Phase11A-Methoden und alle
+Datenintegritäts-/Portfoliovergleiche bestanden weiterhin.
+
+Der betroffene Test wartete vor dem Ledger-Wechsel auf Belege und
+Mietzuordnungen, nicht auf den separat asynchron gelieferten Bankbuchungs-Flow.
+Ohne dessen Buchung kann RentPaymentProjection die erwartete Bankzeile nicht
+erzeugen. Die reine QA-Korrektur wartet innerhalb der unveränderten 10-Sekunden-
+Frist auf die konkreten Fixture-IDs aller drei unabhängigen Flows und prüft
+die daraus abgeleitete erwartete Bankzeile zusätzlich vor der UI-Navigation.
+Die bisherigen Ausgabenmetriken, Objektfilter, konkrete Bankzeile, Buchungsdetail-
+und Zurück-/Backstack-Assertions bleiben vollständig bestehen. Keine Banklisten-
+oder sonstige Produktlogikänderung. Die gesamte betroffene Compose-Testklasse
+wurde lokal ohne Fehler/Skips erneut ausgeführt; anschließend vollständige CI.
