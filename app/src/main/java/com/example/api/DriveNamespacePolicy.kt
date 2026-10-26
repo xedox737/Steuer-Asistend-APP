@@ -203,7 +203,7 @@ internal class DriveNamespacePolicy(
             val request = Request.Builder().url(url).header("Authorization", token).build()
             val json = readResponse(send(request))
             if (json.optBoolean("incompleteSearch")) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
-            val files = json.optJSONArray("files") ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            val files = json.driveFileListItems()
             if ((0 until files.length()).any { files.getJSONObject(it).optString("id") == id }) return true
             page = json.optString("nextPageToken").takeIf(String::isNotBlank)
             if (page == null) return false

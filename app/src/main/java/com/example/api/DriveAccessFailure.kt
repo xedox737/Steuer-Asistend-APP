@@ -17,3 +17,24 @@ internal open class DriveAccessFailure(val reason: Reason, val httpStatus: Int? 
 ) {
     enum class Reason { HTTP, NETWORK, INVALID_ID, INVALID_METADATA, WRONG_MIME, WRONG_LOCATION, NAMESPACE, INCOMPLETE_SEARCH }
 }
+
+/** Partial FileList responses may omit an empty repeated field; malformed/error objects are not emptiness. */
+internal fun org.json.JSONObject.driveFileListItems(): org.json.JSONArray {
+    fun malformed(): Nothing = throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+    if (has("error") || (has("kind") && optString("kind") != "drive#fileList")) malformed()
+    if (has("incompleteSearch") && opt("incompleteSearch") !is Boolean) malformed()
+    if (has("nextPageToken") && opt("nextPageToken") !is String) malformed()
+    val files = optJSONArray("files")
+    if (files != null) {
+        repeat(files.length()) {
+            val row = files.optJSONObject(it) ?: malformed()
+            val id = row.opt("id")
+            if (id !is String || !Regex("[A-Za-z0-9_-]+").matches(id)) malformed()
+        }
+        return files
+    }
+    if ((has("files") && !isNull("files")) || keys().asSequence().any {
+        it !in setOf("files", "kind", "nextPageToken", "incompleteSearch")
+    }) malformed()
+    return org.json.JSONArray()
+}

@@ -37,6 +37,8 @@ class DriveInitializationRegressionTest {
     private var incompleteSearch = false
     private var configSearchStatus = 200
     private var networkDown = false
+    private var omitEmptyCollections = false
+    private var collectionBody: String? = null
     private val token = "synthetic-issue145-account"
     private val folder = ComparisonDriveHttpFixture.FOLDER
 
@@ -47,6 +49,9 @@ class DriveInitializationRegressionTest {
         transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
             val r = chain.request()
             if (networkDown) throw java.io.IOException("private-token-or-address-must-not-escape")
+            if (collectionBody != null && r.method == "GET" && r.url.encodedPath == "/drive/v3/files")
+                return@addInterceptor Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic malformed collection")
+                    .body(collectionBody!!.toResponseBody("application/json".toMediaType())).build()
             val q = r.url.queryParameter("q").orEmpty()
             val systemCreation = r.method == "POST" && r.body?.let {
                 val b = okio.Buffer(); it.writeTo(b); b.readUtf8().contains("_BelegApp-Daten")
@@ -65,7 +70,14 @@ class DriveInitializationRegressionTest {
                 return@addInterceptor Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
                     .body(body.toResponseBody("application/json".toMediaType())).build()
             }
-            if (status == 200) chain.proceed(r) else Response.Builder().request(r).protocol(Protocol.HTTP_1_1)
+            if (status == 200) {
+                val response = chain.proceed(r)
+                if (omitEmptyCollections && r.method == "GET" && r.url.encodedPath == "/drive/v3/files") {
+                    val json = org.json.JSONObject(response.body!!.string())
+                    if (json.optJSONArray("files")?.length() == 0) json.remove("files")
+                    response.newBuilder().body(json.toString().toResponseBody("application/json".toMediaType())).build()
+                } else response
+            } else Response.Builder().request(r).protocol(Protocol.HTTP_1_1)
                 .code(status).message("Synthetic failure").body("{}".toResponseBody("application/json".toMediaType())).build()
         }.addInterceptor(remote).build())
         GoogleDriveClient.clearFolderCache()
@@ -234,6 +246,29 @@ class DriveInitializationRegressionTest {
         assertEquals(first.rootFolderId,ownRoots().single().id) // same synthetic ID in another account is not a cache proof.
         assertTrue(secondRemote.requests.any { it.method=="GET" && it.url.encodedPath=="/drive/v3/files" })
         assertTrue(secondRemote.requests.any { it.method=="POST" })
+    }
+
+    @Test fun successfulEmptyFileListMayOmitEmptyFilesCollection() = runBlocking {
+        omitEmptyCollections = true
+        rootStatus = 404
+        val first = config(drive.initializeDriveStorage(token))
+        rootStatus = 403
+        val second = config(drive.initializeDriveStorage(token))
+        assertEquals(first.rootFolderId, second.rootFolderId)
+        assertEquals(first.systemFolderId, second.systemFolderId)
+        assertEquals(1, ownRoots().size)
+        assertTrue(remote.orphanIds().isEmpty())
+    }
+
+    @Test fun malformedSuccessfulCollectionsNeverBecomeEmptySearchResults() = runBlocking {
+        for (body in listOf("{\"files\":\"wrong-type\"}", "{\"error\":{\"message\":\"private-sentinel\"}}", "{\"kind\":\"drive#file\",\"id\":\"unexpected-metadata\"}")) {
+            collectionBody = body
+            val r = drive.initializeDriveStorage(token) as DriveInitializationResult.Failure
+            assertTrue(r.error, r.error.contains("INVALID_METADATA"))
+            assertFalse(r.error.contains("private-sentinel"))
+            assertEquals(0,ownRoots().size)
+            assertTrue(remote.requests.none { it.method != "GET" })
+        }
     }
 
 }

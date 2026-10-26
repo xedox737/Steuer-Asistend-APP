@@ -83,3 +83,17 @@ Die bereits im Test-App-Branch geprüfte QA-Auswertung des verifizierten
 APK-/Zertifikat-SHA256 und OAuth-SHA1 je tatsächlichem CI-Artefakt. Das
 Prüfbeispiel enthält ausschließlich ein öffentliches Zertifikat, keinen
 privaten Schlüssel. Drei Parserregressionen, keine neue Signierkonfiguration.
+
+## Zusätzlich vor Veröffentlichung reproduzierter Leerlistenfall
+
+Auf Produktstand 3154bf4 scheiterte der neue einzelne Test für eine erfolgreiche
+partielle FileList-Antwort ohne leeres files-Feld (1 tatsächliche Methode,
+1 Fehler, keine Skips). Dies war eine zu strenge Stelle im neuen Suchhelfer,
+kein neuer bestätigter Gerätebefund. XML: phase11b-evidence/empty-list-red-regression.xml.
+Die gemeinsame Listenvalidierung akzeptiert jetzt leere/ausgelassene Sammlungen
+nur bei erfolgreichem, gültigem FileList-JSON. error-Objekte, falsche Typen,
+fremde Metadatenobjekte und incompleteSearch bleiben Fehler. Root-Zugehörigkeit
+verlangt weiterhin ein tatsächlich enthaltenes positives ID-Ergebnis.
+Zwei zusätzliche Methoden sichern leere Projektion und malformed-200-Antworten;
+insgesamt 15 neue SDK36-Initialisierungsmethoden. Keine HTTP- oder Ownership-
+Fehler werden in ein leeres Suchergebnis umgewandelt.

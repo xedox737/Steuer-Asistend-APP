@@ -191,7 +191,7 @@ object GoogleDriveClient {
                 JSONObject(it.body?.string().orEmpty())
             }
             if (json.optBoolean("incompleteSearch")) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
-            val files = json.getJSONArray("files")
+            val files = json.driveFileListItems()
             repeat(files.length()) { found += files.getJSONObject(it) }
             page = json.optString("nextPageToken").takeIf(String::isNotBlank)
             if (page == null) return@initializationCall found
@@ -1011,7 +1011,7 @@ object GoogleDriveClient {
             val found = initializationSearch(accessToken, query).ifEmpty {
                 initializationSearch(accessToken, "name = '${getFilenameForEntityType(entityType)}' and '$folderId' in parents and trashed = false")
             }.firstOrNull() ?: return null
-            return DriveFile(found.getString("id"), found.getString("name"))
+            return initializationCall { DriveFile(found.getString("id"), found.getString("name")) }
         }
         val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
         try {

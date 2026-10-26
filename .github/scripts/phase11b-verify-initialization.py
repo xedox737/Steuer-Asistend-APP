@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 source = Path('app/src/test/java/com/example/api/DriveInitializationRegressionTest.kt')
 expected = set(re.findall(r'@Test\s+fun\s+(\w+)\s*\(', source.read_text()))
-assert len(expected) >= 13, 'Missing initialization coverage'
+assert len(expected) >= 15, 'Missing initialization coverage'
 actual = []
 for path in Path('app/build/test-results/testDebugUnitTest').glob('*.xml'):
     for case in ET.parse(path).getroot().iter('testcase'):
