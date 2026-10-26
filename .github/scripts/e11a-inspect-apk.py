@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from apk_signing import certificate_fingerprints
 
 PRODUCTION = "com.aistudio.steuerassistent.vnhqkp"
 TEST = PRODUCTION + ".phase11a"
@@ -17,6 +18,7 @@ def main():
     parser.add_argument("apk", type=Path)
     parser.add_argument("--package", required=True, choices=(PRODUCTION, TEST))
     parser.add_argument("--aapt", type=Path)
+    parser.add_argument("--allow-unsigned", action="store_true", help="Only for a local unsigned production release")
     parser.add_argument("--output", type=Path, default=Path("app/build/reports/e11a03-repair/apk-debug.json"))
     args = parser.parse_args()
     if args.aapt:
@@ -62,10 +64,19 @@ def main():
     with args.apk.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
+    signer = subprocess.run([str(aapt.with_name("apksigner")), "verify", "--print-certs-pem", str(args.apk)],
+                            text=True, capture_output=True)
+    signed = signer.returncode == 0
+    assert signed or (args.allow_unsigned and package == PRODUCTION), "APK signature verification failed"
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.with_suffix(".apksigner.txt").write_text(str(aapt.with_name("apksigner")) + "\n" + signer.stdout + signer.stderr)
+    fingerprints = certificate_fingerprints(signer.stdout) if signed else dict(signingSha1=None, signingSha256=None)
     result = dict(status="AUTOMATISIERT BESTANDEN", practicalStatus="NOCH OFFEN",
         commit=os.environ.get("GITHUB_SHA"), ciRunId=os.environ.get("GITHUB_RUN_ID"),
         apk=str(args.apk), sha256=digest.hexdigest(), sizeBytes=args.apk.stat().st_size,
         package=package, label=label, versionCode=version_code, versionName=version_name,
+        signatureVerified=signed, signingSha1=fingerprints["signingSha1"], signingSha256=fingerprints["signingSha256"],
+        signingTool=str(aapt.with_name("apksigner")),
         providerAuthorities=authorities, components=components,
         permissions=re.findall(r"^uses-permission: name='([^']+)'", badging, re.M))
     args.output.parent.mkdir(parents=True, exist_ok=True)

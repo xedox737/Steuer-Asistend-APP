@@ -60,6 +60,9 @@ jobs:
               -validity 10000
           fi
 
+      - name: Test public APK certificate evidence parser
+        run: python3 -m unittest discover -s .github/scripts/tests -v
+
       - name: Run lint
         timeout-minutes: 10
         run: gradle lintDebug --stacktrace --no-daemon

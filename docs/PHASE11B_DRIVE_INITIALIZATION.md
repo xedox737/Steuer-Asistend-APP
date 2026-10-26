@@ -75,3 +75,11 @@ Setup. Die zuvor im Test-App-Branch belegte Phase5B-Testbereitschaft wird
 unverändert auch für den Produkt-Testaufbau übernommen: drei separate Flows
 vor der Bankzeile abwarten, unveränderte Frist und alle Assertions erhalten.
 Keine Bank-/Navigationslogikänderung.
+
+## Versionsgebundene APK-Nachweise
+
+Die bereits im Test-App-Branch geprüfte QA-Auswertung des verifizierten
+öffentlichen APK-Zertifikats wird für beide Varianten verwendet. Sie erzeugt
+APK-/Zertifikat-SHA256 und OAuth-SHA1 je tatsächlichem CI-Artefakt. Das
+Prüfbeispiel enthält ausschließlich ein öffentliches Zertifikat, keinen
+privaten Schlüssel. Drei Parserregressionen, keine neue Signierkonfiguration.
