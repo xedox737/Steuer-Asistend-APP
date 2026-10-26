@@ -1,0 +1,36 @@
+{
+  "runId": "P11B-2026-10-26-FINAL-40364725921-40370749483",
+  "practicalStatus": "NOCH OFFEN",
+  "files": [
+    {
+      "path": "docs/ImmoPilot-Phase11B-Drive-Synchronisierung.md",
+      "bytes": 35480,
+      "sha256": "e3223fd76e02fb69634ca919f348274e29869870eccba1482d0767faa8e9291a"
+    },
+    {
+      "path": "docs/ImmoPilot-Phase11B-Drive-Synchronisierung.pdf",
+      "bytes": 90144,
+      "sha256": "7116f70a774d47f4fd929741047f0a4eaad3011f9d5343d790d095ad353e8540"
+    },
+    {
+      "path": "docs/phase11b-evidence/ImmoPilot-Phase11B-Evidence.zip",
+      "bytes": 4641380,
+      "sha256": "4b9dee40f05dec744eaaa421eadeaceb0bdefb16bd70b6799baab6b45e2d9441"
+    },
+    {
+      "path": "docs/phase11b-evidence/phase11b-product-ci-summary.json",
+      "bytes": 1396,
+      "sha256": "90ad19fd6b19e8564da46bd5334511e21905409e46d5bd6b07282ca5954d8944"
+    },
+    {
+      "path": "docs/phase11b-evidence/phase11b-test-ci-summary.json",
+      "bytes": 2165,
+      "sha256": "06b58105e1af8ba5516e3c7faff2e8348648d73f10b00d7f3107b861cee118ec"
+    },
+    {
+      "path": "docs/phase11b-evidence/phase11b-final-delivery.json",
+      "bytes": 35127,
+      "sha256": "317b384dfad7584e689f4e5bb92e90ea4edcd18cb5181b472a063496500e51dc"
+    }
+  ]
+}

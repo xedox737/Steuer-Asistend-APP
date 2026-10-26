@@ -1,3 +1,28 @@
+# Phase 11B – endgültiger automatisierter Prüfstand (26.10.2026)
+
+Reparatur-PR: https://github.com/xedox737/Steuer-Asistend-APP/pull/146 (Draft, nicht gemergt).
+Base origin/main: 6d58dbac9d9f6d3c1c57c9b14579d5360751879d.
+Produkt-Head: b687bccbaab2d9d6cc40f748d88090c3690e5a80; Testintegration: f56d0c164262b1af2bd65936cf769b7aef3b0143.
+Produkt-CI 40364725921: 1156 JVM- und 70 eindeutige Emulatormethoden.
+Test-CI 40370749483: 1183 JVM- und 73 eindeutige Emulatormethoden,
+plus gesonderter wiederholter UI-Seed-/Prozessstopp-Fall.
+Beide vollständig grün: AUTOMATISIERT BESTANDEN; keine Fehler/Skips.
+Je Variante: 17 neue SDK36-Fälle, 60/60 Originalhashes, 0 fachliche Contract-/Relationsfehler.
+Native Emulatoren: API35; echter POCO-X8-Pro-/Android16-/Google-OAuth-Nachtest: NOCH OFFEN.
+Keine praktische Portfoliofreigabe. Keine Datenbereinigung oder Migration.
+
+[Vollständiger Bericht](ImmoPilot-Phase11B-Drive-Synchronisierung.md) ·
+[PDF](ImmoPilot-Phase11B-Drive-Synchronisierung.pdf) ·
+[Evidence](phase11b-evidence/ImmoPilot-Phase11B-Evidence.zip).
+
+Die Signaturen und OAuth-SHA1 des jeweiligen Download-Artefakts stehen im Bericht.
+QA-Nebenbefund Q11B-01/P3 betrifft nur das exported-Ausgabefeld des alten APK-Helfers;
+es wird nicht als Komponenten-Sicherheitsnachweis verwendet. Rohmanifeste liegen bei.
+
+## Historischer Arbeitsverlauf
+
+Die folgenden Angaben zu offenen Prüfungen beschreiben damalige Zwischenstände. Maßgeblich ist der endgültige Prüfstand oben.
+
 # Phase 11B – Drive-Initialisierung, Issue #145
 
 ## Basis und Grenzen

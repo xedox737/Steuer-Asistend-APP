@@ -1,0 +1,1112 @@
+{
+  "product": {
+    "head": "b687bccbaab2d9d6cc40f748d88090c3690e5a80",
+    "checkout": "7297595d03969d3bdaa8d234f471b43a839c66fd",
+    "run": 40364725921,
+    "artifactUrl": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/40364725921/artifacts/12669454877",
+    "artifact": {
+      "id": 12669454877,
+      "name": "app-debug",
+      "size_in_bytes": 33162380,
+      "url": "https://api.github.com/repos/xedox737/Steuer-Asistend-APP/actions/artifacts/12669454877",
+      "archive_download_url": "https://api.github.com/repos/xedox737/Steuer-Asistend-APP/actions/artifacts/12669454877/zip",
+      "expired": false,
+      "created_at": "2026-10-26T17:16:42Z",
+      "expires_at": "2027-01-24T17:01:36Z",
+      "updated_at": "2026-10-26T17:16:42Z",
+      "digest": "sha256:aff18f6cff01e7b788d3cc820a09c8f944f84954f3c4d83f6021f6530ea7e5a0",
+      "workflow_run": {
+        "id": 40364725921,
+        "repository_id": 1317018956,
+        "head_repository_id": 1317018956,
+        "head_branch": "fix/phase11b-drive-initialization",
+        "head_sha": "b687bccbaab2d9d6cc40f748d88090c3690e5a80"
+      }
+    },
+    "apk": {
+      "status": "AUTOMATISIERT BESTANDEN",
+      "practicalStatus": "NOCH OFFEN",
+      "commit": "7297595d03969d3bdaa8d234f471b43a839c66fd",
+      "ciRunId": "40364725921",
+      "apk": "app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "841d7f7d9e92a21d19c479ddfb91f3983e6b5c8be25c1245b349de9c07bf99cd",
+      "sizeBytes": 34344813,
+      "package": "com.aistudio.steuerassistent.vnhqkp",
+      "label": "Steuer-Assistent Anlage V",
+      "versionCode": "1",
+      "versionName": "1.0",
+      "signatureVerified": true,
+      "signingSha1": "744f9a4426d08662da868f30f92831d73deb5682",
+      "signingSha256": "a5b0d722506eb05ab89da0d637be025beb84751d706964915873804bb85d466c",
+      "signingTool": "/usr/local/lib/android/sdk/build-tools/37.0.0/apksigner",
+      "providerAuthorities": [
+        "com.aistudio.steuerassistent.vnhqkp.provider",
+        "com.aistudio.steuerassistent.vnhqkp.mlkitinitprovider",
+        "com.aistudio.steuerassistent.vnhqkp.firebaseinitprovider",
+        "com.aistudio.steuerassistent.vnhqkp.androidx-startup"
+      ],
+      "components": [
+        {
+          "kind": "activity",
+          "name": "com.example.MainActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "androidx.core.content.FileProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.mlkit.vision.documentscanner.internal.GmsDocumentScanningDelegateActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "androidx.camera.core.impl.MetadataHolderService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.firebase.auth.internal.GenericIdpActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.firebase.auth.internal.RecaptchaActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.firebase.components.ComponentDiscoveryService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "androidx.credentials.playservices.CredentialProviderMetadataHolder",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.credentials.playservices.HiddenActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.android.gms.auth.api.signin.internal.SignInHubActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.android.gms.auth.api.signin.RevocationBoundService",
+          "exported": false,
+          "permission": "com.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION"
+        },
+        {
+          "kind": "service",
+          "name": "com.google.mlkit.common.internal.MlKitComponentDiscoveryService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "com.google.mlkit.common.internal.MlKitInitProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "com.google.firebase.provider.FirebaseInitProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.android.gms.common.api.GoogleApiActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "androidx.room.MultiInstanceInvalidationService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.compose.ui.tooling.PreviewActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "androidx.startup.InitializationProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "receiver",
+          "name": "androidx.profileinstaller.ProfileInstallReceiver",
+          "exported": false,
+          "permission": "android.permission.DUMP"
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.activity.ComponentActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
+          "exported": false,
+          "permission": "android.permission.BIND_JOB_SERVICE"
+        },
+        {
+          "kind": "receiver",
+          "name": "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.android.play.core.common.PlayCoreDialogWrapperActivity",
+          "exported": false,
+          "permission": null
+        }
+      ],
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "com.google.android.providers.gsf.permission.READ_GSERVICES",
+        "com.aistudio.steuerassistent.vnhqkp.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+      ]
+    },
+    "checkoutTreeProof": [
+      {
+        "sha": "7297595d03969d3bdaa8d234f471b43a839c66fd",
+        "tree": "30ada362c5cdcd67f8068ce8103aae7786f5a176",
+        "parents": [
+          "6d58dbac9d9f6d3c1c57c9b14579d5360751879d",
+          "b687bccbaab2d9d6cc40f748d88090c3690e5a80"
+        ]
+      },
+      {
+        "sha": "b687bccbaab2d9d6cc40f748d88090c3690e5a80",
+        "tree": "30ada362c5cdcd67f8068ce8103aae7786f5a176",
+        "parents": [
+          "d53d92930e1909112f861e97f27d0f8989a05e30"
+        ]
+      }
+    ],
+    "runMetadata": {
+      "id": 40364725921,
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "b687bccbaab2d9d6cc40f748d88090c3690e5a80",
+      "event": "pull_request",
+      "run_attempt": 1,
+      "created_at": "2026-10-26T17:01:36Z",
+      "updated_at": "2026-10-26T17:37:18Z"
+    },
+    "jobs": [
+      {
+        "id": 121719210359,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 40364725921,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Verify project files",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Create local debug keystore",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Test public APK certificate evidence parser",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Run lint",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Set up Java 21 for Robolectric",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Run unit tests",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "Verify actual test method execution",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Verify saved Phase 10B portfolio evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Verify repaired Drive portfolio contracts and actual methods",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          },
+          {
+            "name": "Verify actual Issue 145 initialization regression execution",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14
+          },
+          {
+            "name": "Preserve synthetic Phase 10B evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15
+          },
+          {
+            "name": "Restore Java 17 for Android builds",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 16
+          },
+          {
+            "name": "Build debug APK",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17
+          },
+          {
+            "name": "Verify actual APK identity and provider authorities",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Prepare release keystore",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 19
+          },
+          {
+            "name": "Build signed release APK",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 20
+          },
+          {
+            "name": "Upload reports",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 21
+          },
+          {
+            "name": "Upload debug APK",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 22
+          },
+          {
+            "name": "Upload signed release APK",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 23
+          },
+          {
+            "name": "Prepare traceable debug release",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 24
+          },
+          {
+            "name": "Publish current debug APK",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 25
+          },
+          {
+            "name": "Post Restore Java 17 for Android builds",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 46
+          },
+          {
+            "name": "Post Set up Java 21 for Robolectric",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 47
+          },
+          {
+            "name": "Post Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 48
+          },
+          {
+            "name": "Post Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 49
+          },
+          {
+            "name": "Post Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 50
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 51
+          }
+        ]
+      },
+      {
+        "id": 121727698141,
+        "name": "android-emulator-e2e",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 40364725921,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Create local debug keystore",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Build app and instrumentation APKs",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Enable KVM",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Run Android emulator end-to-end tests",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Preserve synthetic Phase 10B emulator execution evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Upload emulator reports and diagnostics",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "Post Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Post Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19
+          },
+          {
+            "name": "Post Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 20
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 21
+          }
+        ]
+      }
+    ]
+  },
+  "test": {
+    "head": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+    "checkout": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+    "run": 40370749483,
+    "artifactUrl": "https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/40370749483/artifacts/12673342726",
+    "artifact": {
+      "id": 12673342726,
+      "name": "app-debug",
+      "size_in_bytes": 33289456,
+      "url": "https://api.github.com/repos/xedox737/Steuer-Asistend-APP/actions/artifacts/12673342726",
+      "archive_download_url": "https://api.github.com/repos/xedox737/Steuer-Asistend-APP/actions/artifacts/12673342726/zip",
+      "expired": false,
+      "created_at": "2026-10-26T18:01:22Z",
+      "expires_at": "2027-01-24T17:40:03Z",
+      "updated_at": "2026-10-26T18:01:22Z",
+      "digest": "sha256:98548e05b8732c60194c694093a1fca237420296aa55149887d5640c67a41abf",
+      "workflow_run": {
+        "id": 40370749483,
+        "repository_id": 1317018956,
+        "head_repository_id": 1317018956,
+        "head_branch": "agent/phase11b-isolated-drive",
+        "head_sha": "f56d0c164262b1af2bd65936cf769b7aef3b0143"
+      }
+    },
+    "apk": {
+      "status": "AUTOMATISIERT BESTANDEN",
+      "practicalStatus": "NOCH OFFEN",
+      "commit": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+      "ciRunId": "40370749483",
+      "apk": "app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "fc10f2c55de520c9e9973b115c2a1e7f905f40cbedb18b63602b57b9275bdd44",
+      "sizeBytes": 34466103,
+      "package": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+      "label": "ImmoPilot Test",
+      "versionCode": "1",
+      "versionName": "1.0",
+      "signatureVerified": true,
+      "signingSha1": "58ef03a59a1c78807b3376041bf5fd8488eb9c4c",
+      "signingSha256": "3ab78ce9c2b7dcc5ca09b3c25a552cc1e6d6049a65f288979827ac2bb8883e44",
+      "signingTool": "/usr/local/lib/android/sdk/build-tools/37.0.0/apksigner",
+      "providerAuthorities": [
+        "com.aistudio.steuerassistent.vnhqkp.phase11a.provider",
+        "com.aistudio.steuerassistent.vnhqkp.phase11a.mlkitinitprovider",
+        "com.aistudio.steuerassistent.vnhqkp.phase11a.firebaseinitprovider",
+        "com.aistudio.steuerassistent.vnhqkp.phase11a.androidx-startup"
+      ],
+      "components": [
+        {
+          "kind": "activity",
+          "name": "com.example.MainActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.firebase.auth.internal.GenericIdpActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.firebase.auth.internal.RecaptchaActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "androidx.core.content.FileProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.mlkit.vision.documentscanner.internal.GmsDocumentScanningDelegateActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "androidx.camera.core.impl.MetadataHolderService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.firebase.components.ComponentDiscoveryService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "androidx.credentials.playservices.CredentialProviderMetadataHolder",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.credentials.playservices.HiddenActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.android.gms.auth.api.signin.internal.SignInHubActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.android.gms.auth.api.signin.RevocationBoundService",
+          "exported": false,
+          "permission": "com.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION"
+        },
+        {
+          "kind": "service",
+          "name": "com.google.mlkit.common.internal.MlKitComponentDiscoveryService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "com.google.mlkit.common.internal.MlKitInitProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "com.google.firebase.provider.FirebaseInitProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.android.gms.common.api.GoogleApiActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "androidx.room.MultiInstanceInvalidationService",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.compose.ui.tooling.PreviewActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "provider",
+          "name": "androidx.startup.InitializationProvider",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "receiver",
+          "name": "androidx.profileinstaller.ProfileInstallReceiver",
+          "exported": false,
+          "permission": "android.permission.DUMP"
+        },
+        {
+          "kind": "activity",
+          "name": "androidx.activity.ComponentActivity",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "service",
+          "name": "com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
+          "exported": false,
+          "permission": "android.permission.BIND_JOB_SERVICE"
+        },
+        {
+          "kind": "receiver",
+          "name": "com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
+          "exported": false,
+          "permission": null
+        },
+        {
+          "kind": "activity",
+          "name": "com.google.android.play.core.common.PlayCoreDialogWrapperActivity",
+          "exported": false,
+          "permission": null
+        }
+      ],
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "com.google.android.providers.gsf.permission.READ_GSERVICES",
+        "com.aistudio.steuerassistent.vnhqkp.phase11a.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+      ]
+    },
+    "packaging": {
+      "status": "AUTOMATISIERT BESTANDEN",
+      "practicalStatus": "NOCH OFFEN",
+      "commit": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+      "ciRunId": "40370749483",
+      "runId": "P11A-2026-10-26-CI-40370749483-1-ui-packaging",
+      "fixtureSha256": "b052a1ae4569196abb791375aa1fa01fe6a636a1d0082820acb576fa497ea638",
+      "debugApkSha256": "fc10f2c55de520c9e9973b115c2a1e7f905f40cbedb18b63602b57b9275bdd44",
+      "releaseApkSha256": "355bc04833b6fdc587e96a6b3208ff2be4ee934284bcdd270368eddb80f876b6",
+      "debugIncludesOriginalFixture": true,
+      "releaseExcludesUiSeedAndAssets": true,
+      "releaseIncludesSharedDriveGuard": true
+    },
+    "runMetadata": {
+      "id": 40370749483,
+      "status": "completed",
+      "conclusion": "success",
+      "head_sha": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+      "event": "push",
+      "run_attempt": 1,
+      "created_at": "2026-10-26T17:40:02Z",
+      "updated_at": "2026-10-26T18:25:56Z"
+    },
+    "jobs": [
+      {
+        "id": 121740521924,
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 40370749483,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Verify project files",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Create local debug keystore",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Verify shared repaired product sources",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Test Phase 11A evidence helpers",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Run lint",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Build debug APK",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "Verify actual isolated APK identity and provider authorities",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Set up Java 21 for Robolectric",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Run unit tests",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          },
+          {
+            "name": "Verify actual test method execution",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14
+          },
+          {
+            "name": "Verify saved Phase 10B portfolio evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 15
+          },
+          {
+            "name": "Verify repaired Drive portfolio contracts and actual methods",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 16
+          },
+          {
+            "name": "Verify Phase 11A snapshot and integrity plumbing",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 17
+          },
+          {
+            "name": "Verify actual Issue 145 initialization regression execution",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 18
+          },
+          {
+            "name": "Preserve synthetic Phase 10B evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 19
+          },
+          {
+            "name": "Restore Java 17 for Android builds",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 20
+          },
+          {
+            "name": "Prepare release keystore",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 21
+          },
+          {
+            "name": "Build signed release APK",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 22
+          },
+          {
+            "name": "Build unsigned release APK for QA when release signing is unavailable",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 23
+          },
+          {
+            "name": "Verify phone-only tools are absent from the actual release APK",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 24
+          },
+          {
+            "name": "Upload reports",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 25
+          },
+          {
+            "name": "Upload debug APK",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 26
+          },
+          {
+            "name": "Upload signed release APK",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 27
+          },
+          {
+            "name": "Prepare traceable debug release",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 28
+          },
+          {
+            "name": "Publish current debug APK",
+            "status": "completed",
+            "conclusion": "skipped",
+            "number": 29
+          },
+          {
+            "name": "Post Restore Java 17 for Android builds",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 54
+          },
+          {
+            "name": "Post Set up Java 21 for Robolectric",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 55
+          },
+          {
+            "name": "Post Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 56
+          },
+          {
+            "name": "Post Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 57
+          },
+          {
+            "name": "Post Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 58
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 59
+          }
+        ]
+      },
+      {
+        "id": 121752053030,
+        "name": "android-emulator-e2e",
+        "status": "completed",
+        "conclusion": "success",
+        "run_id": 40370749483,
+        "logs_url": null,
+        "steps": [
+          {
+            "name": "Set up job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 1
+          },
+          {
+            "name": "Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 2
+          },
+          {
+            "name": "Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 3
+          },
+          {
+            "name": "Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 4
+          },
+          {
+            "name": "Create local debug keystore",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 5
+          },
+          {
+            "name": "Build guarded production-ID reference for parallel sandbox proof",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 6
+          },
+          {
+            "name": "Build app and instrumentation APKs",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 7
+          },
+          {
+            "name": "Inspect isolated and reference APK identities and provider authorities",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 8
+          },
+          {
+            "name": "Upload matched isolated app and QA APKs",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 9
+          },
+          {
+            "name": "Download this run's Phase 10B fixture for QA instrumentation smoke",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 10
+          },
+          {
+            "name": "Enable KVM",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 11
+          },
+          {
+            "name": "Run Android emulator end-to-end tests",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 12
+          },
+          {
+            "name": "Preserve synthetic Phase 10B emulator execution evidence",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 13
+          },
+          {
+            "name": "Upload emulator reports and diagnostics",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 14
+          },
+          {
+            "name": "Post Set up Gradle 9.3.1",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 26
+          },
+          {
+            "name": "Post Set up Java 17",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 27
+          },
+          {
+            "name": "Post Check out repository",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 28
+          },
+          {
+            "name": "Complete job",
+            "status": "completed",
+            "conclusion": "success",
+            "number": 29
+          }
+        ]
+      }
+    ]
+  },
+  "qaFindings": [
+    {
+      "id": "Q11B-01",
+      "priority": "P3",
+      "scope": "QA metadata display only",
+      "runtimeAffected": false,
+      "verifiedApkFields": [
+        "package",
+        "label",
+        "versionName",
+        "versionCode",
+        "sha256",
+        "sizeBytes",
+        "signatureVerified",
+        "signingSha1",
+        "signingSha256",
+        "providerAuthorities"
+      ],
+      "doNotRelyOn": [
+        "components.exported"
+      ],
+      "reason": "Legacy inspector only recognizes hexadecimal true; literal true is misreported as false. Original CI JSON remains unchanged. Correct local raw-manifest evidence is included separately; no CI component flags inferred.",
+      "evidence": "local-final/phase11b-local-manifest-review.json",
+      "recommendation": "Separate QA parser correction; no Drive/app behavior change required"
+    }
+  ]
+}
