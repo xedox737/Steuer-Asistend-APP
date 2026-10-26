@@ -449,3 +449,23 @@ als die herunterladbare verify-APK haben. Für das Telefon gilt der Bericht der
 tatsächlich heruntergeladenen APK. Keine Secrets werden eingecheckt, keine
 Produkt-OAuth-Konfiguration geändert. Bestehende anders signierte Installationen
 nicht durch Datenlöschung ersetzen; getrennte leere Testumgebung vorbereiten.
+
+### Erste Integrations-CI und gezielte Parserkorrektur
+
+CI 40256561773 auf a526dc6 bestand 1.166 JVM-Methoden, 36 Reparaturmethoden,
+27 Phase11A-Methoden, sämtliche Portfolio-/Integritätswächter und Lint. Der Lauf
+scheiterte anschließend im neuen APK-Bericht an der zu engen Erwartung
+`Signer #1 certificate ...`: apksigner selbst verifizierte die Signatur mit
+Exitcode 0, der SHA1-Ausgabematcher lieferte jedoch keinen Treffer. Deshalb kein
+APK-/CI-Erfolg dieses Laufs; Emulator war abhängig übersprungen, nicht bestanden.
+
+Der QA-Parser ist nun gemeinsam für beide APK-Auswerter und akzeptiert
+klassische sowie SDK-bereichsbezogene Signer-Bezeichnungen. Er verlangt für
+SHA1/SHA256 jeweils genau einen eindeutigen, korrekt langen Fingerprint;
+mehrere abweichende oder fehlende Fingerprints bleiben Fehler. Die eigentliche
+Signaturprüfung bleibt Pflicht. Öffentliche apksigner-Ausgabe/Toolpfad werden
+zur Diagnose gesichert. 32 Python-Tests einschließlich Format-/Negativfällen
+sowie echte lokale Test-APK-Inspektion grün. Keine Produkt-/Fachlogikänderung,
+keine Testabschaltung und keine abgeschwächte Signaturprüfung. Die vollständige
+CI wird nach dieser gezielten QA-Korrektur erneut ausgeführt; kein laufender
+Emulatorjob wurde abgebrochen.

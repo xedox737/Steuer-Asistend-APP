@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from apk_signing import certificate_fingerprints
 
 PRODUCTION = "com.aistudio.steuerassistent.vnhqkp"
 TEST = PRODUCTION + ".phase11a"
@@ -67,13 +68,15 @@ def main():
                             text=True, capture_output=True)
     signed = signer.returncode == 0
     assert signed or (args.allow_unsigned and package == PRODUCTION), "APK signature verification failed"
-    certificate = lambda algorithm: (re.search(r"Signer #1 certificate " + algorithm + r" digest: (\S+)", signer.stdout)[1]
-                                     if signed else None)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.with_suffix(".apksigner.txt").write_text(str(aapt.with_name("apksigner")) + "\n" + signer.stdout + signer.stderr)
+    fingerprints = certificate_fingerprints(signer.stdout) if signed else dict(signingSha1=None, signingSha256=None)
     result = dict(status="AUTOMATISIERT BESTANDEN", practicalStatus="NOCH OFFEN",
         commit=os.environ.get("GITHUB_SHA"), ciRunId=os.environ.get("GITHUB_RUN_ID"),
         apk=str(args.apk), sha256=digest.hexdigest(), sizeBytes=args.apk.stat().st_size,
         package=package, label=label, versionCode=version_code, versionName=version_name,
-        signatureVerified=signed, signingSha1=certificate("SHA-1"), signingSha256=certificate("SHA-256"),
+        signatureVerified=signed, signingSha1=fingerprints["signingSha1"], signingSha256=fingerprints["signingSha256"],
+        signingTool=str(aapt.with_name("apksigner")),
         providerAuthorities=authorities, components=components,
         permissions=re.findall(r"^uses-permission: name='([^']+)'", badging, re.M))
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from apk_signing import certificate_fingerprints
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
@@ -52,8 +53,7 @@ def inspect(path):
         allowBackup=app.get(ANDROID + "allowBackup"), providers=providers, components=components,
         permissions=[p.get(ANDROID + "name") for p in manifest.findall("uses-permission")],
         declaredPermissions=[p.get(ANDROID + "name") for p in manifest.findall("permission")],
-        signingSha1=re.search(r"Signer #1 certificate SHA-1 digest: (\S+)", certificates)[1],
-        signingSha256=re.search(r"Signer #1 certificate SHA-256 digest: (\S+)", certificates)[1])
+        **certificate_fingerprints(certificates))
 
 
 def main():
