@@ -18,14 +18,18 @@ if emulator:
                    {root / "emulator-e2e" / name for name in ("result.txt", "device-environment.txt", "logcat-crash.txt")})
 else:
     paths = sorted(set(root.glob("reports/phase10b/**/*")) | set(root.glob("test-results/testDebugUnitTest/*.xml")) |
-                   set(root.glob("reports/phase10d/*.json")))
+                   set(root.glob("reports/phase10d/*.json")) | set(root.glob("reports/e11a03-repair/*.json")))
 files = [p for p in paths if p.is_file()]
 totals = dict(tests=0, failures=0, errors=0, skipped=0)
 suites = []
 for p in files:
     if p.suffix == ".xml":
         e = ET.parse(p).getroot()
-        row = dict(name=e.get("name"), **{k: int(e.get(k, 0)) for k in totals})
+        cases = list(e.iter("testcase"))
+        row = dict(name=e.get("name") or p.name, tests=len(cases),
+                   failures=sum(c.find("failure") is not None for c in cases),
+                   errors=sum(c.find("error") is not None for c in cases),
+                   skipped=sum(c.find("skipped") is not None for c in cases))
         suites.append(row)
         for k in totals:
             totals[k] += row[k]

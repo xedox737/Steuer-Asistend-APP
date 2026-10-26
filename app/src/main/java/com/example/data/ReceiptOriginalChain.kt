@@ -44,6 +44,9 @@ internal object ReceiptOriginalChain {
             put("driveFileId", document.driveFileId ?: JSONObject.NULL)
             put("driveFolderId", document.driveFolderId ?: JSONObject.NULL)
             put("createdAt", document.createdAt); put("updatedAt", document.updatedAt); put("order", order)
+            // Preserve the authored JSON verbatim. Reconstructing a rank-only blob changes
+            // reviewed fields during the later supplemental merge, even for a single page.
+            put("extractedFieldsJson", document.extractedFieldsJson)
         }) }
     }
 
@@ -61,7 +64,9 @@ internal object ReceiptOriginalChain {
                 driveFolderId = if (item.isNull("driveFolderId")) null else item.optString("driveFolderId").takeIf(String::isNotBlank),
                 createdAt = item.optString("createdAt"), updatedAt = item.optString("updatedAt"),
                 source = DocumentSource.RECEIPT.name, documentType = ManagedDocumentType.RECHNUNG.name,
-                extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", item.optInt("order", index)).toString())
+                extractedFieldsJson = if (item.has("extractedFieldsJson") && !item.isNull("extractedFieldsJson"))
+                    item.getString("extractedFieldsJson")
+                else JSONObject().put("_receiptOriginalOrder", item.optInt("order", index)).toString())
         }.also { documents ->
             require(documents.map { it.documentId }.distinct().size == documents.size) { "Doppelte Originalanhang-ID in der Sicherung." }
         }

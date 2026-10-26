@@ -272,7 +272,14 @@ class Phase10BPortfolioAcceptanceTest {
             assertNotNull(drive.upsertReceiptMetadata("test-token", config, r))
             index.getJSONArray("entries").put(JSONObject().put("internalId", r.internalId).put("displayId", r.displayId)
                 .put("metadataFileId", "meta-${r.internalId}").put("mainDriveFileId", r.driveFileId.orEmpty())
-                .put("bruttobetragCent", ReceiptMoney.toCent(r.bruttobetrag)).put("syncStatus", "SYNCED"))
+                .put("bruttobetragCent", ReceiptMoney.toCent(r.bruttobetrag)).put("syncStatus", "SYNCED")
+                .put("datum", r.datum).put("unterkategorie", r.unterkategorie).apply {
+                    // The real writer now emits an explicit, bound proof for fileless trips.
+                    // The synthetic index must carry the same proof as its actual metadata.
+                    val metadata = JSONObject(fake.json("meta-${r.internalId}"))
+                    if (metadata.has("filelessLogbookEvidence"))
+                        put("filelessLogbookEvidence", metadata.getJSONObject("filelessLogbookEvidence"))
+                })
         }
         fake.putJson("index", "system", "receiptIndex", index.toString())
         val payload = SupplementalDriveBackup.createPayload(context, db)

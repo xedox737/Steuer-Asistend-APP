@@ -1,5 +1,7 @@
 package com.example.data
 
+import com.example.api.DriveEnvironment
+
 import android.content.Context
 import com.example.api.DriveFileResult
 import com.example.api.DriveManagedFile
@@ -134,7 +136,7 @@ class GoogleManagedDocumentDriveGateway(private val context: Context) : ManagedD
                 filename,
                 json,
                 mapOf(
-                    "appName" to "ImmobilienBelegApp",
+                    "appName" to DriveEnvironment.appIdentifier,
                     "entityType" to entityType,
                     "schemaVersion" to "1"
                 )
