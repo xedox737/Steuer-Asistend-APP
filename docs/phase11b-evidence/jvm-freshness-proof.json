@@ -1,0 +1,34 @@
+{
+  "verification": "FRESH_EXECUTION_NOT_CACHE_REPLAY",
+  "workingTreeBase": "377934d10aaeb391093a4ec533d920ef120ee1d0",
+  "workingTreeChanges": "Final testDebugUnitTest freshness policy and QA documentation, not yet committed at execution",
+  "identity": {
+    "GITHUB_SHA": "377934d10aaeb391093a4ec533d920ef120ee1d0",
+    "GITHUB_RUN_ID": "LOCAL-PHASE7B-EVIDENCE-FRESH-B",
+    "GITHUB_RUN_ATTEMPT": "1"
+  },
+  "actualUniqueMethods": 1156,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "phase7BComposeMethods": 5,
+  "repairMethods": 36,
+  "initializationMethods": 17,
+  "sdk": 36,
+  "originalHashesMatched": 60,
+  "fullRestoreErrors": 0,
+  "mergeErrors": 0,
+  "requiredSnapshots": [
+    "phase10b/units-17/comparison-summary.json",
+    "phase10b/units-21/comparison-summary.json",
+    "e11a03-repair/before-fresh-full-backed.json",
+    "e11a03-repair/after-fresh-full-and-two-merges.json"
+  ],
+  "testTaskAlwaysFresh": true,
+  "compilerApkCachesUnchanged": true,
+  "cacheReplayPassed": false,
+  "productSourceTree": "1583d5338c5e9b058d7c8dc0e90524f469526b23",
+  "logSha256": "189750d1c9a09ef24f4d881385b381e5d1f1740518292d3e2d7cc88cade3b4bd",
+  "nativeExecution": "NOT RUN LOCALLY: no KVM; pending GitHub CI",
+  "realDriveStatus": "NOCH OFFEN"
+}

@@ -1,0 +1,17 @@
+{
+  "sourceMain": "12db374c7a5052af390fb6aa7edfde775f798092",
+  "ciRunId": 40385709353,
+  "jobId": 121800734809,
+  "transport": {
+    "sha256": "775e3e9cdc6467c3e22121d511e9940230e9ee748af62aeca5fee7608afb1874",
+    "bytes": 4874
+  },
+  "junitSha256": "105ddf92db0b47ac48aef08cbbdda15ad1b5d564075006525473dab311eaa8de",
+  "tests": 70,
+  "failures": 1,
+  "errors": 0,
+  "skips": 0,
+  "observed": "No semantics node with rent_batch_select_p7b-rent-unit at the assertion after reopen; not an enabled existing checkbox",
+  "scope": "Synthetic Android emulator API35, fontScale1.0",
+  "practicalStatus": "NOCH OFFEN"
+}
