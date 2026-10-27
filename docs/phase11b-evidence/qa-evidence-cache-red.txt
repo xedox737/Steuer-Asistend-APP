@@ -1,0 +1,12 @@
+Source workflow: https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/40423995752
+Source job: 121925102818
+PR head: 377934d10aaeb391093a4ec533d920ef120ee1d0
+PR checkout: 6a874e34d67d122c86737a7d1afb67d406b93f3a
+Classification: cache/evidence contract failure; cached XML is NOT a fresh test execution in this run.
+Native emulator job was skipped because verify failed; not counted as passed.
+Raw relevant log lines:
+2026-10-27T00:05:50.7094577Z > Task :app:testDebugUnitTest FROM-CACHE
+2026-10-27T00:05:50.7754380Z BUILD SUCCESSFUL in 16s
+2026-10-27T00:05:51.0788407Z FileNotFoundError: [Errno 2] No such file or directory: 'app/build/reports/phase10b/units-17/comparison-summary.json'
+2026-10-27T00:05:51.1614970Z Repair evidence invalid: [Errno 2] No such file or directory: 'app/build/reports/e11a03-repair/before-fresh-full-backed.json'
+2026-10-27T00:05:51.4233782Z PHASE10B_TEST_TOTALS {"tests": 1156, "failures": 0, "errors": 0, "skipped": 0}

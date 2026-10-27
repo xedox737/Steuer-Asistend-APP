@@ -1,0 +1,15 @@
+LOCAL SYNTHETIC QA EXPERIMENT — NOT PASSED AS CACHE RESTORATION
+Working-tree base: 377934d10aaeb391093a4ec533d920ef120ee1d0
+Fresh run A completed: 1156 actual unique methods, 0 failures/errors/skips, 24m19s.
+333 generated snapshot/XML files were captured and moved aside reversibly.
+Same-identity replay did not report FROM-CACHE and started test workers.
+That local replay experiment was stopped (exit130); no complete test result or cache-restoration success is claimed.
+A separate single existing control method was executed with Gradle --info for diagnosis; it passed.
+Its cache diagnostic below was observed after the stopped probe; it does not prove the origin of the earlier CI cache entry.
+Final solution deliberately forces only testDebugUnitTest to execute freshly; compiler/APK caching remains enabled.
+No real Android device, user account, production data or application stores were used.
+Raw relevant diagnostic lines:
+Caching disabled for task ':app:testDebugUnitTest' because:
+  Gradle does not know how file 'build/reports/phase10b/reviewed-document/supplemental-backup.json' was created (output property '$1$1'). Task output caching requires exclusive access to output paths to guarantee correctness (i.e. multiple tasks are not allowed to produce output in the same location).
+Task ':app:testDebugUnitTest' is not up-to-date because:
+  Value of input property 'filter.commandLineIncludePatterns' has changed for task ':app:testDebugUnitTest'

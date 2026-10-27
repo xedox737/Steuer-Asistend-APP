@@ -78,6 +78,16 @@ tasks.withType<Test>().configureEach {
   forkEvery = 1
   maxParallelForks = 2
   testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+  if (name == "testDebugUnitTest") {
+    // Snapshots contain this run's identity, not just test-class results.
+    listOf("GITHUB_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT").forEach { key ->
+      inputs.property("qaEvidence.$key", providers.environmentVariable(key).orElse("LOCAL"))
+    }
+    // Acceptance fixtures write run-bound snapshots outside JUnit reports.
+    // Only this test task must execute; compiler/APK caching stays enabled.
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Versioned acceptance evidence requires fresh test execution") { true }
+  }
 }
 
 secrets {
