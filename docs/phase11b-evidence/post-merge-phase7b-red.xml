@@ -1,0 +1,400 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="70" failures="1" errors="0" skipped="0" time="806.464" timestamp="2026-10-26T19:54:14" hostname="localhost">
+  <testsuite name="com.example.ExampleInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.025" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="useAppContext" classname="com.example.ExampleInstrumentedTest" time="0.025" />
+  </testsuite>
+  <testsuite name="com.example.e2e.AppDateCalendarFont100Test" tests="1" failures="0" errors="0" skipped="0" time="34.834" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="receiptCalendarManualValidationCancelBackAndPersistence" classname="com.example.e2e.AppDateCalendarFont100Test" time="34.834" />
+  </testsuite>
+  <testsuite name="com.example.e2e.AppDateCalendarFont130Test" tests="1" failures="0" errors="0" skipped="0" time="23.256" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="receiptCalendarManualValidationCancelBackAndPersistence" classname="com.example.e2e.AppDateCalendarFont130Test" time="23.256" />
+  </testsuite>
+  <testsuite name="com.example.e2e.AppDateCalendarFont150Test" tests="1" failures="0" errors="0" skipped="0" time="25.827" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="receiptCalendarManualValidationCancelBackAndPersistence" classname="com.example.e2e.AppDateCalendarFont150Test" time="25.827" />
+  </testsuite>
+  <testsuite name="com.example.e2e.AppDateDisplayEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="10.349" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="persistedIsoDatesAppearGermanInAfaTenancyAndTasks" classname="com.example.e2e.AppDateDisplayEmulatorTest" time="10.349" />
+  </testsuite>
+  <testsuite name="com.example.e2e.AppDatePersistenceEmulatorTest" tests="2" failures="0" errors="0" skipped="0" time="36.46" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="tripDateCalendarSurvivesFreshActivityWithoutLosingTripOrReceipt" classname="com.example.e2e.AppDatePersistenceEmulatorTest" time="20.004" />
+    <testcase name="purchaseAndTransferCalendarsPersistWithoutChangingTaxBasis" classname="com.example.e2e.AppDatePersistenceEmulatorTest" time="16.456" />
+  </testsuite>
+  <testsuite name="com.example.e2e.DatevCsvEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="4.279" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="csvSelectedInRealWizardCreatesReadableCsvInsteadOfZip" classname="com.example.e2e.DatevCsvEmulatorTest" time="4.279" />
+  </testsuite>
+  <testsuite name="com.example.e2e.FinancialFilterEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="5.296" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="propertyFilterKeepsReceiptAndConfirmedBankRentRowsConsistentWithMetrics" classname="com.example.e2e.FinancialFilterEmulatorTest" time="5.296" />
+  </testsuite>
+  <testsuite name="com.example.e2e.FontScaleEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="6.96" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realLargeFontKeepsDashboardDatevEntryAndPrimaryNavigationUsable" classname="com.example.e2e.FontScaleEmulatorTest" time="6.96" />
+  </testsuite>
+  <testsuite name="com.example.e2e.ImmoPilotEmulatorSmokeTest" tests="1" failures="0" errors="0" skipped="0" time="4.485" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="appStartsWithDashboardAndAllFivePrimaryDestinationsAreUsable" classname="com.example.e2e.ImmoPilotEmulatorSmokeTest" time="4.485" />
+  </testsuite>
+  <testsuite name="com.example.e2e.LoanDateComponentEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="10.658" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="productionLoanEditorShowsGermanDatesAndCalendarPersistsIso" classname="com.example.e2e.LoanDateComponentEmulatorTest" time="10.658" />
+  </testsuite>
+  <testsuite name="com.example.e2e.NavigationBackstackEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="3.549" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="realSystemBackAndAppArrowReturnFromUnitDetailToUnitsBeforeProperty" classname="com.example.e2e.NavigationBackstackEmulatorTest" time="3.549" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase10AIdentity10EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="4.16" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="commaNamePrecisionAndRelationsSurviveRenameReopenAndRecreate" classname="com.example.e2e.Phase10AIdentity10EmulatorTest" time="4.16" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase10AIdentity13EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="6.291" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="commaNamePrecisionAndRelationsSurviveRenameReopenAndRecreate" classname="com.example.e2e.Phase10AIdentity13EmulatorTest" time="6.291" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase10AIdentity15EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="6.784" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="commaNamePrecisionAndRelationsSurviveRenameReopenAndRecreate" classname="com.example.e2e.Phase10AIdentity15EmulatorTest" time="6.784" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase6AConsistencyEmulatorTest" tests="3" failures="0" errors="0" skipped="0" time="18.571" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="mw01UnitChangeSurvivesSaveReopenRecreationAndCancelBackPaths" classname="com.example.e2e.Phase6AConsistencyEmulatorTest" time="8.254" />
+    <testcase name="mw04PrivateLinkedBankPaymentUpdatesFinancialViewAndResetCountsOnce" classname="com.example.e2e.Phase6AConsistencyEmulatorTest" time="5.825" />
+    <testcase name="mw02ApprovedGeneralReceiptPropertyChangeVisiblyRequiresNewApproval" classname="com.example.e2e.Phase6AConsistencyEmulatorTest" time="4.492" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase6BFontScale10EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="5.616" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="fullScreenMatrixPreservesWordsButtonsAndBackNavigation" classname="com.example.e2e.Phase6BFontScale10EmulatorTest" time="5.616" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase6BFontScale13EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="7.767" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="fullScreenMatrixPreservesWordsButtonsAndBackNavigation" classname="com.example.e2e.Phase6BFontScale13EmulatorTest" time="7.767" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase6BFontScale15EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="7.901" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="fullScreenMatrixPreservesWordsButtonsAndBackNavigation" classname="com.example.e2e.Phase6BFontScale15EmulatorTest" time="7.901" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase6BWorkflowEmulatorTest" tests="2" failures="0" errors="0" skipped="0" time="30.181" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="globalReceiptSelectsObjectAndStableUnitThenSurvivesReopen" classname="com.example.e2e.Phase6BWorkflowEmulatorTest" time="9.459" />
+    <testcase name="realMeasureCreationReceiptAssignmentAdvisorMarkAndBackNavigation" classname="com.example.e2e.Phase6BWorkflowEmulatorTest" time="20.722" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7AIncomeEmulatorTest" tests="2" failures="0" errors="0" skipped="0" time="13.031" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="originalPropertyRetainsExistingLegacyLoanOwnershipRule" classname="com.example.e2e.Phase7AIncomeEmulatorTest" time="4.69" />
+    <testcase name="bankConfirmationWithoutReceiptOrSplitFlowsIntoSameFilteredListAndMetrics" classname="com.example.e2e.Phase7AIncomeEmulatorTest" time="8.341" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7ALoan10EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="23.869" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="activeObjectFinancingPreservesEditBackPersistenceAndObjectIsolation" classname="com.example.e2e.Phase7ALoan10EmulatorTest" time="23.869" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7ALoan13EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="26.438" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="activeObjectFinancingPreservesEditBackPersistenceAndObjectIsolation" classname="com.example.e2e.Phase7ALoan13EmulatorTest" time="26.438" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7ALoan15EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="29.226" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="activeObjectFinancingPreservesEditBackPersistenceAndObjectIsolation" classname="com.example.e2e.Phase7ALoan15EmulatorTest" time="29.226" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7BBatch10EmulatorTest" tests="1" failures="1" errors="0" skipped="0" time="21.467" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="twentyUnitsKeepValuesWhileScrollingAndProtectExistingContracts" classname="com.example.e2e.Phase7BBatch10EmulatorTest" time="21.467">
+      <failure>java.lang.AssertionError: Failed to assert the following: (is not enabled)
+Reason: Expected exactly '1' node but could not find any node that satisfies: (TestTag = 'rent_batch_select_p7b-rent-unit')
+
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+at androidx.compose.ui.test.AssertionsKt.assert(Assertions.kt:263)
+at androidx.compose.ui.test.AssertionsKt.assert$default(Assertions.kt:255)
+at androidx.compose.ui.test.AssertionsKt.assertIsNotEnabled(Assertions.kt:63)
+at com.example.e2e.Phase7BBatchMatrix.twentyUnitsKeepValuesWhileScrollingAndProtectExistingContracts(Phase7BWorkflowEmulatorTest.kt:140)
+</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7BBatch13EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="22.502" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="twentyUnitsKeepValuesWhileScrollingAndProtectExistingContracts" classname="com.example.e2e.Phase7BBatch13EmulatorTest" time="22.502" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7BBatch15EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="22.094" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="twentyUnitsKeepValuesWhileScrollingAndProtectExistingContracts" classname="com.example.e2e.Phase7BBatch15EmulatorTest" time="22.094" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7BLoanNumbersEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="15.953" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="existingLoanNumbersRoundTripWithoutChangingAnyValue" classname="com.example.e2e.Phase7BLoanNumbersEmulatorTest" time="15.953" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase7BObjectLedgerEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="11.39" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="objectPaymentFlowUsesSharedEntriesAndReturnsFromReceiptAndBankToSameObject" classname="com.example.e2e.Phase7BObjectLedgerEmulatorTest" time="11.39" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase8ALoan10EmulatorTest" tests="4" failures="0" errors="0" skipped="0" time="53.173" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="invalidDraftCannotPersistThenRepairReopenRecreateAndNewActivityKeepValues" classname="com.example.e2e.Phase8ALoan10EmulatorTest" time="37.132" />
+    <testcase name="nanModelFixtureRendersRepairableWithoutSqliteConvertingNanToNull" classname="com.example.e2e.Phase8ALoan10EmulatorTest" time="5.291" />
+    <testcase name="immediatePasteAndSaveValidateCurrentTextBeforeRecomposition" classname="com.example.e2e.Phase8ALoan10EmulatorTest" time="3.019" />
+    <testcase name="restoredInfinityOpensWithoutCrashAndCanBeCancelledOrRepaired" classname="com.example.e2e.Phase8ALoan10EmulatorTest" time="7.731" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase8ALoan13EmulatorTest" tests="4" failures="0" errors="0" skipped="0" time="57.693" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="invalidDraftCannotPersistThenRepairReopenRecreateAndNewActivityKeepValues" classname="com.example.e2e.Phase8ALoan13EmulatorTest" time="40.26" />
+    <testcase name="nanModelFixtureRendersRepairableWithoutSqliteConvertingNanToNull" classname="com.example.e2e.Phase8ALoan13EmulatorTest" time="5.482" />
+    <testcase name="immediatePasteAndSaveValidateCurrentTextBeforeRecomposition" classname="com.example.e2e.Phase8ALoan13EmulatorTest" time="3.495" />
+    <testcase name="restoredInfinityOpensWithoutCrashAndCanBeCancelledOrRepaired" classname="com.example.e2e.Phase8ALoan13EmulatorTest" time="8.456" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase8ALoan15EmulatorTest" tests="4" failures="0" errors="0" skipped="0" time="64.83" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="invalidDraftCannotPersistThenRepairReopenRecreateAndNewActivityKeepValues" classname="com.example.e2e.Phase8ALoan15EmulatorTest" time="43.541" />
+    <testcase name="nanModelFixtureRendersRepairableWithoutSqliteConvertingNanToNull" classname="com.example.e2e.Phase8ALoan15EmulatorTest" time="7.136" />
+    <testcase name="immediatePasteAndSaveValidateCurrentTextBeforeRecomposition" classname="com.example.e2e.Phase8ALoan15EmulatorTest" time="4.415" />
+    <testcase name="restoredInfinityOpensWithoutCrashAndCanBeCancelledOrRepaired" classname="com.example.e2e.Phase8ALoan15EmulatorTest" time="9.738" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase8BHistory10EmulatorTest" tests="2" failures="0" errors="0" skipped="0" time="11.454" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="vacantUnitLastBankPaymentSurvivesRecreateAndCurrentTenantKeepsMonthlyDedup" classname="com.example.e2e.Phase8BHistory10EmulatorTest" time="5.86" />
+    <testcase name="datevPreviewAndCompleteHistoryUseGermanStatusAndBothBackPathsKeepAudits" classname="com.example.e2e.Phase8BHistory10EmulatorTest" time="5.594" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase8BHistory13EmulatorTest" tests="2" failures="0" errors="0" skipped="0" time="13.109" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="vacantUnitLastBankPaymentSurvivesRecreateAndCurrentTenantKeepsMonthlyDedup" classname="com.example.e2e.Phase8BHistory13EmulatorTest" time="6.277" />
+    <testcase name="datevPreviewAndCompleteHistoryUseGermanStatusAndBothBackPathsKeepAudits" classname="com.example.e2e.Phase8BHistory13EmulatorTest" time="6.832" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase8BHistory15EmulatorTest" tests="2" failures="0" errors="0" skipped="0" time="14.069" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="vacantUnitLastBankPaymentSurvivesRecreateAndCurrentTenantKeepsMonthlyDedup" classname="com.example.e2e.Phase8BHistory15EmulatorTest" time="7.248" />
+    <testcase name="datevPreviewAndCompleteHistoryUseGermanStatusAndBothBackPathsKeepAudits" classname="com.example.e2e.Phase8BHistory15EmulatorTest" time="6.821" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9ADataPreservationEmulatorTest" tests="3" failures="0" errors="0" skipped="0" time="14.831" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="overflowingNewPositionIsRejectedAndExistingReceiptReopensWithBothPositions" classname="com.example.e2e.Phase9ADataPreservationEmulatorTest" time="8.614" />
+    <testcase name="openingDamagedHistoryShowsRepairStateAndDoesNotMutateRawData" classname="com.example.e2e.Phase9ADataPreservationEmulatorTest" time="3.235" />
+    <testcase name="restoredReceiptOpensInOriginalPropertyAndRetainsIndependentUnitAndAuditFields" classname="com.example.e2e.Phase9ADataPreservationEmulatorTest" time="2.982" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9BNumber10EmulatorTest" tests="3" failures="0" errors="0" skipped="0" time="22.486" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="wizardAndDocumentRejectExtremeOrMalformedRawNumbersBeforeMutation" classname="com.example.e2e.Phase9BNumber10EmulatorTest" time="11.394" />
+    <testcase name="bankAndAfaUseSharedGrammarWithoutClosingOnInvalidInputAndErrorsFit" classname="com.example.e2e.Phase9BNumber10EmulatorTest" time="6.465" />
+    <testcase name="logbookRetainsInvalidMinusThenOdometerThousandsSaveAndReopenConsistently" classname="com.example.e2e.Phase9BNumber10EmulatorTest" time="4.627" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9BNumber13EmulatorTest" tests="3" failures="0" errors="0" skipped="0" time="27.366" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="wizardAndDocumentRejectExtremeOrMalformedRawNumbersBeforeMutation" classname="com.example.e2e.Phase9BNumber13EmulatorTest" time="13.273" />
+    <testcase name="bankAndAfaUseSharedGrammarWithoutClosingOnInvalidInputAndErrorsFit" classname="com.example.e2e.Phase9BNumber13EmulatorTest" time="8.045" />
+    <testcase name="logbookRetainsInvalidMinusThenOdometerThousandsSaveAndReopenConsistently" classname="com.example.e2e.Phase9BNumber13EmulatorTest" time="6.048" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9BNumber15EmulatorTest" tests="3" failures="0" errors="0" skipped="0" time="27.44" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="wizardAndDocumentRejectExtremeOrMalformedRawNumbersBeforeMutation" classname="com.example.e2e.Phase9BNumber15EmulatorTest" time="12.551" />
+    <testcase name="bankAndAfaUseSharedGrammarWithoutClosingOnInvalidInputAndErrorsFit" classname="com.example.e2e.Phase9BNumber15EmulatorTest" time="8.616" />
+    <testcase name="logbookRetainsInvalidMinusThenOdometerThousandsSaveAndReopenConsistently" classname="com.example.e2e.Phase9BNumber15EmulatorTest" time="6.273" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9CRentArrearsEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="5.527" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="overpaidUnitCannotHideUnpaidUnitAfterRecreate" classname="com.example.e2e.Phase9CRentArrearsEmulatorTest" time="5.527" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9DAfa10EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="4.795" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="signedBasisAndRemainingCutoffYearSurviveRecreateAndBothBackActions" classname="com.example.e2e.Phase9DAfa10EmulatorTest" time="4.795" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9DAfa13EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="7.022" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="signedBasisAndRemainingCutoffYearSurviveRecreateAndBothBackActions" classname="com.example.e2e.Phase9DAfa13EmulatorTest" time="7.022" />
+  </testsuite>
+  <testsuite name="com.example.e2e.Phase9DAfa15EmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="6.512" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="signedBasisAndRemainingCutoffYearSurviveRecreateAndBothBackActions" classname="com.example.e2e.Phase9DAfa15EmulatorTest" time="6.512" />
+  </testsuite>
+  <testsuite name="com.example.e2e.PropertyPersistenceEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="19.679" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="propertyAndUnitCreatedWithGermanNumbersSurviveRecreationAndFreshActivity" classname="com.example.e2e.PropertyPersistenceEmulatorTest" time="19.679" />
+  </testsuite>
+  <testsuite name="com.example.e2e.TenantChronologyEmulatorTest" tests="1" failures="0" errors="0" skipped="0" time="13.575" timestamp="2026-10-26T19:54:14" hostname="localhost">
+    <properties>
+      <property name="device" value="emulator-5554 - 15" />
+      <property name="flavor" value="" />
+      <property name="project" value=":app" />
+    </properties>
+    <testcase name="impossibleContractEndIsBlockedAndValidTenantChangeIsPersisted" classname="com.example.e2e.TenantChronologyEmulatorTest" time="13.575" />
+  </testsuite>
+</testsuites>

@@ -136,6 +136,9 @@ abstract class Phase7BBatchMatrix : EmulatorTestSupport() {
         assertEquals(first, model.wohneinheitenStatus.value.first().unitId)
         assertEquals(760.5, model.wohneinheitenStatus.value.first().kaltmiete, .001)
         assertEquals("", model.wohneinheitenStatus.value.last().mieter)
+        // The IO save publishes units before the UI coroutine dismisses the preview.
+        // Reopen only after that dialog has actually left the composition.
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("rent_batch_rows").fetchSemanticsNodes().isEmpty() }
         ui.onNodeWithTag("rent_batch_open").performClick()
         ui.onNodeWithTag("rent_batch_select_$first").assertIsNotEnabled()
         field("tenant", first).assertDoesNotExist()
