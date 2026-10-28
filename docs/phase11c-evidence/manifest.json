@@ -1,0 +1,322 @@
+{
+  "README.md": {
+    "bytes": 3570,
+    "sha256": "2ff20ac4871d7d72a920fc77f5656423a1f9cd77dbba6ab17e342d5429a8aaf0"
+  },
+  "after-fix-22-sdk35.txt": {
+    "bytes": 12371,
+    "sha256": "1169211643c296016255b949fceb026f3c19b362ab699db9bd671089bf9c5fdc"
+  },
+  "after-fix-23-sdk35-with-compose-compile.txt": {
+    "bytes": 7491,
+    "sha256": "fbefcc81026826de1253f1cbc946ce6238688214d6b2bd8b347e6d18d4aa636d"
+  },
+  "android-build-gradle-blocked.txt": {
+    "bytes": 662,
+    "sha256": "9af91af7c92de8231104506f4b10deb15984fdb5e865d7a1a9554433fdb5a473"
+  },
+  "before-fix-direct-sdk35.txt": {
+    "bytes": 6820,
+    "sha256": "33bfdfc69514711a3863b46808fa677d2e77d5930125765e43874e512053375b"
+  },
+  "before-fix-pinned-base-reproduction-sdk35.txt": {
+    "bytes": 7442,
+    "sha256": "d3744f567bc8a1f64ffd2e22f6b59a4d7353477df12812c285c5b7aaf80214d5"
+  },
+  "before-fix-recompiled-main-sdk35.txt": {
+    "bytes": 6920,
+    "sha256": "60087cf9a2f3b313f7a7dac759c5d87bd56a4f634637e71f26fcf13b55676b69"
+  },
+  "direct-sdk35/com.example.api.ProductionDriveNamespaceTest.log": {
+    "bytes": 990,
+    "sha256": "a437b69a8b17d6b273653447ff992df4601f239e6154b36df76ae8d652f3a413"
+  },
+  "direct-sdk35/com.example.api.ProductionDriveNamespaceTest.xml": {
+    "bytes": 2134,
+    "sha256": "bb63a1891863d088c505c28c6133ecadf58b39fb18c0b958a786429373b4f704"
+  },
+  "direct-sdk35/com.example.comparison.ReceiptSyncPreservationE2ETest.log": {
+    "bytes": 403,
+    "sha256": "8d153591090921d07f141829af3da39252378e80a7728d347c60dbe954d6701c"
+  },
+  "direct-sdk35/com.example.comparison.ReceiptSyncPreservationE2ETest.xml": {
+    "bytes": 872,
+    "sha256": "ccba420e55a24142c8e0908ba3182e4c454fcba369f839025b95f9e3f3a764f7"
+  },
+  "direct-sdk35/com.example.data.DrivePersistenceManagedDocumentE2eTest.log": {
+    "bytes": 973,
+    "sha256": "d25a7a0ecea46e3cb1b60667363390381618df0927c944b3c5ada88f67c196f2"
+  },
+  "direct-sdk35/com.example.data.DrivePersistenceManagedDocumentE2eTest.xml": {
+    "bytes": 1950,
+    "sha256": "516eaefb84d7f256f8f262c9fa4f953659f3940d79843102ae71e70d8282ef26"
+  },
+  "direct-sdk35/com.example.data.DriveSyncFailurePolicyTest.log": {
+    "bytes": 259,
+    "sha256": "51baccd45d3ce848b0fe8530f64abbf04626bfd4a2141ff9f9048fabc7e681ae"
+  },
+  "direct-sdk35/com.example.data.DriveSyncFailurePolicyTest.xml": {
+    "bytes": 757,
+    "sha256": "b05077457b54093c8d43ff7236b2ba34a99e4158f1eb8578f5d0b13e378b5af8"
+  },
+  "direct-sdk35/com.example.data.FilelessLogbookContractTest.log": {
+    "bytes": 414,
+    "sha256": "2b3de82f3a85461f863de3be857a5a9ff61d42dc44068b597a008e8c457bdc6a"
+  },
+  "direct-sdk35/com.example.data.FilelessLogbookContractTest.xml": {
+    "bytes": 918,
+    "sha256": "382d3784777c5270bfd5d8d372fe4cd77a74f8ce74b0db4cfd00c39570e5bde5"
+  },
+  "direct-sdk35/com.example.data.Phase10ADriveRoundTripTest.log": {
+    "bytes": 178,
+    "sha256": "63730d0ac82fa72711732793ef1547ef985bff32ee55c4127d11a5a072cbf425"
+  },
+  "direct-sdk35/com.example.data.Phase10ADriveRoundTripTest.xml": {
+    "bytes": 233,
+    "sha256": "05a4cd1bb5ef827267f1c1e931a592a9dfdefe8d00119a4c39653ab457597b6a"
+  },
+  "direct-sdk35/com.example.data.Phase10BPortfolioAcceptanceTest.log": {
+    "bytes": 1149,
+    "sha256": "1f591e05af245be36f496f9925793d7c211693b6c2d1995949d5c0d17ef6ba4c"
+  },
+  "direct-sdk35/com.example.data.Phase10BPortfolioAcceptanceTest.xml": {
+    "bytes": 683,
+    "sha256": "dda4c9b5b13246edeb8b2d0ca556f8600969e66f939320b7aad2c585896412e0"
+  },
+  "direct-sdk35/com.example.data.ReceiptDocumentIntegrityAuditTest.log": {
+    "bytes": 155,
+    "sha256": "09f85c302b639647bead85dccd0f2bbdb1161cb2b0e0e0eeb176ec9aedadc1a0"
+  },
+  "direct-sdk35/com.example.data.ReceiptDocumentIntegrityAuditTest.xml": {
+    "bytes": 351,
+    "sha256": "cad79d8549c960cef28f6d972c7e2e133a23b865c2d2aa104e9eafb12a5f20ed"
+  },
+  "direct-sdk35/com.example.data.ReceiptDocumentSyncStateTest.log": {
+    "bytes": 348,
+    "sha256": "bc7482c997295ebc2c6586c71aaaa789739804b4aef4e93b455edb4f665ce926"
+  },
+  "direct-sdk35/com.example.data.ReceiptDocumentSyncStateTest.xml": {
+    "bytes": 858,
+    "sha256": "a3e632cade45830dc6cfb7bd006bf94e172f025001b3d83a06c1cab5116a89e8"
+  },
+  "direct-sdk35/com.example.data.ReceiptOriginalMetadataPreservationTest.log": {
+    "bytes": 225,
+    "sha256": "979169250ee715e46b4fa66f55c236e791e5bd8dbb2a5c0ca256769507926769"
+  },
+  "direct-sdk35/com.example.data.ReceiptOriginalMetadataPreservationTest.xml": {
+    "bytes": 525,
+    "sha256": "35a15c87a8c97a5f7e7dd0529410c391e3c6719d41540e993bbc3f2ecec502cf"
+  },
+  "direct-sdk35/com.example.ui.AppSettingsComposeTest.log": {
+    "bytes": 680,
+    "sha256": "0c873a0e7cbd9e0edf05f2309f67ed2f683f085a1cafb0e99c765ed4444bddb5"
+  },
+  "direct-sdk35/com.example.ui.AppSettingsComposeTest.xml": {
+    "bytes": 1361,
+    "sha256": "1b23a77be4d29afa102fdcd25e79414e4f9c043c966ff45c174ce2017f2d4fca"
+  },
+  "direct-sdk35/com.example.ui.DriveConnectionRegressionTest.log": {
+    "bytes": 1374,
+    "sha256": "9f97545d7688c1904d842a4a0bd40d274f79724f9558a984d8cd995ed52fac37"
+  },
+  "direct-sdk35/com.example.ui.DriveConnectionRegressionTest.xml": {
+    "bytes": 3238,
+    "sha256": "1d3f07c9aeb38e6fdb19748d6781fa2511b2577a0176c122c33e2f6b77e960cd"
+  },
+  "direct-sdk35/com.example.ui.MainNavigationRegressionTest.log": {
+    "bytes": 302,
+    "sha256": "4b45dbf0a3a9dfae2b1f7a8d6aa7e53d3fd26128bcf7bac92cf92e976d675edf"
+  },
+  "direct-sdk35/com.example.ui.MainNavigationRegressionTest.xml": {
+    "bytes": 642,
+    "sha256": "8ce85af0d62bb38d9882135c80bbe415a863d76c5770154ae030069d255fbf59"
+  },
+  "direct-sdk35/com.example.ui.Phase5ABankImportWorkflowTest.log": {
+    "bytes": 142,
+    "sha256": "e1dacc44fdb2ffe42fb87aa432ae27038010d5192076d349c4dd2bc70481e702"
+  },
+  "direct-sdk35/com.example.ui.Phase5ABankImportWorkflowTest.xml": {
+    "bytes": 246,
+    "sha256": "115c35ba4ae55bb5a938b10caf0d812b6124ecbc75b89357546816e3296acd96"
+  },
+  "direct-sdk35/com.example.ui.Phase6AReceiptPersistenceTest.log": {
+    "bytes": 379,
+    "sha256": "878f28c255a2e6e2d72336d8dc0404e719fe1fccf3fb6616e82ae201084cb4ec"
+  },
+  "direct-sdk35/com.example.ui.Phase6AReceiptPersistenceTest.xml": {
+    "bytes": 883,
+    "sha256": "4cb47f044f45f6de8e5747d4e3fef1a792d10b4c0ced18d4329bb95821e25373"
+  },
+  "direct-sdk35/com.example.ui.Phase6BContextPersistenceTest.log": {
+    "bytes": 454,
+    "sha256": "00c3f476147c46cb72e9011243c463c330b174c78d3c6ff47ceede797f48244a"
+  },
+  "direct-sdk35/com.example.ui.Phase6BContextPersistenceTest.xml": {
+    "bytes": 1038,
+    "sha256": "70fb8d07d2aaedb5b838abb5cdd5656f1563030ab5a8c79a56d0e6914a79aa42"
+  },
+  "direct-sdk35/com.example.ui.Phase9DAfaComposeTest.log": {
+    "bytes": 108,
+    "sha256": "a4eac024359afea2a2c2fe955ecdeef51169fa09037ff5c9a7caa3206b325200"
+  },
+  "direct-sdk35/com.example.ui.Phase9DAfaComposeTest.xml": {
+    "bytes": 204,
+    "sha256": "7b5b99fac85e1491f7790ee22ccd3807146ac49dc5200c1d2d937adf94875473"
+  },
+  "direct-sdk35/com.example.ui.PrimaryNavigationComposeTest.log": {
+    "bytes": 956,
+    "sha256": "789de6bc52de23d17e8503a5285f104cb27868a62b797e96ba2bed326dcb7ad3"
+  },
+  "direct-sdk35/com.example.ui.PrimaryNavigationComposeTest.xml": {
+    "bytes": 2481,
+    "sha256": "c471f72d1e0f45148eac91a77f1a244f85e4c12e6d0c84c271fe170856defd08"
+  },
+  "direct-sdk35/com.example.ui.RestoreMergeDataIntegrityTest.log": {
+    "bytes": 652,
+    "sha256": "3565be4dba6ba9abaeba296ea03acb8d8cfdec072581ff074a555c9eee3e0fb7"
+  },
+  "direct-sdk35/com.example.ui.RestoreMergeDataIntegrityTest.xml": {
+    "bytes": 1396,
+    "sha256": "fe07e7e46b3517c80efc1868b90ea81df24c00387178d60a12ea4f73edfda9e9"
+  },
+  "direct-sdk35-attempt1/com.example.api.ProductionDriveNamespaceTest.log": {
+    "bytes": 990,
+    "sha256": "a437b69a8b17d6b273653447ff992df4601f239e6154b36df76ae8d652f3a413"
+  },
+  "direct-sdk35-attempt1/com.example.api.ProductionDriveNamespaceTest.xml": {
+    "bytes": 2134,
+    "sha256": "bb63a1891863d088c505c28c6133ecadf58b39fb18c0b958a786429373b4f704"
+  },
+  "direct-sdk35-attempt1/com.example.data.DrivePersistenceManagedDocumentE2eTest.log": {
+    "bytes": 10099,
+    "sha256": "129f9470816c9fa960a68341dfaaabc2a0721a4b91c3990f3c06c6cb8663aa1c"
+  },
+  "direct-sdk35-attempt1/com.example.data.DrivePersistenceManagedDocumentE2eTest.xml": {
+    "bytes": 11112,
+    "sha256": "0a3d5bf8d9c3f0161e004e800b0d6cca289c77b702d01979981bf96b2622daae"
+  },
+  "direct-sdk35-attempt1/com.example.data.DriveSyncFailurePolicyTest.log": {
+    "bytes": 259,
+    "sha256": "51baccd45d3ce848b0fe8530f64abbf04626bfd4a2141ff9f9048fabc7e681ae"
+  },
+  "direct-sdk35-attempt1/com.example.data.DriveSyncFailurePolicyTest.xml": {
+    "bytes": 757,
+    "sha256": "b05077457b54093c8d43ff7236b2ba34a99e4158f1eb8578f5d0b13e378b5af8"
+  },
+  "direct-sdk35-attempt1/com.example.data.Phase10ADriveRoundTripTest.log": {
+    "bytes": 4886,
+    "sha256": "1c35a2a0e681140234fbe2f741f495369e894fdeb5d0cdc56dbd488ac68f56b6"
+  },
+  "direct-sdk35-attempt1/com.example.data.Phase10ADriveRoundTripTest.xml": {
+    "bytes": 4911,
+    "sha256": "d04f647a70c104566afdaa1c396e98a4f589dc2241043a9abc84074253c98f75"
+  },
+  "direct-sdk35-attempt1/com.example.data.Phase10BPortfolioAcceptanceTest.log": {
+    "bytes": 14543,
+    "sha256": "c1fdc11f76994bcae003eb8be0b0b41e5e6501eaabb1ebcf2462e33a43ea883a"
+  },
+  "direct-sdk35-attempt1/com.example.data.Phase10BPortfolioAcceptanceTest.xml": {
+    "bytes": 14967,
+    "sha256": "bb8bd9cff9cd92ead048f1b44d604609db22c40fa72b651868f7c6f1ba80e433"
+  },
+  "direct-sdk35-attempt1/com.example.ui.DriveConnectionRegressionTest.log": {
+    "bytes": 1813,
+    "sha256": "de12a6ec47b788b5275e10b95974c919a9f59ccd476555f16da48920c06d2b34"
+  },
+  "direct-sdk35-attempt1/com.example.ui.DriveConnectionRegressionTest.xml": {
+    "bytes": 3615,
+    "sha256": "e53743d528f3ac7f82a18c31f7acf5f564b6306f6bc1201ab6cdd6dd57fe72c9"
+  },
+  "direct-sdk35-attempt1/com.example.ui.RestoreMergeDataIntegrityTest.log": {
+    "bytes": 652,
+    "sha256": "3565be4dba6ba9abaeba296ea03acb8d8cfdec072581ff074a555c9eee3e0fb7"
+  },
+  "direct-sdk35-attempt1/com.example.ui.RestoreMergeDataIntegrityTest.xml": {
+    "bytes": 1396,
+    "sha256": "fe07e7e46b3517c80efc1868b90ea81df24c00387178d60a12ea4f73edfda9e9"
+  },
+  "direct-sdk35-attempt2/com.example.data.Phase10BPortfolioAcceptanceTest.log": {
+    "bytes": 5769,
+    "sha256": "252135c165d45a0242f90ed6af17fc559db50e264e056f1787a068e89d58522a"
+  },
+  "direct-sdk35-attempt2/com.example.data.Phase10BPortfolioAcceptanceTest.xml": {
+    "bytes": 5331,
+    "sha256": "f1c44f241530ba630e75813fdb721adc976f8e5e71817e688c4e964307326bef"
+  },
+  "direct-sdk35-attempt2/com.example.ui.AppSettingsComposeTest.log": {
+    "bytes": 86195,
+    "sha256": "c47b3bac9dd2af91e5a28cc6435df0358d1071be7927d8582c2516ab15277ea2"
+  },
+  "direct-sdk35-attempt2/com.example.ui.AppSettingsComposeTest.xml": {
+    "bytes": 43635,
+    "sha256": "ef28d9786ce915cbcf8f94f88eb8f3937e2f0e823c86cec062b3ef9bea724332"
+  },
+  "full-jvm-gradle-blocked.txt": {
+    "bytes": 662,
+    "sha256": "9af91af7c92de8231104506f4b10deb15984fdb5e865d7a1a9554433fdb5a473"
+  },
+  "gradle-start-blocked.txt": {
+    "bytes": 662,
+    "sha256": "9af91af7c92de8231104506f4b10deb15984fdb5e865d7a1a9554433fdb5a473"
+  },
+  "isolated-python-32.txt": {
+    "bytes": 5854,
+    "sha256": "e714e7e384784ef1a392984a27e54103378d66deda6da0d271a5f51f446d1c68"
+  },
+  "isolated-source-parity.json": {
+    "bytes": 358,
+    "sha256": "b742717e8be9c791e0a683a154207ab32f4d5a86b841526f7da6ee2d70d1e99e"
+  },
+  "local-verification-summary.json": {
+    "bytes": 23141,
+    "sha256": "e545acde13fd5798d717fe06d31dd2adc90ca5667e2ebd9c343e716868bd4ddc"
+  },
+  "portfolio/after-fresh-full-and-two-merges.json": {
+    "bytes": 1284282,
+    "sha256": "e7223028eaca54b507e98a447431f4e81714e8404698c1135fb9fe6ab77795a7"
+  },
+  "portfolio/before-fresh-full-backed.json": {
+    "bytes": 1264455,
+    "sha256": "65429c30dc9487e45895d5f1ac62f76e5438b0fb9515197a0ff401877da7b364"
+  },
+  "portfolio/preserved-after-two-merges.json": {
+    "bytes": 1264625,
+    "sha256": "7c79515b81d39def3a31b9938ed26befe42513892ec77d54c9315310167f49a4"
+  },
+  "portfolio/seed-before-first-sync.json": {
+    "bytes": 1202937,
+    "sha256": "41b6c713a5bc67cc753fa55a66cd4150e40068b25d5e8685156cdffd781aaa28"
+  },
+  "product-python-3.txt": {
+    "bytes": 659,
+    "sha256": "63bf5082e941f253430b8d592e9131423e9f9a99f55d63df018b7d6399b8a497"
+  },
+  "strict-portfolio-integrity.json": {
+    "bytes": 15873,
+    "sha256": "d4b415611599a64f20ab78bd4ac7bdd79f54ba265fa11d4253a380b113daca5e"
+  },
+  "tools/DirectJunitEvidence.java": {
+    "bytes": 1904,
+    "sha256": "7a2d9a9dde21c84564f4d354e4f39141f98699f38521427083bd456031a321de"
+  },
+  "tools/compile-and-diagnose-sdk35.py": {
+    "bytes": 3415,
+    "sha256": "fd9089d597f01ab2d6f1e19831e69ddf2500ed8768c90f7638c8e32fcd71c0e1"
+  },
+  "tools/recompile-baseline-sdk35.py": {
+    "bytes": 3382,
+    "sha256": "a271f29c6ff0b025cc6ec23162feba023b3d24724b5cbda9a3804a3f6f34a9c7"
+  },
+  "tools/run-existing-sdk35-tests.py": {
+    "bytes": 3780,
+    "sha256": "02d1604e8f0f51101ef7892dc48daa9d21b8a709733ec7164fc038804c4fccb5"
+  },
+  "tools/run-sdk35-followup.py": {
+    "bytes": 3669,
+    "sha256": "6a1d3e94ba5b058129c6da23885516e331e27fadc1196f41fc6be7b05236f2fe"
+  },
+  "unchanged-data-and-namespace-sources.json": {
+    "bytes": 664,
+    "sha256": "ba67894155ded72bb31cbf588d2c4bf31b5c52baf02c13c1b7088a38386c562e"
+  }
+}

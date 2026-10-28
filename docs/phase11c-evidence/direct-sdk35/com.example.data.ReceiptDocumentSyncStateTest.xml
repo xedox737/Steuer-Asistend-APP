@@ -1,0 +1,8 @@
+<testsuite tests="6" failures="0" skipped="0">
+<testcase classname="com.example.data.ReceiptDocumentSyncStateTest" name="conflictingPropertyBlocksTransfer"></testcase>
+<testcase classname="com.example.data.ReceiptDocumentSyncStateTest" name="existingMissingUnitIsNeverAutomaticallyReassigned"></testcase>
+<testcase classname="com.example.data.ReceiptDocumentSyncStateTest" name="repeatedTransferIsIdempotent"></testcase>
+<testcase classname="com.example.data.ReceiptDocumentSyncStateTest" name="genuinelyNewDocumentUsesValidatedInitialState"></testcase>
+<testcase classname="com.example.data.ReceiptDocumentSyncStateTest" name="verifiedTransferCannotEraseReviewedDomainStateOrInventANewerAuthoredVersion"></testcase>
+<testcase classname="com.example.data.ReceiptDocumentSyncStateTest" name="conflictingReceiptIdentityBlocksTransfer"></testcase>
+</testsuite>

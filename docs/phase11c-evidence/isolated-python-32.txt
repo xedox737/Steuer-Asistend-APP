@@ -1,0 +1,49 @@
+test_missing_malformed_or_ambiguous_certificates_fail_closed (test_phase11a_apk_signing.SigningCertificateTests.test_missing_malformed_or_ambiguous_certificates_fail_closed) ... ok
+test_same_verified_certificate_in_multiple_sdk_ranges_is_supported (test_phase11a_apk_signing.SigningCertificateTests.test_same_verified_certificate_in_multiple_sdk_ranges_is_supported) ... ok
+test_verified_certificate_is_independent_of_human_digest_labels (test_phase11a_apk_signing.SigningCertificateTests.test_verified_certificate_is_independent_of_human_digest_labels) ... ok
+test_android_instrumentation_failure_is_not_success (test_phase11a_device_guards.DeviceGuardTests.test_android_instrumentation_failure_is_not_success) ... ok
+test_existing_snapshot_refused_before_device_mutation (test_phase11a_device_guards.DeviceGuardTests.test_existing_snapshot_refused_before_device_mutation) ... ok
+test_misconfigured_host_product_package_is_rejected (test_phase11a_device_guards.DeviceGuardTests.test_misconfigured_host_product_package_is_rejected) ... ok
+test_only_product_installation_refused (test_phase11a_device_guards.DeviceGuardTests.test_only_product_installation_refused) ... ok
+test_parallel_product_and_test_installation_selects_only_test (test_phase11a_device_guards.DeviceGuardTests.test_parallel_product_and_test_installation_selects_only_test) ... ok
+test_production_binding_refused_before_any_seed_write (test_phase11a_device_guards.DeviceGuardTests.test_production_binding_refused_before_any_seed_write) ... ok
+test_run_initializer_opens_all_tests_and_preserves_existing_run (test_phase11a_device_guards.DeviceGuardTests.test_run_initializer_opens_all_tests_and_preserves_existing_run) ... ok
+test_untrusted_fixture_never_reaches_device (test_phase11a_device_guards.DeviceGuardTests.test_untrusted_fixture_never_reaches_device) ... usage: helper [-h] --serial SERIAL --user USER --run-id RUN_ID --label LABEL
+              --commit COMMIT --output OUTPUT --test-portfolio-only
+              [--fixture FIXTURE] [--fixture-sha256 FIXTURE_SHA256]
+              [--confirm-empty-test-installation]
+              {seed,snapshot,screenshot,logs}
+helper: error: fixture hash mismatch
+ok
+test_wrong_foreground_profile_never_starts_instrumentation (test_phase11a_device_guards.DeviceGuardTests.test_wrong_foreground_profile_never_starts_instrumentation) ... usage: helper [-h] --serial SERIAL --user USER --run-id RUN_ID --label LABEL
+              --commit COMMIT --output OUTPUT --test-portfolio-only
+              [--fixture FIXTURE] [--fixture-sha256 FIXTURE_SHA256]
+              [--confirm-empty-test-installation]
+              {seed,snapshot,screenshot,logs}
+helper: error: Select/switch the intended foreground test profile first; no implicit profile switch
+ok
+test_raw_drive_transport_is_used_only_by_guard_callbacks (test_phase11a_drive_boundary.DriveBoundaryTests.test_raw_drive_transport_is_used_only_by_guard_callbacks) ... ok
+test_nested_android_xml_counts_actual_methods_and_failure_skip_nodes (test_phase11a_evidence_counts.EvidenceMethodCountTests.test_nested_android_xml_counts_actual_methods_and_failure_skip_nodes) ... ok
+test_changed_amount_area_rent_date_even_with_stale_contract (test_phase11a_integrity.IntegrityTests.test_changed_amount_area_rent_date_even_with_stale_contract) ... ok
+test_entity_order_is_not_identity (test_phase11a_integrity.IntegrityTests.test_entity_order_is_not_identity) ... ok
+test_hash_mime_missing_original_and_unreadable_chain (test_phase11a_integrity.IntegrityTests.test_hash_mime_missing_original_and_unreadable_chain) ... ok
+test_identical_complete_snapshot_is_automated_only (test_phase11a_integrity.IntegrityTests.test_identical_complete_snapshot_is_automated_only) ... ok
+test_incomplete_or_empty_evidence_rejected (test_phase11a_integrity.IntegrityTests.test_incomplete_or_empty_evidence_rejected) ... ok
+test_orphans_and_cross_property_unit (test_phase11a_integrity.IntegrityTests.test_orphans_and_cross_property_unit) ... ok
+test_post_import_reference_keeps_default_portfolio_and_id_checks_strict (test_phase11a_integrity.IntegrityTests.test_post_import_reference_keeps_default_portfolio_and_id_checks_strict) ... ok
+test_removed_unexpected_duplicate_and_empty_ids (test_phase11a_integrity.IntegrityTests.test_removed_unexpected_duplicate_and_empty_ids) ... ok
+test_run_and_commit_mix_rejected (test_phase11a_integrity.IntegrityTests.test_run_and_commit_mix_rejected) ... ok
+test_secondary_beleg_ids_amounts_and_original_paths (test_phase11a_integrity.IntegrityTests.test_secondary_beleg_ids_amounts_and_original_paths) ... ok
+test_tenancy_id_and_afa_id_change (test_phase11a_integrity.IntegrityTests.test_tenancy_id_and_afa_id_change) ... ok
+test_unknown_authoritative_contract_field_remains_strict (test_phase11a_integrity.IntegrityTests.test_unknown_authoritative_contract_field_remains_strict) ... ok
+test_other_profile_never_reaches_install (test_phase11a_phone_seed_guards.PhoneSeedSmokeGuardTests.test_other_profile_never_reaches_install) ... ok
+test_outside_ci_never_reaches_adb (test_phase11a_phone_seed_guards.PhoneSeedSmokeGuardTests.test_outside_ci_never_reaches_adb) ... ok
+test_real_phone_never_reaches_install_or_instrumentation (test_phase11a_phone_seed_guards.PhoneSeedSmokeGuardTests.test_real_phone_never_reaches_install_or_instrumentation) ... ok
+test_existing_product_is_never_replaced_or_seeded (test_phase11a_sandbox_guards.SandboxGuardTests.test_existing_product_is_never_replaced_or_seeded) ... ok
+test_physical_device_never_reaches_install (test_phase11a_sandbox_guards.SandboxGuardTests.test_physical_device_never_reaches_install) ... ok
+test_reference_setup_refused_outside_ci (test_phase11a_sandbox_guards.SandboxGuardTests.test_reference_setup_refused_outside_ci) ... ok
+
+----------------------------------------------------------------------
+Ran 32 tests in 0.731s
+
+OK

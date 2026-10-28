@@ -1,0 +1,16 @@
+<testsuite tests="14" failures="0" skipped="0">
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="missingOwnBackupNeverFallsBackToForeignConfig"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="protectedSystemFoldersAndNonemptyCategoryCannotBeDeleted"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="allSevenForeignConfigIdsAreRejectedAndForeignRestoreCannotClearLocalData"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="diagnosticDriveTestUsesOwnRootAndReusesItsTestFile"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="forgedFileFolderRolesAndForeignDeletionCannotEraseLocalReceipt"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="activeBuildAlsoRejectsForeignContentAndUnboundedSearches"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="directForeignReadsWritesDeletesAndCrossMovesAreDeniedWithoutProductChanges"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="shortcutsAndNestedImitationRootCannotEscapeTheNamespace"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="legacyCategorySearchAndGlobalReceiptSearchRemainInsideTestRoot"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="buildIdentitySelectsExactlyOneRootAndBothWrongRootDirectionsFail"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="existingForeignStructureIsNotLoadedAndRepeatedInitializationHasOwnSevenFolderIds"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="missingHistoricalTombstoneReferenceIsReadableButCurrentOrForeignReferenceIsNot"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="ownConfigAndIndexCannotSmuggleForeignIdsIntoRestore"></testcase>
+<testcase classname="com.example.api.ProductionDriveNamespaceTest" name="staleLocalMappingAndMovedCachedFolderAreNotTrusted"></testcase>
+</testsuite>

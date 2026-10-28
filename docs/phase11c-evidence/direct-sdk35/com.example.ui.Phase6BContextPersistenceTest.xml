@@ -1,0 +1,9 @@
+<testsuite tests="7" failures="0" skipped="0">
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="responsiveGridKeepsReadableWidthAcrossRequestedFontScales"></testcase>
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="sameUnitNameInDifferentHousesDoesNotReuseBIdentity"></testcase>
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="primaryGlobalEntryDoesNotCarryHiddenFileOrigin"></testcase>
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="propertyChangeWithClearedUnitCreatesGeneralReceipt"></testcase>
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="globalSaveUsesExplicitAInsteadOfLastSelectedBAndReloadsSameIdentity"></testcase>
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="propertyFileEntryPrefillsExplicitProperty"></testcase>
+<testcase classname="com.example.ui.Phase6BContextPersistenceTest" name="missingExplicitObjectIsBlockedEvenWhenGlobalFallbackExists"></testcase>
+</testsuite>

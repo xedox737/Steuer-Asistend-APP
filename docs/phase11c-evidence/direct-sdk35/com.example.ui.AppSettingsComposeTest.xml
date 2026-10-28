@@ -1,0 +1,11 @@
+<testsuite tests="9" failures="0" skipped="0">
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="providerPagesShowMaskModelAndRealEmptyStateAndReturnByBothBackActions"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="generalInformationAndSecurityPagesReturnToSettingsByBothBackActions"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="everySettingsPageAllowsAllFiveRealBottomNavigationClicksWithoutReturningToOldPage"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="overviewUsesRealStatusesAndHasNoInventedSettingsOrDuplicateEntries"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="keyOverviewReturnsToOriginAndKeepsProviderSelectionAndModel"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="keyChangesUseExistingEncryptedStorageAndPreserveOpenAiModel"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="storageFailureIsShownWithoutLosingExistingConfiguration"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="removalRequiresConfirmationAndRemovesOnlyCorrespondingSecret"></testcase>
+<testcase classname="com.example.ui.AppSettingsComposeTest" name="invalidKeysAreRejectedWithoutReplacingStoredKeysAndFormIsDisposed"></testcase>
+</testsuite>

@@ -1,0 +1,8 @@
+<testsuite tests="6" failures="0" skipped="0">
+<testcase classname="com.example.ui.Phase6AReceiptPersistenceTest" name="explicitUnitChangePersistsAcrossDatabaseAndViewModelReload"></testcase>
+<testcase classname="com.example.ui.Phase6AReceiptPersistenceTest" name="exportedPropertyEditRequiresApprovalAndPreservesAuditHistory"></testcase>
+<testcase classname="com.example.ui.Phase6AReceiptPersistenceTest" name="propertySwitchUsesOnlyNewPropertyUnit"></testcase>
+<testcase classname="com.example.ui.Phase6AReceiptPersistenceTest" name="changedLegacyNameCannotRetainValidOldId"></testcase>
+<testcase classname="com.example.ui.Phase6AReceiptPersistenceTest" name="generalReceiptClearsDocumentUnitAndBackupKeepsTheRemoval"></testcase>
+<testcase classname="com.example.ui.Phase6AReceiptPersistenceTest" name="propertySwitchWithoutNewSelectionCannotCarryOldUnit"></testcase>
+</testsuite>

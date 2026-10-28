@@ -1,0 +1,7 @@
+START conflictingPropertyBlocksTransfer
+START existingMissingUnitIsNeverAutomaticallyReassigned
+START repeatedTransferIsIdempotent
+START genuinelyNewDocumentUsesValidatedInitialState
+START verifiedTransferCannotEraseReviewedDomainStateOrInventANewerAuthoredVersion
+START conflictingReceiptIdentityBlocksTransfer
+ACTUAL tests=6 failures=0 skipped=0

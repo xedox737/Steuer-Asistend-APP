@@ -1,0 +1,6 @@
+<testsuite tests="4" failures="0" skipped="0">
+<testcase classname="com.example.ui.MainNavigationRegressionTest" name="afaPropertyBackReturnsToAfaOverviewThenMore"></testcase>
+<testcase classname="com.example.ui.MainNavigationRegressionTest" name="dashboardPropertySubsectionReturnsToPropertyThenOverviewWithBothBackActions"></testcase>
+<testcase classname="com.example.ui.MainNavigationRegressionTest" name="receiptEditorAndDetailBackMustNotReinsertClosedDetailsIntoActivityHistory"></testcase>
+<testcase classname="com.example.ui.MainNavigationRegressionTest" name="bankDetailsReturnToBankListBySystemBackAndArrow"></testcase>
+</testsuite>

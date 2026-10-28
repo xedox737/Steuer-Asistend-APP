@@ -1,0 +1,6 @@
+<testsuite tests="4" failures="0" skipped="0">
+<testcase classname="com.example.data.Phase10BPortfolioAcceptanceTest" name="largeDatevBatchHasBomCrlfValidFormatAndAllOriginalHashesInActualProductZip"></testcase>
+<testcase classname="com.example.data.Phase10BPortfolioAcceptanceTest" name="twentyOneUnitStressPortfolioEmptyTargetMergeTwiceAndReplace"></testcase>
+<testcase classname="com.example.data.Phase10BPortfolioAcceptanceTest" name="actualImportServiceReadsAppFileProviderAndRestoresFiveFormatMetadataTwice"></testcase>
+<testcase classname="com.example.data.Phase10BPortfolioAcceptanceTest" name="seventeenUnitPortfolioEmptyTargetMergeTwiceAndReplace"></testcase>
+</testsuite>

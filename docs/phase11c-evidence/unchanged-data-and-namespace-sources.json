@@ -1,0 +1,7 @@
+{
+  "app/src/main/java/com/example/api/DriveNamespacePolicy.kt": "b246ca5fe508d0ce161b0a58dcca6a6cdc11ab3bb6796e89f03d778534f8b248",
+  "app/src/main/java/com/example/api/DriveEnvironment.kt": "d4d626d79f2acb50b8ac402afa4973348d7e5868292469366acf9ffa4b52fcbc",
+  "app/src/main/java/com/example/data/ReceiptDatabase.kt": "d5884d9e53c693412eef85aac7fe214a8aed4261fadc5ae1d69beee511793306",
+  "app/src/main/java/com/example/data/SupplementalDriveBackup.kt": "7c91da2b48c596afb7129e43824a2015a1cd93665123a077ab0c210198716218",
+  "app/src/main/java/com/example/data/PersistentPreferenceInventory.kt": "99686ce3f10708b4c1ca38523726298ae1346fc92905453ee34752159a8fe74f"
+}
