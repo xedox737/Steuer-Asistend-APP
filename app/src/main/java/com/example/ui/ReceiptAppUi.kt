@@ -6735,13 +6735,29 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-            if (account != null && account.email != null) {
+            if (account != null && account.email != null &&
+                GoogleSignIn.hasPermissions(account, Scope("https://www.googleapis.com/auth/drive.file"))) {
                 viewModel.connectDrive(account.email!!)
+            } else {
+                viewModel.setSyncStatus("Drive-Berechtigung nicht erteilt. Bitte erneut mit Google Drive verbinden.")
             }
         } catch (e: Exception) {
             DiagnosticLog.e("DriveAuth", "Sign in failed")
-            viewModel.setSyncStatus("Google Play Services Anmeldung nicht verfügbar (Account not present). Bitte nutzen Sie stattdessen den grünen Button 'Über Google-Login verbinden'!")
+            viewModel.setSyncStatus(when ((e as? com.google.android.gms.common.api.ApiException)?.statusCode) {
+                12501 -> "Google-Anmeldung abgebrochen."
+                7 -> "Netzwerkfehler bei der Google-Anmeldung. Bitte erneut versuchen."
+                10 -> "Google-Anmeldung nicht konfiguriert. OAuth-Konfiguration für App und Signatur prüfen."
+                else -> "Google-Anmeldung fehlgeschlagen. Bitte erneut versuchen."
+            })
         }
+    }
+
+    val launchNativeDriveLogin = {
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope("https://www.googleapis.com/auth/drive.file"))
+            .build()
+        launcher.launch(GoogleSignIn.getClient(context, options).signInIntent)
     }
 
     if (showWebViewLogin) {
@@ -6753,7 +6769,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Google-Login (Sicherer Web-Zugang)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                    Text("Google-Login (zeitlich begrenzt)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                     IconButton(onClick = { showWebViewLogin = false }) {
                         Icon(Icons.Default.Close, contentDescription = "Schließen")
                     }
@@ -6787,7 +6803,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                                                 }
                                                 val accessToken = params["access_token"]
                                                 if (!accessToken.isNullOrEmpty()) {
-                                                    viewModel.connectDrive(manualEmail.ifBlank { email?.takeIf(String::isNotBlank) ?: "Google-Konto (E-Mail nicht verfügbar)" }, accessToken)
+                                                    viewModel.connectDrive(manualEmail.ifBlank { email?.takeIf(String::isNotBlank) ?: "Google-Konto (E-Mail nicht verfügbar)" }, accessToken, expiresInSeconds = params["expires_in"]?.toLongOrNull() ?: 3600L)
                                                     showWebViewLogin = false
                                                 }
                                             }
@@ -6804,7 +6820,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                                             }
                                             val accessToken = params["access_token"]
                                             if (!accessToken.isNullOrEmpty()) {
-                                                viewModel.connectDrive(manualEmail.ifBlank { email?.takeIf(String::isNotBlank) ?: "Google-Konto (E-Mail nicht verfügbar)" }, accessToken)
+                                                viewModel.connectDrive(manualEmail.ifBlank { email?.takeIf(String::isNotBlank) ?: "Google-Konto (E-Mail nicht verfügbar)" }, accessToken, expiresInSeconds = params["expires_in"]?.toLongOrNull() ?: 3600L)
                                                 showWebViewLogin = false
                                                 return true
                                             }
@@ -6875,8 +6891,8 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = { showWebViewLogin = true },
-                    modifier = Modifier.fillMaxWidth().testTag("connect_drive_webview_button"),
+                    onClick = launchNativeDriveLogin,
+                    modifier = Modifier.fillMaxWidth().testTag("connect_drive_button"),
                     colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen)
                 ) {
                     Icon(Icons.Default.Cloud, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
@@ -6891,22 +6907,18 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                 }
                 if (showAdvancedDriveLogin) {
                 OutlinedButton(
-                    onClick = {
-                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                            .requestEmail()
-                            .requestScopes(Scope("https://www.googleapis.com/auth/drive.file"))
-                            .build()
-                        val client = GoogleSignIn.getClient(context, gso)
-                        launcher.launch(client.signInIntent)
-                    },
-                    modifier = Modifier.fillMaxWidth().testTag("connect_drive_button"),
+                    onClick = { showWebViewLogin = true },
+                    modifier = Modifier.fillMaxWidth().testTag("connect_drive_webview_button"),
                     border = BorderStroke(1.dp, BorderColor),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = DarkNavy)
                 ) {
-                    Text("Über Play Services verbinden", fontWeight = FontWeight.Bold)
+                    Text("Zeitlich begrenzte Web-Verbindung", fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Web- und manuelle Zugangstokens laufen ab. Für eine erneuerbare Verbindung die Google-Anmeldung oben verwenden.",
+                    fontSize = 11.sp, color = Color.Gray)
 
                 // Developer / Testing Fallback
                 TextButton(

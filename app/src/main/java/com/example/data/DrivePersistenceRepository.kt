@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.api.rethrowDriveControlFailure
 import com.example.api.DriveEnvironment
 
 import com.example.util.DiagnosticLog
@@ -8,6 +9,7 @@ import android.content.Context
 import androidx.room.withTransaction
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import com.example.api.GoogleDriveClient
 import com.example.api.DriveFolder
 import com.example.api.DriveFile
@@ -178,7 +180,7 @@ data class CategoryFolderMapping(
 sealed class DriveInitializationResult {
     data class SuccessCreatedNew(val config: DriveAppConfig) : DriveInitializationResult()
     data class SuccessLoadedExisting(val config: DriveAppConfig, val restoredStammdaten: Boolean) : DriveInitializationResult()
-    data class Failure(val error: String) : DriveInitializationResult()
+    data class Failure @JvmOverloads constructor(val error: String, val cause: Throwable? = null) : DriveInitializationResult()
 }
 
 class DrivePersistenceRepository(
@@ -189,6 +191,9 @@ class DrivePersistenceRepository(
     private val TAG = "DrivePersistenceRepo"
 
     companion object {
+        // The folder mutex alone cannot protect the search/create of app-config.json.
+        // Serialize the entire setup, including calls from different repository instances.
+        private val initializationMutex = kotlinx.coroutines.sync.Mutex()
         // Serializes the complete receipt transaction (document, metadata, index and folder).
         // This prevents automatic sync, manual retry and background work from creating in parallel.
         private val receiptSyncGate = ReceiptSyncGate()
@@ -562,6 +567,13 @@ class DrivePersistenceRepository(
     }
 
     suspend fun initializeDriveStorage(accessToken: String): DriveInitializationResult {
+        return initializationMutex.withLock {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            initializeDriveStorageLocked(accessToken)
+        }
+    }
+
+    private suspend fun initializeDriveStorageLocked(accessToken: String): DriveInitializationResult {
         try {
             DiagnosticLog.d(TAG, "Initializing Google Drive storage...")
             // 1. Search for existing main folder "Steuerassistent Belege"
@@ -659,8 +671,10 @@ class DrivePersistenceRepository(
             return DriveInitializationResult.SuccessCreatedNew(newConfig)
 
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             DiagnosticLog.e(TAG, "Exception during initializeDriveStorage")
-            return DriveInitializationResult.Failure(e.message ?: e.toString())
+            return DriveInitializationResult.Failure(
+                if (e is com.example.api.DriveAccessFailure) e.message.orEmpty() else DriveConnectionFailure.from(e).message, e)
         }
     }
 
@@ -712,6 +726,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.d(TAG, "Backup of Stammdaten finished. All successful?")
             return allSuccessful
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error backing up Stammdaten")
             return false
         }
@@ -772,6 +787,7 @@ class DrivePersistenceRepository(
 
             return true
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error restoring Stammdaten from Drive")
             return false
         }
@@ -1298,6 +1314,7 @@ class DrivePersistenceRepository(
                 ).success
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error saving DriveAppConfig")
             false
         }
@@ -1424,6 +1441,7 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     DiagnosticLog.e(TAG, "Existing receipt index could not be read; refusing to overwrite it")
                     return@withLock false
                 }
@@ -1482,6 +1500,7 @@ class DrivePersistenceRepository(
             )
             uploadRes.success
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Exception during index update")
             false
         }
@@ -1585,6 +1604,7 @@ class DrivePersistenceRepository(
                             matchedDisplayId = parsed.displayId
                         }
                     } catch (e: Exception) {
+                        e.rethrowDriveControlFailure()
                         DiagnosticLog.w(TAG, "Could not fetch metadata for identification")
                     }
                 }
@@ -1606,6 +1626,7 @@ class DrivePersistenceRepository(
                                 }
                             }
                         } catch (e: Exception) {
+                            e.rethrowDriveControlFailure()
                             DiagnosticLog.w(TAG, "Error checking index for mainDriveFileId")
                         }
                     }
@@ -1623,6 +1644,7 @@ class DrivePersistenceRepository(
                                 matchedDisplayId = parsed.displayId
                             }
                         } catch (e: Exception) {
+                            e.rethrowDriveControlFailure()
                             DiagnosticLog.w(TAG, "Error searching appProperties for internalId")
                         }
                     }
@@ -1633,6 +1655,7 @@ class DrivePersistenceRepository(
                 val year = try {
                     currentReceipt.datum.split("-").firstOrNull()?.trim() ?: "2026"
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     "2026"
                 }
                 val finalDisplayId = currentReceipt.displayId ?: matchedDisplayId ?: "BLG-$year-${String.format("%06d", currentReceipt.id)}"
@@ -1691,6 +1714,7 @@ class DrivePersistenceRepository(
                             }
                         }
                     } catch (e: Exception) {
+                        e.rethrowDriveControlFailure()
                         DiagnosticLog.w(TAG, "Error checking index for internalId")
                     }
                 }
@@ -1782,6 +1806,7 @@ class DrivePersistenceRepository(
                         }
                     }
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     DiagnosticLog.w(TAG, "Error reading file bytes from")
                 }
             }
@@ -1852,6 +1877,7 @@ class DrivePersistenceRepository(
                             }
                         }
                     } catch (e: Exception) {
+                        e.rethrowDriveControlFailure()
                         DiagnosticLog.w(TAG, "Error downloading/verifying file")
                         driveFileId = null
                     }
@@ -2076,6 +2102,7 @@ class DrivePersistenceRepository(
             }
 
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Sync failed with exception")
             val updatedReceipt = receipt.copy(
                 syncStatus = "ERROR",
@@ -2112,6 +2139,7 @@ class DrivePersistenceRepository(
                     propertyFound = true
                     propertyName = meta.name
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     issues.add("property-metadata.json unlesbar: ${e.message}")
                 }
             }
@@ -2123,6 +2151,7 @@ class DrivePersistenceRepository(
                     val units = parseWohneinheiten(json)
                     unitsCount = units.size
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     issues.add("wohneinheiten.json unlesbar: ${e.message}")
                 }
             }
@@ -2217,6 +2246,7 @@ class DrivePersistenceRepository(
                                     metadataFileCount++
                                 }
                             } catch (e: Exception) {
+                                e.rethrowDriveControlFailure()
                                 entryIssues.add("Metadaten-JSON nicht lesbar: ${e.message}")
                                 missingFileCount++
                             }
@@ -2242,6 +2272,7 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     issues.add("receipt-index.json unlesbar: ${e.message}")
                 }
             }
@@ -2270,6 +2301,7 @@ class DrivePersistenceRepository(
                 receiptPreviews = previews
             )
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             return DriveRestorePreviewResult(
                 success = false,
                 errorMessage = e.message ?: e.toString()
@@ -2383,6 +2415,7 @@ class DrivePersistenceRepository(
 
             return DriveFileResult(true, uploadedFileId, null)
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error uploading tombstone for")
             return DriveFileResult(false, null, e.message ?: e.toString())
         }
@@ -2499,6 +2532,7 @@ class DrivePersistenceRepository(
                         )
                     }
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     DiagnosticLog.w(TAG, "Error updating metadata JSON on Drive for deletion")
                 }
             }
@@ -2515,6 +2549,7 @@ class DrivePersistenceRepository(
 
             return DeletionResult.Success(tombstone)
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error during deleteReceiptWithSync")
             localRepository.softDelete(
                 id = receipt.id,
@@ -2600,6 +2635,7 @@ class DrivePersistenceRepository(
                     }
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 DiagnosticLog.e(TAG, "Error restoring receipt on Drive")
             }
         }
@@ -2627,6 +2663,7 @@ class DrivePersistenceRepository(
                     .put("driveFileId", receipt.driveFileId ?: JSONObject.NULL)
                     .put("driveMetadataFileId", receipt.driveMetadataFileId ?: JSONObject.NULL).toString())
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 return PermanentDeleteResult.Error("Sicherheitsprüfung fehlgeschlagen: Fremde oder ungültige Drive-Referenz. Es wurden keine Daten gelöscht.")
             }
         }
@@ -2678,6 +2715,7 @@ class DrivePersistenceRepository(
                     }
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 DiagnosticLog.e(TAG, "Error deleting Drive files during permanent deletion")
             }
         }
@@ -2693,6 +2731,7 @@ class DrivePersistenceRepository(
         if (managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway) {
             try { GoogleDriveClient.validateStorageConfig(accessToken, config) }
             catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 return RestoreSnapshot(errors = listOf(RestoreError("DRIVE_NAMESPACE_MISMATCH",
                     e.message ?: "Drive-Konfiguration gehört nicht zu dieser App.", isBlocking = true)))
             }
@@ -2709,6 +2748,7 @@ class DrivePersistenceRepository(
                 val json = managedDocumentDriveGateway.downloadJson(accessToken, metaFile.id)
                 propertyMetadata = parsePropertyMetadata(json)
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 errors.add(RestoreError("PROPERTY_META_READ_ERROR", "Gesicherte Immobiliendaten sind beschädigt. Bitte prüfen.", isBlocking = true))
             }
         }
@@ -2720,6 +2760,7 @@ class DrivePersistenceRepository(
                 val json = managedDocumentDriveGateway.downloadJson(accessToken, unitsFile.id)
                 units = parseWohneinheiten(json)
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 errors.add(RestoreError("UNITS_READ_ERROR", "Gesicherte Einheitsdaten sind beschädigt. Bitte prüfen.", isBlocking = true))
             }
         }
@@ -2732,6 +2773,7 @@ class DrivePersistenceRepository(
                 val profile = deserializeDatevProfile(json)
                 if (profile != null) datevProfiles = listOf(profile)
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 warnings.add(RestoreWarning("DATEV_READ_ERROR", "datevProfiles unlesbar: ${e.message}"))
             }
         }
@@ -2743,6 +2785,7 @@ class DrivePersistenceRepository(
                 val json = managedDocumentDriveGateway.downloadJson(accessToken, rulesFile.id)
                 aiLearnedRules = parseLearnedRules(json)
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 warnings.add(RestoreWarning("AI_RULES_READ_ERROR", "aiLearnedRules unlesbar: ${e.message}"))
             }
         }
@@ -2836,6 +2879,7 @@ class DrivePersistenceRepository(
                             )
                         )
                     } catch (e: Exception) {
+                        e.rethrowDriveControlFailure()
                         errors.add(RestoreError("UNREADABLE_METADATA_JSON", "Die gesicherten Daten für Beleg '${entry.displayId ?: entry.internalId}' sind unvollständig oder ungültig. Bitte prüfen.", targetId = entry.internalId, isBlocking = true))
                     }
                 }
@@ -2850,6 +2894,7 @@ class DrivePersistenceRepository(
                     )
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 errors.add(RestoreError("INDEX_READ_ERROR", "receipt-index.json unlesbar: ${e.message}", isBlocking = true))
             }
         }
@@ -2862,6 +2907,7 @@ class DrivePersistenceRepository(
                 FilelessLogbookContract.validateSupplemental(receipts,
                     JSONObject(managedDocumentDriveGateway.downloadJson(accessToken, supplemental.id)))
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 errors.add(RestoreError("FILELESS_LOGBOOK_MISMATCH", e.message ?: "Fahrtnachweis ist unvollständig.", isBlocking = true))
             }
         }
@@ -2995,6 +3041,7 @@ class DrivePersistenceRepository(
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Room Transaction error during restore")
             journal = journal.copy(phase = "FAILED", error = "Room Transaktion fehlgeschlagen: ${e.message}")
             saveRestoreJournal(journal)
@@ -3021,6 +3068,7 @@ class DrivePersistenceRepository(
                 saveLearnedRulesToPrefs(snapshot.aiLearnedRules, mode)
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.w(TAG, "Warnung beim Schreiben der SharedPreferences nach Restore")
         }
 
@@ -3107,6 +3155,7 @@ class DrivePersistenceRepository(
                     )
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 DiagnosticLog.e(TAG, "Error downloading index file for audit")
             }
         }
@@ -3397,6 +3446,7 @@ class DrivePersistenceRepository(
             localRepository.insert(updatedReceipt)
             return targetFile.absolutePath
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error downloading document on demand for fileId")
             throw e
         }
@@ -3532,6 +3582,7 @@ class DrivePersistenceRepository(
                             }
                         }
                     } catch (e: Exception) {
+                        e.rethrowDriveControlFailure()
                         DiagnosticLog.w(TAG, "Error checking index for existing test receipt")
                     }
                 }
@@ -3620,6 +3671,7 @@ class DrivePersistenceRepository(
                 )
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error in testDriveReceiptStorage")
             DriveReceiptTestResult(success = false, errorMessage = "Fehler beim E2E-Testbeleg-Test: ${e.message}")
         }
@@ -3642,6 +3694,7 @@ class DrivePersistenceRepository(
                 GoogleDriveClient.validateStorageConfig(accessToken, it)
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Bestehende Drive-Konfiguration konnte nicht gelesen werden")
             null
         }
@@ -3747,6 +3800,7 @@ class DrivePersistenceRepository(
                     null
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 DiagnosticLog.e(TAG, "Exception in upsertReceiptMetadata")
                 null
             }
@@ -3920,6 +3974,7 @@ class DrivePersistenceRepository(
                 legacyInvalidFileId = legacyFileId
             )
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error in repairAndUploadOriginalDocument")
             return RepairResult(false, errorMessage = "Exception während Reparatur: ${e.message}")
         }
@@ -4011,6 +4066,7 @@ class DrivePersistenceRepository(
             }
             entries
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error getting index from Drive")
             emptyList()
         }
@@ -4040,6 +4096,7 @@ class DrivePersistenceRepository(
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "document-index.json konnte für die Inventur nicht gelesen werden")
             emptyList()
         }

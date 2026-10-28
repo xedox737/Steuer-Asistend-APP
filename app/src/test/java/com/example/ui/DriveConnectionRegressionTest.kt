@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import com.example.api.GoogleDriveClient
 import com.example.comparison.ComparisonDriveHttpFixture
-import com.example.data.AppDatabase
 import com.example.data.DriveInitializationResult
 import com.google.android.gms.auth.GoogleAuthUtil
 import kotlinx.coroutines.*
@@ -24,8 +23,6 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
 import java.io.IOException
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Real ViewModel/repository/client with simulated Play Services and HTTP, never real OAuth. */
@@ -43,6 +40,8 @@ class DriveConnectionRegressionTest {
     @Volatile private var status = 200
     @Volatile private var fault: Exception? = null
     @Volatile private var metadataFault = false
+    @Volatile private var rejectUploads = false
+    @Volatile private var expireNativeDuringUpload = false
     private val calls = AtomicInteger()
 
     @Before fun setup() {
@@ -56,7 +55,9 @@ class DriveConnectionRegressionTest {
             calls.incrementAndGet()
             fault?.let { throw it }
             val r = chain.request()
-            val code = if (r.header("Authorization") == "Bearer expired-native") 401 else status
+            val code = if (r.header("Authorization") == "Bearer expired-native" ||
+                (expireNativeDuringUpload && r.header("Authorization") == "Bearer synthetic-native" && r.url.encodedPath.startsWith("/upload/")) ||
+                (rejectUploads && r.url.encodedPath.startsWith("/upload/"))) 401 else status
             if (code != 200 || (metadataFault && r.url.encodedPath.contains("/files/"))) {
                 Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(if (code == 200) 503 else code)
                     .message("Synthetic").body("{}".toResponseBody("application/json".toMediaType())).build()
@@ -78,7 +79,10 @@ class DriveConnectionRegressionTest {
         withTimeout(15_000) { vm.driveSyncError.first { !it.isNullOrBlank() } }
     }
     private fun awaitSuccess(vm: ReceiptViewModel) = runBlocking {
-        withTimeout(15_000) { vm.driveSystemFolderStatus.first { it == "Gefunden" } }
+        withTimeout(15_000) {
+            vm.driveSystemFolderStatus.first { it == "Gefunden" }
+            while (vm.driveSyncStatus.value.orEmpty().contains("Initialisiere")) delay(10)
+        }
     }
     private fun assertAccountRetained(vm: ReceiptViewModel) {
         assertTrue("A Drive failure must not sign out", vm.isDriveConnected.value)
@@ -160,6 +164,113 @@ class DriveConnectionRegressionTest {
         assertNull(vm.driveSyncError.value)
     }
 
+    @Test fun networkDuringDriveInitializationKeepsAccountAndOriginalPreferences() {
+        fault = IOException("must-not-display-secret")
+        prefs.edit().putString("local_sentinel", "keep").commit()
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual"); awaitFailure(vm)
+        assertAccountRetained(vm)
+        assertEquals("keep", prefs.getString("local_sentinel", null))
+        assertEquals(1, remote.entries.size) // Only synthetic MyDrive, no replacement structure.
+        assertFalse(vm.driveSyncError.value.orEmpty().contains("must-not-display-secret"))
+    }
+    @Test fun manualTokenDeadlineIsNotExtendedByRestart() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual", 1200); awaitSuccess(vm)
+        val deadline = prefs.getLong("access_token_expires_at", 0)
+        stores.forEach { it.clear() }; stores.clear()
+        val restarted = model(); awaitSuccess(restarted)
+        assertEquals(deadline, prefs.getLong("access_token_expires_at", -1))
+        assertEquals(0, AuthShadow.calls.get()); assertAccountRetained(restarted)
+    }
+    @Test fun expiredWebTokenRequiresAuthorizationBeforeAnyDriveAccess() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-expired", 0); awaitFailure(vm)
+        assertFalse(vm.isDriveConnected.value); assertEquals(0, calls.get())
+        assertTrue(prefs.getBoolean("drive_reauthorization_required", false))
+        assertEquals("synthetic@example.invalid", prefs.getString("connected_email", null))
+    }
+    @Test fun rejectedAuthorizationRemainsActionableAfterRestart() {
+        status = 401
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-rejected"); awaitFailure(vm)
+        stores.forEach { it.clear() }; stores.clear()
+        val count = calls.get(); val restarted = model()
+        assertFalse(restarted.isDriveConnected.value)
+        assertTrue(restarted.driveSyncStatus.value.orEmpty().contains("Autorisierung"))
+        assertEquals(count, calls.get())
+    }
+    @Test fun nativeAuthorizationFailureRequiresLoginWithoutRemovingAccount() {
+        AuthShadow.failure = com.google.android.gms.auth.GoogleAuthException("synthetic-revoked")
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)
+        assertFalse(vm.isDriveConnected.value)
+        assertEquals("synthetic@example.invalid", prefs.getString("connected_email", null))
+        assertFalse(prefs.getBoolean("user_disconnected", true))
+    }
+    @Test fun failedSyncDoesNotInvalidateSuccessfulLogin() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual"); awaitSuccess(vm)
+        fault = IOException("offline"); vm.syncAllToDrive(); awaitFailure(vm)
+        runBlocking { withTimeout(15_000) { vm.isDriveSyncing.first { !it } } }
+        assertAccountRetained(vm)
+    }
+    @Test fun unauthorizedSyncRequiresAuthorizationAndEndsSpinner() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual"); awaitSuccess(vm)
+        status = 401; vm.syncAllToDrive(); awaitFailure(vm)
+        runBlocking { withTimeout(15_000) { vm.isDriveSyncing.first { !it } } }
+        assertFalse(vm.isDriveConnected.value)
+        assertTrue(vm.driveSyncStatus.value.orEmpty().contains("Autorisierung"))
+    }
+    @Test fun revokedTokenDuringUploadIsNotSwallowedAsPartialSuccess() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual"); awaitSuccess(vm)
+        runBlocking {
+            val db = com.example.data.AppDatabase.getDatabase(app, CoroutineScope(Dispatchers.IO))
+            db.receiptDao().insertReceipt(com.example.data.Receipt(aussteller = "Synthetic", datum = "2026-10-27", uhrzeit = "",
+                bruttobetrag = 1.0, hauptkategorie = "Test", unterkategorie = "Test", kontoNr = "4800", beschreibung = "",
+                internalId = "synthetic-local-original"))
+            withTimeout(15_000) { vm.receipts.first { it.isNotEmpty() } }
+        }
+        rejectUploads = true; vm.syncAllToDrive(); awaitFailure(vm)
+        runBlocking { withTimeout(15_000) { vm.isDriveSyncing.first { !it } } }
+        assertFalse(vm.isDriveConnected.value)
+        assertTrue(vm.driveSyncStatus.value.orEmpty().contains("Autorisierung"))
+    }
+    @Test fun nativeTokenExpiryDuringUploadRenewsCredentialBeforeRequestingLogin() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        runBlocking {
+            val db = com.example.data.AppDatabase.getDatabase(app, CoroutineScope(Dispatchers.IO))
+            db.receiptDao().insertReceipt(com.example.data.Receipt(aussteller = "Synthetic", datum = "2026-10-27", uhrzeit = "",
+                bruttobetrag = 1.0, hauptkategorie = "Test", unterkategorie = "Test", kontoNr = "4800", beschreibung = "",
+                internalId = "synthetic-local-original"))
+            withTimeout(15_000) { vm.receipts.first { it.isNotEmpty() } }
+        }
+        expireNativeDuringUpload = true; vm.syncAllToDrive(); awaitFailure(vm)
+        runBlocking { withTimeout(15_000) { vm.isDriveSyncing.first { !it } } }
+        assertAccountRetained(vm)
+        assertEquals(1, AuthShadow.clears.get())
+        assertTrue(vm.driveSyncStatus.value.orEmpty().contains("erneuert"))
+    }
+    @Test fun repeatedLoginCallbacksDoNotExtendTokenOrDuplicateConfiguration() {
+        val vm = model()
+        repeat(2) { vm.connectDrive("synthetic@example.invalid", "synthetic-manual", 1800) }
+        awaitSuccess(vm)
+        assertEquals(1, remote.entries.values.count { it.properties["entityType"] == "appConfig" })
+        assertEquals(1, remote.entries.values.count { it.name == "_BelegApp-Daten" })
+        assertAccountRetained(vm)
+    }
+    @Test fun explicitDisconnectCannotBeReversedByInFlightInitialization() {
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            entered.countDown(); check(release.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual")
+        try {
+            assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
+            vm.disconnectDrive()
+        } finally { release.countDown() }
+        runBlocking { delay(150) }
+        assertFalse(vm.isDriveConnected.value); assertNull(vm.googleAccountEmail.value)
+        assertEquals("Verbindung getrennt", vm.driveSyncStatus.value)
+        assertNull(prefs.getString("connected_email", null))
+    }
+
     @Implements(GoogleAuthUtil::class)
     class AuthShadow {
         companion object {
@@ -171,7 +282,7 @@ class DriveConnectionRegressionTest {
                 failure?.let { throw it }
                 assertEquals("oauth2:https://www.googleapis.com/auth/drive.file", scope)
                 val count = calls.incrementAndGet()
-                return if (expireFirst && count == 1) "expired-native" else "synthetic-native"
+                return if (expireFirst && count == 1) "expired-native" else if (clears.get() > 0) "synthetic-native-renewed" else "synthetic-native"
             }
             @JvmStatic @Implementation fun clearToken(context: Context, token: String) { clears.incrementAndGet() }
         }

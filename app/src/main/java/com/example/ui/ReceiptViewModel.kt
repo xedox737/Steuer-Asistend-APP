@@ -46,6 +46,11 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ensureActive
+import com.example.data.DriveAuthorizationRequired
+import com.example.data.DriveConnectionFailure
 import com.example.data.FirestoreService
 
 enum class AppScreen {
@@ -100,6 +105,9 @@ data class LearnedVendorRule(
 )
 
 class ReceiptViewModel(application: Application) : AndroidViewModel(application) {
+    private val driveSession = java.util.concurrent.atomic.AtomicLong()
+    private var driveInitializationJob: Job? = null
+    private var driveSyncJob: Job? = null
     private val database = AppDatabase.getDatabase(application, viewModelScope)
     private val renovationStore = com.example.data.RenovationReviewStore(application)
     val renovationReview = renovationStore.snapshot
@@ -337,7 +345,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private val _bankTransactionDetailsReturnId = MutableStateFlow<String?>(null)
     val bankTransactionDetailsReturnId: StateFlow<String?> = _bankTransactionDetailsReturnId.asStateFlow()
 
-    // Google Drive Sync State
+    // Connected means a linked credential without an explicit authorization rejection.
+    // Availability/folder validation belongs to sync status/error, never to this account flag.
+    // Only explicit disconnect, HTTP401 or a typed Google auth failure makes it false.
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
     val googleAccountEmail: StateFlow<String?> = _googleAccountEmail.asStateFlow()
 
@@ -689,7 +699,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val savedEmail = sharedPrefs.getString("connected_email", null)?.takeIf { it.isNotBlank() }
 
         if (!isExplicitlyDisconnected && savedEmail != null) {
-            connectDrive(savedEmail)
+            // Restore credentials as stored. Restart is neither a new login nor a token renewal.
+            _googleAccountEmail.value = savedEmail
+            if (sharedPrefs.getBoolean("drive_reauthorization_required", false)) {
+                _driveSyncStatus.value = "Google-Autorisierung erforderlich"
+            } else {
+                _isDriveConnected.value = true
+                initializeDrivePersistence()
+            }
         } else {
             _googleAccountEmail.value = savedEmail
             _isDriveConnected.value = false
@@ -1071,30 +1088,55 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun connectDrive(email: String, accessToken: String? = null) {
+    fun connectDrive(email: String, accessToken: String? = null) = connectDrive(email, accessToken, 3600L)
+
+    @Synchronized
+    fun connectDrive(email: String, accessToken: String?, expiresInSeconds: Long) {
+        if (email.isBlank() && accessToken.isNullOrBlank()) return
+        // WebView may deliver the same redirect through both callbacks.
+        val sameCredential = _googleAccountEmail.value == email &&
+            sharedPrefs.getString("access_token", null) == accessToken
+        if (sameCredential && driveInitializationJob?.isActive == true) return
+        driveSession.incrementAndGet()
+        driveInitializationJob?.cancel()
+        driveSyncJob?.cancel()
+        _isDriveSyncing.value = false
         sharedPrefs.edit().apply {
             putBoolean("user_disconnected", false)
+            remove("drive_reauthorization_required")
             putString("connected_email", email)
             if (accessToken != null) {
                 putString("access_token", accessToken)
+                if (!sameCredential || !sharedPrefs.contains("access_token_expires_at")) {
+                    putLong("access_token_expires_at", System.currentTimeMillis() + expiresInSeconds.coerceIn(0L, 86400L) * 1000L)
+                }
+            } else {
+                // Native login/account switching must never reuse a previous web token.
+                remove("access_token")
+                remove("access_token_expires_at")
             }
         }.apply()
         _googleAccountEmail.value = email
         _isDriveConnected.value = true
-        _driveSyncStatus.value = if (accessToken != null) {
-            "Automatisch verknüpft (Aktiv: $email)"
-        } else {
-            "Automatisch verknüpft mit $email"
-        }
+        _driveSyncStatus.value = "Google-Konto verknüpft. Drive-Zugriff wird geprüft."
+        _driveSyncError.value = null
+        _driveSystemFolderStatus.value = "Wird geprüft"
         // Initialize Persistent Storage
         initializeDrivePersistence()
     }
 
+    @Synchronized
     fun disconnectDrive() {
+        driveSession.incrementAndGet()
+        driveInitializationJob?.cancel()
+        driveSyncJob?.cancel()
+        _isDriveSyncing.value = false
         sharedPrefs.edit().apply {
             putBoolean("user_disconnected", true)
             remove("connected_email")
             remove("access_token")
+            remove("access_token_expires_at")
+            remove("drive_reauthorization_required")
         }.apply()
         _googleAccountEmail.value = null
         _isDriveConnected.value = false
@@ -1168,10 +1210,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     isReAuthRequired = apiResult.isReAuthRequired,
                     testRunTime = nowStr
                 )
+            } catch (e: CancellationException) {
+                _driveTestState.value = _driveTestState.value?.copy(isRunning = false)
+                throw e
             } catch (e: Exception) {
+                handleDriveFailure(e)
                 val nowStr = SimpleDateFormat("dd.MM.yyyy, HH:mm 'Uhr'", Locale.GERMANY).format(Date())
-                val msg = e.message ?: e.toString()
-                val isAuthErr = msg.contains("401") || msg.contains("403") || msg.contains("Sign-In") || msg.contains("Anmeldung")
+                val failure = DriveConnectionFailure.from(e)
                 _driveTestState.value = DriveTestState(
                     isRunning = false,
                     googleAccount = email,
@@ -1182,10 +1227,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     downloadSuccess = false,
                     contentIdentical = false,
                     isSuccess = false,
-                    affectedAction = "Authentifizierung",
-                    errorMessage = msg,
-                    httpStatusCode = if (msg.contains("401")) 401 else if (msg.contains("403")) 403 else null,
-                    isReAuthRequired = isAuthErr,
+                    affectedAction = if (failure.requiresAuthorization) "Authentifizierung" else "Drive-Prüfung",
+                    errorMessage = failure.message,
+                    httpStatusCode = (e as? com.example.api.DriveAccessFailure)?.httpStatus,
+                    isReAuthRequired = failure.requiresAuthorization,
                     testRunTime = nowStr
                 )
             }
@@ -1196,6 +1241,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _driveSyncStatus.value = status
     }
 
+    @Synchronized
     fun initializeDrivePersistence() {
         val email = _googleAccountEmail.value
         if (email.isNullOrEmpty() || !_isDriveConnected.value) {
@@ -1203,11 +1249,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        viewModelScope.launch(Dispatchers.IO) {
+        if (driveInitializationJob?.isActive == true || driveSyncJob?.isActive == true) return
+        val session = driveSession.get()
+        driveInitializationJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
-                val token = getValidToken(email)
                 _driveSyncStatus.value = "Initialisiere dauerhafte Datenstruktur..."
-                val result = drivePersistenceRepository.initializeDriveStorage(token)
+                val (token, result) = initializeDriveWithToken(email, session)
+                ensureDriveSession(session)
                 when (result) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> {
                         _driveSystemFolderStatus.value = "Gefunden"
@@ -1222,6 +1270,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         val isLocalEmpty = repository.allReceipts.first().isEmpty()
                         if (isLocalEmpty) {
                             val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, result.config)
+                            ensureDriveSession(session)
+                            check(preview.success) { "Drive-Bestandsprüfung fehlgeschlagen" }
                             _restorePreview.value = preview
                             if (preview.inventory.canRestore) {
                                 _isRestoreRequired.value = true
@@ -1238,30 +1288,36 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
                     }
                     is com.example.data.DriveInitializationResult.Failure -> {
-                        _driveSystemFolderStatus.value = "Nicht eingerichtet"
-                        _driveSyncStatus.value = "Fehler bei der Initialisierung"
-                        _driveSyncError.value = result.error
-                        sharedPrefs.edit().putString("drive_sync_error", result.error).apply()
+                        handleDriveFailure(result.cause ?: IllegalStateException(), session)
+                        _driveSystemFolderStatus.value = "Prüfung fehlgeschlagen"
                     }
                 }
+            } catch (e: CancellationException) {
+                if (session == driveSession.get()) {
+                    _driveSyncStatus.value = "Drive-Initialisierung abgebrochen. Bitte erneut versuchen."
+                    _driveSystemFolderStatus.value = "Prüfung ausstehend"
+                }
+                throw e
             } catch (e: Exception) {
                 DiagnosticLog.w("ReceiptViewModel", "Drive initialization postponed")
-                _isDriveConnected.value = false
-                _driveSystemFolderStatus.value = "Nicht eingerichtet"
-                _driveSyncStatus.value = "Google-Anmeldung erforderlich (Web-Login)"
-                _driveSyncError.value = e.message ?: e.toString()
-                sharedPrefs.edit().putString("drive_sync_error", e.message ?: e.toString()).apply()
+                handleDriveFailure(e, session)
+                if (session == driveSession.get()) _driveSystemFolderStatus.value = "Prüfung fehlgeschlagen"
             }
         }
+        driveInitializationJob?.start()
     }
 
     fun checkForDriveRestore() {
         val email = _googleAccountEmail.value ?: return
+        val session = driveSession.get()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 _driveSyncStatus.value = "Prüfe Google-Drive-Bestand für Wiederherstellung..."
-                val token = getValidToken(email)
-                val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+                val (token, initResult) = initializeDriveWithToken(email, session)
+                if (initResult is com.example.data.DriveInitializationResult.Failure) {
+                    handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
+                    return@launch
+                }
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, initResult.config)
                     _restorePreview.value = preview
@@ -1272,9 +1328,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         _driveSyncStatus.value = "Kein wiederherstellbarer Bestand in Google Drive gefunden."
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DiagnosticLog.e("ReceiptViewModel", "Error checking Drive inventory for restore")
-                _driveSyncStatus.value = "Fehler bei der Drive-Bestandsprüfung: ${e.message}"
+                handleDriveFailure(e, session)
             }
         }
     }
@@ -1298,12 +1356,16 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun performFullRestoreConfirmation(mode: com.example.data.RestoreMode = com.example.data.RestoreMode.MERGE) {
         val email = _googleAccountEmail.value ?: return
+        val session = driveSession.get()
         _isRestoring.value = true
         _driveSyncStatus.value = "Wiederherstellung aus Google Drive läuft..."
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val token = getValidToken(email)
-                val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+                val (token, initResult) = initializeDriveWithToken(email, session)
+                if (initResult is com.example.data.DriveInitializationResult.Failure) {
+                    handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
+                    return@launch
+                }
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     var supplementalPayload: org.json.JSONObject? = null
                     var documentsBeforeCore = emptyMap<String, com.example.data.ManagedDocument>()
@@ -1350,22 +1412,30 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     _isRestoring.value = false
                     _driveSyncStatus.value = "Wiederherstellung abgebrochen: Keine Drive-Konfiguration."
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _isRestoring.value = false
                 DiagnosticLog.e("ReceiptViewModel", "Error during full restore confirmation")
-                _driveSyncStatus.value = "Fehler bei Wiederherstellung: ${e.message}"
+                handleDriveFailure(e, session)
+            } finally {
+                if (session == driveSession.get()) _isRestoring.value = false
             }
         }
     }
 
     fun runRestoreDryRun() {
         val email = _googleAccountEmail.value ?: return
+        val session = driveSession.get()
         _isRestoring.value = true
         _driveSyncStatus.value = "Führe Restore-Test (Dry Run) durch..."
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val token = getValidToken(email)
-                val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+                val (token, initResult) = initializeDriveWithToken(email, session)
+                if (initResult is com.example.data.DriveInitializationResult.Failure) {
+                    handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
+                    return@launch
+                }
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     val report = drivePersistenceRepository.runFullRestoreEndToEndTest(token, initResult.config)
                     _restoreReport.value = report
@@ -1375,10 +1445,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     _isRestoring.value = false
                     _driveSyncStatus.value = "Restore-Test abgebrochen: Keine Drive-Konfiguration."
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _isRestoring.value = false
                 DiagnosticLog.e("ReceiptViewModel", "Error during restore dry run")
-                _driveSyncStatus.value = "Fehler bei Restore-Test: ${e.message}"
+                handleDriveFailure(e, session)
+            } finally {
+                if (session == driveSession.get()) _isRestoring.value = false
             }
         }
     }
@@ -1608,25 +1682,100 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun ensureDriveSession(session: Long) {
+        if (session != driveSession.get()) throw CancellationException("Drive account changed")
+    }
+
+    @Synchronized
+    private fun handleDriveFailure(error: Throwable, session: Long = driveSession.get()) {
+        ensureDriveSession(session)
+        val failure = DriveConnectionFailure.from(error)
+        // Retain the saved account and all local data, including on reauthorization.
+        if (failure.requiresAuthorization) {
+            _isDriveConnected.value = false
+            sharedPrefs.edit().putBoolean("drive_reauthorization_required", true).apply()
+        }
+        _driveSyncStatus.value = if (failure.requiresAuthorization) "Google-Autorisierung erforderlich" else "Drive-Synchronisierung fehlgeschlagen – erneut versuchen"
+        _driveSyncError.value = failure.message
+        sharedPrefs.edit().putString("drive_sync_error", failure.message).apply()
+    }
+
     private fun getValidToken(email: String): String {
+        val session = driveSession.get()
+        if (email != _googleAccountEmail.value) throw CancellationException("Drive account changed")
         val manualToken = sharedPrefs.getString("access_token", null)
         if (!manualToken.isNullOrEmpty()) {
+            val expiresAt = sharedPrefs.getLong("access_token_expires_at", Long.MAX_VALUE)
+            if (System.currentTimeMillis() >= expiresAt) {
+                val failure = DriveAuthorizationRequired()
+                handleDriveFailure(failure, session)
+                throw failure
+            }
+            ensureDriveSession(session)
             return manualToken
         }
-        val scopeStr = "oauth2:https://www.googleapis.com/auth/drive.file"
         try {
-            return com.google.android.gms.auth.GoogleAuthUtil.getToken(getApplication(), email, scopeStr)
-        } catch (e: Exception) {
-            val msg = e.message ?: ""
-            if (msg.contains("Account not present", ignoreCase = true) || 
-                msg.contains("AccountNotPresent", ignoreCase = true) || 
-                e.javaClass.simpleName.contains("AccountNotPresent", ignoreCase = true) || 
-                msg.contains("Unknown", ignoreCase = true) || 
-                msg.contains("unregistered", ignoreCase = true) ||
-                e is com.google.android.gms.auth.UserRecoverableAuthException) {
-                throw Exception("Google Play Services Sign-In fehlgeschlagen (Konto '$email' nicht auf dem Gerät eingerichtet). Bitte nutzen Sie den grünen 'Über Google-Login verbinden' Button für den sicheren Web-Zugang.")
+            val token = com.google.android.gms.auth.GoogleAuthUtil.getToken(
+                getApplication(), email, "oauth2:https://www.googleapis.com/auth/drive.file")
+            ensureDriveSession(session)
+            return token
+        } catch (e: com.google.android.gms.auth.GoogleAuthException) {
+            val failure = DriveAuthorizationRequired()
+            handleDriveFailure(failure, session)
+            throw failure
+        }
+        // IO/timeout and cancellation propagate unchanged; they are not login errors.
+    }
+
+    private suspend fun initializeDriveWithToken(email: String, session: Long): Pair<String, com.example.data.DriveInitializationResult> {
+        ensureDriveSession(session)
+        var token = getValidToken(email)
+        ensureDriveSession(session)
+        var result = drivePersistenceRepository.initializeDriveStorage(token)
+        ensureDriveSession(session)
+        val failure = result as? com.example.data.DriveInitializationResult.Failure
+        if (failure?.cause?.let { it is com.example.api.DriveAccessFailure && it.httpStatus == 401 } == true &&
+            sharedPrefs.getString("access_token", null).isNullOrEmpty()) {
+            // Play Services caches access tokens. Invalidate a rejected token and retry once.
+            com.google.android.gms.auth.GoogleAuthUtil.clearToken(getApplication(), token)
+            token = getValidToken(email)
+            ensureDriveSession(session)
+            result = drivePersistenceRepository.initializeDriveStorage(token)
+            ensureDriveSession(session)
+            val rejectedAgain = (result as? com.example.data.DriveInitializationResult.Failure)?.cause
+            if (rejectedAgain is com.example.api.DriveAccessFailure && rejectedAgain.httpStatus == 401) {
+                throw DriveAuthorizationRequired()
             }
-            throw e
+        }
+        return token to result
+    }
+
+    private suspend fun handleDriveOperationFailure(error: Throwable, email: String, session: Long) {
+        ensureDriveSession(session)
+        if (error is com.example.api.DriveAccessFailure && error.httpStatus == 401 &&
+            sharedPrefs.getString("access_token", null).isNullOrEmpty()) {
+            // A token can expire during a long sync. Renew and validate it before offering login.
+            // Do not replay a partly completed transfer automatically.
+            try {
+                val token = getValidToken(email)
+                com.google.android.gms.auth.GoogleAuthUtil.clearToken(getApplication(), token)
+                val renewed = getValidToken(email)
+                val result = drivePersistenceRepository.initializeDriveStorage(renewed)
+                ensureDriveSession(session)
+                if (result is com.example.data.DriveInitializationResult.Failure) {
+                    handleDriveFailure(result.cause ?: IllegalStateException(), session)
+                } else {
+                    _driveSyncStatus.value = "Google-Zugangstoken erneuert. Bitte erneut synchronisieren."
+                    _driveSyncError.value = "Die laufende Übertragung wurde unterbrochen. Bitte Synchronisierung erneut starten; lokale Daten bleiben erhalten."
+                    sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                handleDriveFailure(e, session)
+            }
+        } else {
+            handleDriveFailure(error, session)
         }
     }
 
@@ -1635,21 +1784,25 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _autoDriveBackup.value = enabled
     }
 
+    @Synchronized
     fun syncAllToDrive() {
         val email = _googleAccountEmail.value ?: return
         if (!_isDriveConnected.value) {
             _driveSyncStatus.value = "Google-Anmeldung erforderlich"
             return
         }
+        if (driveSyncJob?.isActive == true) return
+        val session = driveSession.get()
+        val initialization = driveInitializationJob
         _isDriveSyncing.value = true
         _driveSyncStatus.value = "Synchronisiere mit Google Drive..."
-        viewModelScope.launch(Dispatchers.IO) {
+        driveSyncJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
-                // Get Google Auth Access Token
-                val token = getValidToken(email)
-
-                // 1. Initialize persistent drive structure first!
-                val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+                initialization?.join()
+                ensureDriveSession(session)
+                if (!_isDriveConnected.value) return@launch
+                _driveSyncStatus.value = "Synchronisiere mit Google Drive..."
+                val (token, initResult) = initializeDriveWithToken(email, session)
                 val config = when (initResult) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> {
                         _driveSystemFolderStatus.value = "Gefunden"
@@ -1670,10 +1823,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         initResult.config
                     }
                     is com.example.data.DriveInitializationResult.Failure -> {
-                        _driveSystemFolderStatus.value = "Nicht eingerichtet"
-                        _driveSyncStatus.value = "Fehler: ${initResult.error}"
-                        _driveSyncError.value = initResult.error
-                        sharedPrefs.edit().putString("drive_sync_error", initResult.error).apply()
+                        handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
+                        _driveSystemFolderStatus.value = "Prüfung fehlgeschlagen"
                         _isDriveSyncing.value = false
                         return@launch
                     }
@@ -1718,6 +1869,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     getApplication(), database, token, config.systemFolderId
                 )
 
+                ensureDriveSession(session)
                 _isDriveSyncing.value = false
                 if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess &&
                     successCount == list.size && documentSuccessCount == standaloneDocuments.size) {
@@ -1734,36 +1886,42 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
                 }
 
+            } catch (e: CancellationException) {
+                if (session == driveSession.get()) _driveSyncStatus.value = "Drive-Synchronisierung abgebrochen. Bitte erneut versuchen."
+                throw e
             } catch (e: Exception) {
                 DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed")
-                _isDriveConnected.value = false
-                _driveSyncStatus.value = "Google-Anmeldung erforderlich (Web-Login)"
-                _driveSyncError.value = e.message ?: e.toString()
-                sharedPrefs.edit().putString("drive_sync_error", e.message ?: e.toString()).apply()
-                _isDriveSyncing.value = false
+                handleDriveOperationFailure(e, email, session)
+            } finally {
+                if (session == driveSession.get()) _isDriveSyncing.value = false
             }
         }
+        driveSyncJob?.start()
     }
 
     private fun uploadReceiptToDriveInternal(receipt: Receipt) {
         val email = _googleAccountEmail.value ?: return
         if (!_isDriveConnected.value) return
+        val session = driveSession.get()
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val token = getValidToken(email)
-                val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+                val (token, initResult) = initializeDriveWithToken(email, session)
                 val config = when (initResult) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> initResult.config
                     is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> initResult.config
                     is com.example.data.DriveInitializationResult.Failure -> {
+                        handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
                         repository.insert(receipt.copy(syncStatus = "ERROR", syncError = "Drive-Initialisierungsfehler: ${initResult.error}"))
                         return@launch
                     }
                 }
                 drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DiagnosticLog.w("ReceiptViewModel", "Auto backup postponed for receipt")
-                repository.insert(receipt.copy(syncStatus = "ERROR", syncError = e.message ?: e.toString()))
+                handleDriveOperationFailure(e, email, session)
+                repository.insert(receipt.copy(syncStatus = "ERROR", syncError = DriveConnectionFailure.from(e).message))
             }
         }
     }
@@ -5010,14 +5168,22 @@ data class AiSearchUiState(
         }
     }
 
+    @Synchronized
+    private fun publishFirestoreStatus(message: String) {
+        // Firebase's independent startup/login must not overwrite Drive auth/init/sync status.
+        if (_googleAccountEmail.value.isNullOrBlank() && !sharedPrefs.getBoolean("user_disconnected", false)) {
+            _driveSyncStatus.value = message
+        }
+    }
+
     fun syncWithCloud() {
         if (!FirestoreService.isCloudActive()) return
         if (FirestoreService.getCurrentUser() == null) {
-            _driveSyncStatus.value = "Cloud-Modus lokal: Bitte anmelden, um Daten zu sichern."
+            publishFirestoreStatus("Cloud-Modus lokal: Bitte anmelden, um Daten zu sichern.")
             return
         }
         viewModelScope.launch {
-            _driveSyncStatus.value = "Synchronisiere mit Firestore..."
+            publishFirestoreStatus("Synchronisiere mit Firestore...")
             try {
                 // 1. Sync Wohneinheiten
                 val property = propertyMetadata.value ?: error("Bitte zuerst eine Immobilie auswählen.")
@@ -5058,10 +5224,10 @@ data class AiSearchUiState(
                         }
                     }
                 }
-                _driveSyncStatus.value = "Firestore-Synchronisierung erfolgreich!"
+                publishFirestoreStatus("Firestore-Synchronisierung erfolgreich!")
             } catch (e: Exception) {
                 DiagnosticLog.e("ReceiptViewModel", "Firestore sync error")
-                _driveSyncStatus.value = "Fehler bei Firestore-Synchronisierung."
+                publishFirestoreStatus("Fehler bei Firestore-Synchronisierung.")
             }
         }
     }

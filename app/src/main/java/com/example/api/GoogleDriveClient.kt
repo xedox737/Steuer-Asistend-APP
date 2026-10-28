@@ -31,8 +31,14 @@ object GoogleDriveClient {
     private const val TAG = "GoogleDriveClient"
     // Private transport; QA replaces it reflectively with an in-memory HTTP interceptor.
     private var client = OkHttpClient()
-    private fun executeDriveRequest(request: Request): okhttp3.Response =
-        DriveEnvironment.execute(request) { client.newCall(it).execute() }
+    private fun executeDriveRequest(request: Request): okhttp3.Response {
+        val response = DriveEnvironment.execute(request) { client.newCall(it).execute() }
+        if (response.code == 401) {
+            response.close()
+            throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 401)
+        }
+        return response
+    }
 
     internal fun validateDataReferences(accessToken: String, json: String) =
         DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
@@ -70,6 +76,7 @@ object GoogleDriveClient {
                 try {
                     downloadJson(accessToken, mappingsFile.id)
                 } catch (e: Exception) {
+                    e.rethrowDriveControlFailure()
                     JSONObject().apply { put("mappings", JSONArray()) }.toString()
                 }
             } else {
@@ -126,6 +133,7 @@ object GoogleDriveClient {
                 )
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error saving category mapping")
         }
     }
@@ -156,6 +164,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error finding file by receipt properties")
         }
         return null
@@ -174,6 +183,7 @@ object GoogleDriveClient {
     /** Errors must not be mistaken for an empty search: that would create duplicate backup structures. */
     private inline fun <T> initializationCall(block: () -> T): T = try { block() }
         catch (e: DriveAccessFailure) { throw e }
+        catch (_: java.net.SocketTimeoutException) { throw DriveAccessFailure(DriveAccessFailure.Reason.TIMEOUT) }
         catch (_: IOException) { throw DriveAccessFailure(DriveAccessFailure.Reason.NETWORK) }
         catch (_: org.json.JSONException) { throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA) }
 
@@ -509,6 +519,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error searching file")
         }
 
@@ -574,6 +585,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: IOException) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error uploading file")
             false
         }
@@ -659,6 +671,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DriveFileResult(false, null, e.message ?: e.toString())
         }
     }
@@ -687,6 +700,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DriveFileResult(false, null, e.message ?: e.toString())
         }
     }
@@ -707,6 +721,7 @@ object GoogleDriveClient {
                 response.isSuccessful || response.code == 404
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error deleting file")
             false
         }
@@ -728,7 +743,7 @@ object GoogleDriveClient {
                 validateDataReferences(accessToken, json)
                 return json
             } else {
-                throw IOException("Download failed with status ${response.code}: ${response.message}")
+                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
             }
         }
     }
@@ -765,6 +780,7 @@ object GoogleDriveClient {
                     }
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 DiagnosticLog.e(TAG, "Error in searchFiles")
             }
             list
@@ -791,6 +807,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error downloading file bytes for fileId")
             return null
         }
@@ -799,7 +816,8 @@ object GoogleDriveClient {
     /** Metadata used by the non-destructive document-layout migration. */
     suspend fun getFileMetadata(accessToken: String, fileId: String): DriveManagedFile? = try {
         getFileMetadataChecked(accessToken, fileId)
-    } catch (_: Exception) {
+    } catch (controlFailure: Exception) {
+        controlFailure.rethrowDriveControlFailure()
         DiagnosticLog.e(TAG, "Could not read Drive metadata for document migration")
         null
     }
@@ -907,6 +925,7 @@ object GoogleDriveClient {
         return try {
             executeDriveRequest(request).use { it.isSuccessful }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Could not move Drive file during document migration")
             false
         }
@@ -953,6 +972,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Exception getting file metadata for")
             return DriveFileInfoAndHeader(
                 fileId = fileId,
@@ -990,6 +1010,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.w(TAG, "Error fetching partial header bytes for")
         }
 
@@ -1036,6 +1057,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error finding file by app property")
         }
 
@@ -1061,6 +1083,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error finding file by name fallback")
         }
 
@@ -1088,6 +1111,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e("GoogleDriveClient", "Error finding file by name")
         }
         return null
@@ -1147,6 +1171,7 @@ object GoogleDriveClient {
                     }
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 DiagnosticLog.e(TAG, "Error updating file")
                 return null
             }
@@ -1214,6 +1239,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: IOException) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Error uploading file")
             null
         }
@@ -1284,6 +1310,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             return DriveTestApiResult(
                 affectedAction = "Suche Hauptordner",
                 errorMessage = "Netzwerk- oder API-Fehler bei der Hauptordner-Suche: ${e.message}"
@@ -1325,6 +1352,7 @@ object GoogleDriveClient {
                     mainFolderId = json.getString("id")
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 return DriveTestApiResult(
                     affectedAction = "Erstellung Hauptordner",
                     errorMessage = "Fehler bei Erstellung des Hauptordners: ${e.message}"
@@ -1370,6 +1398,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             return DriveTestApiResult(
                 mainFolderId = mainFolderId,
                 affectedAction = "Suche Systemordner",
@@ -1415,6 +1444,7 @@ object GoogleDriveClient {
                     systemFolderId = json.getString("id")
                 }
             } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
                 return DriveTestApiResult(
                     mainFolderId = mainFolderId,
                     affectedAction = "Erstellung Systemordner",
@@ -1530,6 +1560,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             return DriveTestApiResult(
                 mainFolderId = mainFolderId,
                 systemFolderId = systemFolderId,
@@ -1583,6 +1614,7 @@ object GoogleDriveClient {
                 downloadedContent = response.body?.string() ?: ""
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             return DriveTestApiResult(
                 mainFolderId = mainFolderId,
                 systemFolderId = systemFolderId,
@@ -1654,6 +1686,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e("GoogleDriveClient", "Error finding metadata file by properties")
         }
         return null
@@ -1710,6 +1743,7 @@ object GoogleDriveClient {
                 }
             }
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             DiagnosticLog.e("GoogleDriveClient", "Error listing all metadata files")
         }
         return list
@@ -1775,6 +1809,7 @@ fun detectMagicBytesFormat(header: ByteArray): MagicBytesDetection {
         val str = String(header, Charsets.UTF_8)
         str.replace("\uFEFF", "").trimStart()
     } catch (e: Exception) {
+        e.rethrowDriveControlFailure()
         ""
     }
 

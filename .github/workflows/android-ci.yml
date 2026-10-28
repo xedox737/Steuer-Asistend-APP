@@ -97,6 +97,10 @@ jobs:
         if: always()
         run: python3 .github/scripts/phase11b-verify-initialization.py
 
+      - name: Verify actual Issue 148 connection regression execution
+        if: always()
+        run: python3 .github/scripts/phase11c-verify-connection.py
+
       - name: Preserve synthetic Phase 10B evidence
         if: always()
         run: python3 .github/scripts/phase10b-evidence.py
