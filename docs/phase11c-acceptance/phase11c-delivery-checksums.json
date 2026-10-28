@@ -1,0 +1,33 @@
+{
+  "productHead": "cdb9a1006a3a72ee873a0986aaa512c9c5ceab05",
+  "isolatedHead": "9624be2599bd34287a910689d5182b3cc47e4872",
+  "productCi": 40733042865,
+  "isolatedCi": 40725684070,
+  "bothCiConclusion": "success",
+  "files": [
+    {
+      "path": "ImmoPilot-Phase11C-Abschlussbericht.md",
+      "bytes": 23220,
+      "sha256": "0a3816fcf912f82b70d8bb2bdbfc57094772e65377d193e52ef570e877ead2c0",
+      "gitBlob": "cbf4e17a12522af2844283025104b79c7445fc6a"
+    },
+    {
+      "path": "ImmoPilot-Phase11C-Abschlussbericht.pdf",
+      "bytes": 85145,
+      "sha256": "1e32fed0e351b4187b9a9d6f2cff1cff0d2a7764d8a055baaa91d25f3eeafe8e",
+      "gitBlob": "7f3d4a20850123b88f32fdf6e7f75e13748564fe"
+    },
+    {
+      "path": "ImmoPilot-Phase11C-Abnahme-Evidence.zip",
+      "bytes": 2385126,
+      "sha256": "265c0202d640c0f4bad47d9fba9ba09bea16573785bce5af67eeb2952cf73d4c",
+      "gitBlob": "37bffa5440ffa80496262a10e40f4e3d10692680"
+    },
+    {
+      "path": "verify-evidence.py",
+      "bytes": 2113,
+      "sha256": "c27a0795e80f312c1ce63e2bf5a9cd7223ca0dbe773f1a39965b48d67c3bfe3b",
+      "gitBlob": "8ab25228fc40a91d43ffb483a294d8aaa556f9d5"
+    }
+  ]
+}
