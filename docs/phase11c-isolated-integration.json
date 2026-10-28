@@ -1,0 +1,15 @@
+{
+  "sourceTestBranch": "agent/phase11b-isolated-drive",
+  "sourceTestHead": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+  "productRepair": "6ed31a292abdea4fd06834d52e494012d38e29b9",
+  "productPackage": "com.aistudio.steuerassistent.vnhqkp",
+  "testPackage": "com.aistudio.steuerassistent.vnhqkp.phase11a",
+  "fixtureGitBlob": "412050d0a6b5420e7ad8f37057cdcbb84fd96299",
+  "fixtureSha256": "b052a1ae4569196abb791375aa1fa01fe6a636a1d0082820acb576fa497ea638",
+  "existingHooksPreserved": true,
+  "pythonTests": 32,
+  "apkBuilt": false,
+  "realOAuthVerified": false,
+  "localProductRepair": "2b58e6aaab913acb270695512b7fe4b4cbef1cf4",
+  "publicationNote": "GitHub API import; shared product files preserved byte-for-byte."
+}

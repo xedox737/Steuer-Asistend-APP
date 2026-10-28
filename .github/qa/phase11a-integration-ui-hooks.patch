@@ -1,0 +1,16 @@
+diff --git a/app/src/main/java/com/example/ui/AppSettingsScreen.kt b/app/src/main/java/com/example/ui/AppSettingsScreen.kt
+index 7070aa5..0c2a6e9 100644
+--- a/app/src/main/java/com/example/ui/AppSettingsScreen.kt
++++ b/app/src/main/java/com/example/ui/AppSettingsScreen.kt
+@@ -122,0 +123 @@ private fun SettingsOverview(state: AiProviderState, onBack: () -> Unit, onProvi
++            BuildVariantSettingsEntry()
+diff --git a/app/src/main/java/com/example/ui/ReceiptAppUi.kt b/app/src/main/java/com/example/ui/ReceiptAppUi.kt
+index 273066b..43ca152 100644
+--- a/app/src/main/java/com/example/ui/ReceiptAppUi.kt
++++ b/app/src/main/java/com/example/ui/ReceiptAppUi.kt
+@@ -6880,0 +6881,2 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
++            BuildVariantDriveNotice()
++
+@@ -11969 +11971 @@ fun ConfirmRepairDocumentDialog(
+-                        Text("Ziel: Steuerassistent Belege / ${receipt.datum.take(4)} / ${receipt.hauptkategorie}", fontSize = 10.sp, color = AccentBlue)
++                        Text("Ziel: ${com.example.api.DriveEnvironment.rootFolderName} / ${receipt.datum.take(4)} / ${receipt.hauptkategorie}", fontSize = 10.sp, color = AccentBlue)
