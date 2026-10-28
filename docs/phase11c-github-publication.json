@@ -1,0 +1,41 @@
+{
+  "repository": "xedox737/Steuer-Asistend-APP",
+  "issue": 148,
+  "localToGithubCommits": {
+    "aa137a590170adcca2f30a00d9ec7f2e195598cf": "05e7f53c1b3245bfcd10c4bddd97492814d3e63a",
+    "2b58e6aaab913acb270695512b7fe4b4cbef1cf4": "6ed31a292abdea4fd06834d52e494012d38e29b9",
+    "7cde595d9f6f3ce3378005cc91985b0ae5c9afe6": "c543dc4c2eb0d8e1925dd7d47c34213c51485eda",
+    "9afb546fea289012bbb43d503002e6748e482687": "7e9a6e5548546052c4cd6509edfcb39d89a1060e"
+  },
+  "identicalProductTrees": [
+    {
+      "local": "aa137a590170adcca2f30a00d9ec7f2e195598cf",
+      "github": "05e7f53c1b3245bfcd10c4bddd97492814d3e63a",
+      "tree": "ebdb6c70da83ddd62b2231b147cfce7118213e76"
+    },
+    {
+      "local": "2b58e6aaab913acb270695512b7fe4b4cbef1cf4",
+      "github": "6ed31a292abdea4fd06834d52e494012d38e29b9",
+      "tree": "7252c88f004c7788aedd39a476e716527378db03"
+    },
+    {
+      "local": "7cde595d9f6f3ce3378005cc91985b0ae5c9afe6",
+      "github": "c543dc4c2eb0d8e1925dd7d47c34213c51485eda",
+      "tree": "e43ea773985c9dbc4970199b293186980d17d0ca"
+    }
+  ],
+  "isolatedImport": {
+    "local": "9afb546fea289012bbb43d503002e6748e482687",
+    "github": "7e9a6e5548546052c4cd6509edfcb39d89a1060e",
+    "existingTestAppParent": "f56d0c164262b1af2bd65936cf769b7aef3b0143",
+    "sharedMainAndOriginalFixtureUnchanged": true,
+    "adaptedPaths": [
+      ".github/scripts/phase11a-check-shared-product.py",
+      ".github/workflows/android-ci.yml",
+      "docs/phase11c-isolated-integration.json"
+    ]
+  },
+  "note": "The PDF and local evidence preserve their original local commit IDs and 27 October status. This file maps those IDs to the GitHub API imports. New full CI/APK acceptance and real Android16 OAuth acceptance are not claimed by this publication.",
+  "fullAcceptance": false,
+  "realOAuthVerified": false
+}
