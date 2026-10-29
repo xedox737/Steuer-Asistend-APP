@@ -46,9 +46,29 @@ jobs:
           test -f app/build.gradle.kts
           gradle --version
 
-      - name: Create local debug keystore
+      # A transient keystore is permitted for CI checks, never for a downloadable product update.
+      # Configure PRODUCTION_DEBUG_KEYSTORE_BASE64 with the persistent debug.keystore bytes
+      # (store/key password: android; alias: androiddebugkey).
+      - name: Prepare product debug signing identity
+        env:
+          PRODUCTION_DEBUG_KEYSTORE_BASE64: ${{ secrets.PRODUCTION_DEBUG_KEYSTORE_BASE64 }}
+          PRODUCTION_DEBUG_SHA1: ${{ vars.PRODUCTION_DEBUG_SHA1 }}
         run: |
-          if [ ! -f debug.keystore ]; then
+          if [ -n "$PRODUCTION_DEBUG_KEYSTORE_BASE64" ] && [ -n "$PRODUCTION_DEBUG_SHA1" ]; then
+            printf '%s' "$PRODUCTION_DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+            actual_sha1="$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1)"
+            expected_sha1="$(printf '%s' "$PRODUCTION_DEBUG_SHA1" | tr '[:lower:]' '[:upper:]')"
+            # Existing installed product version 102 must remain upgradeable.
+            # An OAuth-approved but DIFFERENT signing identity cannot update that installation.
+            installed_product_sha1="EA:42:88:6D:5B:6E:AF:FB:AD:49:26:86:D9:65:B7:47:62:A9:76:49"
+            if [ -z "$actual_sha1" ] || [ "$actual_sha1" != "$expected_sha1" ] || [ "$actual_sha1" != "$installed_product_sha1" ]; then
+              echo "::error::Product APK signing identity differs from approved OAuth SHA-1 or installed version 102. Refusing incompatible update."
+              exit 1
+            fi
+            echo "STABLE_PRODUCT_DEBUG_SIGNING=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Missing persistent keystore or approved SHA-1: CI-only APK. Publishing is disabled."
+            echo "STABLE_PRODUCT_DEBUG_SIGNING=false" >> "$GITHUB_ENV"
             keytool -genkeypair \
               -keystore debug.keystore \
               -storepass android \
@@ -59,6 +79,7 @@ jobs:
               -keysize 2048 \
               -validity 10000
           fi
+          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep -E 'SHA1:|SHA256:'
 
       - name: Test public APK certificate evidence parser
         run: python3 -m unittest discover -s .github/scripts/tests -v
@@ -143,8 +164,10 @@ jobs:
             app/build/test-results/**
           if-no-files-found: ignore
 
+      # Do not expose a transiently signed main-branch APK as an installable update.
+      # PR artifacts remain available for isolated CI validation.
       - name: Upload debug APK
-        if: success()
+        if: success() && (github.ref != 'refs/heads/main' || env.STABLE_PRODUCT_DEBUG_SIGNING == 'true')
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -161,7 +184,7 @@ jobs:
           if-no-files-found: error
 
       - name: Prepare traceable debug release
-        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: success() && env.STABLE_PRODUCT_DEBUG_SIGNING == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${SHORT_SHA}.apk"
@@ -174,7 +197,7 @@ jobs:
           } > build-info.txt
 
       - name: Publish current debug APK
-        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: success() && env.STABLE_PRODUCT_DEBUG_SIGNING == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-${{ github.sha }}
