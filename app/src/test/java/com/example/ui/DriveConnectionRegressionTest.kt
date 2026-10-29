@@ -271,6 +271,15 @@ class DriveConnectionRegressionTest {
         assertNull(prefs.getString("connected_email", null))
     }
 
+    @Test fun recoverableConsentDoesNotBecomeLogout() {
+        AuthShadow.failure = com.google.android.gms.auth.UserRecoverableAuthException(
+            "synthetic-consent", android.content.Intent("synthetic.CONSENT"))
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)
+        assertAccountRetained(vm)
+        assertTrue(vm.driveSyncError.value.orEmpty().contains("Freigabe"))
+        assertFalse(prefs.getBoolean("drive_reauthorization_required", false))
+    }
+
     @Implements(GoogleAuthUtil::class)
     class AuthShadow {
         companion object {
