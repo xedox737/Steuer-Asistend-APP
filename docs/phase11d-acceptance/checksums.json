@@ -3,24 +3,31 @@
   "ci": 40919974587,
   "conclusion": "success",
   "practicalRelease": "NO_GO",
+  "reportedCertificateSource": "downloaded APK; installed signer unknown",
   "files": [
     {
       "path": "ABNAHME.md",
-      "bytes": 12353,
-      "sha256": "89bccccdeb7284651794dc2bfa3e89a22e7318ba2f9328b2891e9e4a83f0539c",
-      "gitBlob": "eba2373ee8940c9ba66d6228ed037915329b7a6d"
+      "bytes": 13225,
+      "sha256": "06f906f94a1c26debc09fee05f84e3eef13c6b922d45a9d9cba3526399e1dc44",
+      "gitBlob": "2bad5271736324ec9d44e2efd9571a73bad95e44"
+    },
+    {
+      "path": "INSTALLIERTE_SIGNATUR.md",
+      "bytes": 2356,
+      "sha256": "48c4dbabba432ff00de1f63889b0b25f2bee2bf3a5e6fa2c6c9d1dd72e330ddf",
+      "gitBlob": "77bd4bccb3de8a97f289491d564ba7837d3e4cf4"
     },
     {
       "path": "ImmoPilot-Phase11D-Abnahme-Evidence.zip",
-      "bytes": 1862096,
-      "sha256": "0bd6f261cb65e058e492f01142728a91865a3b7bd7809e87b5bc82539453e83d",
-      "gitBlob": "aac8bddae5d941252da3957bb41ba9e597ea068f"
+      "bytes": 1863954,
+      "sha256": "d8c1a4524f7475937efcfb59650ae7e7efe0214fa07f874b41621cfabcee1d0e",
+      "gitBlob": "461e1309b87a929b8e2467e855c1bbf81aaf28b3"
     },
     {
       "path": "verify-evidence.py",
-      "bytes": 1938,
-      "sha256": "ad8bdc7d49a81e08a177bc065262b606c7c385d4e3063ed823a0d1272e25d1ba",
-      "gitBlob": "99752fff5d5383784da990b701feb222ce5715ef"
+      "bytes": 2039,
+      "sha256": "81aa540c91855ff41fd38fe6f308e97412f76df1fd88f7d9ec7e63a1cb2ad774",
+      "gitBlob": "b612eeca108c9873d8268a876210985e7b346072"
     }
   ]
 }

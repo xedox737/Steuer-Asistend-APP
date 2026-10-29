@@ -30,6 +30,8 @@ assert repair['actualRepairMethods'] == 36 and repair['originalHashesMatched'] =
 assert repair['fullRestoreErrors'] == repair['mergeErrors'] == 0
 apk = json.loads((root/'ci-apk-summary.json').read_text())
 assert apk['signatureVerifiedIndependently'] is True
-assert apk['matchesInstalledCertificate'] is False
+assert apk['matchesReportedCertificate'] is False
+assert apk['installedCertificateVerified'] is False
+assert apk['matchesInstalledCertificate'] is None
 assert apk['installationAllowedAsProductUpdate'] is False
 print('Archive verified. Practical release remains NO-GO: real OAuth, device and compatible signing are open.')

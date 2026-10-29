@@ -1,6 +1,6 @@
 # Phase 11D – Abschließender automatisierter Testnachweis
 
-Stand: 29.10.2026. **Automatisierte Prüfung bestanden; praktische Veröffentlichung NO-GO.** Die konkrete Ursache des Google-Statuscodes 10 auf dem POCO ist weiterhin nicht bewiesen. Es fand kein echter Google-Login, kein Gerätetest auf Android16 und kein Update der vorhandenen Installation statt.
+Stand: 29.10.2026. **Automatisierte Prüfung bestanden; praktische Veröffentlichung NO-GO.** Die konkrete Ursache des Google-Statuscodes 10 auf dem POCO ist weiterhin nicht bewiesen. Der Nutzer hat inzwischen bestätigt: Die angegebene SHA1 stammt aus der heruntergeladenen GitHub-APK, nicht direkt aus der installierten App. Die Gerätesignatur ist deshalb noch unbekannt. Es fand kein echter Google-Login, kein Gerätetest auf Android16 und kein Update der vorhandenen Installation statt.
 
 [PR #151](https://github.com/xedox737/Steuer-Asistend-APP/pull/151) bleibt Draft. Kein Merge, keine Produktinstallation ersetzt oder deinstalliert. Die isolierte Phase11-Test-App wurde nicht geändert.
 
@@ -67,15 +67,15 @@ Die heruntergeladenen APK-Bytes wurden unabhängig mit Build-Tools36 `apksigner`
 | Zertifikat-SHA1 | `46bb24417545247eec24ba7811ab82bfd881470d` |
 | Zertifikat-SHA256 | `61891a35f216f7c899655083d06de8dce5d04ffc053ba14f95a26b805e6d2682` |
 | Signatur | gültige v2-Signatur, ein RSA2048-Debug-Signer |
-| Vom Nutzer für Version102 angegebene SHA1 | `ea42886d5b6eaffbad492686d965b74762a97649` |
+| SHA1 der heruntergeladenen Version102-APK laut Nutzer | `ea42886d5b6eaffbad492686d965b74762a97649` |
 
-Die CI verwendete `STABLE_PRODUCT_DEBUG_SIGNING=false`; der zusätzliche Produktupdate-Zertifikatswächter wurde für dieses ausdrücklich temporäre PR-Artefakt nicht ausgeführt. Das ist kein positiver Nachweis einer freigegebenen Signierkonfiguration. Das Artefakt kann die angegebene Installation nicht als kompatibles Update ersetzen. Es wird nicht als funktionierende neue Produktversion ausgeliefert. Kein Release wurde durch diesen Auftrag veröffentlicht.
+Die CI verwendete `STABLE_PRODUCT_DEBUG_SIGNING=false`; der zusätzliche Produktupdate-Zertifikatswächter wurde für dieses ausdrücklich temporäre PR-Artefakt nicht ausgeführt. Das ist kein positiver Nachweis einer freigegebenen Signierkonfiguration. Das Artefakt trägt eine andere Signatur als die heruntergeladene Version102-APK. Weil die tatsächlich installierte Gerätesignatur noch unbekannt ist, ist eine Update-Kompatibilität ausdrücklich nicht bestätigt. Es wird nicht als funktionierende neue Produktversion ausgeliefert. Kein Release wurde durch diesen Auftrag veröffentlicht.
 
 **Keine Installation, Deinstallation oder Profiländerung auf dem POCO als Umgehung durchführen.** Technische Tests einer temporären CI-APK ausschließlich auf einem separaten leeren Testgerät oder neuen Emulator. Der Original-Privatkey ist nicht aus einer APK rekonstruierbar; seine Verfügbarkeit beim Nutzer bleibt unbekannt.
 
 ## Noch offene tatsächliche Google-/Android16-Abnahme
 
-1. Zertifikat direkt aus der installierten POCO-App ermitteln und mit dem Android-OAuth-Client abgleichen. Beide früheren Haupt-Publisher nutzten denselben Release-Tag und APK-Dateinamen; ein späterer Download beweist die Gerätesignatur nicht. Ob eine solche Abweichung auftrat, ist offen.
+1. Zertifikat direkt aus der installierten POCO-App ermitteln und mit dem Android-OAuth-Client abgleichen. Beide früheren Haupt-Publisher nutzten denselben Release-Tag und APK-Dateinamen; ein späterer Download beweist die Gerätesignatur nicht. Der Nutzer hat die Download-Herkunft bestätigt; ob die installierte App dieselbe oder eine andere Signatur trägt, ist offen. Die bestehenden Zertifikatspins verwenden noch den angegebenen Download-Referenzwert und sind vor einem GO mit dem Gerät abzugleichen.
 2. Tatsächliche Cloud-Projekt-ID/-Nummer und Android-Client-Zuordnung, Drive-API-Aktivierung, Consent/Audience, Testnutzer, Scope und Wirksamkeitszeitpunkt prüfen. Diese Console-Einstellungen wurden hier nicht eingesehen. Google nennt für Testing-Nutzer eine siebentägige Autorisierungsfrist; der konkrete Projektstatus ist unbekannt. [Primärquelle](https://support.google.com/cloud/answer/15549945?hl=en).
 3. Passenden vorhandenen Originalschlüssel und freigegebenen SHA1 sicher im vorgesehenen CI-Secret/der Repository-Variable einrichten. Weder Schlüssel noch Tokens in Chat/Logs/Git geben. Vor einem Update das tatsächlich gebaute APK-Zertifikat positiv prüfen.
 4. Real auf Android16: Konto auswählen, Drive-Freigabe bestätigen, tatsächliches Anmeldeergebnis und Scope prüfen; produktiven Root `Steuerassistent Belege/_BelegApp-Daten` sicher erkennen; Neustart, Tokenablauf/Erneuerung, kurzzeitigen Netzausfall, Widerruf, Abbruch und bewussten Kontowechsel prüfen. Dabei den tatsächlichen lokalen Bestand erfassen und sämtliche Originale hashen, nicht Testdaten auf das Gerät übertragen.
@@ -88,3 +88,5 @@ Weitere dokumentierte Grenzen: GoogleSignIn/GoogleAuthUtil sind veraltete APIs; 
 `ImmoPilot-Phase11D-Abnahme-Evidence.zip` enthält tatsächliche XMLs, CI- und Integritätsberichte, Signaturausgaben, Quellschutz-Hashes und historische rote Nachweise. Nach dem Entpacken prüft `python3 verify-evidence.py` das SHA256-Manifest, tatsächliche eindeutige Methoden und die wesentlichen Integritätsbefunde erneut. Die APK selbst ist bewusst nicht im Evidence-Archiv enthalten. Vollständiger Neuaufbau über den unveränderten CI-Workflow am getesteten Head mit Gradle9.3.1, Java21 für JVM und Java17 für Android; keine globale SDK-Abschwächung.
 
 **Automatisierte Abnahme: bestanden. Praktische Phase11D-/Veröffentlichungsfreigabe: NO-GO.** Die tatsächliche Code10-Geräteursache, live Google-Autorisierung, sichere Update-Signierung und der reale Android16-Test bleiben offen. PR bleibt Draft; kein automatischer Merge.
+
+Aktualisierte Geräteanleitung: [INSTALLIERTE_SIGNATUR.md](INSTALLIERTE_SIGNATUR.md). Diese Messung ist ohne Änderung oder Neuinstallation der App möglich. Bei abweichender Gerätesignatur kann ein passender OAuth-Eintrag für die vorhandene Installation geprüft werden, bevor überhaupt ein App-Update erwogen wird.
