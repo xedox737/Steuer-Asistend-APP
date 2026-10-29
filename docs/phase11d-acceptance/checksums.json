@@ -1,0 +1,26 @@
+{
+  "testedHead": "ff1b6eaaba2b3e1a6c0349c908b981175f6888f3",
+  "ci": 40919974587,
+  "conclusion": "success",
+  "practicalRelease": "NO_GO",
+  "files": [
+    {
+      "path": "ABNAHME.md",
+      "bytes": 12353,
+      "sha256": "89bccccdeb7284651794dc2bfa3e89a22e7318ba2f9328b2891e9e4a83f0539c",
+      "gitBlob": "eba2373ee8940c9ba66d6228ed037915329b7a6d"
+    },
+    {
+      "path": "ImmoPilot-Phase11D-Abnahme-Evidence.zip",
+      "bytes": 1862096,
+      "sha256": "0bd6f261cb65e058e492f01142728a91865a3b7bd7809e87b5bc82539453e83d",
+      "gitBlob": "aac8bddae5d941252da3957bb41ba9e597ea068f"
+    },
+    {
+      "path": "verify-evidence.py",
+      "bytes": 1938,
+      "sha256": "ad8bdc7d49a81e08a177bc065262b606c7c385d4e3063ed823a0d1272e25d1ba",
+      "gitBlob": "99752fff5d5383784da990b701feb222ce5715ef"
+    }
+  ]
+}
