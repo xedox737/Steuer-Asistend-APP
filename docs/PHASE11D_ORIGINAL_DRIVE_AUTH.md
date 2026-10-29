@@ -4,6 +4,8 @@ Stand: 29.10.2026. **NO-GO für eine praktische Veröffentlichung.** Fehlercode 
 
 Erster Auth-Codecommit vor der CI-Retry-Korrektur: `f732ee5b21a6cfb35c2a1b449aab41335639b452`. Lokal geprüft: `b929f3fbca6e1a690ba01572c2f940c1c1ab0763`, identischer Tree `7d2faf8dec46100782bfd2019a3f1e8fd02ae385`. Commit-Zuordnung: `phase11d-evidence/github-publication.json`.
 
+Aktuellste Produktkorrektur: `541681f5663ca3453c63b5e7d9d07947f6c85f57`, lokal `272623838d2e170364907e2b62a4477fb77dcd11`, identischer Tree `c2364dbf5b79167f06a1c76d03eb1ee7572490cf`.
+
 ## Ausgangspunkt und Grenzen
 
 Base: `bdc17be4abc1398dabddb28eda2d9074d455a031`, gemergter PR #150. Installierte Version: Vorabversion 102, Quellstand `8ba68339e3a7e13cd139c12e94303edc8d7aee0f`, Workflow `40799163931`. Package bleibt `com.aistudio.steuerassistent.vnhqkp`, installiertes Zertifikat laut Auftrag SHA1 `EA:42:88:6D:5B:6E:AF:FB:AD:49:26:86:D9:65:B7:47:62:A9:76:49`.
