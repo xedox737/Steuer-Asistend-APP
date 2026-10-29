@@ -52,12 +52,19 @@ jobs:
       - name: Prepare product debug signing identity
         env:
           PRODUCTION_DEBUG_KEYSTORE_BASE64: ${{ secrets.PRODUCTION_DEBUG_KEYSTORE_BASE64 }}
+          PRODUCTION_DEBUG_SHA1: ${{ vars.PRODUCTION_DEBUG_SHA1 }}
         run: |
-          if [ -n "$PRODUCTION_DEBUG_KEYSTORE_BASE64" ]; then
+          if [ -n "$PRODUCTION_DEBUG_KEYSTORE_BASE64" ] && [ -n "$PRODUCTION_DEBUG_SHA1" ]; then
             printf '%s' "$PRODUCTION_DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+            actual_sha1="$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1)"
+            expected_sha1="$(printf '%s' "$PRODUCTION_DEBUG_SHA1" | tr '[:lower:]' '[:upper:]')"
+            if [ -z "$actual_sha1" ] || [ "$actual_sha1" != "$expected_sha1" ]; then
+              echo "::error::Product signing certificate differs from approved OAuth SHA-1."
+              exit 1
+            fi
             echo "STABLE_PRODUCT_DEBUG_SIGNING=true" >> "$GITHUB_ENV"
           else
-            echo "::warning::No persistent product debug keystore: CI-only APK. Publishing is disabled."
+            echo "::warning::Missing persistent keystore or approved SHA-1: CI-only APK. Publishing is disabled."
             echo "STABLE_PRODUCT_DEBUG_SIGNING=false" >> "$GITHUB_ENV"
             keytool -genkeypair \
               -keystore debug.keystore \
@@ -185,7 +192,7 @@ jobs:
           } > build-info.txt
 
       - name: Publish current debug APK
-        if: success() && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: success() && env.STABLE_PRODUCT_DEBUG_SIGNING == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-${{ github.sha }}
