@@ -2,7 +2,7 @@
 
 Stand: 29.10.2026. **NO-GO für eine praktische Veröffentlichung.** Fehlercode 10 auf dem echten POCO ist noch nicht ursächlich aufgelöst. Kein echter Google-/Android16-Test wurde ausgeführt. Eine grüne Simulation ersetzt ihn nicht.
 
-Veröffentlichter Codecommit: `f732ee5b21a6cfb35c2a1b449aab41335639b452`. Lokal geprüft: `b929f3fbca6e1a690ba01572c2f940c1c1ab0763`, identischer Tree `7d2faf8dec46100782bfd2019a3f1e8fd02ae385`. Commit-Zuordnung: `phase11d-evidence/github-publication.json`.
+Erster Auth-Codecommit vor der CI-Retry-Korrektur: `f732ee5b21a6cfb35c2a1b449aab41335639b452`. Lokal geprüft: `b929f3fbca6e1a690ba01572c2f940c1c1ab0763`, identischer Tree `7d2faf8dec46100782bfd2019a3f1e8fd02ae385`. Commit-Zuordnung: `phase11d-evidence/github-publication.json`.
 
 ## Ausgangspunkt und Grenzen
 
@@ -50,7 +50,15 @@ Der erste PR-CI-Lauf `40913257040` prüft den Zwischenstand vor diesem nachgewie
 
 Die vorhandene SDK36-Klasse `DriveConnectionRegressionTest` erhält Consent-Verbrauch, erneute Tokenanforderung nach Freigabe, Abbruch, Logout, Kontowechsel, Dialogschleifenschutz, Kontoübergabe und Ablehnung verspäteter/mehrfacher Callbacks. Bestehende Fälle für Neustart, Tokenablauf, Netzunterbrechung, 401/403/404, doppelte Initialisierung, Cancellation, Web-TTL und Präferenzerhalt bleiben aktiv. Der SDK36-Ausführungswächter prüft alle tatsächlichen Methoden beider Klassen, Fehler und Skips. Die bestehende vollständige JVM-/Emulator-CI wird nicht eingeschränkt.
 
-Lokaler Zwischenstand: 45 JVM-Methoden unter ergänzendem SDK35 bestanden; acht Python-Signaturtests bestanden. Die vollständigen regulären CI-Ergebnisse werden mit tatsächlichen Run-IDs im PR nachgetragen, nicht vorweggenommen. Evidence liegt unter `docs/phase11d-evidence/`. Kompilier-/Laufgrenzen und der rote Ausgangsfall bleiben sichtbar.
+Lokaler Zwischenstand: 47 JVM-Methoden unter ergänzendem SDK35 bestanden; acht Python-Signaturtests bestanden. Die vollständigen regulären CI-Ergebnisse werden mit tatsächlichen Run-IDs im PR nachgetragen, nicht vorweggenommen. Evidence liegt unter `docs/phase11d-evidence/`. Kompilier-/Laufgrenzen und der rote Ausgangsfall bleiben sichtbar.
+
+## Belegter Fehler bei sofortiger Wiederverbindung und finale Korrektur
+
+CI `40914708522` führte 1.201 eindeutige SDK36-JVM-Methoden aus: 1.200 bestanden, eine scheiterte. Der vorhandene Test `networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry` wartete nach einer sofortigen Wiederholung vergeblich auf erfolgreiche Initialisierung. Lint bestand; Emulator und APK-Build wurden wegen des fehlgeschlagenen Verify-Jobs nicht ausgeführt. Die vorhandenen Portfolio-Ausführungswächter blieben aktiv und meldeten den Unitfehler korrekt weiter; die 36 Drive-Reparaturmethoden mit 60/60 Originalhashes bestanden. Es gab keinen zusätzlichen Backup-/Restorefehler.
+
+Ursache: `driveSyncError` wird vor dem endgültigen Abschluss des produzierenden Jobs veröffentlicht. Ein unmittelbarer Wiederholungsaufruf wurde vom laufenden Job als Doppelaufruf verworfen. Ein neuer deterministischer Test wiederholt unmittelbar im Fehler-Collector und reproduzierte den Fehler lokal: 46 Methoden, genau dieser neue Fall rot. Die bisherigen Timeouts und Assertions bleiben unverändert.
+
+Die Produktkorrektur merkt nach einem bereits veröffentlichten Fehler höchstens eine explizit angeforderte Initialisierung pro Sitzung vor. Ein Completion-Handler wartet den laufenden Initialisierungs-/Syncjob ab; normale Doppelaufrufe und inzwischen erfolgreiche Vorgänge werden verworfen. Vor dem Nachholen werden Sitzung, Kontoverknüpfung und verbleibender Fehler erneut geprüft. Logout/Kontowechsel verwerfen die Vormerkung. Es entsteht keine automatische Retry-Schleife und keine automatische Wiederholung teilweise ausgeführter Übertragungen. Lokaler Abschluss: 47 Methoden bestanden, einschließlich fünf unmittelbarer Retry-Aufrufe und Logout mit vorgemerkt ausstehendem Retry. Die finale vollständige CI muss diesen Stand erneut prüfen.
 
 ## OAuth- und Update-Voraussetzungen: offen
 
@@ -81,3 +89,5 @@ Primärquellen (29.10.2026):
 6. Datenerhalt und Update mit identischer Signatur auf separatem gesicherten Bestand prüfen; Immobilien, Einheiten, Mietverhältnisse, Belege/Dokumente, Bank, DATEV-Historie, AfA, Fahrtenbuch und Einstellungen vergleichen. Keine echte Produktionsinstallation als ungesicherten Versuch verwenden.
 
 **GO erst nach erfolgreicher vollständiger CI, geprüfter Update-Signatur, geklärter OAuth-Konfiguration und erfolgreichem echtem Android16-Login/Neustart/Erneuerungstest. Aktuell NO-GO.** Kein automatischer Merge. Keine neue Produkt-APK wird als funktionierend oder problemlos updatefähig bezeichnet.
+
+Weitere verbleibende Sicherheitsgrenze: Der unveränderte optionale Web-/manuelle Altpfad speichert sein zeitlich begrenztes manuelles Token noch in den bisherigen Preferences. Der native Hauptpfad legt keine Tokens dort ab. Diese Altlast ist kein dauerhafter Produktionsweg und bleibt vor kommerzieller Freigabe zu entfernen oder sicher zu migrieren; es werden hier keine bestehenden Credentials pauschal gelöscht.

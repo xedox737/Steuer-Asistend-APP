@@ -27,7 +27,7 @@ for path in sources:
     assert len(methods) == len(set(methods)) == len(expected) and set(methods) == expected, key
     reports.append(dict(className=key, actualMethods=len(methods), methods=sorted(methods),
                         sourceSha256=hashlib.sha256(path.read_bytes()).hexdigest()))
-assert len(reports[0]['methods']) >= 10 and len(reports[1]['methods']) >= 35
+assert len(reports[0]['methods']) >= 10 and len(reports[1]['methods']) >= 37
 out = Path('app/build/reports/phase11d'); out.mkdir(parents=True, exist_ok=True)
 report = dict(commit=os.getenv('GITHUB_SHA', 'LOCAL'), run=os.getenv('GITHUB_RUN_ID', 'LOCAL'),
               sdk=36, realGoogleOAuthVerified=False, classes=reports)

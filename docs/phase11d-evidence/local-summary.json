@@ -8,7 +8,7 @@
   },
   "after": {
     "sdk": 35,
-    "actualMethods": 45,
+    "actualMethods": 47,
     "failures": 0
   },
   "pythonSigningMethods": 8,
@@ -20,5 +20,12 @@
   "isolatedTestAppChanged": false,
   "releaseDecision": "NO_GO",
   "supersededCi": 40913257040,
-  "supersededReason": "Separate original APK publisher and legacy publishers bypassed PR150; signing/workflow correction required"
+  "supersededReason": "Separate original APK publisher and legacy publishers bypassed PR150; signing/workflow correction required",
+  "additionalRetryBefore": {
+    "sdk": 35,
+    "actualMethods": 46,
+    "failures": 1,
+    "failedMethod": "retryFromPublishedNetworkFailureIsNotDroppedByCompletingJob"
+  },
+  "failedCi": 40914708522
 }

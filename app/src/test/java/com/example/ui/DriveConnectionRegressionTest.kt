@@ -372,6 +372,47 @@ class DriveConnectionRegressionTest {
         assertTrue(prefs.getBoolean("drive_reauthorization_required", false))
     }
 
+    @Test fun retryFromPublishedNetworkFailureIsNotDroppedByCompletingJob() = runBlocking {
+        val vm = model()
+        AuthShadow.failure = IOException("synthetic-network")
+        val observed = CompletableDeferred<Unit>()
+        val retry = CoroutineScope(Dispatchers.Unconfined).launch(start = CoroutineStart.UNDISPATCHED) {
+            vm.driveSyncError.first { !it.isNullOrBlank() }
+            AuthShadow.failure = null
+            repeat(5) { vm.initializeDrivePersistence() }
+            observed.complete(Unit)
+        }
+        try {
+            vm.connectDrive("synthetic@example.invalid")
+            withTimeout(15_000) { observed.await() }
+            awaitSuccess(vm)
+            assertAccountRetained(vm)
+            assertEquals(1, AuthShadow.calls.get())
+            assertEquals(1, remote.entries.values.count { it.properties["entityType"] == "appConfig" })
+        } finally { retry.cancel() }
+    }
+
+    @Test fun queuedNetworkRetryCannotSurviveLogout() = runBlocking {
+        val vm = model(); AuthShadow.failure = IOException("synthetic-network")
+        val observed = CompletableDeferred<Unit>()
+        val retry = CoroutineScope(Dispatchers.Unconfined).launch(start = CoroutineStart.UNDISPATCHED) {
+            vm.driveSyncError.first { !it.isNullOrBlank() }
+            AuthShadow.failure = null
+            vm.initializeDrivePersistence()
+            vm.disconnectDrive()
+            observed.complete(Unit)
+        }
+        try {
+            vm.connectDrive("synthetic@example.invalid")
+            withTimeout(15_000) { observed.await() }
+            awaitInitialization(vm)
+            assertNull(vm.googleAccountEmail.value)
+            assertFalse(vm.isDriveConnected.value)
+            assertEquals(0, AuthShadow.calls.get())
+            assertEquals("Verbindung getrennt", vm.driveSyncStatus.value)
+        } finally { retry.cancel() }
+    }
+
     @Implements(GoogleAuthUtil::class)
     class AuthShadow {
         companion object {

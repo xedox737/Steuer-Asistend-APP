@@ -107,6 +107,7 @@ data class LearnedVendorRule(
 class ReceiptViewModel(application: Application) : AndroidViewModel(application) {
     private val driveSession = java.util.concurrent.atomic.AtomicLong()
     private var driveInitializationJob: Job? = null
+    private var pendingDriveInitializationRetrySession: Long? = null
     private var driveSyncJob: Job? = null
     private val database = AppDatabase.getDatabase(application, viewModelScope)
     private val renovationStore = com.example.data.RenovationReviewStore(application)
@@ -1170,6 +1171,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             sharedPrefs.getString("access_token", null) == accessToken
         if (sameCredential && driveInitializationJob?.isActive == true) return
         driveSession.incrementAndGet()
+        pendingDriveInitializationRetrySession = null
         _driveConsentRequest.value = null
         activeDriveConsent = null
         consentAutomaticRetrySession = null
@@ -1204,6 +1206,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     @Synchronized
     fun disconnectDrive() {
         driveSession.incrementAndGet()
+        pendingDriveInitializationRetrySession = null
         _driveConsentRequest.value = null
         activeDriveConsent = null
         consentAutomaticRetrySession = null
@@ -1330,7 +1333,26 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        if (driveInitializationJob?.isActive == true || driveSyncJob?.isActive == true) return
+        val active = driveInitializationJob?.takeIf { it.isActive } ?: driveSyncJob?.takeIf { it.isActive }
+        if (active != null) {
+            val session = driveSession.get()
+            // The failure flow may reach the UI before its producer job has completed.
+            // Retain one explicit retry after a published failure; ordinary duplicates
+            // and successful completion never schedule an additional initialization.
+            if (!_driveSyncError.value.isNullOrBlank() && pendingDriveInitializationRetrySession != session) {
+                pendingDriveInitializationRetrySession = session
+                active.invokeOnCompletion {
+                    synchronized(this@ReceiptViewModel) {
+                        if (pendingDriveInitializationRetrySession == session) {
+                            pendingDriveInitializationRetrySession = null
+                            if (session == driveSession.get() && _isDriveConnected.value &&
+                                !_driveSyncError.value.isNullOrBlank()) initializeDrivePersistence()
+                        }
+                    }
+                }
+            }
+            return
+        }
         val session = driveSession.get()
         driveInitializationJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
