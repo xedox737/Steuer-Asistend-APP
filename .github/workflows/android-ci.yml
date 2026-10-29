@@ -122,6 +122,10 @@ jobs:
         if: always()
         run: python3 .github/scripts/phase11c-verify-connection.py
 
+      - name: Verify actual Phase11D native auth and consent regression execution
+        if: always()
+        run: python3 .github/scripts/phase11d-verify-auth.py
+
       - name: Preserve synthetic Phase 10B evidence
         if: always()
         run: python3 .github/scripts/phase10b-evidence.py
@@ -138,6 +142,10 @@ jobs:
 
       - name: Verify actual APK identity and provider authorities
         run: python3 .github/scripts/e11a-inspect-apk.py app/build/outputs/apk/debug/app-debug.apk --package com.aistudio.steuerassistent.vnhqkp
+
+      - name: Verify built product update certificate
+        if: env.STABLE_PRODUCT_DEBUG_SIGNING == 'true'
+        run: python3 .github/scripts/verify-product-update-identity.py
 
       - name: Prepare release keystore
         if: env.RELEASE_KEYSTORE_BASE64 != '' && env.RELEASE_STORE_PASSWORD != '' && env.RELEASE_KEY_PASSWORD != '' && env.RELEASE_KEY_ALIAS != ''

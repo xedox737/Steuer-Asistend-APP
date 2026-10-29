@@ -155,8 +155,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.Scope
 import com.google.android.gms.common.api.ApiException
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -6700,6 +6698,25 @@ private fun AccountingSupportPanel(viewModel: ReceiptViewModel) {
 @Composable
 fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
+    val consentRequest by viewModel.driveConsentRequest.collectAsStateWithLifecycle()
+    var consentId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val consentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        consentId?.let { viewModel.completeDriveConsent(it, result.resultCode == android.app.Activity.RESULT_OK) }
+        consentId = null
+    }
+    LaunchedEffect(consentRequest?.id) {
+        consentRequest?.let { pending ->
+            viewModel.takeDriveConsent(pending.id)?.let { request ->
+                consentId = request.id
+                try {
+                    consentLauncher.launch(request.intent)
+                } catch (error: android.content.ActivityNotFoundException) {
+                    viewModel.completeDriveConsent(request.id, false)
+                    consentId = null
+                }
+            }
+        }
+    }
     val isConnected by viewModel.isDriveConnected.collectAsStateWithLifecycle()
     val email by viewModel.googleAccountEmail.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isDriveSyncing.collectAsStateWithLifecycle()
@@ -6729,35 +6746,28 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     var manualTokenInput by remember { mutableStateOf("") }
     var showWebViewLogin by remember { mutableStateOf(false) }
 
+    var nativeLoginSession by rememberSaveable { mutableStateOf<Long?>(null) }
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-            if (account != null && account.email != null &&
-                GoogleSignIn.hasPermissions(account, Scope("https://www.googleapis.com/auth/drive.file"))) {
-                viewModel.connectDrive(account.email!!)
-            } else {
-                viewModel.setSyncStatus("Drive-Berechtigung nicht erteilt. Bitte erneut mit Google Drive verbinden.")
-            }
-        } catch (e: Exception) {
-            DiagnosticLog.e("DriveAuth", "Sign in failed")
-            viewModel.setSyncStatus(when ((e as? com.google.android.gms.common.api.ApiException)?.statusCode) {
-                12501 -> "Google-Anmeldung abgebrochen."
-                7 -> "Netzwerkfehler bei der Google-Anmeldung. Bitte erneut versuchen."
-                10 -> "Google-Anmeldung nicht konfiguriert. OAuth-Konfiguration für App und Signatur prüfen."
-                else -> "Google-Anmeldung fehlgeschlagen. Bitte erneut versuchen."
-            })
+        val session = nativeLoginSession
+        nativeLoginSession = null
+        if (session != null) {
+            viewModel.completeNativeDriveSignIn(session,
+                com.example.api.NativeDriveSignIn.read(result.resultCode, result.data))
         }
     }
 
     val launchNativeDriveLogin = {
-        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestScopes(Scope("https://www.googleapis.com/auth/drive.file"))
-            .build()
-        launcher.launch(GoogleSignIn.getClient(context, options).signInIntent)
+        if (nativeLoginSession == null) {
+            nativeLoginSession = viewModel.nativeDriveSignInSession()
+            try {
+                launcher.launch(GoogleSignIn.getClient(context, com.example.api.NativeDriveSignIn.options()).signInIntent)
+            } catch (error: android.content.ActivityNotFoundException) {
+                nativeLoginSession = null
+                viewModel.setSyncStatus("Google-Anmeldung kann nicht geöffnet werden. Google Play-Dienste prüfen. Phase: Start der nativen Anmeldung.")
+            }
+        }
     }
 
     if (showWebViewLogin) {

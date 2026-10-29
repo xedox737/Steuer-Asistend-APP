@@ -7,8 +7,9 @@ import kotlinx.coroutines.CancellationException
 
 /** Only explicit authorization evidence may change the account's connected state. */
 internal class DriveAuthorizationRequired : Exception("Google-Autorisierung erforderlich. Bitte erneut verbinden.")
+internal class DriveConsentRequired : Exception("Google-Freigabe erforderlich.")
 
-internal enum class DriveFailureKind { AUTHORIZATION, ACCESS, NOT_FOUND, NETWORK, TIMEOUT, METADATA, SAFETY, OTHER }
+internal enum class DriveFailureKind { CONSENT, AUTHORIZATION, ACCESS, NOT_FOUND, NETWORK, TIMEOUT, METADATA, SAFETY, OTHER }
 
 internal data class DriveConnectionFailure(val kind: DriveFailureKind, val message: String) {
     val requiresAuthorization get() = kind == DriveFailureKind.AUTHORIZATION
@@ -17,6 +18,7 @@ internal data class DriveConnectionFailure(val kind: DriveFailureKind, val messa
         fun from(error: Throwable): DriveConnectionFailure {
             if (error is CancellationException) throw error
             val kind = when {
+                error is DriveConsentRequired || error is com.google.android.gms.auth.UserRecoverableAuthException -> DriveFailureKind.CONSENT
                 error is DriveAuthorizationRequired || error is com.google.android.gms.auth.GoogleAuthException -> DriveFailureKind.AUTHORIZATION
                 error is DriveAccessFailure && error.httpStatus == 401 -> DriveFailureKind.AUTHORIZATION
                 error is DriveAccessFailure && error.httpStatus == 403 -> DriveFailureKind.ACCESS
@@ -33,6 +35,7 @@ internal data class DriveConnectionFailure(val kind: DriveFailureKind, val messa
             }
             // Do not include exception messages: they may contain account details or response bodies.
             val message = when (kind) {
+                DriveFailureKind.CONSENT -> "Google-Freigabe erforderlich. Bitte die Google-Bestätigung abschließen. Konto und lokale Daten bleiben erhalten."
                 DriveFailureKind.AUTHORIZATION -> "Google-Autorisierung erforderlich. Bitte erneut mit Google Drive verbinden. Lokale Daten bleiben erhalten."
                 DriveFailureKind.ACCESS -> "Google Drive verweigert den Zugriff (HTTP 403). Drive-Berechtigung, Freigabe und OAuth-Konfiguration prüfen. Die Anmeldung bleibt erhalten."
                 DriveFailureKind.NOT_FOUND -> "Drive-Ordner oder Datei nicht erreichbar (HTTP 404). Keine Ersatzstruktur angelegt. Bitte Zugriff prüfen und erneut synchronisieren."

@@ -1,0 +1,90 @@
+app/src/main/java/com/example/api/GoogleDriveClient.kt:960:55: warning: Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+                        name = json.optString("name", null)
+                                                      ^^^^
+app/src/main/java/com/example/api/GoogleDriveClient.kt:961:63: warning: Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+                        mimeType = json.optString("mimeType", null)
+                                                              ^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:5:8: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:6:8: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:29:20: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+    fun options(): GoogleSignInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                   ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:29:42: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+    fun options(): GoogleSignInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                         ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:29:62: warning: 'constructor(p0: GoogleSignInOptions): GoogleSignInOptions.Builder' is deprecated. Deprecated in Java.
+    fun options(): GoogleSignInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                                             ^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:29:70: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+    fun options(): GoogleSignInOptions = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                                                     ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:44:27: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+            val account = GoogleSignIn.getSignedInAccountFromIntent(data).getResult(ApiException::class.java)
+                          ^^^^^^^^^^^^
+app/src/main/java/com/example/api/NativeDriveSignIn.kt:48:18: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+                !GoogleSignIn.hasPermissions(account, Scope(DRIVE_SCOPE)) -> Result.Rejected(resultCode, null, Reason.SCOPE)
+                 ^^^^^^^^^^^^
+app/src/main/java/com/example/data/DrivePersistenceRepository.kt:1149:105: warning: Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+            driveFolderId = if (json.isNull("driveFolderId")) null else json.optString("driveFolderId", null),
+                                                                                                        ^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:157:8: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:2997:57: warning: 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+                            imageVector = Icons.Default.List,
+                                                        ^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3258:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_hauptkategorie")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3290:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_unterkategorie")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3342:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_property")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3368:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_wohneinheit_dropdown")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:4879:17: warning: 'fun LinearProgressIndicator(progress: Float, modifier: Modifier = ..., color: Color = ..., trackColor: Color = ..., strokeCap: StrokeCap = ...): Unit' is deprecated. Use the overload that takes `progress` as a lambda.
+                LinearProgressIndicator(
+                ^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6070:41: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_hauptkategorie"),
+                                        ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6108:41: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_unterkategorie"),
+                                        ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6765:33: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+                launcher.launch(GoogleSignIn.getClient(context, com.example.api.NativeDriveSignIn.options()).signInIntent)
+                                ^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:8035:26: warning: 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+    val lifecycleOwner = LocalLifecycleOwner.current
+                         ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:11588:48: warning: 'val Icons.Filled.RotateLeft: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.RotateLeft.
+                            Icon(Icons.Default.RotateLeft, contentDescription = "Drehen Links", tint = Color.White)
+                                               ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:11597:48: warning: 'val Icons.Filled.RotateRight: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.RotateRight.
+                            Icon(Icons.Default.RotateRight, contentDescription = "Drehen Rechts", tint = Color.White)
+                                               ^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptViewModel.kt:1803:68: warning: 'static fun getToken(p0: Context, p1: String, p2: String): String' is deprecated. Deprecated in Java.
+            val token = com.google.android.gms.auth.GoogleAuthUtil.getToken(
+                                                                   ^^^^^^^^
+/tmp/phase11d-after/NativeDriveSignInTest.kt:6:8: warning: 'class GoogleSignInAccount : AbstractSafeParcelable, ReflectedParcelable' is deprecated. Deprecated in Java.
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/tmp/phase11d-after/NativeDriveSignInTest.kt:20:9: warning: 'class GoogleSignInAccount : AbstractSafeParcelable, ReflectedParcelable' is deprecated. Deprecated in Java.
+        GoogleSignInAccount.fromAccountAndScopes(Account("synthetic@example.invalid", "com.google"), Scope(scope))
+        ^^^^^^^^^^^^^^^^^^^
+/tmp/phase11d-after/NativeDriveSignInTest.kt:21:33: warning: 'class GoogleSignInAccount : AbstractSafeParcelable, ReflectedParcelable' is deprecated. Deprecated in Java.
+    private fun result(account: GoogleSignInAccount) = Intent().putExtra("googleSignInAccount", account)
+                                ^^^^^^^^^^^^^^^^^^^
+JUnit version 4.13.2
+.............................................
+Time: 10.742
+
+OK (45 tests)
+

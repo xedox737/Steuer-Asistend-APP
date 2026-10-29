@@ -1,0 +1,22 @@
+{
+  "base": "bdc17be4abc1398dabddb28eda2d9074d455a031",
+  "before": {
+    "sdk": 35,
+    "actualMethods": 24,
+    "failures": 1,
+    "failedMethod": "recoverableConsentDoesNotBecomeLogout"
+  },
+  "after": {
+    "sdk": 35,
+    "actualMethods": 45,
+    "failures": 0
+  },
+  "pythonSigningMethods": 5,
+  "committedTestSdk": 36,
+  "fullCi": "PENDING",
+  "realGoogleOAuth": "OPEN",
+  "android16Device": "OPEN",
+  "updateSigningKey": "UNVERIFIED",
+  "isolatedTestAppChanged": false,
+  "releaseDecision": "NO_GO"
+}
