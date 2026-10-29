@@ -1,0 +1,31 @@
+<testsuite tests="22" failures="1" skipped="0">
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="cancellationIsPropagatedByRepository"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="repeatedLoginCallbacksDoNotExtendTokenOrDuplicateConfiguration"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="cancelledInitializationDoesNotDisplayLoginError"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="playServicesLoginDoesNotReuseTokenOfPreviousAccount"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="expiredWebTokenRequiresAuthorizationBeforeAnyDriveAccess"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="expiredNativeTokenIsInvalidatedAndRetriedOnce"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="simultaneousInitializationsDoNotDuplicateConfig"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="revokedTokenDuringUploadIsNotSwallowedAsPartialSuccess"><failure>kotlinx.coroutines.TimeoutCancellationException: Timed out waiting for 15000 ms
+	at kotlinx.coroutines.TimeoutKt.TimeoutCancellationException(Timeout.kt:189)
+	at kotlinx.coroutines.TimeoutCoroutine.run(Timeout.kt:157)
+	at kotlinx.coroutines.EventLoopImplBase$DelayedRunnableTask.run(EventLoop.common.kt:505)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.DefaultExecutor.run(DefaultExecutor.kt:105)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+</failure></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="forbiddenIsAnAccessErrorNotALogout"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="networkDuringDriveInitializationKeepsAccountAndOriginalPreferences"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="failedSyncDoesNotInvalidateSuccessfulLogin"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="explicitDisconnectCannotBeReversedByInFlightInitialization"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="rejectedManualTokenRequiresAuthorizationAndKeepsLocalPreferences"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="nativeAuthorizationFailureRequiresLoginWithoutRemovingAccount"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="missingMetadataIsNotALogout"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="timeoutDuringNativeTokenAcquisitionDoesNotSignOut"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="manualTokenDeadlineIsNotExtendedByRestart"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="restartRestoresAccountWhileOfflineWithoutClaimingLogout"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="metadataFailureDoesNotSignOutOrCreateReplacementFolders"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="rejectedAuthorizationRemainsActionableAfterRestart"></testcase>
+<testcase classname="com.example.ui.DriveConnectionRegressionTest" name="unauthorizedSyncRequiresAuthorizationAndEndsSpinner"></testcase>
+</testsuite>

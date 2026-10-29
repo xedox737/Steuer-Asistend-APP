@@ -1,0 +1,74 @@
+app/src/main/java/com/example/api/GoogleDriveClient.kt:960:55: warning: Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+                        name = json.optString("name", null)
+                                                      ^^^^
+app/src/main/java/com/example/api/GoogleDriveClient.kt:961:63: warning: Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+                        mimeType = json.optString("mimeType", null)
+                                                              ^^^^
+app/src/main/java/com/example/data/DrivePersistenceRepository.kt:1149:105: warning: Java type mismatch: inferred type is 'Nothing?', but 'String' was expected.
+            driveFolderId = if (json.isNull("driveFolderId")) null else json.optString("driveFolderId", null),
+                                                                                                        ^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:157:8: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:158:8: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:2999:57: warning: 'val Icons.Filled.List: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.List.
+                            imageVector = Icons.Default.List,
+                                                        ^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3260:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_hauptkategorie")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3292:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_unterkategorie")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3344:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_property")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:3370:49: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                            modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_receipt_wohneinheit_dropdown")
+                                                ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:4881:17: warning: 'fun LinearProgressIndicator(progress: Float, modifier: Modifier = ..., color: Color = ..., trackColor: Color = ..., strokeCap: StrokeCap = ...): Unit' is deprecated. Use the overload that takes `progress` as a lambda.
+                LinearProgressIndicator(
+                ^^^^^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6072:41: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_hauptkategorie"),
+                                        ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6110:41: warning: 'fun Modifier.menuAnchor(): Modifier' is deprecated. Use overload that takes MenuAnchorType and enabled parameters.
+                    modifier = Modifier.menuAnchor().fillMaxWidth().testTag("edit_unterkategorie"),
+                                        ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6735:20: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                   ^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6739:17: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+                GoogleSignIn.hasPermissions(account, Scope("https://www.googleapis.com/auth/drive.file"))) {
+                ^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6756:23: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                      ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6756:43: warning: 'constructor(p0: GoogleSignInOptions): GoogleSignInOptions.Builder' is deprecated. Deprecated in Java.
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                          ^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6756:51: warning: 'class GoogleSignInOptions : AbstractSafeParcelable, Api.ApiOptions.Optional, ReflectedParcelable' is deprecated. Deprecated in Java.
+        val options = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                                                  ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:6760:25: warning: 'class GoogleSignIn : Any' is deprecated. Deprecated in Java.
+        launcher.launch(GoogleSignIn.getClient(context, options).signInIntent)
+                        ^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:8025:26: warning: 'val LocalLifecycleOwner: ProvidableCompositionLocal<LifecycleOwner>' is deprecated. Moved to lifecycle-runtime-compose library in androidx.lifecycle.compose package.
+    val lifecycleOwner = LocalLifecycleOwner.current
+                         ^^^^^^^^^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:11578:48: warning: 'val Icons.Filled.RotateLeft: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.RotateLeft.
+                            Icon(Icons.Default.RotateLeft, contentDescription = "Drehen Links", tint = Color.White)
+                                               ^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptAppUi.kt:11587:48: warning: 'val Icons.Filled.RotateRight: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.RotateRight.
+                            Icon(Icons.Default.RotateRight, contentDescription = "Drehen Rechts", tint = Color.White)
+                                               ^^^^^^^^^^^
+app/src/main/java/com/example/ui/ReceiptViewModel.kt:1718:68: warning: 'static fun getToken(p0: Context, p1: String, p2: String): String' is deprecated. Deprecated in Java.
+            val token = com.google.android.gms.auth.GoogleAuthUtil.getToken(
+                                                                   ^^^^^^^^
+JUnit version 4.13.2
+.......................
+Time: 7.31
+
+OK (23 tests)

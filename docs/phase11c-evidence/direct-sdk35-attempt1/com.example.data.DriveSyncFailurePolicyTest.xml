@@ -1,0 +1,8 @@
+<testsuite tests="6" failures="0" skipped="0">
+<testcase classname="com.example.data.DriveSyncFailurePolicyTest" name="timeoutIsRetryable"></testcase>
+<testcase classname="com.example.data.DriveSyncFailurePolicyTest" name="retryDelayUsesBoundedExponentialBackoff"></testcase>
+<testcase classname="com.example.data.DriveSyncFailurePolicyTest" name="ioFailureIsRetryable"></testcase>
+<testcase classname="com.example.data.DriveSyncFailurePolicyTest" name="programmingFailureIsNotRetryable"></testcase>
+<testcase classname="com.example.data.DriveSyncFailurePolicyTest" name="authFailureGetsActionableMessage"></testcase>
+<testcase classname="com.example.data.DriveSyncFailurePolicyTest" name="offlineMessageConfirmsLocalDataRetention"></testcase>
+</testsuite>

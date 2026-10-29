@@ -1,0 +1,13 @@
+<testsuite tests="11" failures="0" skipped="0">
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="newReceiptIndexCannotOverrideBackupOriginalMetadataAndExistingUnitCorrectionStillWins"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="fixture 9 purchase contract uses production repository sync and updates real index json"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="fixture 13 rental contract keeps confirmed unit and production target"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="hash mismatch blocks move rename replacement upload and index success"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="404 for existing Drive id never creates a replacement original"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="automaticReceiptMetadataRoundTripCarriesEveryOriginalWithoutLocalPathsOrOcrAndReadsOldBackups"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="fixture 10 loan contract uses production repository sync"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="offline confirmed reclassification retries same original without replacement upload"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="429 keeps confirmed classification pending without mutating Drive"></testcase>
+<testcase classname="com.example.data.DrivePersistenceManagedDocumentE2eTest" name="timeout keeps confirmed classification pending without mutating Drive"></testcase>
+</testsuite>

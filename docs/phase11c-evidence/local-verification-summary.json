@@ -1,0 +1,577 @@
+{
+  "base": "6f8f26f4055c21a0df994e52b970f3fecbf4889d",
+  "repair": "2b58e6aaab913acb270695512b7fe4b4cbef1cf4",
+  "isolatedIntegration": "9afb546fea289012bbb43d503002e6748e482687",
+  "actualUniqueMethods": 137,
+  "failures": 0,
+  "skips": 0,
+  "classes": 19,
+  "sdk": 35,
+  "scope": "SUPPLEMENTAL_DIRECT_JUNIT_NOT_GRADLE_OR_CI",
+  "originalTestSdk36Unchanged": true,
+  "fullAcceptance": false,
+  "realOAuthVerified": false,
+  "methods": [
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "missingOwnBackupNeverFallsBackToForeignConfig"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "protectedSystemFoldersAndNonemptyCategoryCannotBeDeleted"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "allSevenForeignConfigIdsAreRejectedAndForeignRestoreCannotClearLocalData"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "diagnosticDriveTestUsesOwnRootAndReusesItsTestFile"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "forgedFileFolderRolesAndForeignDeletionCannotEraseLocalReceipt"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "activeBuildAlsoRejectsForeignContentAndUnboundedSearches"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "directForeignReadsWritesDeletesAndCrossMovesAreDeniedWithoutProductChanges"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "shortcutsAndNestedImitationRootCannotEscapeTheNamespace"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "legacyCategorySearchAndGlobalReceiptSearchRemainInsideTestRoot"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "buildIdentitySelectsExactlyOneRootAndBothWrongRootDirectionsFail"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "existingForeignStructureIsNotLoadedAndRepeatedInitializationHasOwnSevenFolderIds"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "missingHistoricalTombstoneReferenceIsReadableButCurrentOrForeignReferenceIsNot"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "ownConfigAndIndexCannotSmuggleForeignIdsIntoRestore"
+    },
+    {
+      "className": "com.example.api.ProductionDriveNamespaceTest",
+      "method": "staleLocalMappingAndMovedCachedFolderAreNotTrusted"
+    },
+    {
+      "className": "com.example.comparison.ReceiptSyncPreservationE2ETest",
+      "method": "actualReceiptUploadPreservesConfirmedReviewAndReferences"
+    },
+    {
+      "className": "com.example.comparison.ReceiptSyncPreservationE2ETest",
+      "method": "realOriginalUploadTwiceAndTwoMergesPreserveEveryAuthoredDocumentField"
+    },
+    {
+      "className": "com.example.comparison.ReceiptSyncPreservationE2ETest",
+      "method": "allSeventyReceiptsRestoreIntoFreshPrivateProfileWithoutInventedOriginals"
+    },
+    {
+      "className": "com.example.comparison.ReceiptSyncPreservationE2ETest",
+      "method": "ordinaryReceiptWithAbsentMissingOrEmptyOriginalStillFails"
+    },
+    {
+      "className": "com.example.comparison.ReceiptSyncPreservationE2ETest",
+      "method": "inconsistentFilelessIndexMetadataOrTripBlocksFullRestoreBeforeLocalReplacement"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "newReceiptIndexCannotOverrideBackupOriginalMetadataAndExistingUnitCorrectionStillWins"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "fixture 9 purchase contract uses production repository sync and updates real index json"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "fixture 13 rental contract keeps confirmed unit and production target"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "hash mismatch blocks move rename replacement upload and index success"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "404 for existing Drive id never creates a replacement original"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "automaticReceiptMetadataRoundTripCarriesEveryOriginalWithoutLocalPathsOrOcrAndReadsOldBackups"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "fixture 10 loan contract uses production repository sync"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "offline confirmed reclassification retries same original without replacement upload"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "429 keeps confirmed classification pending without mutating Drive"
+    },
+    {
+      "className": "com.example.data.DrivePersistenceManagedDocumentE2eTest",
+      "method": "timeout keeps confirmed classification pending without mutating Drive"
+    },
+    {
+      "className": "com.example.data.DriveSyncFailurePolicyTest",
+      "method": "timeoutIsRetryable"
+    },
+    {
+      "className": "com.example.data.DriveSyncFailurePolicyTest",
+      "method": "retryDelayUsesBoundedExponentialBackoff"
+    },
+    {
+      "className": "com.example.data.DriveSyncFailurePolicyTest",
+      "method": "ioFailureIsRetryable"
+    },
+    {
+      "className": "com.example.data.DriveSyncFailurePolicyTest",
+      "method": "programmingFailureIsNotRetryable"
+    },
+    {
+      "className": "com.example.data.DriveSyncFailurePolicyTest",
+      "method": "authFailureGetsActionableMessage"
+    },
+    {
+      "className": "com.example.data.DriveSyncFailurePolicyTest",
+      "method": "offlineMessageConfirmsLocalDataRetention"
+    },
+    {
+      "className": "com.example.data.FilelessLogbookContractTest",
+      "method": "confirmedTripMayUseItsActualConfiguredAccountWithoutReclassifyingTheDocument"
+    },
+    {
+      "className": "com.example.data.FilelessLogbookContractTest",
+      "method": "malformedOrTamperedEvidenceCannotBecomeAnExemption"
+    },
+    {
+      "className": "com.example.data.FilelessLogbookContractTest",
+      "method": "unconfirmedCancelledAiOnlyAndForeignTripsAreRejected"
+    },
+    {
+      "className": "com.example.data.FilelessLogbookContractTest",
+      "method": "existingOrMissingExplicitOriginalIsNotConvertedToFilelessReceipt"
+    },
+    {
+      "className": "com.example.data.FilelessLogbookContractTest",
+      "method": "onlyActualConfirmedExpenseBindingCreatesAnExemption"
+    },
+    {
+      "className": "com.example.data.FilelessLogbookContractTest",
+      "method": "ordinaryReceiptNeverGetsAttachmentExemption"
+    },
+    {
+      "className": "com.example.data.Phase10ADriveRoundTripTest",
+      "method": "actualMetadataWriterFakeDriveSnapshotAndFreshDoubleMergePreserveFieldsCentsAndOriginals"
+    },
+    {
+      "className": "com.example.data.Phase10BPortfolioAcceptanceTest",
+      "method": "largeDatevBatchHasBomCrlfValidFormatAndAllOriginalHashesInActualProductZip"
+    },
+    {
+      "className": "com.example.data.Phase10BPortfolioAcceptanceTest",
+      "method": "twentyOneUnitStressPortfolioEmptyTargetMergeTwiceAndReplace"
+    },
+    {
+      "className": "com.example.data.Phase10BPortfolioAcceptanceTest",
+      "method": "actualImportServiceReadsAppFileProviderAndRestoresFiveFormatMetadataTwice"
+    },
+    {
+      "className": "com.example.data.Phase10BPortfolioAcceptanceTest",
+      "method": "seventeenUnitPortfolioEmptyTargetMergeTwiceAndReplace"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentIntegrityAuditTest",
+      "method": "conflictingUnitIsReportedWithoutChoosingAnotherUnit"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentIntegrityAuditTest",
+      "method": "missingUnitIsReportedWithoutRepairingTheStoredDocument"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentSyncStateTest",
+      "method": "conflictingPropertyBlocksTransfer"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentSyncStateTest",
+      "method": "existingMissingUnitIsNeverAutomaticallyReassigned"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentSyncStateTest",
+      "method": "repeatedTransferIsIdempotent"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentSyncStateTest",
+      "method": "genuinelyNewDocumentUsesValidatedInitialState"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentSyncStateTest",
+      "method": "verifiedTransferCannotEraseReviewedDomainStateOrInventANewerAuthoredVersion"
+    },
+    {
+      "className": "com.example.data.ReceiptDocumentSyncStateTest",
+      "method": "conflictingReceiptIdentityBlocksTransfer"
+    },
+    {
+      "className": "com.example.data.ReceiptOriginalMetadataPreservationTest",
+      "method": "multipleReviewedOriginalsRetainExactJsonAndExplicitOrder"
+    },
+    {
+      "className": "com.example.data.ReceiptOriginalMetadataPreservationTest",
+      "method": "reviewedSingleOriginalRoundTripsWithoutInventingFields"
+    },
+    {
+      "className": "com.example.data.ReceiptOriginalMetadataPreservationTest",
+      "method": "oldBackupsWithoutAuthoredJsonStillReconstructEveryPageRank"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "providerPagesShowMaskModelAndRealEmptyStateAndReturnByBothBackActions"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "generalInformationAndSecurityPagesReturnToSettingsByBothBackActions"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "everySettingsPageAllowsAllFiveRealBottomNavigationClicksWithoutReturningToOldPage"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "overviewUsesRealStatusesAndHasNoInventedSettingsOrDuplicateEntries"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "keyOverviewReturnsToOriginAndKeepsProviderSelectionAndModel"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "keyChangesUseExistingEncryptedStorageAndPreserveOpenAiModel"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "storageFailureIsShownWithoutLosingExistingConfiguration"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "removalRequiresConfirmationAndRemovesOnlyCorrespondingSecret"
+    },
+    {
+      "className": "com.example.ui.AppSettingsComposeTest",
+      "method": "invalidKeysAreRejectedWithoutReplacingStoredKeysAndFormIsDisposed"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "cancellationIsPropagatedByRepository"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "repeatedLoginCallbacksDoNotExtendTokenOrDuplicateConfiguration"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "cancelledInitializationDoesNotDisplayLoginError"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "playServicesLoginDoesNotReuseTokenOfPreviousAccount"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "expiredWebTokenRequiresAuthorizationBeforeAnyDriveAccess"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "expiredNativeTokenIsInvalidatedAndRetriedOnce"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "simultaneousInitializationsDoNotDuplicateConfig"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "revokedTokenDuringUploadIsNotSwallowedAsPartialSuccess"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "forbiddenIsAnAccessErrorNotALogout"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "networkDuringDriveInitializationKeepsAccountAndOriginalPreferences"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "failedSyncDoesNotInvalidateSuccessfulLogin"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "nativeTokenExpiryDuringUploadRenewsCredentialBeforeRequestingLogin"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "explicitDisconnectCannotBeReversedByInFlightInitialization"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "rejectedManualTokenRequiresAuthorizationAndKeepsLocalPreferences"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "nativeAuthorizationFailureRequiresLoginWithoutRemovingAccount"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "missingMetadataIsNotALogout"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "timeoutDuringNativeTokenAcquisitionDoesNotSignOut"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "manualTokenDeadlineIsNotExtendedByRestart"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "restartRestoresAccountWhileOfflineWithoutClaimingLogout"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "metadataFailureDoesNotSignOutOrCreateReplacementFolders"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "rejectedAuthorizationRemainsActionableAfterRestart"
+    },
+    {
+      "className": "com.example.ui.DriveConnectionRegressionTest",
+      "method": "unauthorizedSyncRequiresAuthorizationAndEndsSpinner"
+    },
+    {
+      "className": "com.example.ui.MainNavigationRegressionTest",
+      "method": "afaPropertyBackReturnsToAfaOverviewThenMore"
+    },
+    {
+      "className": "com.example.ui.MainNavigationRegressionTest",
+      "method": "dashboardPropertySubsectionReturnsToPropertyThenOverviewWithBothBackActions"
+    },
+    {
+      "className": "com.example.ui.MainNavigationRegressionTest",
+      "method": "receiptEditorAndDetailBackMustNotReinsertClosedDetailsIntoActivityHistory"
+    },
+    {
+      "className": "com.example.ui.MainNavigationRegressionTest",
+      "method": "bankDetailsReturnToBankListBySystemBackAndArrow"
+    },
+    {
+      "className": "com.example.ui.Phase5ABankImportWorkflowTest",
+      "method": "noIdentifierRequiresExplicitChoiceDoubleConfirmationCreatesOnlyOneAccountAndRenamedFileDeduplicates"
+    },
+    {
+      "className": "com.example.ui.Phase6AReceiptPersistenceTest",
+      "method": "explicitUnitChangePersistsAcrossDatabaseAndViewModelReload"
+    },
+    {
+      "className": "com.example.ui.Phase6AReceiptPersistenceTest",
+      "method": "exportedPropertyEditRequiresApprovalAndPreservesAuditHistory"
+    },
+    {
+      "className": "com.example.ui.Phase6AReceiptPersistenceTest",
+      "method": "propertySwitchUsesOnlyNewPropertyUnit"
+    },
+    {
+      "className": "com.example.ui.Phase6AReceiptPersistenceTest",
+      "method": "changedLegacyNameCannotRetainValidOldId"
+    },
+    {
+      "className": "com.example.ui.Phase6AReceiptPersistenceTest",
+      "method": "generalReceiptClearsDocumentUnitAndBackupKeepsTheRemoval"
+    },
+    {
+      "className": "com.example.ui.Phase6AReceiptPersistenceTest",
+      "method": "propertySwitchWithoutNewSelectionCannotCarryOldUnit"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "responsiveGridKeepsReadableWidthAcrossRequestedFontScales"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "sameUnitNameInDifferentHousesDoesNotReuseBIdentity"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "primaryGlobalEntryDoesNotCarryHiddenFileOrigin"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "propertyChangeWithClearedUnitCreatesGeneralReceipt"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "globalSaveUsesExplicitAInsteadOfLastSelectedBAndReloadsSameIdentity"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "propertyFileEntryPrefillsExplicitProperty"
+    },
+    {
+      "className": "com.example.ui.Phase6BContextPersistenceTest",
+      "method": "missingExplicitObjectIsBlockedEvenWhenGlobalFallbackExists"
+    },
+    {
+      "className": "com.example.ui.Phase9DAfaComposeTest",
+      "method": "productionAfaShowsCorrectedBasisAndTheCutoffYearInsteadOf2027Only"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "afaToEveryPrimaryRootIncludingActiveMore"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "repeatedPrimarySwitchesDoNotAccumulateHistory"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "datevToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "localUnitBackStillReturnsToUnitsThenProperty"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "documentDetailToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "primaryResetLeavesSettingsPageAndDoesNotReopenIt"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "receiptInlineEditorToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "monitorToEveryPrimaryRootIncludingActiveMore"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "receiptDetailToEveryPrimaryRootIncludingActiveReceipts"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "rulesToEveryPrimaryRootIncludingActiveMore"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "rentOverviewToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "ledgerToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "logbookToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "committedSaveFinishesWithoutOverridingANewerPrimaryDestination"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "propertyUnitToEveryPrimaryRootIncludingActiveProperties"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "createTwentyFiveUnitsThroughViewModelKeepsAllIdsAndAreas"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "scanReselectLeavesBankPrefillAndReturnsToFreshScanRoot"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "backupToEveryPrimaryRootIncludingActiveMore"
+    },
+    {
+      "className": "com.example.ui.PrimaryNavigationComposeTest",
+      "method": "bankDetailToEveryPrimaryRoot"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "mergeRestore_preservesPhase1BRentChangesFromBackupAndLocal"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "fullRestoreNeverPairsBackupHashWithDifferentNewerLocalOriginalBytes"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "isoCalendarDateSurvivesBackupAndRepeatedMergeWithGermanDisplay"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "mergeRestore_usesTaskUpdatedAtAndOtherwiseKeepsLocalConflict"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "mergeRestore_keepsUsableLocalDocumentPathAndNewerLocalMetadata"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "mergeRestore_preservesNewerTenantPeriodAndTask_andIsIdempotent"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "replaceFullRemainsExplicitSnapshotForTasksWhileMergeDoesNot"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "freshDeviceRestore_neverReusesDeadDevicePathAndKeepsRemoteReference"
+    },
+    {
+      "className": "com.example.ui.RestoreMergeDataIntegrityTest",
+      "method": "mergeRestore_relinksManagedFileByHashWithoutCreatingCopy"
+    }
+  ],
+  "sources": {
+    ".github/scripts/phase11c-verify-connection.py": "81987fc0083a21cf3457dc86431654975d185da517fd7e02288b6adb1ad191e5",
+    ".github/workflows/android-ci.yml": "5068c41f7285a631d228c6f1ef0d4f77daa36112de524185087602570ebb1cbb",
+    "app/src/main/java/com/example/api/DriveAccessFailure.kt": "e7064bdad2a19d1f3d2d186ae5932c5dec48f4e58962451692609cd8cf4a0dd6",
+    "app/src/main/java/com/example/api/GoogleDriveClient.kt": "0f5a62c77d0d06eb54c3904a05c60a571f4d05dfca54ca101fd6bad58095f966",
+    "app/src/main/java/com/example/data/DriveConnectionFailure.kt": "1b850308edc9a231c871220662d15e637b8ce6578a53587e98070d322289ee56",
+    "app/src/main/java/com/example/data/DrivePersistenceRepository.kt": "13edb98f25c8a65b70b0148367fa6d1d5dd88ad9ce778bc76fd84937d473c199",
+    "app/src/main/java/com/example/ui/ReceiptAppUi.kt": "c4ad55d9c486b992f6bbc619691ed9195a1f8f30e39793892d6fd75dd4b6dc51",
+    "app/src/main/java/com/example/ui/ReceiptViewModel.kt": "899791f2cff92066404339ff27ffd4ef6f259252b06160f928da35736a83b7a1",
+    "app/src/test/java/com/example/ui/DriveConnectionRegressionTest.kt": "64417f1a5ca142e181dba117ce4abc9599225329bc94dec6413effdfdf5c31a0",
+    "docs/phase11c-evidence/before-fix-direct-sdk35.txt": "6af8da18e258f2bbae7f804cf39aef994ea6517fca25b516245eb553d437610f",
+    "docs/phase11c-evidence/gradle-start-blocked.txt": "9af91af7c92de8231104506f4b10deb15984fdb5e865d7a1a9554433fdb5a473"
+  }
+}

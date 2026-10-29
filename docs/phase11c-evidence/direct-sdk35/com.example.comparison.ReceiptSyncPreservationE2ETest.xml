@@ -1,0 +1,7 @@
+<testsuite tests="5" failures="0" skipped="0">
+<testcase classname="com.example.comparison.ReceiptSyncPreservationE2ETest" name="actualReceiptUploadPreservesConfirmedReviewAndReferences"></testcase>
+<testcase classname="com.example.comparison.ReceiptSyncPreservationE2ETest" name="realOriginalUploadTwiceAndTwoMergesPreserveEveryAuthoredDocumentField"></testcase>
+<testcase classname="com.example.comparison.ReceiptSyncPreservationE2ETest" name="allSeventyReceiptsRestoreIntoFreshPrivateProfileWithoutInventedOriginals"></testcase>
+<testcase classname="com.example.comparison.ReceiptSyncPreservationE2ETest" name="ordinaryReceiptWithAbsentMissingOrEmptyOriginalStillFails"></testcase>
+<testcase classname="com.example.comparison.ReceiptSyncPreservationE2ETest" name="inconsistentFilelessIndexMetadataOrTripBlocksFullRestoreBeforeLocalReplacement"></testcase>
+</testsuite>

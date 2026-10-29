@@ -1,0 +1,7 @@
+START timeoutIsRetryable
+START retryDelayUsesBoundedExponentialBackoff
+START ioFailureIsRetryable
+START programmingFailureIsNotRetryable
+START authFailureGetsActionableMessage
+START offlineMessageConfirmsLocalDataRetention
+ACTUAL tests=6 failures=0 skipped=0

@@ -1,0 +1,8 @@
+<testsuite tests="6" failures="0" skipped="0">
+<testcase classname="com.example.data.FilelessLogbookContractTest" name="confirmedTripMayUseItsActualConfiguredAccountWithoutReclassifyingTheDocument"></testcase>
+<testcase classname="com.example.data.FilelessLogbookContractTest" name="malformedOrTamperedEvidenceCannotBecomeAnExemption"></testcase>
+<testcase classname="com.example.data.FilelessLogbookContractTest" name="unconfirmedCancelledAiOnlyAndForeignTripsAreRejected"></testcase>
+<testcase classname="com.example.data.FilelessLogbookContractTest" name="existingOrMissingExplicitOriginalIsNotConvertedToFilelessReceipt"></testcase>
+<testcase classname="com.example.data.FilelessLogbookContractTest" name="onlyActualConfirmedExpenseBindingCreatesAnExemption"></testcase>
+<testcase classname="com.example.data.FilelessLogbookContractTest" name="ordinaryReceiptNeverGetsAttachmentExemption"></testcase>
+</testsuite>

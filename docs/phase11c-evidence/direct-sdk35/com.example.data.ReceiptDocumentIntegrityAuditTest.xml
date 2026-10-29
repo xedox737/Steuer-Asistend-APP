@@ -1,0 +1,4 @@
+<testsuite tests="2" failures="0" skipped="0">
+<testcase classname="com.example.data.ReceiptDocumentIntegrityAuditTest" name="conflictingUnitIsReportedWithoutChoosingAnotherUnit"></testcase>
+<testcase classname="com.example.data.ReceiptDocumentIntegrityAuditTest" name="missingUnitIsReportedWithoutRepairingTheStoredDocument"></testcase>
+</testsuite>

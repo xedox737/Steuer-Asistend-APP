@@ -1,0 +1,5 @@
+<testsuite tests="3" failures="0" skipped="0">
+<testcase classname="com.example.data.ReceiptOriginalMetadataPreservationTest" name="multipleReviewedOriginalsRetainExactJsonAndExplicitOrder"></testcase>
+<testcase classname="com.example.data.ReceiptOriginalMetadataPreservationTest" name="reviewedSingleOriginalRoundTripsWithoutInventingFields"></testcase>
+<testcase classname="com.example.data.ReceiptOriginalMetadataPreservationTest" name="oldBackupsWithoutAuthoredJsonStillReconstructEveryPageRank"></testcase>
+</testsuite>

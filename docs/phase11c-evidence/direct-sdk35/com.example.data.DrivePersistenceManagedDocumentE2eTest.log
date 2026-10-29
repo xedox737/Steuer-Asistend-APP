@@ -1,0 +1,13 @@
+START newReceiptIndexCannotOverrideBackupOriginalMetadataAndExistingUnitCorrectionStillWins
+START receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata
+Fontconfig error: No writable cache directories
+START fixture 9 purchase contract uses production repository sync and updates real index json
+START fixture 13 rental contract keeps confirmed unit and production target
+START hash mismatch blocks move rename replacement upload and index success
+START 404 for existing Drive id never creates a replacement original
+START automaticReceiptMetadataRoundTripCarriesEveryOriginalWithoutLocalPathsOrOcrAndReadsOldBackups
+START fixture 10 loan contract uses production repository sync
+START offline confirmed reclassification retries same original without replacement upload
+START 429 keeps confirmed classification pending without mutating Drive
+START timeout keeps confirmed classification pending without mutating Drive
+ACTUAL tests=11 failures=0 skipped=0

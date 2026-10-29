@@ -1,0 +1,21 @@
+<testsuite tests="19" failures="0" skipped="0">
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="afaToEveryPrimaryRootIncludingActiveMore"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="repeatedPrimarySwitchesDoNotAccumulateHistory"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="datevToEveryPrimaryRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="localUnitBackStillReturnsToUnitsThenProperty"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="documentDetailToEveryPrimaryRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="primaryResetLeavesSettingsPageAndDoesNotReopenIt"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="receiptInlineEditorToEveryPrimaryRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="monitorToEveryPrimaryRootIncludingActiveMore"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="receiptDetailToEveryPrimaryRootIncludingActiveReceipts"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="rulesToEveryPrimaryRootIncludingActiveMore"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="rentOverviewToEveryPrimaryRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="ledgerToEveryPrimaryRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="logbookToEveryPrimaryRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="committedSaveFinishesWithoutOverridingANewerPrimaryDestination"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="propertyUnitToEveryPrimaryRootIncludingActiveProperties"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="createTwentyFiveUnitsThroughViewModelKeepsAllIdsAndAreas"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="scanReselectLeavesBankPrefillAndReturnsToFreshScanRoot"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="backupToEveryPrimaryRootIncludingActiveMore"></testcase>
+<testcase classname="com.example.ui.PrimaryNavigationComposeTest" name="bankDetailToEveryPrimaryRoot"></testcase>
+</testsuite>

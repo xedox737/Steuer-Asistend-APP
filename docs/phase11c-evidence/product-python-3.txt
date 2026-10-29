@@ -1,0 +1,8 @@
+test_missing_malformed_or_ambiguous_certificates_fail_closed (test_phase11a_apk_signing.SigningCertificateTests.test_missing_malformed_or_ambiguous_certificates_fail_closed) ... ok
+test_same_verified_certificate_in_multiple_sdk_ranges_is_supported (test_phase11a_apk_signing.SigningCertificateTests.test_same_verified_certificate_in_multiple_sdk_ranges_is_supported) ... ok
+test_verified_certificate_is_independent_of_human_digest_labels (test_phase11a_apk_signing.SigningCertificateTests.test_verified_certificate_is_independent_of_human_digest_labels) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.001s
+
+OK

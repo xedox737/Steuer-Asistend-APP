@@ -1,0 +1,2 @@
+START noIdentifierRequiresExplicitChoiceDoubleConfirmationCreatesOnlyOneAccountAndRenamedFileDeduplicates
+ACTUAL tests=1 failures=0 skipped=0

@@ -1,0 +1,11 @@
+{
+  "status": "AUTOMATISIERT BESTANDEN",
+  "practicalStatus": "NOCH OFFEN",
+  "repairedProductHead": "2b58e6aaab913acb270695512b7fe4b4cbef1cf4",
+  "identicalSharedProductSources": true,
+  "uiHooksPatchSha256": "e97876c49a92db3ff710874a457ddb160e6a2923c93530d0426cce94587c61f1",
+  "allowedHookFiles": [
+    "AppSettingsScreen.kt",
+    "ReceiptAppUi.kt"
+  ]
+}

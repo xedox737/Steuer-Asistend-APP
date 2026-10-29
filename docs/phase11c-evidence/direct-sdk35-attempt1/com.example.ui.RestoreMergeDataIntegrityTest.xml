@@ -1,0 +1,11 @@
+<testsuite tests="9" failures="0" skipped="0">
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="mergeRestore_preservesPhase1BRentChangesFromBackupAndLocal"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="fullRestoreNeverPairsBackupHashWithDifferentNewerLocalOriginalBytes"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="isoCalendarDateSurvivesBackupAndRepeatedMergeWithGermanDisplay"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="mergeRestore_usesTaskUpdatedAtAndOtherwiseKeepsLocalConflict"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="mergeRestore_keepsUsableLocalDocumentPathAndNewerLocalMetadata"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="mergeRestore_preservesNewerTenantPeriodAndTask_andIsIdempotent"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="replaceFullRemainsExplicitSnapshotForTasksWhileMergeDoesNot"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="freshDeviceRestore_neverReusesDeadDevicePathAndKeepsRemoteReference"></testcase>
+<testcase classname="com.example.ui.RestoreMergeDataIntegrityTest" name="mergeRestore_relinksManagedFileByHashWithoutCreatingCopy"></testcase>
+</testsuite>
