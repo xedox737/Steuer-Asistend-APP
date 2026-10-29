@@ -58,11 +58,11 @@ jobs:
             printf '%s' "$PRODUCTION_DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
             actual_sha1="$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1)"
             expected_sha1="$(printf '%s' "$PRODUCTION_DEBUG_SHA1" | tr '[:lower:]' '[:upper:]')"
-            # Existing installed product version 102 must remain upgradeable.
+            # Existing installed product version 103 must remain upgradeable.
             # An OAuth-approved but DIFFERENT signing identity cannot update that installation.
-            installed_product_sha1="EA:42:88:6D:5B:6E:AF:FB:AD:49:26:86:D9:65:B7:47:62:A9:76:49"
+            installed_product_sha1="CF:43:8D:2E:D2:1D:0F:D5:F8:B0:AB:81:BF:51:8A:51:78:A7:73:85"
             if [ -z "$actual_sha1" ] || [ "$actual_sha1" != "$expected_sha1" ] || [ "$actual_sha1" != "$installed_product_sha1" ]; then
-              echo "::error::Product APK signing identity differs from approved OAuth SHA-1 or installed version 102. Refusing incompatible update."
+              echo "::error::Product APK signing identity differs from approved OAuth SHA-1 or installed version 103. Refusing incompatible update."
               exit 1
             fi
             echo "STABLE_PRODUCT_DEBUG_SIGNING=true" >> "$GITHUB_ENV"

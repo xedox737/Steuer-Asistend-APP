@@ -5,16 +5,16 @@ import hashlib
 import re
 
 PRODUCT_PACKAGE = "com.aistudio.steuerassistent.vnhqkp"
-INSTALLED_PRODUCT_SHA1 = "ea42886d5b6eaffbad492686d965b74762a97649"
+INSTALLED_PRODUCT_SHA1 = "cf438d2ed21d0fd5f8b0ab81bf518a5178a77385"
 
 
 def require_product_update_identity(report):
-    """A verified APK, not merely the input keystore, must match installed version 102."""
+    """A verified APK, not merely the input keystore, must match installed version 103."""
     if report.get("package") != PRODUCT_PACKAGE or report.get("signatureVerified") is not True:
         raise ValueError("Unverified or wrong product APK identity")
     actual = report.get("signingSha1")
     if not isinstance(actual, str) or actual.lower() != INSTALLED_PRODUCT_SHA1:
-        raise ValueError("APK cannot update installed product version 102: signing certificate differs")
+        raise ValueError("APK cannot update installed product version 103: signing certificate differs")
 
 
 def certificate_fingerprints(output):

@@ -91,6 +91,21 @@ class DriveConnectionRegressionTest {
         assertFalse(vm.driveSyncStatus.value.orEmpty().contains("Anmeldung erforderlich"))
     }
 
+    @Test fun realDriveDiagnosticPreservesInitializationFailureInsteadOfGenericReceiptError() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        val configFile = remote.entries.values.single { it.properties["entityType"] == "appConfig" }
+        val json = org.json.JSONObject(configFile.bytes.toString(Charsets.UTF_8))
+        json.put("backupsFolderId", "missing-current-backup")
+        configFile.bytes = json.toString().toByteArray()
+        vm.runRealDriveTest()
+        val result = runBlocking { withTimeout(15_000) { vm.driveTestState.first { it != null && !it.isRunning }!! } }
+        assertFalse(result.isSuccess)
+        assertEquals("Drive-Initialisierung", result.affectedAction)
+        assertTrue(result.errorMessage.orEmpty().contains("HTTP_404"))
+        assertEquals(404, result.httpStatusCode)
+        assertAccountRetained(vm)
+    }
+
     @Test fun networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry() {
         AuthShadow.failure = IOException("secret-account-token-must-not-be-shown")
         val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)

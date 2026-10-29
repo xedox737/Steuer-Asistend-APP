@@ -1,4 +1,4 @@
-"""Install only the persistent keystore capable of updating original version 102."""
+"""Install only the persistent keystore capable of updating original version 103."""
 import base64
 import os
 from pathlib import Path
@@ -27,7 +27,7 @@ def prepare():
                                              signingSha1=fingerprints['signingSha1']))
         shutil.copyfile(candidate, 'debug.keystore')
         Path('debug.keystore').chmod(0o600)
-    print('Persistent signing certificate matches installed original version 102')
+    print('Persistent signing certificate matches installed original version 103')
 
 
 if __name__ == '__main__':

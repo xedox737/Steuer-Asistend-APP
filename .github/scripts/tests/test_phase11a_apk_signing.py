@@ -14,6 +14,12 @@ class SigningCertificateTests(unittest.TestCase):
     expected = dict(signingSha1="7b30129dc53f6b2adb4c188b03bd2b39feb52e19",
                     signingSha256="ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d")
 
+    def test_installed_version_103_reference_matches_device_extracted_apk(self):
+        self.assertEqual("cf438d2ed21d0fd5f8b0ab81bf518a5178a77385", parser.INSTALLED_PRODUCT_SHA1)
+        with self.assertRaises(ValueError):
+            parser.require_product_update_identity(dict(package=parser.PRODUCT_PACKAGE,
+                signatureVerified=True, signingSha1="ea42886d5b6eaffbad492686d965b74762a97649"))
+
     def test_exact_installed_product_certificate_is_required_for_updates(self):
         parser.require_product_update_identity(dict(package=parser.PRODUCT_PACKAGE,
             signatureVerified=True, signingSha1=parser.INSTALLED_PRODUCT_SHA1.upper()))

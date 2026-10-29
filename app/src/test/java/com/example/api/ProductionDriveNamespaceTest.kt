@@ -9,6 +9,7 @@ import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.*
@@ -258,6 +259,114 @@ class ProductionDriveNamespaceTest {
             JSONObject().put("driveFileId","already-deleted").toString()).success)
         assertFalse(GoogleDriveClient.uploadJson(token,config.systemFolderId,"foreign-history.json",
             JSONObject().put("previousMainDriveFileId","foreign-original").toString()).success)
+    }
+
+    private suspend fun installDiagnosticConfig(config: DriveAppConfig, mainId: String, metadataId: String): Pair<String, String> {
+        val file = GoogleDriveClient.findFileByAppProperty(token, config.systemFolderId, "appConfig")!!
+        val json = with(drive) { config.copy(testReferences = DriveTestReferences(
+            "synthetic-old-test", "TEST-BLG-2026-000001", mainId, metadataId)).toJson() }
+        remote.entries.getValue(file.id).bytes = json.toByteArray()
+        return file.id to json
+    }
+
+    @Test fun missingDiagnosticOriginalDoesNotBlockExistingConfigOrRewriteRemoteData() = runBlocking {
+        val config = initialize()
+        remote.put("old-test-meta", "test.json", config.receiptsFolderId)
+        val (id, json) = installDiagnosticConfig(config, "deleted-test-original", "old-test-meta")
+        val before = remote.inventory(config.rootFolderId)
+        val result = drive.initializeDriveStorage(token)
+        assertTrue(result.toString(), result is DriveInitializationResult.SuccessLoadedExisting)
+        val loaded = (result as DriveInitializationResult.SuccessLoadedExisting).config
+        assertEquals(config.rootFolderId, loaded.rootFolderId)
+        assertEquals("deleted-test-original", loaded.testReferences!!.mainDriveFileId)
+        assertEquals(json, remote.entries.getValue(id).bytes.toString(Charsets.UTF_8))
+        assertEquals(before, remote.inventory(config.rootFolderId))
+    }
+
+    @Test fun bothMissingDiagnosticFilesAllowRepeatedInitializationWithoutReplacementFolders() = runBlocking {
+        val config = initialize()
+        installDiagnosticConfig(config, "deleted-test-original", "deleted-test-meta")
+        val before = remote.inventory(config.rootFolderId)
+        repeat(2) { assertTrue(drive.initializeDriveStorage(token) is DriveInitializationResult.SuccessLoadedExisting) }
+        assertEquals(before, remote.inventory(config.rootFolderId))
+    }
+
+    @Test fun diagnosticMetadataMissingAloneDoesNotBlockConfig() = runBlocking {
+        val config = initialize()
+        remote.put("old-test-original", "test.pdf", config.receiptsFolderId, mime = "application/pdf")
+        installDiagnosticConfig(config, "old-test-original", "deleted-test-meta")
+        assertTrue(drive.initializeDriveStorage(token) is DriveInitializationResult.SuccessLoadedExisting)
+    }
+
+    @Test fun liveForeignDiagnosticReferenceStillBlocksWithoutReadingForeignContent() = runBlocking {
+        val config = initialize()
+        installDiagnosticConfig(config, "foreign-original", "deleted-test-meta")
+        assertTrue(drive.initializeDriveStorage(token) is DriveInitializationResult.Failure)
+        assertNoProductContentOrMutation()
+    }
+
+    @Test fun diagnosticReferenceWithMissingAncestorStillBlocks() = runBlocking {
+        val config = initialize()
+        remote.put("orphan-test", "test.pdf", "missing-parent", mime = "application/pdf")
+        installDiagnosticConfig(config, "orphan-test", "deleted-test-meta")
+        assertTrue(drive.initializeDriveStorage(token) is DriveInitializationResult.Failure)
+    }
+
+    @Test fun missingCurrentFolderStillBlocksEvenWithMissingDiagnosticFiles() = runBlocking {
+        val config = initialize()
+        installDiagnosticConfig(config, "deleted-test-original", "deleted-test-meta")
+        remote.entries.remove(config.backupsFolderId)
+        val before = remote.inventory(config.rootFolderId)
+        assertTrue(drive.initializeDriveStorage(token) is DriveInitializationResult.Failure)
+        assertEquals(before, remote.inventory(config.rootFolderId))
+    }
+
+    @Test fun diagnosticFieldNameInOrdinaryReceiptDoesNotAllowMissingCurrentReference() = runBlocking {
+        val config = initialize()
+        val json = JSONObject().put("testReferences", JSONObject().put("mainDriveFileId", "missing-current-original")).toString()
+        assertFalse(GoogleDriveClient.uploadJson(token, config.systemFolderId, "receipt.json", json).success)
+        val (_, configJson) = installDiagnosticConfig(config, "deleted-test-original", "deleted-test-meta")
+        val poisoned = JSONObject(configJson).put("entries", JSONArray().put(JSONObject().put("mainDriveFileId", "missing-current-original")))
+        assertFalse(GoogleDriveClient.uploadJson(token, config.systemFolderId, "poisoned.json", poisoned.toString()).success)
+    }
+
+    @Test fun optionalDiagnosticReferencesDoNotHideHttpFailuresOrNetworkCancellation() = runBlocking {
+        val config = initialize()
+        val (_, json) = installDiagnosticConfig(config, "diagnostic-unavailable", "deleted-test-meta")
+        val policy = DriveNamespacePolicy(com.example.BuildConfig.APPLICATION_ID)
+        for (code in listOf(401, 403, 503)) {
+            val raw = OkHttpClient.Builder().addInterceptor { chain ->
+                if (chain.request().url.encodedPath.endsWith("/diagnostic-unavailable"))
+                    okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                        .code(code).message("Synthetic").body("{}".toResponseBody()).build()
+                else chain.proceed(chain.request())
+            }.addInterceptor(remote).build()
+            val failure = assertThrows(DriveAccessFailure::class.java) {
+                policy.validateJsonReferences(json, token) { raw.newCall(it).execute() }
+            }
+            assertEquals(code, failure.httpStatus)
+        }
+        val raw = OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/diagnostic-unavailable")) throw java.net.SocketTimeoutException("synthetic")
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build()
+        assertThrows(java.net.SocketTimeoutException::class.java) {
+            policy.validateJsonReferences(json, token) { raw.newCall(it).execute() }
+        }
+        assertThrows(CancellationException::class.java) {
+            policy.validateJsonReferences(json, token) { throw CancellationException("synthetic") }
+        }
+        Unit
+    }
+
+    @Test fun diagnosticReferenceCannotNameFolderOrMakeNestedMissingReferencesOptional() = runBlocking {
+        val config = initialize()
+        installDiagnosticConfig(config, config.receiptsFolderId, "deleted-test-meta")
+        assertTrue(drive.initializeDriveStorage(token) is DriveInitializationResult.Failure)
+        val (_, json) = installDiagnosticConfig(config, "deleted-test-original", "deleted-test-meta")
+        val nested = JSONObject(json)
+        nested.getJSONObject("testReferences").put("nested", JSONObject().put("metadataFileId", "missing-current-metadata"))
+        assertFalse(GoogleDriveClient.uploadJson(token, config.systemFolderId, "nested.json", nested.toString()).success)
     }
 
 }

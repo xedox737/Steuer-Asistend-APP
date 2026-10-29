@@ -1270,6 +1270,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     receiptTestRes = drivePersistenceRepository.testDriveReceiptStorage(token, initResult.config)
                 }
 
+                val initializationFailure = initResult as? com.example.data.DriveInitializationResult.Failure
                 val basicSuccess = apiResult.uploadSuccess && apiResult.downloadSuccess && apiResult.contentIdentical && apiResult.testFileId.isNotBlank()
                 val isSuccess = basicSuccess && receiptTestRes.success
 
@@ -1288,9 +1289,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     testReceiptMetadataFileId = receiptTestRes.metadataFileId,
                     testReceiptMetadataPath = receiptTestRes.metadataPath,
                     isSuccess = isSuccess,
-                    affectedAction = if (!basicSuccess) apiResult.affectedAction else if (!receiptTestRes.success) "Beleg-Speicherungs-Test" else null,
-                    errorMessage = apiResult.errorMessage ?: receiptTestRes.errorMessage,
-                    httpStatusCode = apiResult.httpStatusCode,
+                    affectedAction = if (!basicSuccess) apiResult.affectedAction else if (initializationFailure != null) "Drive-Initialisierung"
+                        else if (!receiptTestRes.success) "Beleg-Speicherungs-Test" else null,
+                    errorMessage = apiResult.errorMessage ?: initializationFailure?.error ?: receiptTestRes.errorMessage,
+                    httpStatusCode = apiResult.httpStatusCode
+                        ?: (initializationFailure?.cause as? com.example.api.DriveAccessFailure)?.httpStatus,
                     isReAuthRequired = apiResult.isReAuthRequired,
                     testRunTime = nowStr
                 )
