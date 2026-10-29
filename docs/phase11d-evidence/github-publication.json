@@ -1,0 +1,17 @@
+{
+  "base": "bdc17be4abc1398dabddb28eda2d9074d455a031",
+  "codeHead": "f732ee5b21a6cfb35c2a1b449aab41335639b452",
+  "commits": [
+    {
+      "local": "a40318d63849b6e89f8ad63982b006d3ddfb6f10",
+      "remote": "e70e355500ed253699c105042d4d648c81808aca",
+      "tree": "1b8e0f6c7fb04d42308e9ba6c8e8511ccbd772bf"
+    },
+    {
+      "local": "b929f3fbca6e1a690ba01572c2f940c1c1ab0763",
+      "remote": "f732ee5b21a6cfb35c2a1b449aab41335639b452",
+      "tree": "7d2faf8dec46100782bfd2019a3f1e8fd02ae385"
+    }
+  ],
+  "note": "GitHub API recreated commit metadata; all uploaded blobs and source trees match the locally tested commits. No merge; real Google OAuth and compatible update signing remain open."
+}
