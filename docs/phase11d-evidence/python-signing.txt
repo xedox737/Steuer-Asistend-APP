@@ -3,8 +3,11 @@ test_exact_installed_product_certificate_is_required_for_updates (test_phase11a_
 test_missing_malformed_or_ambiguous_certificates_fail_closed (test_phase11a_apk_signing.SigningCertificateTests.test_missing_malformed_or_ambiguous_certificates_fail_closed) ... ok
 test_same_verified_certificate_in_multiple_sdk_ranges_is_supported (test_phase11a_apk_signing.SigningCertificateTests.test_same_verified_certificate_in_multiple_sdk_ranges_is_supported) ... ok
 test_verified_certificate_is_independent_of_human_digest_labels (test_phase11a_apk_signing.SigningCertificateTests.test_verified_certificate_is_independent_of_human_digest_labels) ... ok
+test_missing_material_is_rejected_without_creating_key (test_product_signing_preparation.ProductSigningPreparationTests.test_missing_material_is_rejected_without_creating_key) ... ok
+test_valid_but_incompatible_private_key_is_never_installed (test_product_signing_preparation.ProductSigningPreparationTests.test_valid_but_incompatible_private_key_is_never_installed) ... ok
+test_wrong_approved_identity_is_rejected_before_loading_key (test_product_signing_preparation.ProductSigningPreparationTests.test_wrong_approved_identity_is_rejected_before_loading_key) ... ok
 
 ----------------------------------------------------------------------
-Ran 5 tests in 0.001s
+Ran 8 tests in 0.880s
 
 OK

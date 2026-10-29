@@ -11,12 +11,14 @@
     "actualMethods": 45,
     "failures": 0
   },
-  "pythonSigningMethods": 5,
+  "pythonSigningMethods": 8,
   "committedTestSdk": 36,
   "fullCi": "PENDING",
   "realGoogleOAuth": "OPEN",
   "android16Device": "OPEN",
   "updateSigningKey": "UNVERIFIED",
   "isolatedTestAppChanged": false,
-  "releaseDecision": "NO_GO"
+  "releaseDecision": "NO_GO",
+  "supersededCi": 40913257040,
+  "supersededReason": "Separate original APK publisher and legacy publishers bypassed PR150; signing/workflow correction required"
 }

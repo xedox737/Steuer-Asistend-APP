@@ -34,13 +34,23 @@ Im alten Stand `72aa308fb60b3a9d57809baebdcdc2299940374a` war der grüne Hauptbu
 
 Kontoauswahl ist nicht OAuth-Erfolg. Ein gültiger SDK-Callback mit Drive-Scope verknüpft das Konto, anschließend werden Token und Drive-Struktur geprüft. Eine recoverable Freigabe ist eine ausstehende Google-Aktion; sie löscht die Kontoverknüpfung nicht. Netzwerk-/Timeoutfehler behalten das Konto. HTTP403 und 404 bleiben Zugriffs-/Strukturfehler. HTTP401 invalidiert den nativen Cache und erneuert einmal; wiederholte Ablehnung verlangt gezielte Autorisierung. Der vorhandene automatische Neustart mit gespeichertem Konto und expliziter Logout bleiben erhalten. Es werden keine neuen Access- oder Refresh-Tokens gespeichert.
 
+## Zusätzlicher belegter Veröffentlichungsfehler
+
+Die unabhängige Prüfung des angegebenen Workflows `40799163931` zeigt: Version 102 stammt aus `.github/workflows/publish-verified-apk.yml`, nicht aus `android-ci.yml`. Dieser zweite Publisher erzeugte auch nach PR #150 einen zufälligen Schlüssel und veröffentlichte ohne dessen Schutz. Drei ältere Einmal-Workflows (`compact-quick-access-height`, `fix-finanzamt-pdf-crash`, `fix-legacy-description-runtime`) enthielten ebenfalls direkte Veröffentlichungen mit zufälligen Schlüsseln. Alle fünf direkten GitHub-Release-Publisher sind jetzt auf einen Keystore- und tatsächlichen APK-Zertifikatnachweis gebunden.
+
+Der gemeinsame strenge Vorbereitungsschritt benötigt das vorhandene persistente Secret und den exakt passenden genehmigten SHA1. Er prüft den tatsächlichen öffentlichen Zertifikathash aus dem geladenen Keystore, bevor er diesen installiert; temporäre Kandidaten werden geschützt und bereinigt. Fehlende/ungültige/fremde Schlüssel blockieren die Veröffentlichung, statt durch neu erzeugte Schlüssel ersetzt zu werden. Ein lokaler Negativtest erzeugt einen synthetischen gültigen Fremdschlüssel und weist dessen Ablehnung ohne Installation und ohne Schlüsselausgabe nach. Der positive Pfad mit dem privaten Originalschlüssel ist mangels Verfügbarkeit offen.
+
+Die drei älteren Codeänderungs-Workflows dürfen nur noch bewusst per `workflow_dispatch` starten. Sonst würde schon die Sicherheitskorrektur ihrer Workflow-Dateien beim späteren Merge deren alte automatischen Codeänderungen/Git-Pushes auslösen. Ihre manuellen Funktionen bleiben vorhanden; sie verlangen vor Änderungen gültiges dauerhaftes Signaturmaterial und vor Commit/Release die Prüfung des gebauten Artefakts. Kein Workflow wird durch diesen Auftrag manuell gestartet, kein Main-Commit oder Release ausgelöst.
+
+Der erste PR-CI-Lauf `40913257040` prüft den Zwischenstand vor diesem nachgewiesenen Publisher-Fix. Er wird durch die notwendige Sicherheitskorrektur ersetzt und nicht als vollständige finale Abnahme gezählt. Die Android-Produktquellen bleiben gegenüber dem bereits lokal mit 45 Methoden geprüften Stand identisch; für die neue Signing-/Workflow-Korrektur wurden acht Python-Tests, YAML-Parsing und Diff-Prüfung ausgeführt. Keine Tests wurden deaktiviert.
+
 ## Tests und Nachweise
 
 `NativeDriveSignInTest` prüft echte lokale SDK-Intent-/Options-Verträge: Erfolg, abgesagte Auswahl, Android-Ergebnis gegen SDK-Code 10, fehlenden Drive-Scope, Netzwerk/Timeout und Vermeidung von Konto-/Token-Lecks. Die Google-Dienste selbst werden dadurch nicht geprüft.
 
 Die vorhandene SDK36-Klasse `DriveConnectionRegressionTest` erhält Consent-Verbrauch, erneute Tokenanforderung nach Freigabe, Abbruch, Logout, Kontowechsel, Dialogschleifenschutz, Kontoübergabe und Ablehnung verspäteter/mehrfacher Callbacks. Bestehende Fälle für Neustart, Tokenablauf, Netzunterbrechung, 401/403/404, doppelte Initialisierung, Cancellation, Web-TTL und Präferenzerhalt bleiben aktiv. Der SDK36-Ausführungswächter prüft alle tatsächlichen Methoden beider Klassen, Fehler und Skips. Die bestehende vollständige JVM-/Emulator-CI wird nicht eingeschränkt.
 
-Lokaler Zwischenstand: 45 JVM-Methoden unter ergänzendem SDK35 bestanden; fünf Python-Signaturtests bestanden. Die vollständigen regulären CI-Ergebnisse werden mit tatsächlichen Run-IDs im PR nachgetragen, nicht vorweggenommen. Evidence liegt unter `docs/phase11d-evidence/`. Kompilier-/Laufgrenzen und der rote Ausgangsfall bleiben sichtbar.
+Lokaler Zwischenstand: 45 JVM-Methoden unter ergänzendem SDK35 bestanden; acht Python-Signaturtests bestanden. Die vollständigen regulären CI-Ergebnisse werden mit tatsächlichen Run-IDs im PR nachgetragen, nicht vorweggenommen. Evidence liegt unter `docs/phase11d-evidence/`. Kompilier-/Laufgrenzen und der rote Ausgangsfall bleiben sichtbar.
 
 ## OAuth- und Update-Voraussetzungen: offen
 
