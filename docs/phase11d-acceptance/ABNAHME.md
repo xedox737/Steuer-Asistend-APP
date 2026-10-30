@@ -1,3 +1,5 @@
+> Aktualisierter Nachweis: [Reparatur veralteter Diagnose-Verweise und tatsächliche Version-103-Signatur](../phase11d-stale-acceptance/ABNAHME.md). Die installierte Signatur ist inzwischen als CF:43:8D:2E:D2:1D:0F:D5:F8:B0:AB:81:BF:51:8A:51:78:A7:73:85 verifiziert. Der frühere unbekannte Gerätestatus unten ist historisch.
+
 # Phase 11D – Abschließender automatisierter Testnachweis
 
 Stand: 29.10.2026. **Automatisierte Prüfung bestanden; praktische Veröffentlichung NO-GO.** Die konkrete Ursache des Google-Statuscodes 10 auf dem POCO ist weiterhin nicht bewiesen. Der Nutzer hat inzwischen bestätigt: Die angegebene SHA1 stammt aus der heruntergeladenen GitHub-APK, nicht direkt aus der installierten App. Die Gerätesignatur ist deshalb noch unbekannt. Es fand kein echter Google-Login, kein Gerätetest auf Android16 und kein Update der vorhandenen Installation statt.

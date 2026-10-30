@@ -1,0 +1,14 @@
+{
+  "Evidence.zip": {
+    "bytes": 2195180,
+    "sha256": "db8a5f3ae64872291734113787a223505fb2fba59f2a4c82d76ccd1b6678b655"
+  },
+  "ABNAHME.md": {
+    "bytes": 9872,
+    "sha256": "b1724efaecd47b5ef454d1b4cd8821bc1f090a5e20a58f32b3251fa1e992f63b"
+  },
+  "verify-evidence.py": {
+    "bytes": 2249,
+    "sha256": "dea37469f9f92cd9c02c3e69b8cdbe02ed8012892c1c63aa558ab68b60b17fff"
+  }
+}

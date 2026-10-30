@@ -1,3 +1,5 @@
+> Aktualisierter Nachweis: [Reparatur veralteter Diagnose-Verweise und tatsächliche Version-103-Signatur](../phase11d-stale-acceptance/ABNAHME.md). Die installierte Signatur ist inzwischen als CF:43:8D:2E:D2:1D:0F:D5:F8:B0:AB:81:BF:51:8A:51:78:A7:73:85 verifiziert. Der frühere unbekannte Gerätestatus unten ist historisch.
+
 # Signatur der tatsächlich installierten Original-App bestimmen
 
 Der Nutzer hat bestätigt, dass `EA:42:88:…:76:49` aus einer heruntergeladenen GitHub-APK stammt. Damit ist die Signatur der POCO-Installation noch nicht nachgewiesen. Die beiden früheren Publisher verwendeten denselben Release-Tag und APK-Dateinamen; ein späterer Download kann eine andere Signatur tragen.
