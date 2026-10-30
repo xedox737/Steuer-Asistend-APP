@@ -1,0 +1,55 @@
+JUnit version 4.13.2
+......E........E...E....
+Time: 6.349
+There were 3 failures:
+1) missingDiagnosticOriginalDoesNotBlockExistingConfigOrRewriteRemoteData(com.example.api.ProductionDriveNamespaceTest)
+java.lang.AssertionError: Failure(error=Drive-Prüfung [HTTP_404]: Google Drive ist nicht erreichbar oder der Zugriff ist nicht erlaubt. Keine Ersatzstruktur angelegt., cause=com.example.api.DriveNamespacePolicy$MissingReference: Drive-Prüfung [HTTP_404]: Google Drive ist nicht erreichbar oder der Zugriff ist nicht erlaubt. Keine Ersatzstruktur angelegt.)
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.api.ProductionDriveNamespaceTest$missingDiagnosticOriginalDoesNotBlockExistingConfigOrRewriteRemoteData$1.invokeSuspend(ProductionDriveNamespaceTest.kt:277)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.api.ProductionDriveNamespaceTest.missingDiagnosticOriginalDoesNotBlockExistingConfigOrRewriteRemoteData(ProductionDriveNamespaceTest.kt:271)
+2) diagnosticMetadataMissingAloneDoesNotBlockConfig(com.example.api.ProductionDriveNamespaceTest)
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.example.api.ProductionDriveNamespaceTest$diagnosticMetadataMissingAloneDoesNotBlockConfig$1.invokeSuspend(ProductionDriveNamespaceTest.kt:297)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.api.ProductionDriveNamespaceTest.diagnosticMetadataMissingAloneDoesNotBlockConfig(ProductionDriveNamespaceTest.kt:293)
+3) bothMissingDiagnosticFilesAllowRepeatedInitializationWithoutReplacementFolders(com.example.api.ProductionDriveNamespaceTest)
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.example.api.ProductionDriveNamespaceTest$bothMissingDiagnosticFilesAllowRepeatedInitializationWithoutReplacementFolders$1.invokeSuspend(ProductionDriveNamespaceTest.kt:289)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.api.ProductionDriveNamespaceTest.bothMissingDiagnosticFilesAllowRepeatedInitializationWithoutReplacementFolders(ProductionDriveNamespaceTest.kt:285)
+
+FAILURES!!!
+Tests run: 21,  Failures: 3
+

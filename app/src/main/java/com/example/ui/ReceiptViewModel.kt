@@ -107,6 +107,7 @@ data class LearnedVendorRule(
 class ReceiptViewModel(application: Application) : AndroidViewModel(application) {
     private val driveSession = java.util.concurrent.atomic.AtomicLong()
     private var driveInitializationJob: Job? = null
+    private var pendingDriveInitializationRetrySession: Long? = null
     private var driveSyncJob: Job? = null
     private val database = AppDatabase.getDatabase(application, viewModelScope)
     private val renovationStore = com.example.data.RenovationReviewStore(application)
@@ -371,6 +372,78 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     private val _driveSyncError = MutableStateFlow<String?>(sharedPrefs.getString("drive_sync_error", null))
     val driveSyncError: StateFlow<String?> = _driveSyncError.asStateFlow()
+    @Volatile private var nativeDriveSignInFailure: com.example.api.NativeDriveSignIn.Result.Rejected? = null
+
+    @Synchronized
+    internal fun completeNativeDriveSignIn(session: Long, result: com.example.api.NativeDriveSignIn.Result) {
+        if (session != driveSession.get()) return
+        when (result) {
+            is com.example.api.NativeDriveSignIn.Result.Authorized -> {
+                nativeDriveSignInFailure = null
+                connectDrive(result.email)
+            }
+            is com.example.api.NativeDriveSignIn.Result.Rejected -> {
+                nativeDriveSignInFailure = result
+                _driveSyncStatus.value = result.message
+            }
+        }
+    }
+
+    internal fun nativeDriveSignInSession(): Long = driveSession.get()
+
+    class DriveConsentRequest internal constructor(
+        val id: Long, val intent: android.content.Intent, internal val session: Long
+    )
+    private val consentIds = java.util.concurrent.atomic.AtomicLong()
+    private val _driveConsentRequest = MutableStateFlow<DriveConsentRequest?>(null)
+    val driveConsentRequest: StateFlow<DriveConsentRequest?> = _driveConsentRequest.asStateFlow()
+    private var activeDriveConsent: DriveConsentRequest? = null
+    @Volatile private var consentAutomaticRetrySession: Long? = null
+
+    @Synchronized
+    fun takeDriveConsent(id: Long): DriveConsentRequest? {
+        val request = _driveConsentRequest.value ?: return null
+        if (request.id != id || request.session != driveSession.get()) return null
+        _driveConsentRequest.value = null
+        activeDriveConsent = request
+        return request
+    }
+
+    @Synchronized
+    fun completeDriveConsent(id: Long, granted: Boolean) {
+        val request = activeDriveConsent ?: return
+        if (request.id != id || request.session != driveSession.get()) return
+        activeDriveConsent = null
+        if (granted) {
+            // Approval is not a token or proof of Drive access. Request and validate again.
+            val initialization = driveInitializationJob
+            val synchronization = driveSyncJob
+            viewModelScope.launch(Dispatchers.IO) {
+                initialization?.join()
+                synchronization?.join()
+                if (request.session == driveSession.get()) {
+                    consentAutomaticRetrySession = request.session
+                    initializeDrivePersistence()
+                }
+            }
+        } else {
+            _driveSyncStatus.value = "Google-Freigabe abgebrochen"
+            _driveSyncError.value = "Drive-Freigabe nicht abgeschlossen. Konto und lokale Daten bleiben erhalten. Bitte erneut synchronisieren."
+        }
+    }
+
+    @Synchronized
+    private fun requestDriveConsent(intent: android.content.Intent, session: Long) {
+        ensureDriveSession(session)
+        if (consentAutomaticRetrySession == session) {
+            // Never loop Google dialogs when approval did not resolve the request.
+            consentAutomaticRetrySession = null
+            return
+        }
+        if (_driveConsentRequest.value == null && activeDriveConsent == null) {
+            _driveConsentRequest.value = DriveConsentRequest(consentIds.incrementAndGet(), intent, session)
+        }
+    }
 
     private val _driveTestState = MutableStateFlow<DriveTestState?>(null)
     val driveTestState: StateFlow<DriveTestState?> = _driveTestState.asStateFlow()
@@ -1098,6 +1171,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             sharedPrefs.getString("access_token", null) == accessToken
         if (sameCredential && driveInitializationJob?.isActive == true) return
         driveSession.incrementAndGet()
+        pendingDriveInitializationRetrySession = null
+        _driveConsentRequest.value = null
+        activeDriveConsent = null
+        consentAutomaticRetrySession = null
         driveInitializationJob?.cancel()
         driveSyncJob?.cancel()
         _isDriveSyncing.value = false
@@ -1117,6 +1194,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             }
         }.apply()
         _googleAccountEmail.value = email
+        nativeDriveSignInFailure = null
         _isDriveConnected.value = true
         _driveSyncStatus.value = "Google-Konto verknüpft. Drive-Zugriff wird geprüft."
         _driveSyncError.value = null
@@ -1128,6 +1206,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     @Synchronized
     fun disconnectDrive() {
         driveSession.incrementAndGet()
+        pendingDriveInitializationRetrySession = null
+        _driveConsentRequest.value = null
+        activeDriveConsent = null
+        consentAutomaticRetrySession = null
         driveInitializationJob?.cancel()
         driveSyncJob?.cancel()
         _isDriveSyncing.value = false
@@ -1143,6 +1225,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _driveSyncStatus.value = "Verbindung getrennt"
         _driveSystemFolderStatus.value = "Nicht eingerichtet"
         _driveTestState.value = null
+        nativeDriveSignInFailure = null
     }
 
     fun runRealDriveTest() {
@@ -1167,7 +1250,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         contentIdentical = false,
                         isSuccess = false,
                         affectedAction = "Authentifizierung",
-                        errorMessage = "Kein Google-Konto angemeldet. Bitte verbinden Sie sich zuerst über Google-Login.",
+                        errorMessage = nativeDriveSignInFailure?.message
+                            ?: "Kein Google-Konto angemeldet. Bitte verbinden Sie sich zuerst über Google-Login.",
                         isReAuthRequired = true,
                         testRunTime = nowStr
                     )
@@ -1186,6 +1270,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     receiptTestRes = drivePersistenceRepository.testDriveReceiptStorage(token, initResult.config)
                 }
 
+                val initializationFailure = initResult as? com.example.data.DriveInitializationResult.Failure
                 val basicSuccess = apiResult.uploadSuccess && apiResult.downloadSuccess && apiResult.contentIdentical && apiResult.testFileId.isNotBlank()
                 val isSuccess = basicSuccess && receiptTestRes.success
 
@@ -1204,9 +1289,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     testReceiptMetadataFileId = receiptTestRes.metadataFileId,
                     testReceiptMetadataPath = receiptTestRes.metadataPath,
                     isSuccess = isSuccess,
-                    affectedAction = if (!basicSuccess) apiResult.affectedAction else if (!receiptTestRes.success) "Beleg-Speicherungs-Test" else null,
-                    errorMessage = apiResult.errorMessage ?: receiptTestRes.errorMessage,
-                    httpStatusCode = apiResult.httpStatusCode,
+                    affectedAction = if (!basicSuccess) apiResult.affectedAction else if (initializationFailure != null) "Drive-Initialisierung"
+                        else if (!receiptTestRes.success) "Beleg-Speicherungs-Test" else null,
+                    errorMessage = apiResult.errorMessage ?: initializationFailure?.error ?: receiptTestRes.errorMessage,
+                    httpStatusCode = apiResult.httpStatusCode
+                        ?: (initializationFailure?.cause as? com.example.api.DriveAccessFailure)?.httpStatus,
                     isReAuthRequired = apiResult.isReAuthRequired,
                     testRunTime = nowStr
                 )
@@ -1249,7 +1336,26 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        if (driveInitializationJob?.isActive == true || driveSyncJob?.isActive == true) return
+        val active = driveInitializationJob?.takeIf { it.isActive } ?: driveSyncJob?.takeIf { it.isActive }
+        if (active != null) {
+            val session = driveSession.get()
+            // The failure flow may reach the UI before its producer job has completed.
+            // Retain one explicit retry after a published failure; ordinary duplicates
+            // and successful completion never schedule an additional initialization.
+            if (!_driveSyncError.value.isNullOrBlank() && pendingDriveInitializationRetrySession != session) {
+                pendingDriveInitializationRetrySession = session
+                active.invokeOnCompletion {
+                    synchronized(this@ReceiptViewModel) {
+                        if (pendingDriveInitializationRetrySession == session) {
+                            pendingDriveInitializationRetrySession = null
+                            if (session == driveSession.get() && _isDriveConnected.value &&
+                                !_driveSyncError.value.isNullOrBlank()) initializeDrivePersistence()
+                        }
+                    }
+                }
+            }
+            return
+        }
         val session = driveSession.get()
         driveInitializationJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
@@ -1695,7 +1801,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             _isDriveConnected.value = false
             sharedPrefs.edit().putBoolean("drive_reauthorization_required", true).apply()
         }
-        _driveSyncStatus.value = if (failure.requiresAuthorization) "Google-Autorisierung erforderlich" else "Drive-Synchronisierung fehlgeschlagen – erneut versuchen"
+        _driveSyncStatus.value = when {
+            failure.requiresAuthorization -> "Google-Autorisierung erforderlich"
+            failure.kind == com.example.data.DriveFailureKind.CONSENT -> "Google-Freigabe erforderlich"
+            else -> "Drive-Synchronisierung fehlgeschlagen – erneut versuchen"
+        }
         _driveSyncError.value = failure.message
         sharedPrefs.edit().putString("drive_sync_error", failure.message).apply()
     }
@@ -1718,7 +1828,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             val token = com.google.android.gms.auth.GoogleAuthUtil.getToken(
                 getApplication(), email, "oauth2:https://www.googleapis.com/auth/drive.file")
             ensureDriveSession(session)
+            consentAutomaticRetrySession = null
             return token
+        } catch (e: com.google.android.gms.auth.UserRecoverableAuthException) {
+            val resolution = e.intent ?: throw DriveAuthorizationRequired()
+            requestDriveConsent(resolution, session)
+            throw com.example.data.DriveConsentRequired()
         } catch (e: com.google.android.gms.auth.GoogleAuthException) {
             val failure = DriveAuthorizationRequired()
             handleDriveFailure(failure, session)

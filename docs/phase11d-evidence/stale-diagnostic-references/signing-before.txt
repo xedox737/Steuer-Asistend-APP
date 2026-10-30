@@ -1,0 +1,16 @@
+..F......
+======================================================================
+FAIL: test_installed_version_103_reference_matches_device_extracted_apk (test_phase11a_apk_signing.SigningCertificateTests.test_installed_version_103_reference_matches_device_extracted_apk)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/Steuer-Asistend-APP-phase11d/.github/scripts/tests/test_phase11a_apk_signing.py", line 18, in test_installed_version_103_reference_matches_device_extracted_apk
+    self.assertEqual("cf438d2ed21d0fd5f8b0ab81bf518a5178a77385", parser.INSTALLED_PRODUCT_SHA1)
+AssertionError: 'cf438d2ed21d0fd5f8b0ab81bf518a5178a77385' != 'ea42886d5b6eaffbad492686d965b74762a97649'
+- cf438d2ed21d0fd5f8b0ab81bf518a5178a77385
++ ea42886d5b6eaffbad492686d965b74762a97649
+
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.902s
+
+FAILED (failures=1)

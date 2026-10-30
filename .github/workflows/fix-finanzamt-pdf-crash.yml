@@ -12,6 +12,8 @@ permissions:
 
 jobs:
   fix-finanzamt-pdf:
+    # Legacy code-mutating tools must never run implicitly when this safety fix is merged.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -32,19 +34,11 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Create local debug keystore
-        run: |
-          if [ ! -f debug.keystore ]; then
-            keytool -genkeypair \
-              -keystore debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000
-          fi
+      - name: Require persistent original product signing identity
+        env:
+          PRODUCTION_DEBUG_KEYSTORE_BASE64: ${{ secrets.PRODUCTION_DEBUG_KEYSTORE_BASE64 }}
+          PRODUCTION_DEBUG_SHA1: ${{ vars.PRODUCTION_DEBUG_SHA1 }}
+        run: python3 .github/scripts/prepare-product-signing.py
 
       - name: Apply robust PDF crash fix
         shell: bash
@@ -153,6 +147,11 @@ jobs:
       - name: Build debug APK
         timeout-minutes: 10
         run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: Verify built product APK identity before publication
+        run: |
+          python3 .github/scripts/e11a-inspect-apk.py app/build/outputs/apk/debug/app-debug.apk --package com.aistudio.steuerassistent.vnhqkp
+          python3 .github/scripts/verify-product-update-identity.py
 
       - name: Commit verified crash fix
         id: commit_fix

@@ -1,0 +1,17 @@
+{
+  "run": 40914708522,
+  "head": "e2a8df4e0f9f9288553596536b4198c28e175061",
+  "actualUniqueJvmMethods": 1201,
+  "failed": 1,
+  "failedMethod": "networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry",
+  "failure": "Timeout awaiting successful initialization after immediate retry",
+  "lint": "success",
+  "emulator": "skipped because verify failed",
+  "stableProductSigning": false,
+  "artifact": 12916812730,
+  "artifactSha256": "f0c5795ff8b6daf85db136cf0679cdf8e07996163096f1d6b99879e4e264fd9f",
+  "repairMethods": 36,
+  "originalHashesMatched": 60,
+  "fullRestoreErrors": 0,
+  "mergeErrors": 0
+}

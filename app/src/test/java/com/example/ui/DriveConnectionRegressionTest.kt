@@ -91,6 +91,21 @@ class DriveConnectionRegressionTest {
         assertFalse(vm.driveSyncStatus.value.orEmpty().contains("Anmeldung erforderlich"))
     }
 
+    @Test fun realDriveDiagnosticPreservesInitializationFailureInsteadOfGenericReceiptError() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        val configFile = remote.entries.values.single { it.properties["entityType"] == "appConfig" }
+        val json = org.json.JSONObject(configFile.bytes.toString(Charsets.UTF_8))
+        json.put("backupsFolderId", "missing-current-backup")
+        configFile.bytes = json.toString().toByteArray()
+        vm.runRealDriveTest()
+        val result = runBlocking { withTimeout(15_000) { vm.driveTestState.first { it != null && !it.isRunning }!! } }
+        assertFalse(result.isSuccess)
+        assertEquals("Drive-Initialisierung", result.affectedAction)
+        assertTrue(result.errorMessage.orEmpty().contains("HTTP_404"))
+        assertEquals(404, result.httpStatusCode)
+        assertAccountRetained(vm)
+    }
+
     @Test fun networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry() {
         AuthShadow.failure = IOException("secret-account-token-must-not-be-shown")
         val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)
@@ -269,6 +284,148 @@ class DriveConnectionRegressionTest {
         assertFalse(vm.isDriveConnected.value); assertNull(vm.googleAccountEmail.value)
         assertEquals("Verbindung getrennt", vm.driveSyncStatus.value)
         assertNull(prefs.getString("connected_email", null))
+    }
+
+    @Test fun recoverableConsentDoesNotBecomeLogout() {
+        AuthShadow.failure = com.google.android.gms.auth.UserRecoverableAuthException(
+            "synthetic-consent", android.content.Intent("synthetic.CONSENT"))
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)
+        assertAccountRetained(vm)
+        assertTrue(vm.driveSyncError.value.orEmpty().contains("Freigabe"))
+        assertFalse(prefs.getBoolean("drive_reauthorization_required", false))
+    }
+
+    private fun initialization(vm: ReceiptViewModel): Job? = ReceiptViewModel::class.java
+        .getDeclaredField("driveInitializationJob").apply { isAccessible = true }.get(vm) as Job?
+    private fun awaitInitialization(vm: ReceiptViewModel) = runBlocking { withTimeout(15_000) { initialization(vm)?.join() } }
+    private fun pendingConsent(vm: ReceiptViewModel): ReceiptViewModel.DriveConsentRequest = runBlocking {
+        withTimeout(15_000) { vm.driveConsentRequest.first { it != null }!! }
+    }
+    private fun requestConsent(): ReceiptViewModel {
+        AuthShadow.failure = com.google.android.gms.auth.UserRecoverableAuthException(
+            "synthetic", android.content.Intent("synthetic.CONSENT"))
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)
+        awaitInitialization(vm)
+        return vm
+    }
+    @Test fun consentIsConsumedOnlyOnce() {
+        val vm = requestConsent(); val request = pendingConsent(vm)
+        assertNotNull(vm.takeDriveConsent(request.id))
+        assertNull(vm.takeDriveConsent(request.id))
+    }
+    @Test fun approvedConsentRequestsFreshTokenAndValidatesDrive() {
+        val vm = requestConsent(); val request = pendingConsent(vm)
+        vm.takeDriveConsent(request.id); AuthShadow.failure = null
+        vm.completeDriveConsent(request.id, true); awaitSuccess(vm)
+        assertAccountRetained(vm); assertNull(vm.driveConsentRequest.value)
+    }
+    @Test fun canceledConsentPreservesAccountAndLocalPreferences() {
+        prefs.edit().putString("local_sentinel", "keep").commit()
+        val vm = requestConsent(); val request = pendingConsent(vm); vm.takeDriveConsent(request.id)
+        vm.completeDriveConsent(request.id, false)
+        assertAccountRetained(vm); assertEquals("keep", prefs.getString("local_sentinel", null))
+        assertTrue(vm.driveSyncStatus.value.orEmpty().contains("abgebrochen"))
+    }
+    @Test fun consentCallbackAfterLogoutCannotReconnect() {
+        val vm = requestConsent(); val request = pendingConsent(vm); vm.takeDriveConsent(request.id)
+        vm.disconnectDrive(); AuthShadow.failure = null; vm.completeDriveConsent(request.id, true)
+        assertNull(vm.googleAccountEmail.value); assertFalse(vm.isDriveConnected.value)
+        assertNull(vm.driveConsentRequest.value)
+    }
+    @Test fun consentCallbackCannotOverwriteAnotherAccount() {
+        val vm = requestConsent(); val request = pendingConsent(vm); vm.takeDriveConsent(request.id)
+        AuthShadow.failure = null; vm.connectDrive("other@example.invalid"); awaitSuccess(vm)
+        vm.completeDriveConsent(request.id, true)
+        assertEquals("other@example.invalid", vm.googleAccountEmail.value)
+    }
+    @Test fun unresolvedApprovalDoesNotLoopGoogleDialogs() {
+        val vm = requestConsent(); val request = pendingConsent(vm); vm.takeDriveConsent(request.id)
+        val previous = initialization(vm)
+        vm.completeDriveConsent(request.id, true)
+        runBlocking { withTimeout(15_000) { while (initialization(vm) === previous) delay(10) } }
+        awaitInitialization(vm)
+        assertNull(vm.driveConsentRequest.value); assertAccountRetained(vm)
+        assertTrue(vm.driveSyncError.value.orEmpty().contains("Freigabe"))
+    }
+
+    @Test fun nativeCallbackHandsSelectedAccountToViewModelAndRejectsDuplicate() {
+        val vm = model(); val session = vm.nativeDriveSignInSession()
+        vm.completeNativeDriveSignIn(session, com.example.api.NativeDriveSignIn.Result.Authorized("synthetic@example.invalid"))
+        awaitSuccess(vm)
+        vm.completeNativeDriveSignIn(session, com.example.api.NativeDriveSignIn.Result.Authorized("other@example.invalid"))
+        assertEquals("synthetic@example.invalid", vm.googleAccountEmail.value)
+        assertEquals(1, remote.entries.values.count { it.properties["entityType"] == "appConfig" })
+    }
+    @Test fun failedNativeCallbackCannotChangePreferencesOrAccount() {
+        val vm = model(); prefs.edit().putString("local_sentinel", "keep").commit()
+        val before = prefs.all.toMap()
+        vm.completeNativeDriveSignIn(vm.nativeDriveSignInSession(), com.example.api.NativeDriveSignIn.failure(android.app.Activity.RESULT_CANCELED, 10))
+        assertEquals(before, prefs.all)
+        assertNull(vm.googleAccountEmail.value); assertFalse(vm.isDriveConnected.value)
+        vm.runRealDriveTest()
+        runBlocking { withTimeout(15_000) { vm.driveTestState.first { it?.isRunning == false } } }
+        assertTrue(vm.driveTestState.value!!.errorMessage.orEmpty().contains("10"))
+    }
+    @Test fun nativeCallbackAfterExplicitLogoutIsIgnored() {
+        val vm = model(); val session = vm.nativeDriveSignInSession(); vm.disconnectDrive()
+        vm.completeNativeDriveSignIn(session, com.example.api.NativeDriveSignIn.Result.Authorized("synthetic@example.invalid"))
+        assertFalse(vm.isDriveConnected.value); assertNull(vm.googleAccountEmail.value)
+    }
+
+    @Test fun restartRecreatesRequiredConsentWithoutLosingAccount() {
+        val first = requestConsent(); assertNotNull(pendingConsent(first))
+        stores.last().clear()
+        val restarted = model(); pendingConsent(restarted); awaitFailure(restarted)
+        assertAccountRetained(restarted)
+    }
+    @Test fun missingConsentResolutionRequiresExplicitAuthorization() {
+        AuthShadow.failure = com.google.android.gms.auth.UserRecoverableAuthException("synthetic", null)
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitFailure(vm)
+        assertFalse(vm.isDriveConnected.value)
+        assertNull(vm.driveConsentRequest.value)
+        assertEquals("synthetic@example.invalid", vm.googleAccountEmail.value)
+        assertTrue(prefs.getBoolean("drive_reauthorization_required", false))
+    }
+
+    @Test fun retryFromPublishedNetworkFailureIsNotDroppedByCompletingJob() = runBlocking {
+        val vm = model()
+        AuthShadow.failure = IOException("synthetic-network")
+        val observed = CompletableDeferred<Unit>()
+        val retry = CoroutineScope(Dispatchers.Unconfined).launch(start = CoroutineStart.UNDISPATCHED) {
+            vm.driveSyncError.first { !it.isNullOrBlank() }
+            AuthShadow.failure = null
+            repeat(5) { vm.initializeDrivePersistence() }
+            observed.complete(Unit)
+        }
+        try {
+            vm.connectDrive("synthetic@example.invalid")
+            withTimeout(15_000) { observed.await() }
+            awaitSuccess(vm)
+            assertAccountRetained(vm)
+            assertEquals(1, AuthShadow.calls.get())
+            assertEquals(1, remote.entries.values.count { it.properties["entityType"] == "appConfig" })
+        } finally { retry.cancel() }
+    }
+
+    @Test fun queuedNetworkRetryCannotSurviveLogout() = runBlocking {
+        val vm = model(); AuthShadow.failure = IOException("synthetic-network")
+        val observed = CompletableDeferred<Unit>()
+        val retry = CoroutineScope(Dispatchers.Unconfined).launch(start = CoroutineStart.UNDISPATCHED) {
+            vm.driveSyncError.first { !it.isNullOrBlank() }
+            AuthShadow.failure = null
+            vm.initializeDrivePersistence()
+            vm.disconnectDrive()
+            observed.complete(Unit)
+        }
+        try {
+            vm.connectDrive("synthetic@example.invalid")
+            withTimeout(15_000) { observed.await() }
+            awaitInitialization(vm)
+            assertNull(vm.googleAccountEmail.value)
+            assertFalse(vm.isDriveConnected.value)
+            assertEquals(0, AuthShadow.calls.get())
+            assertEquals("Verbindung getrennt", vm.driveSyncStatus.value)
+        } finally { retry.cancel() }
     }
 
     @Implements(GoogleAuthUtil::class)

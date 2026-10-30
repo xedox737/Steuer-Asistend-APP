@@ -105,17 +105,28 @@ internal class DriveNamespacePolicy(
             "metadataFileId", "mainDriveFileId", "previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
         val references = mutableSetOf<Triple<String, Boolean, Boolean>>()
         val historical = setOf("previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
+        val root = org.json.JSONTokener(json).nextValue()
+        // Only the two diagnostic file fields directly inside a complete app config are optional.
+        // This does not permit a missing current receipt, folder, ancestor or nested lookalike.
+        val configFolders = setOf("rootFolderId", "systemFolderId", "receiptsFolderId", "paymentsFolderId",
+            "exportsFolderId", "transactionsFolderId", "backupsFolderId")
+        val diagnosticReferences = (root as? JSONObject)?.takeIf { config ->
+            config.optString("appIdentifier") == appIdentifier && config.optInt("schemaVersion") == 1 &&
+                configFolders.all { config.opt(it) is String && config.getString(it).isNotBlank() }
+        }?.optJSONObject("testReferences")
         fun walk(value: Any?) {
             when (value) {
                 is JSONObject -> value.keys().forEach { key ->
                     val item = value.opt(key)
-                    if (key in fields && item is String && item.isNotBlank()) references += Triple(item, key.endsWith("FolderId"), key in historical)
+                    val optionalDiagnostic = value === diagnosticReferences && key in setOf("mainDriveFileId", "metadataFileId")
+                    if (key in fields && item is String && item.isNotBlank())
+                        references += Triple(item, key.endsWith("FolderId"), key in historical || optionalDiagnostic)
                     walk(item)
                 }
                 is org.json.JSONArray -> (0 until value.length()).forEach { walk(value.opt(it)) }
             }
         }
-        walk(org.json.JSONTokener(json).nextValue())
+        walk(root)
         // Reuse ancestor metadata and root attestation only within this JSON check, never across operations.
         val proof = mutableMapOf<String, JSONObject>()
         val rootProofs = mutableSetOf<String>()
@@ -124,8 +135,8 @@ internal class DriveNamespacePolicy(
                 val meta = owned(id, "Bearer $token", send, proof, rootProofs)
                 if ((meta.optString("mimeType") == FOLDER) != folderExpected) denied()
             } catch (missing: MissingReference) {
-                // A tombstone may name a file already deleted. This grants no access to it.
-                // Missing ancestors and every current data/config reference still fail closed.
+                // Tombstones and optional diagnostic files may already be absent. No access is granted.
+                // Only the referenced ID's own 404 is tolerated; ancestors and current data fail closed.
                 if (!historyOnly || missing.id != id) throw missing
             }
         }

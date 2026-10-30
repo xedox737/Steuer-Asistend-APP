@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.ui.DriveConnectionRegressionTest" tests="35" skipped="0" failures="1" errors="0" timestamp="2026-10-29T17:01:58.470Z" hostname="runnervm48cm3" time="30.216">
+  <properties/>
+  <testcase name="cancellationIsPropagatedByRepository" classname="com.example.ui.DriveConnectionRegressionTest" time="7.722"/>
+  <testcase name="repeatedLoginCallbacksDoNotExtendTokenOrDuplicateConfiguration" classname="com.example.ui.DriveConnectionRegressionTest" time="0.535"/>
+  <testcase name="cancelledInitializationDoesNotDisplayLoginError" classname="com.example.ui.DriveConnectionRegressionTest" time="0.385"/>
+  <testcase name="playServicesLoginDoesNotReuseTokenOfPreviousAccount" classname="com.example.ui.DriveConnectionRegressionTest" time="0.219"/>
+  <testcase name="expiredWebTokenRequiresAuthorizationBeforeAnyDriveAccess" classname="com.example.ui.DriveConnectionRegressionTest" time="0.195"/>
+  <testcase name="recoverableConsentDoesNotBecomeLogout" classname="com.example.ui.DriveConnectionRegressionTest" time="0.185"/>
+  <testcase name="consentIsConsumedOnlyOnce" classname="com.example.ui.DriveConnectionRegressionTest" time="0.177"/>
+  <testcase name="expiredNativeTokenIsInvalidatedAndRetriedOnce" classname="com.example.ui.DriveConnectionRegressionTest" time="0.303"/>
+  <testcase name="simultaneousInitializationsDoNotDuplicateConfig" classname="com.example.ui.DriveConnectionRegressionTest" time="0.68"/>
+  <testcase name="revokedTokenDuringUploadIsNotSwallowedAsPartialSuccess" classname="com.example.ui.DriveConnectionRegressionTest" time="0.424"/>
+  <testcase name="forbiddenIsAnAccessErrorNotALogout" classname="com.example.ui.DriveConnectionRegressionTest" time="0.107"/>
+  <testcase name="networkDuringDriveInitializationKeepsAccountAndOriginalPreferences" classname="com.example.ui.DriveConnectionRegressionTest" time="0.171"/>
+  <testcase name="networkDuringNativeTokenAcquisitionKeepsLoginAndAllowsRetry" classname="com.example.ui.DriveConnectionRegressionTest" time="15.134">
+    <failure message="kotlinx.coroutines.TimeoutCancellationException: Timed out waiting for 15000 ms" type="kotlinx.coroutines.TimeoutCancellationException">kotlinx.coroutines.TimeoutCancellationException: Timed out waiting for 15000 ms
+	at _COROUTINE._BOUNDARY._(CoroutineDebugging.kt:42)
+	at kotlinx.coroutines.flow.StateFlowImpl.collect(StateFlow.kt:406)
+	at kotlinx.coroutines.flow.FlowKt__ReduceKt.first(Reduce.kt:179)
+	at com.example.ui.DriveConnectionRegressionTest$awaitSuccess$1$1.invokeSuspend(DriveConnectionRegressionTest.kt:83)
+	at com.example.ui.DriveConnectionRegressionTest$awaitSuccess$1.invokeSuspend(DriveConnectionRegressionTest.kt:82)
+Caused by: kotlinx.coroutines.TimeoutCancellationException: Timed out waiting for 15000 ms
+	at kotlinx.coroutines.TimeoutKt.TimeoutCancellationException(Timeout.kt:189)
+	at kotlinx.coroutines.TimeoutCoroutine.run(Timeout.kt:157)
+	at kotlinx.coroutines.EventLoopImplBase$DelayedRunnableTask.run(EventLoop.common.kt:505)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.DefaultExecutor.run(DefaultExecutor.kt:105)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+</failure>
+  </testcase>
+  <testcase name="nativeCallbackHandsSelectedAccountToViewModelAndRejectsDuplicate" classname="com.example.ui.DriveConnectionRegressionTest" time="0.28"/>
+  <testcase name="approvedConsentRequestsFreshTokenAndValidatesDrive" classname="com.example.ui.DriveConnectionRegressionTest" time="0.215"/>
+  <testcase name="failedSyncDoesNotInvalidateSuccessfulLogin" classname="com.example.ui.DriveConnectionRegressionTest" time="0.248"/>
+  <testcase name="nativeTokenExpiryDuringUploadRenewsCredentialBeforeRequestingLogin" classname="com.example.ui.DriveConnectionRegressionTest" time="0.233"/>
+  <testcase name="explicitDisconnectCannotBeReversedByInFlightInitialization" classname="com.example.ui.DriveConnectionRegressionTest" time="0.336"/>
+  <testcase name="consentCallbackAfterLogoutCannotReconnect" classname="com.example.ui.DriveConnectionRegressionTest" time="0.149"/>
+  <testcase name="rejectedManualTokenRequiresAuthorizationAndKeepsLocalPreferences" classname="com.example.ui.DriveConnectionRegressionTest" time="0.165"/>
+  <testcase name="canceledConsentPreservesAccountAndLocalPreferences" classname="com.example.ui.DriveConnectionRegressionTest" time="0.139"/>
+  <testcase name="consentCallbackCannotOverwriteAnotherAccount" classname="com.example.ui.DriveConnectionRegressionTest" time="0.174"/>
+  <testcase name="nativeAuthorizationFailureRequiresLoginWithoutRemovingAccount" classname="com.example.ui.DriveConnectionRegressionTest" time="0.109"/>
+  <testcase name="restartRecreatesRequiredConsentWithoutLosingAccount" classname="com.example.ui.DriveConnectionRegressionTest" time="0.156"/>
+  <testcase name="missingMetadataIsNotALogout" classname="com.example.ui.DriveConnectionRegressionTest" time="0.118"/>
+  <testcase name="timeoutDuringNativeTokenAcquisitionDoesNotSignOut" classname="com.example.ui.DriveConnectionRegressionTest" time="0.102"/>
+  <testcase name="manualTokenDeadlineIsNotExtendedByRestart" classname="com.example.ui.DriveConnectionRegressionTest" time="0.165"/>
+  <testcase name="restartRestoresAccountWhileOfflineWithoutClaimingLogout" classname="com.example.ui.DriveConnectionRegressionTest" time="0.064"/>
+  <testcase name="missingConsentResolutionRequiresExplicitAuthorization" classname="com.example.ui.DriveConnectionRegressionTest" time="0.094"/>
+  <testcase name="metadataFailureDoesNotSignOutOrCreateReplacementFolders" classname="com.example.ui.DriveConnectionRegressionTest" time="0.086"/>
+  <testcase name="rejectedAuthorizationRemainsActionableAfterRestart" classname="com.example.ui.DriveConnectionRegressionTest" time="0.116"/>
+  <testcase name="failedNativeCallbackCannotChangePreferencesOrAccount" classname="com.example.ui.DriveConnectionRegressionTest" time="0.078"/>
+  <testcase name="nativeCallbackAfterExplicitLogoutIsIgnored" classname="com.example.ui.DriveConnectionRegressionTest" time="0.076"/>
+  <testcase name="unresolvedApprovalDoesNotLoopGoogleDialogs" classname="com.example.ui.DriveConnectionRegressionTest" time="0.122"/>
+  <testcase name="unauthorizedSyncRequiresAuthorizationAndEndsSpinner" classname="com.example.ui.DriveConnectionRegressionTest" time="0.209"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[System.logW: A resource was acquired at attached stack trace but never released. See java.io.Closeable for information on avoiding resource leaks.
+java.lang.Throwable: Explicit termination method 'SQLiteConnection.close' not called
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$openWithCallSite(CloseGuard.java:288)
+	at dalvik.system.CloseGuard.openWithCallSite(CloseGuard.java)
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$open(CloseGuard.java:257)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.robolectric.shadows.ShadowCloseGuard$CloseGuardReflector$$Reflector15.open(Unknown Source)
+	at org.robolectric.shadows.ShadowCloseGuard.open(ShadowCloseGuard.java:38)
+	at dalvik.system.CloseGuard.open(CloseGuard.java)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$__constructor__(SQLiteConnection.java:197)
+	at android.database.sqlite.SQLiteConnection.<init>(SQLiteConnection.java:188)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$open(SQLiteConnection.java:217)
+	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$openConnectionLocked(SQLiteConnectionPool.java:542)
+	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:228)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:220)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openInner(SQLiteDatabase.java:1191)
+	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$open(SQLiteDatabase.java:1171)
+	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openDatabase(SQLiteDatabase.java:1035)
+	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$createInMemory(SQLiteDatabase.java:1231)
+	at android.database.sqlite.SQLiteDatabase.createInMemory(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getDatabaseLocked(SQLiteOpenHelper.java:389)
+	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getWritableDatabase(SQLiteOpenHelper.java:336)
+	at android.database.sqlite.SQLiteOpenHelper.getWritableDatabase(SQLiteOpenHelper.java)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getWritableOrReadableDatabase(FrameworkSQLiteOpenHelper.android.kt:224)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.innerGetDatabase(FrameworkSQLiteOpenHelper.android.kt:167)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getSupportDatabase(FrameworkSQLiteOpenHelper.android.kt:141)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper.getWritableDatabase(FrameworkSQLiteOpenHelper.android.kt:96)
+	at androidx.room.driver.SupportSQLiteDriver.open(SupportSQLiteDriver.android.kt:26)
+	at androidx.room.driver.SupportSQLiteConnectionPool.getSupportConnection(SupportSQLiteConnectionPool.android.kt:35)
+	at androidx.room.driver.SupportSQLiteConnectionPool.useConnection(SupportSQLiteConnectionPool.android.kt:42)
+	at androidx.room.RoomConnectionManager.useConnection(RoomConnectionManager.android.kt:126)
+	at androidx.room.RoomDatabase.useConnection$room_runtime_release(RoomDatabase.android.kt:588)
+	at androidx.room.TriggerBasedInvalidationTracker.syncTriggers$room_runtime_release(InvalidationTracker.kt:300)
+	at androidx.room.TriggerBasedInvalidationTracker$createFlow$1$1.invokeSuspend(InvalidationTracker.kt:233)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+System.logW: A resource was acquired at attached stack trace but never released. See java.io.Closeable for information on avoiding resource leaks.
+java.lang.Throwable: Explicit termination method 'SQLiteConnection.close' not called
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$openWithCallSite(CloseGuard.java:288)
+	at dalvik.system.CloseGuard.openWithCallSite(CloseGuard.java)
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$open(CloseGuard.java:257)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.robolectric.shadows.ShadowCloseGuard$CloseGuardReflector$$Reflector15.open(Unknown Source)
+	at org.robolectric.shadows.ShadowCloseGuard.open(ShadowCloseGuard.java:38)
+	at dalvik.system.CloseGuard.open(CloseGuard.java)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$__constructor__(SQLiteConnection.java:197)
+	at android.database.sqlite.SQLiteConnection.<init>(SQLiteConnection.java:188)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$open(SQLiteConnection.java:217)
+	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$openConnectionLocked(SQLiteConnectionPool.java:542)
+	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:228)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:220)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openInner(SQLiteDatabase.java:1191)
+	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$open(SQLiteDatabase.java:1171)
+	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openDatabase(SQLiteDatabase.java:1035)
+	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$createInMemory(SQLiteDatabase.java:1231)
+	at android.database.sqlite.SQLiteDatabase.createInMemory(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getDatabaseLocked(SQLiteOpenHelper.java:389)
+	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getWritableDatabase(SQLiteOpenHelper.java:336)
+	at android.database.sqlite.SQLiteOpenHelper.getWritableDatabase(SQLiteOpenHelper.java)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getWritableOrReadableDatabase(FrameworkSQLiteOpenHelper.android.kt:224)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.innerGetDatabase(FrameworkSQLiteOpenHelper.android.kt:167)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getSupportDatabase(FrameworkSQLiteOpenHelper.android.kt:141)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper.getWritableDatabase(FrameworkSQLiteOpenHelper.android.kt:96)
+	at androidx.room.driver.SupportSQLiteDriver.open(SupportSQLiteDriver.android.kt:26)
+	at androidx.room.driver.SupportSQLiteConnectionPool.getSupportConnection(SupportSQLiteConnectionPool.android.kt:35)
+	at androidx.room.driver.SupportSQLiteConnectionPool.useConnection(SupportSQLiteConnectionPool.android.kt:42)
+	at androidx.room.RoomConnectionManager.useConnection(RoomConnectionManager.android.kt:126)
+	at androidx.room.RoomDatabase.useConnection$room_runtime_release(RoomDatabase.android.kt:588)
+	at androidx.room.TriggerBasedInvalidationTracker.syncTriggers$room_runtime_release(InvalidationTracker.kt:300)
+	at androidx.room.TriggerBasedInvalidationTracker$createFlow$1$1.invokeSuspend(InvalidationTracker.kt:233)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+System.logW: A resource was acquired at attached stack trace but never released. See java.io.Closeable for information on avoiding resource leaks.
+java.lang.Throwable: Explicit termination method 'SQLiteConnection.close' not called
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$openWithCallSite(CloseGuard.java:288)
+	at dalvik.system.CloseGuard.openWithCallSite(CloseGuard.java)
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$open(CloseGuard.java:257)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.robolectric.shadows.ShadowCloseGuard$CloseGuardReflector$$Reflector15.open(Unknown Source)
+	at org.robolectric.shadows.ShadowCloseGuard.open(ShadowCloseGuard.java:38)
+	at dalvik.system.CloseGuard.open(CloseGuard.java)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$__constructor__(SQLiteConnection.java:197)
+	at android.database.sqlite.SQLiteConnection.<init>(SQLiteConnection.java:188)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$open(SQLiteConnection.java:217)
+	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$openConnectionLocked(SQLiteConnectionPool.java:542)
+	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:228)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:220)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openInner(SQLiteDatabase.java:1191)
+	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$open(SQLiteDatabase.java:1171)
+	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openDatabase(SQLiteDatabase.java:1035)
+	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$createInMemory(SQLiteDatabase.java:1231)
+	at android.database.sqlite.SQLiteDatabase.createInMemory(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getDatabaseLocked(SQLiteOpenHelper.java:389)
+	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getWritableDatabase(SQLiteOpenHelper.java:336)
+	at android.database.sqlite.SQLiteOpenHelper.getWritableDatabase(SQLiteOpenHelper.java)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getWritableOrReadableDatabase(FrameworkSQLiteOpenHelper.android.kt:224)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.innerGetDatabase(FrameworkSQLiteOpenHelper.android.kt:167)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getSupportDatabase(FrameworkSQLiteOpenHelper.android.kt:141)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper.getWritableDatabase(FrameworkSQLiteOpenHelper.android.kt:96)
+	at androidx.room.driver.SupportSQLiteDriver.open(SupportSQLiteDriver.android.kt:26)
+	at androidx.room.driver.SupportSQLiteConnectionPool.getSupportConnection(SupportSQLiteConnectionPool.android.kt:35)
+	at androidx.room.driver.SupportSQLiteConnectionPool.useConnection(SupportSQLiteConnectionPool.android.kt:42)
+	at androidx.room.RoomConnectionManager.useConnection(RoomConnectionManager.android.kt:126)
+	at androidx.room.RoomDatabase.useConnection$room_runtime_release(RoomDatabase.android.kt:588)
+	at androidx.room.TriggerBasedInvalidationTracker.syncTriggers$room_runtime_release(InvalidationTracker.kt:300)
+	at androidx.room.TriggerBasedInvalidationTracker$createFlow$1$1.invokeSuspend(InvalidationTracker.kt:233)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+System.logW: A resource was acquired at attached stack trace but never released. See java.io.Closeable for information on avoiding resource leaks.
+java.lang.Throwable: Explicit termination method 'SQLiteConnection.close' not called
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$openWithCallSite(CloseGuard.java:288)
+	at dalvik.system.CloseGuard.openWithCallSite(CloseGuard.java)
+	at dalvik.system.CloseGuard.$$robo$$dalvik_system_CloseGuard$open(CloseGuard.java:257)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.robolectric.shadows.ShadowCloseGuard$CloseGuardReflector$$Reflector15.open(Unknown Source)
+	at org.robolectric.shadows.ShadowCloseGuard.open(ShadowCloseGuard.java:38)
+	at dalvik.system.CloseGuard.open(CloseGuard.java)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$__constructor__(SQLiteConnection.java:197)
+	at android.database.sqlite.SQLiteConnection.<init>(SQLiteConnection.java:188)
+	at android.database.sqlite.SQLiteConnection.$$robo$$android_database_sqlite_SQLiteConnection$open(SQLiteConnection.java:217)
+	at android.database.sqlite.SQLiteConnection.open(SQLiteConnection.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$openConnectionLocked(SQLiteConnectionPool.java:542)
+	at android.database.sqlite.SQLiteConnectionPool.openConnectionLocked(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:228)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteConnectionPool.$$robo$$android_database_sqlite_SQLiteConnectionPool$open(SQLiteConnectionPool.java:220)
+	at android.database.sqlite.SQLiteConnectionPool.open(SQLiteConnectionPool.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openInner(SQLiteDatabase.java:1191)
+	at android.database.sqlite.SQLiteDatabase.openInner(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$open(SQLiteDatabase.java:1171)
+	at android.database.sqlite.SQLiteDatabase.open(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$openDatabase(SQLiteDatabase.java:1035)
+	at android.database.sqlite.SQLiteDatabase.openDatabase(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteDatabase.$$robo$$android_database_sqlite_SQLiteDatabase$createInMemory(SQLiteDatabase.java:1231)
+	at android.database.sqlite.SQLiteDatabase.createInMemory(SQLiteDatabase.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getDatabaseLocked(SQLiteOpenHelper.java:389)
+	at android.database.sqlite.SQLiteOpenHelper.getDatabaseLocked(SQLiteOpenHelper.java)
+	at android.database.sqlite.SQLiteOpenHelper.$$robo$$android_database_sqlite_SQLiteOpenHelper$getWritableDatabase(SQLiteOpenHelper.java:336)
+	at android.database.sqlite.SQLiteOpenHelper.getWritableDatabase(SQLiteOpenHelper.java)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getWritableOrReadableDatabase(FrameworkSQLiteOpenHelper.android.kt:224)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.innerGetDatabase(FrameworkSQLiteOpenHelper.android.kt:167)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper$OpenHelper.getSupportDatabase(FrameworkSQLiteOpenHelper.android.kt:141)
+	at androidx.sqlite.db.framework.FrameworkSQLiteOpenHelper.getWritableDatabase(FrameworkSQLiteOpenHelper.android.kt:96)
+	at androidx.room.driver.SupportSQLiteDriver.open(SupportSQLiteDriver.android.kt:26)
+	at androidx.room.driver.SupportSQLiteConnectionPool.getSupportConnection(SupportSQLiteConnectionPool.android.kt:35)
+	at androidx.room.driver.SupportSQLiteConnectionPool.useConnection(SupportSQLiteConnectionPool.android.kt:42)
+	at androidx.room.RoomConnectionManager.useConnection(RoomConnectionManager.android.kt:126)
+	at androidx.room.RoomDatabase.useConnection$room_runtime_release(RoomDatabase.android.kt:588)
+	at androidx.room.TriggerBasedInvalidationTracker.syncTriggers$room_runtime_release(InvalidationTracker.kt:300)
+	at androidx.room.TriggerBasedInvalidationTracker$createFlow$1$1.invokeSuspend(InvalidationTracker.kt:233)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+]]></system-err>
+</testsuite>
