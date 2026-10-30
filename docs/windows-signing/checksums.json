@@ -1,0 +1,22 @@
+{
+  "validation.json": {
+    "bytes": 328,
+    "sha256": "cd6f55ed252592c10e4c557ba60621ec1a6df12d620b679ee9db6d73fdf7795e"
+  },
+  "ImmoPilot-Signierung-einrichten.cmd": {
+    "bytes": 220,
+    "sha256": "4de1bc37141d1b571540a982191d6bfade9f9f08f11507f57f32ed8882b420a2"
+  },
+  "Initialize-ImmoPilotSigning.ps1": {
+    "bytes": 6894,
+    "sha256": "42667f7ad974b964e1c490f92527f4b3593aee28054f23db153e6241b5bc1d6d"
+  },
+  "Signing-Setup.zip": {
+    "bytes": 5562,
+    "sha256": "ceac237ae9c46e49e169f0776fe32a47b95596d7d354cbdcedf7117aefdfb191"
+  },
+  "README.md": {
+    "bytes": 3515,
+    "sha256": "8d0293088a1b784b2df3cc7292de0147fb02205333972a26931b8fef0d6a68e0"
+  }
+}

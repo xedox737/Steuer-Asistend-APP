@@ -1,0 +1,11 @@
+{
+  "syntheticJksContractVerified": true,
+  "rsaBits": 3072,
+  "signingsWithSameKey": 2,
+  "sameKeyRemainedUnchanged": true,
+  "bothApkCertificatesMatchPublicKeytoolCertificate": true,
+  "bothApkV2SignaturesVerified": true,
+  "windowsPowerShellRuntimeTested": false,
+  "realProductKeyGenerated": false,
+  "apkInstalled": false
+}
