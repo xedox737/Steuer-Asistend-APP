@@ -49,6 +49,7 @@ data class DriveInventoryCheck(
     val duplicateCount: Int = 0,
     val missingFileCount: Int = 0,
     val unavailableOriginalCount: Int = 0,
+    val temporaryReadErrorCount: Int = 0,
     val schemaVersion: Int = 1,
     val propertyFound: Boolean = false,
     val propertyName: String = "",
@@ -2114,7 +2115,18 @@ class DrivePersistenceRepository(
         }
     }
 
-    suspend fun checkDriveInventoryForRestore(accessToken: String, config: DriveAppConfig): DriveRestorePreviewResult {
+    suspend fun checkDriveInventoryForRestore(accessToken: String, config: DriveAppConfig): DriveRestorePreviewResult =
+        try { GoogleDriveClient.withReadProof(accessToken) { inspectDriveInventory(accessToken, config) } }
+        catch (e: Exception) {
+            e.rethrowDriveControlFailure()
+            val failure = DriveConnectionFailure.from(e)
+            DriveRestorePreviewResult(success = false, errorMessage = failure.message,
+                inventory = DriveInventoryCheck(temporaryReadErrorCount =
+                    if (failure.kind in setOf(DriveFailureKind.NETWORK, DriveFailureKind.TIMEOUT)) 1 else 0,
+                    issues = listOf(failure.message)))
+        }
+
+    private suspend fun inspectDriveInventory(accessToken: String, config: DriveAppConfig): DriveRestorePreviewResult {
         val issues = mutableListOf<String>()
         val previews = mutableListOf<ReceiptPreviewSummary>()
         val unavailableOriginals = linkedSetOf<String>()
@@ -2170,6 +2182,7 @@ class DrivePersistenceRepository(
             var mainDocCount = 0
             var duplicateCount = 0
             var missingFileCount = 0
+            var temporaryReadErrorCount = 0
 
             if (indexFile != null) {
                 try {
@@ -2252,8 +2265,14 @@ class DrivePersistenceRepository(
                                 }
                             } catch (e: Exception) {
                                 e.rethrowDriveControlFailure()
-                                entryIssues.add("Metadaten-JSON nicht lesbar: ${e.message}")
-                                missingFileCount++
+                                val failure = DriveConnectionFailure.from(e)
+                                if (failure.kind in setOf(DriveFailureKind.NETWORK, DriveFailureKind.TIMEOUT)) {
+                                    temporaryReadErrorCount++
+                                    entryIssues.add("Metadatenübertragung vorübergehend unterbrochen. Bitte Bestand erneut prüfen.")
+                                } else {
+                                    entryIssues.add("Metadaten-JSON nicht lesbar: ${e.message}")
+                                    missingFileCount++
+                                }
                             }
                         }
 
@@ -2293,6 +2312,7 @@ class DrivePersistenceRepository(
                 duplicateCount = duplicateCount,
                 missingFileCount = missingFileCount,
                 unavailableOriginalCount = unavailableOriginals.size,
+                temporaryReadErrorCount = temporaryReadErrorCount,
                 schemaVersion = config.schemaVersion,
                 propertyFound = propertyFound,
                 propertyName = propertyName,
@@ -2434,22 +2454,19 @@ class DrivePersistenceRepository(
 
     suspend fun getAllTombstonesFromDrive(accessToken: String, config: DriveAppConfig): Map<String, ReceiptTombstone> {
         val tombstones = mutableMapOf<String, ReceiptTombstone>()
-        try {
-            managedDocumentDriveGateway.tombstoneJsonFiles(accessToken, config.systemFolderId).forEach { raw ->
-                runCatching {
-                    val o = JSONObject(raw)
-                    val tombstone = ReceiptTombstone(
-                        internalId = o.getString("internalId"), displayId = o.optString("displayId", ""),
-                        deletedAt = o.optString("deletedAt", ""), deletedBy = o.optString("deletedBy", "LocalUser"),
-                        deviceId = if (o.isNull("deviceId")) null else o.optString("deviceId"),
-                        deletionId = o.optString("deletionId", ""), previousMainDriveFileId = o.optString("previousMainDriveFileId", ""),
-                        previousMetadataFileId = o.optString("previousMetadataFileId", ""),
-                        deletionReason = if (o.isNull("deletionReason")) null else o.optString("deletionReason"),
-                        schemaVersion = o.optInt("schemaVersion", 1), status = o.optString("status", "DELETED"))
-                    tombstones[tombstone.internalId] = tombstone
-                }.onFailure { DiagnosticLog.w(TAG, "Error downloading/parsing tombstone file") }
-            }
-        } catch (e: Exception) { DiagnosticLog.w(TAG, "Error reading tombstones") }
+        managedDocumentDriveGateway.tombstoneJsonFiles(accessToken, config.systemFolderId).forEach { raw ->
+            val o = JSONObject(raw)
+            val tombstone = ReceiptTombstone(
+                internalId = o.getString("internalId"), displayId = o.optString("displayId", ""),
+                deletedAt = o.optString("deletedAt", ""), deletedBy = o.optString("deletedBy", "LocalUser"),
+                deviceId = if (o.isNull("deviceId")) null else o.optString("deviceId"),
+                deletionId = o.optString("deletionId", ""), previousMainDriveFileId = o.optString("previousMainDriveFileId", ""),
+                previousMetadataFileId = o.optString("previousMetadataFileId", ""),
+                deletionReason = if (o.isNull("deletionReason")) null else o.optString("deletionReason"),
+                schemaVersion = o.optInt("schemaVersion", 1), status = o.optString("status", "DELETED"))
+            require(tombstone.internalId.isNotBlank()) { "Löschmarkierung ohne Beleg-ID." }
+            tombstones[tombstone.internalId] = tombstone
+        }
         return tombstones
     }
 
@@ -2735,7 +2752,10 @@ class DrivePersistenceRepository(
         return PermanentDeleteResult.Success
     }
 
-    suspend fun buildRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot {
+    suspend fun buildRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot =
+        GoogleDriveClient.withReadProof(accessToken) { readRestoreSnapshot(accessToken, config) }
+
+    private suspend fun readRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot {
         val warnings = mutableListOf<RestoreWarning>()
         val errors = mutableListOf<RestoreError>()
 
@@ -3574,131 +3594,50 @@ class DrivePersistenceRepository(
         return report.isSuccess
     }
 
-    suspend fun testDriveReceiptStorage(accessToken: String, config: DriveAppConfig): DriveReceiptTestResult {
-        return try {
-            val year = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
-            val defaultTestDisplayId = "TEST-BLG-$year-000001"
+    /** Reversible local retirement of the exact synthetic row written by the legacy probe. */
+    internal suspend fun retireLegacyDriveDiagnostic() {
+        val row = localRepository.getReceiptById(999999) ?: return
+        if (!isLegacyDriveDiagnostic(row) || row.deletionStatus == "DELETED") return
+        localRepository.insert(row.copy(deletionStatus = "DELETED", syncStatus = "SYNCED", syncError = null,
+            deletedAt = java.time.Instant.now().toString(), deletedBy = "Drive-Diagnose",
+            deletionReason = "Technischer Testbeleg der früheren Drive-Prüfung; keine Buchung. Datensatz bleibt lokal erhalten."))
+    }
 
-            // Determine stable IDs for test receipt (Requirement 3 - Option A)
-            var testInternalId: String? = config.testReferences?.internalId?.ifBlank { null }
-            var testDisplayId: String = config.testReferences?.displayId?.ifBlank { null } ?: defaultTestDisplayId
-            var existingMainFileId: String? = config.testReferences?.mainDriveFileId?.ifBlank { null }
-            var existingMetadataFileId: String? = config.testReferences?.metadataFileId?.ifBlank { null }
+    internal fun isLegacyDriveDiagnostic(row: Receipt): Boolean = row.id == 999999 &&
+        row.displayId.orEmpty().startsWith("TEST-BLG-") && row.aussteller == "Test Baustoffhandel GmbH" &&
+        row.beschreibung == "E2E Testbeleg für Google Drive Speichertest" && row.bruttobetrag == 119.0 && row.uhrzeit == "12:00"
 
-            // If not in config.testReferences, search Drive index for test receipt
-            if (testInternalId == null) {
-                val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex")
-                if (indexFile != null) {
-                    try {
-                        val jsonStr = GoogleDriveClient.downloadJson(accessToken, indexFile.id)
-                        val root = JSONObject(jsonStr)
-                        val array = root.optJSONArray("entries") ?: JSONArray()
-                        for (i in 0 until array.length()) {
-                            val obj = array.getJSONObject(i)
-                            val disp = obj.optString("displayId")
-                            val intId = obj.optString("internalId")
-                            if (disp == defaultTestDisplayId || disp.startsWith("TEST-BLG-") || intId == "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2") {
-                                testInternalId = intId
-                                testDisplayId = disp.ifBlank { defaultTestDisplayId }
-                                existingMainFileId = obj.optString("mainDriveFileId").ifBlank { null }
-                                existingMetadataFileId = obj.optString("metadataFileId").ifBlank { null }
-                                break
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.rethrowDriveControlFailure()
-                        DiagnosticLog.w(TAG, "Error checking index for existing test receipt")
-                    }
-                }
+    suspend fun testDriveReceiptStorage(accessToken: String, config: DriveAppConfig): DriveReceiptTestResult = try {
+        GoogleDriveClient.validateStorageConfig(accessToken, config)
+        val folder = GoogleDriveClient.getOrCreateFolder(accessToken, "drive-diagnostics", config.systemFolderId)
+            ?: throw IOException("Diagnoseordner konnte nicht bereitgestellt werden.")
+        val bitmap = android.graphics.Bitmap.createBitmap(2, 2, android.graphics.Bitmap.Config.ARGB_8888)
+        val bytes = try {
+            bitmap.eraseColor(android.graphics.Color.BLUE)
+            java.io.ByteArrayOutputStream().use { output ->
+                check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
+                output.toByteArray()
             }
-
-            // If still null, check local DB
-            if (testInternalId == null) {
-                val localMatch = localRepository.allReceipts.first().find {
-                    it.displayId == defaultTestDisplayId || it.internalId == "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2"
-                }
-                if (localMatch != null) {
-                    testInternalId = localMatch.internalId
-                    testDisplayId = localMatch.displayId ?: defaultTestDisplayId
-                    existingMainFileId = localMatch.driveFileId
-                    existingMetadataFileId = localMatch.driveMetadataFileId
-                }
-            }
-
-            // Canonical test internalId if none found anywhere
-            if (testInternalId == null) {
-                testInternalId = "d1ccd205-1a81-4f6a-9fc0-86cb9e29dea2"
-            }
-
-            val testReceipt = Receipt(
-                id = 999999,
-                aussteller = "Test Baustoffhandel GmbH",
-                datum = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                uhrzeit = "12:00",
-                bruttobetrag = 119.00,
-                hauptkategorie = "Renovierungs- / Reparaturkosten & Investitionen",
-                unterkategorie = "Baustoffe",
-                kontoNr = "4800",
-                beschreibung = "E2E Testbeleg für Google Drive Speichertest",
-                internalId = testInternalId,
-                displayId = testDisplayId,
-                driveFileId = existingMainFileId,
-                driveMetadataFileId = existingMetadataFileId
-            )
-
-            // Save locally first
-            localRepository.insert(testReceipt)
-
-            // Sync to Drive
-            val syncSuccess = syncReceiptToDrive(accessToken, config, testReceipt)
-            if (!syncSuccess) {
-                return DriveReceiptTestResult(success = false, errorMessage = "Fehler beim Synchronisieren des Testbelegs nach Drive.")
-            }
-
-            val updatedLocal = localRepository.getReceiptById(testReceipt.id) ?: testReceipt
-            val metadataFileId = updatedLocal.driveMetadataFileId
-            if (metadataFileId.isNullOrBlank()) {
-                return DriveReceiptTestResult(success = false, errorMessage = "Keine driveMetadataFileId für Testbeleg erhalten.")
-            }
-
-            // Save updated DriveTestReferences to app-config.json in Drive
-            val updatedTestRef = DriveTestReferences(
-                internalId = updatedLocal.internalId,
-                displayId = updatedLocal.displayId ?: testDisplayId,
-                mainDriveFileId = updatedLocal.driveFileId ?: "",
-                metadataFileId = metadataFileId
-            )
-            val updatedConfig = config.copy(testReferences = updatedTestRef)
-            saveDriveAppConfig(accessToken, updatedConfig)
-
-            // Download metadata JSON back from Drive and verify contents
-            val downloadedJson = GoogleDriveClient.downloadJson(accessToken, metadataFileId)
-            val downloadedPersisted = parsePersistedReceipt(downloadedJson)
-
-            val internalIdMatch = downloadedPersisted.internalId == updatedLocal.internalId
-            val displayIdMatch = downloadedPersisted.displayId == (updatedLocal.displayId ?: testDisplayId)
-            val amountMatch = downloadedPersisted.bruttobetragCent == 11900L
-            val descriptionMatch = downloadedPersisted.beschreibung == updatedLocal.beschreibung
-
-            if (internalIdMatch && displayIdMatch && amountMatch && descriptionMatch) {
-                DriveReceiptTestResult(
-                    success = true,
-                    testInternalId = updatedLocal.internalId,
-                    mainDriveFileId = updatedLocal.driveFileId ?: "",
-                    metadataFileId = metadataFileId,
-                    metadataPath = "_BelegApp-Daten/receipts/${updatedLocal.internalId}.json"
-                )
-            } else {
-                DriveReceiptTestResult(
-                    success = false,
-                    errorMessage = "Heruntergeladene Metadaten stimmen nicht mit dem Testbeleg überein."
-                )
-            }
-        } catch (e: Exception) {
-            e.rethrowDriveControlFailure()
-            DiagnosticLog.e(TAG, "Error in testDriveReceiptStorage")
-            DriveReceiptTestResult(success = false, errorMessage = "Fehler beim E2E-Testbeleg-Test: ${e.message}")
+        } finally { bitmap.recycle() }
+        val originalId = GoogleDriveClient.writeDiagnosticFile(accessToken, folder, false, bytes)
+        val downloaded = GoogleDriveClient.downloadFileBytes(accessToken, originalId)
+            ?: throw IOException("Diagnosedatei konnte nicht zurückgelesen werden.")
+        require(downloaded.contentEquals(bytes)) { "Diagnosedatei stimmt nach Upload nicht überein." }
+        val json = JSONObject().put("probeVersion", 1).put("purpose", "drive-diagnostic-only")
+            .put("mainDriveFileId", originalId).put("sha256", getSha256(bytes)).toString()
+        val metadataId = GoogleDriveClient.writeDiagnosticFile(accessToken, folder, true, json.toByteArray(Charsets.UTF_8))
+        val restored = JSONObject(GoogleDriveClient.downloadJson(accessToken, metadataId))
+        require(restored.getString("purpose") == "drive-diagnostic-only" &&
+            restored.getString("mainDriveFileId") == originalId && restored.getString("sha256") == getSha256(bytes)) {
+            "Diagnose-Metadaten stimmen nach Upload nicht überein."
         }
+        DriveReceiptTestResult(success = true, testInternalId = "drive-diagnostic-v1",
+            mainDriveFileId = originalId, metadataFileId = metadataId,
+            metadataPath = "_BelegApp-Daten/drive-diagnostics/drive-probe.json")
+    } catch (e: Exception) {
+        e.rethrowDriveControlFailure()
+        DriveReceiptTestResult(success = false,
+            errorMessage = "Drive-Schreib-/Lesetest: ${DriveConnectionFailure.from(e).message}")
     }
 
     suspend fun getDriveAppConfig(accessToken: String): DriveAppConfig? {

@@ -12,6 +12,24 @@ import java.io.IOException
  * Only ancestry metadata is read outside the namespace, never file content or a mutation.
  * No persistent ownership cache: a moved folder or account change must be checked again.
  */
+internal class DriveReadProof(val authorization: String) {
+    val metadata = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
+    val roots = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    val previousMetadata = java.util.concurrent.ConcurrentLinkedQueue<JSONObject>()
+    val previousRoots = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    @Volatile var ownershipFailure: DriveAccessFailure? = null
+    fun recordFailure(error: DriveAccessFailure) {
+        if (error.reason in setOf(DriveAccessFailure.Reason.NAMESPACE, DriveAccessFailure.Reason.INVALID_ID,
+                DriveAccessFailure.Reason.INVALID_METADATA, DriveAccessFailure.Reason.WRONG_LOCATION,
+                DriveAccessFailure.Reason.WRONG_MIME) || error.httpStatus in setOf(401, 403)) ownershipFailure = error
+    }
+    fun clear() {
+        // Invalidating a reusable proof must retain the objects already used by this result.
+        previousMetadata.addAll(metadata.values); previousRoots.addAll(roots)
+        metadata.clear(); roots.clear()
+    }
+}
+
 internal class DriveNamespacePolicy(
     applicationId: String,
     val rootFolderName: String = rootFor(applicationId)
@@ -25,70 +43,102 @@ internal class DriveNamespacePolicy(
         }
     }
 
-    fun execute(request: Request, send: (Request) -> Response): Response {
+    fun execute(request: Request, send: (Request) -> Response): Response = execute(request, send, null)
+
+    fun execute(request: Request, send: (Request) -> Response, readProof: DriveReadProof?): Response {
         val token = request.header("Authorization") ?: denied()
-        val url = request.url
-        if (url.host != "www.googleapis.com" || !url.isHttps) denied()
-        val path = url.encodedPath
-        val base = if (path.startsWith("/upload/")) "/upload/drive/v3/files" else "/drive/v3/files"
-        if (path != base && !path.startsWith("$base/")) denied()
-        val id = path.removePrefix(base).removePrefix("/")
-        if (id.isNotEmpty()) {
-            val meta = owned(id, token, send)
-            // The root itself is only a container; do not rename, move, overwrite or delete it.
-            if (request.method != "GET" && protectedContainer(meta, token, send)) denied()
-            if (meta.optString("mimeType") == FOLDER && url.queryParameter("uploadType") == "media") denied()
-            if (meta.optString("mimeType") == FOLDER && request.method == "DELETE") {
-                val q = java.net.URLEncoder.encode("'${meta.getString("id")}' in parents", "UTF-8")
-                val children = Request.Builder().url("https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id)&pageSize=1")
-                    .header("Authorization", token).build()
-                send(children).use {
-                    if (!it.isSuccessful || JSONObject(it.body?.string().orEmpty()).getJSONArray("files").length() != 0) denied()
+        val scope = readProof?.takeIf { it.authorization == token }
+        val mutation = request.method != "GET"
+        if (mutation) readProof?.clear()
+        try {
+            val url = request.url
+            if (url.host != "www.googleapis.com" || !url.isHttps) denied()
+            val path = url.encodedPath
+            val base = if (path.startsWith("/upload/")) "/upload/drive/v3/files" else "/drive/v3/files"
+            if (path != base && !path.startsWith("$base/")) denied()
+            val id = path.removePrefix(base).removePrefix("/")
+            if (id.isNotEmpty()) {
+                val meta = owned(id, token, send, scope?.metadata ?: mutableMapOf(),
+                    scope?.roots ?: mutableSetOf(), freshTarget = true)
+                // The root itself is only a container; do not rename, move, overwrite or delete it.
+                if (request.method != "GET" && protectedContainer(meta, token, send)) denied()
+                if (meta.optString("mimeType") == FOLDER && url.queryParameter("uploadType") == "media") denied()
+                if (meta.optString("mimeType") == FOLDER && request.method == "DELETE") {
+                    val q = java.net.URLEncoder.encode("'${meta.getString("id")}' in parents", "UTF-8")
+                    val children = Request.Builder().url("https://www.googleapis.com/drive/v3/files?q=$q&fields=files(id)&pageSize=1")
+                        .header("Authorization", token).build()
+                    send(children).use {
+                        if (!it.isSuccessful || JSONObject(it.body?.string().orEmpty()).getJSONArray("files").length() != 0) denied()
+                    }
                 }
-            }
-            url.queryParameter("addParents")?.split(',')?.forEach { folder(it, token, send) }
-            url.queryParameter("removeParents")?.let {
-                it.split(',').forEach { parent -> folder(parent, token, send) }
-                if (url.queryParameter("addParents").isNullOrBlank()) denied()
-            }
-            if (request.method == "PATCH" && url.queryParameter("uploadType") != "media") {
+                url.queryParameter("addParents")?.split(',')?.forEach { folder(it, token, send) }
+                url.queryParameter("removeParents")?.let {
+                    it.split(',').forEach { parent -> folder(parent, token, send) }
+                    if (url.queryParameter("addParents").isNullOrBlank()) denied()
+                }
+                if (request.method == "PATCH" && url.queryParameter("uploadType") != "media") {
+                    val json = metadata(request)
+                    tag(json)
+                    if (meta.optString("mimeType") == FOLDER && json.optString("name") == forbiddenRoot) denied()
+                    if (json.has("parents")) parents(json, token, send)
+                    if (json.has("shortcutDetails")) denied()
+                }
+            } else if (request.method == "GET") {
+                val q = url.queryParameter("q") ?: denied()
+                val expectedRoot = "name = '$rootFolderName' and mimeType = '$FOLDER' and trashed = false and 'root' in parents"
+                if (q != expectedRoot) {
+                    // All other searches must have an owned parent, combined only with AND.
+                    val unquoted = q.replace(Regex("'(?:\\\\.|[^'\\\\])*'"), "''")
+                    if (Regex("\\b(or|not)\\b", RegexOption.IGNORE_CASE).containsMatchIn(unquoted)) denied()
+                    val ids = Regex("'([A-Za-z0-9_-]+)' in parents").findAll(q).map { it.groupValues[1] }.toList()
+                    if (ids.isEmpty()) denied()
+                    ids.forEach { folder(it, token, send, scope) }
+                }
+            } else if (request.method == "POST") {
                 val json = metadata(request)
                 tag(json)
-                if (meta.optString("mimeType") == FOLDER && json.optString("name") == forbiddenRoot) denied()
-                if (json.has("parents")) parents(json, token, send)
-                if (json.has("shortcutDetails")) denied()
-            }
-        } else if (request.method == "GET") {
-            val q = url.queryParameter("q") ?: denied()
-            val expectedRoot = "name = '$rootFolderName' and mimeType = '$FOLDER' and trashed = false and 'root' in parents"
-            if (q != expectedRoot) {
-                // All other searches must have an owned parent, combined only with AND.
-                val unquoted = q.replace(Regex("'(?:\\\\.|[^'\\\\])*'"), "''")
-                if (Regex("\\b(or|not)\\b", RegexOption.IGNORE_CASE).containsMatchIn(unquoted)) denied()
-                val ids = Regex("'([A-Za-z0-9_-]+)' in parents").findAll(q).map { it.groupValues[1] }.toList()
-                if (ids.isEmpty()) denied()
-                ids.forEach { folder(it, token, send) }
-            }
-        } else if (request.method == "POST") {
-            val json = metadata(request)
-            tag(json)
-            if (json.optString("mimeType") == FOLDER && json.optString("name") == forbiddenRoot) denied()
-            if (!json.has("parents")) {
-                if (json.optString("name") != rootFolderName || json.optString("mimeType") != FOLDER || json.has("shortcutDetails")) denied()
-            } else parents(json, token, send)
-        } else denied()
-        return send(request)
+                if (json.optString("mimeType") == FOLDER && json.optString("name") == forbiddenRoot) denied()
+                if (!json.has("parents")) {
+                    if (json.optString("name") != rootFolderName || json.optString("mimeType") != FOLDER || json.has("shortcutDetails")) denied()
+                } else parents(json, token, send)
+            } else denied()
+            return send(request)
+        } catch (error: DriveAccessFailure) {
+            scope?.recordFailure(error)
+            throw error
+        } finally {
+            if (mutation) readProof?.clear()
+        }
     }
 
-    fun validateConfig(config: DriveAppConfig, token: String, rootId: String?, systemId: String?, send: (Request) -> Response) {
+    /** Re-attest every observed object and its ancestry before publishing a read result. */
+    fun verifyReadProof(scope: DriveReadProof, send: (Request) -> Response) {
+        scope.ownershipFailure?.let { throw it }
+        val observed = scope.previousMetadata.toList() + scope.metadata.values.toList()
+        observed.forEach { previous ->
+            val current = readMetadata(previous.getString("id"), scope.authorization, send)
+            if (listOf("name", "mimeType").any { previous.getString(it) != current.getString(it) } ||
+                previous.getJSONArray("parents").toString() != current.getJSONArray("parents").toString()) denied()
+        }
+        (scope.previousRoots + scope.roots).forEach { if (!topLevelRoot(it, scope.authorization, send)) denied() }
+    }
+
+    fun validateConfig(config: DriveAppConfig, token: String, rootId: String?, systemId: String?, send: (Request) -> Response) =
+        validateConfig(config, token, rootId, systemId, send, null)
+
+    fun validateConfig(config: DriveAppConfig, token: String, rootId: String?, systemId: String?, send: (Request) -> Response,
+        readProof: DriveReadProof?) {
         if (config.appIdentifier != appIdentifier) denied()
         if (listOf(config.rootFolderId, config.systemFolderId, config.receiptsFolderId, config.paymentsFolderId,
                 config.exportsFolderId, config.transactionsFolderId, config.backupsFolderId).distinct().size != 7) denied()
         val auth = "Bearer $token"
-        val root = owned(config.rootFolderId, auth, send)
+        val inherited = readProof?.takeIf { it.authorization == auth }
+        val scope = inherited ?: DriveReadProof(auth)
+        val root = owned(config.rootFolderId, auth, send, scope.metadata,
+            scope.roots, freshTarget = true)
         if (root.getString("name") != rootFolderName || (rootId != null && rootId != config.rootFolderId)) denied()
         fun child(id: String, name: String, parent: String) {
-            val meta = folder(id, auth, send)
+            val meta = folder(id, auth, send, scope)
             if (meta.getString("name") != name || meta.getJSONArray("parents").getString(0) != parent) denied()
         }
         if (systemId != null && config.systemFolderId != systemId) denied()
@@ -97,18 +147,25 @@ internal class DriveNamespacePolicy(
             config.transactionsFolderId to "transactions", config.backupsFolderId to "backups").forEach { (id, name) ->
             child(id, name, config.systemFolderId)
         }
+        if (inherited == null) verifyReadProof(scope, send)
     }
 
     fun validateJsonReferences(json: String, token: String, send: (Request) -> Response) =
-        validateReferences(json, token, send, null)
+        validateReferences(json, token, send, null, null)
 
     /** Restore may retain unavailable originals as references; this never permits content access
      * or a write to an unproved ID. Missing metadata, folders and ancestors remain fatal. */
     fun validateRestoreJsonReferences(json: String, token: String, send: (Request) -> Response): Set<String> =
-        linkedSetOf<String>().also { validateReferences(json, token, send, it) }
+        linkedSetOf<String>().also { validateReferences(json, token, send, it, null) }
+
+    fun validateJsonReferences(json: String, token: String, send: (Request) -> Response, scope: DriveReadProof?) =
+        validateReferences(json, token, send, null, scope)
+
+    fun validateRestoreJsonReferences(json: String, token: String, send: (Request) -> Response, scope: DriveReadProof?): Set<String> =
+        linkedSetOf<String>().also { validateReferences(json, token, send, it, scope) }
 
     private fun validateReferences(json: String, token: String, send: (Request) -> Response,
-        unavailableOriginals: MutableSet<String>?) {
+        unavailableOriginals: MutableSet<String>?, readProof: DriveReadProof?) {
         val fields = setOf("rootFolderId", "systemFolderId", "receiptsFolderId", "paymentsFolderId", "exportsFolderId",
             "transactionsFolderId", "backupsFolderId", "driveFileId", "driveFolderId", "driveMetadataFileId",
             "metadataFileId", "mainDriveFileId", "previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
@@ -146,9 +203,10 @@ internal class DriveNamespacePolicy(
             }
         }
         walk(root)
-        // Reuse ancestor metadata and root attestation only within this JSON check, never across operations.
-        val proof = mutableMapOf<String, JSONObject>()
-        val rootProofs = mutableSetOf<String>()
+        // A bounded read attempt may share proof; its caller re-attests all observed objects on exit.
+        val scope = readProof?.takeIf { it.authorization == "Bearer $token" }
+        val proof = scope?.metadata ?: mutableMapOf<String, JSONObject>()
+        val rootProofs = scope?.roots ?: mutableSetOf<String>()
         references.forEach { (id, folderExpected, historyOnly, original) ->
             try {
                 val meta = owned(id, "Bearer $token", send, proof, rootProofs)
@@ -161,6 +219,9 @@ internal class DriveNamespacePolicy(
                     if (unavailableOriginals == null || !original || folderExpected) throw missing
                     unavailableOriginals += id
                 }
+            } catch (error: DriveAccessFailure) {
+                scope?.recordFailure(error)
+                throw error
             }
         }
     }
@@ -200,15 +261,16 @@ internal class DriveNamespacePolicy(
         folder(ids.getString(0), token, send)
     }
 
-    private fun folder(id: String, token: String, send: (Request) -> Response): JSONObject = owned(id, token, send).also {
+    private fun folder(id: String, token: String, send: (Request) -> Response, scope: DriveReadProof? = null): JSONObject =
+        owned(id, token, send, scope?.metadata ?: mutableMapOf(), scope?.roots ?: mutableSetOf(), freshTarget = true).also {
         if (it.optString("mimeType") != FOLDER) denied()
     }
 
     private fun owned(id: String, token: String, send: (Request) -> Response,
         proof: MutableMap<String, JSONObject> = mutableMapOf(),
-        rootProofs: MutableSet<String> = mutableSetOf()): JSONObject {
+        rootProofs: MutableSet<String> = mutableSetOf(), freshTarget: Boolean = false): JSONObject {
         fun read(key: String) = proof.getOrPut(key) { readMetadata(key, token, send) }
-        val original = read(id)
+        val original = if (freshTarget) readMetadata(id, token, send).also { proof[id] = it } else read(id)
         var current = original
         val visited = mutableSetOf<String>()
         repeat(100) {

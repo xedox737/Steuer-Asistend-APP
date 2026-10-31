@@ -25,6 +25,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withLock
 
 /** Original IDs retained for recovery; unavailable files are not fetched or replaced. */
@@ -48,6 +49,9 @@ object GoogleDriveClient {
 
     fun validateStorageConfig(accessToken: String, config: com.example.data.DriveAppConfig, rootId: String? = null, systemId: String? = null) =
         DriveEnvironment.validateConfig(config, accessToken, rootId, systemId) { client.newCall(it).execute() }
+
+    internal suspend fun <T> withReadProof(token: String, block: suspend () -> T): T =
+        DriveEnvironment.withReadProof(token, { client.newCall(it).execute() }, block)
 
     private val folderCache = ConcurrentHashMap<String, String>()
 
@@ -730,6 +734,37 @@ object GoogleDriveClient {
         }
     }
 
+    internal fun listJsonFilesForRestore(token: String, folderId: String): List<DriveFile> =
+        initializationSearch(token, "'$folderId' in parents and mimeType = 'application/json' and trashed = false")
+            .map { DriveFile(it.getString("id"), it.getString("name")) }
+
+    /** Only app-marked diagnostic files in an owned diagnostics folder; no financial index. */
+    internal fun writeDiagnosticFile(token: String, folderId: String, metadata: Boolean, bytes: ByteArray): String {
+        val entity = if (metadata) "driveDiagnosticMetadata" else "driveDiagnosticOriginal"
+        val filename = if (metadata) "drive-probe.json" else "drive-probe.png"
+        val mime = if (metadata) "application/json" else "image/png"
+        if (metadata) validateDataReferences(token, bytes.toString(Charsets.UTF_8))
+        val query = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entity' } and trashed = false"
+        val existing = initializationSearch(token, query).firstOrNull()?.getString("id")
+        val request = if (existing != null) {
+            Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files/$existing?uploadType=media")
+                .patch(bytes.toRequestBody(mime.toMediaType()))
+        } else {
+            val meta = JSONObject().put("name", filename).put("mimeType", mime)
+                .put("parents", JSONArray().put(folderId)).put("appProperties", JSONObject()
+                    .put("appName", DriveEnvironment.appIdentifier).put("entityType", entity).put("schemaVersion", "1"))
+            val boundary = "drive_diagnostic_boundary"
+            val header = "\r\n--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$meta\r\n--$boundary\r\nContent-Type: $mime\r\n\r\n"
+            val wire = header.toByteArray(Charsets.UTF_8) + bytes + "\r\n--$boundary--".toByteArray()
+            Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+                .post(wire.toRequestBody("multipart/related; boundary=$boundary".toMediaType()))
+        }.header("Authorization", "Bearer $token").build()
+        return executeDriveRequest(request).use {
+            if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
+            JSONObject(it.body?.string().orEmpty()).getString("id")
+        }
+    }
+
     suspend fun downloadJson(
         accessToken: String,
         fileId: String
@@ -739,6 +774,21 @@ object GoogleDriveClient {
         readJson(accessToken, fileId, restore = true)
 
     private suspend fun readJson(accessToken: String, fileId: String, restore: Boolean): DriveRestoreJsonRead {
+        for (attempt in 0..1) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            try { return readJsonOnce(accessToken, fileId, restore) }
+            catch (timeout: java.net.SocketTimeoutException) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                DriveEnvironment.invalidateReadProof()
+                if (attempt == 1) throw DriveAccessFailure(DriveAccessFailure.Reason.TIMEOUT)
+                // Only an idempotent JSON GET is retried, never an upload or a test assertion.
+                kotlinx.coroutines.delay(250)
+            }
+        }
+        error("unreachable")
+    }
+
+    private suspend fun readJsonOnce(accessToken: String, fileId: String, restore: Boolean): DriveRestoreJsonRead {
         val url = "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
         val request = Request.Builder()
             .url(url)

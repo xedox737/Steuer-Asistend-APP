@@ -560,4 +560,192 @@ class ProductionDriveNamespaceTest {
         catch (expected: DriveAccessFailure) { assertEquals(404, expected.httpStatus) }
     }
 
+    @Test fun inventoryReusesReadProofOnlyWithinOneAttemptAndReattestsContainers() = runBlocking {
+        val config = initialize()
+        remote.put("available-original", "original.jpg", config.receiptsFolderId, "JPEG", mime = "image/jpeg")
+        installRecoveryReceipt(config, "available-original")
+        remote.requests.clear()
+        repeat(2) {
+            assertTrue(drive.checkDriveInventoryForRestore(token, config).success)
+            val rootSearches = remote.requests.count { it.url.queryParameter("q").orEmpty().contains("name = '${DriveEnvironment.rootFolderName}'") }
+            assertEquals("One attestation plus a final root recheck per inventory", (it + 1) * 2, rootSearches)
+        }
+        remote.entries.getValue(config.receiptsFolderId).parent = "foreign-system"
+        assertFalse("Next operation must not reuse old folder proof", drive.checkDriveInventoryForRestore(token, config).success)
+        assertNoProductContentOrMutation()
+    }
+
+    @Test fun changedAncestorDuringReadIsRejectedBeforeInventoryIsPublished() = runBlocking {
+        val config = initialize()
+        remote.put("available-original", "original.jpg", config.receiptsFolderId, "JPEG", mime = "image/jpeg")
+        installRecoveryReceipt(config, "available-original")
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            if (request.url.encodedPath.endsWith("/recovery-meta") && request.url.queryParameter("alt") == "media")
+                remote.entries.getValue(config.receiptsFolderId).parent = "foreign-system"
+            response
+        }.addInterceptor(remote).build())
+        assertFalse(drive.checkDriveInventoryForRestore(token, config).success)
+        assertNoProductContentOrMutation()
+    }
+
+    @Test fun oneTransientJsonTimeoutIsRetriedWithoutAnyWriteOrLongerTimeout() = runBlocking {
+        val config = initialize(); installRecoveryReceipt(config)
+        var reads = 0
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/recovery-meta") && chain.request().url.queryParameter("alt") == "media" && ++reads == 1)
+                throw java.net.SocketTimeoutException("synthetic")
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        remote.requests.clear()
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertTrue(preview.toString(), preview.success)
+        assertEquals(2, reads)
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
+    @Test fun persistentJsonTimeoutIsBoundedAndDoesNotCallMetadataMissing() = runBlocking {
+        val config = initialize(); installRecoveryReceipt(config)
+        var reads = 0
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/recovery-meta") && chain.request().url.queryParameter("alt") == "media") {
+                reads++; throw java.net.SocketTimeoutException("synthetic")
+            }
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertFalse(preview.success)
+        assertEquals(2, reads)
+        assertEquals(0, preview.inventory.missingFileCount)
+        assertEquals(1, preview.inventory.temporaryReadErrorCount)
+        assertTrue(preview.inventory.issues.any { it.contains("vorübergehend") })
+    }
+
+    @Test fun diagnosticsReuseOnlyOwnProbeFilesAndNeverTouchFinancialIndexOrRoom() = runBlocking {
+        val config = initialize(); installRecoveryReceipt(config)
+        val before = remote.inventory(config.rootFolderId)
+        val localBefore = repository.allReceipts.first()
+        repeat(2) {
+            val result = drive.testDriveReceiptStorage(token, config)
+            assertTrue(result.errorMessage, result.success)
+            assertEquals(localBefore, repository.allReceipts.first())
+            assertEquals(before, remote.inventory(config.rootFolderId).filterKeys { it in before })
+        }
+        assertEquals(1, remote.entries.values.count { it.properties["entityType"] == "driveDiagnosticOriginal" })
+        assertEquals(1, remote.entries.values.count { it.properties["entityType"] == "driveDiagnosticMetadata" })
+    }
+
+    @Test fun diagnosticsReportWritePermissionFailureWithoutChangingReceipts() = runBlocking {
+        val config = initialize()
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.startsWith("/upload/"))
+                okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(403).message("Synthetic").body("{}".toResponseBody()).build()
+            else chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        val result = drive.testDriveReceiptStorage(token, config)
+        assertFalse(result.success)
+        assertTrue(result.errorMessage.orEmpty().contains("403"))
+        assertTrue(repository.allReceipts.first().isEmpty())
+    }
+
+    @Test fun onlyExactLegacySyntheticRowIsRetiredReversibly() = runBlocking {
+        val row = Receipt(id = 999999, internalId = "synthetic-legacy-probe", displayId = "TEST-BLG-2026-000001",
+            aussteller = "Test Baustoffhandel GmbH", datum = "2026-01-01", uhrzeit = "12:00", bruttobetrag = 119.0,
+            hauptkategorie = "Test", unterkategorie = "Test", kontoNr = "4800",
+            beschreibung = "E2E Testbeleg für Google Drive Speichertest")
+        repository.insert(row.copy(aussteller = "Actual user vendor"))
+        drive.retireLegacyDriveDiagnostic()
+        assertEquals("ACTIVE", repository.getReceiptById(999999)!!.deletionStatus)
+        repository.insert(row)
+        drive.retireLegacyDriveDiagnostic()
+        val kept = repository.getReceiptById(999999)!!
+        assertEquals("DELETED", kept.deletionStatus)
+        assertEquals(row.internalId, kept.internalId)
+        assertEquals(row.bruttobetrag, kept.bruttobetrag, 0.001)
+        assertTrue(repository.allReceipts.first().isEmpty())
+    }
+
+    @Test fun readProofNeverAuthorizesAnUpdateAfterOriginalMovesOutOfNamespace() = runBlocking {
+        val config = initialize()
+        remote.put("available-original", "original.jpg", config.receiptsFolderId, "JPEG", mime = "image/jpeg")
+        installRecoveryReceipt(config, "available-original")
+        val originalMetadata = remote.entries.getValue("recovery-meta").bytes.toString(Charsets.UTF_8)
+        try {
+            GoogleDriveClient.withReadProof(token) {
+                GoogleDriveClient.downloadJsonForRestore(token, "recovery-meta")
+                remote.entries.getValue("available-original").parent = "foreign-system"
+                assertFalse(GoogleDriveClient.updateJson(token, "recovery-meta", originalMetadata).success)
+            }
+            fail("Final object re-attestation must reject the moved original")
+        } catch (expected: DriveAccessFailure) { assertEquals(DriveAccessFailure.Reason.NAMESPACE, expected.reason) }
+        assertEquals(originalMetadata, remote.entries.getValue("recovery-meta").bytes.toString(Charsets.UTF_8))
+        assertNoProductContentOrMutation()
+    }
+
+    @Test fun cancelledReadProofCannotLeakIntoNextOperationOrDifferentCredential() = runBlocking {
+        val config = initialize()
+        remote.put("available-original", "original.jpg", config.receiptsFolderId, "JPEG", mime = "image/jpeg")
+        installRecoveryReceipt(config, "available-original")
+        try {
+            GoogleDriveClient.withReadProof(token) {
+                GoogleDriveClient.downloadJsonForRestore(token, "recovery-meta")
+                throw CancellationException("synthetic")
+            }
+        } catch (_: CancellationException) { }
+        var deniedCalls = 0
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().header("Authorization") == "Bearer other-credential") {
+                deniedCalls++
+                okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(403).message("Synthetic").body("{}".toResponseBody()).build()
+            } else chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        GoogleDriveClient.withReadProof(token) {
+            GoogleDriveClient.downloadJsonForRestore(token, "recovery-meta")
+            try { GoogleDriveClient.downloadJsonForRestore("other-credential", "recovery-meta"); fail("Credential must not borrow proof") }
+            catch (expected: DriveAccessFailure) { assertEquals(403, expected.httpStatus) }
+        }
+        assertTrue(deniedCalls > 0)
+        remote.entries.getValue(config.receiptsFolderId).parent = "foreign-system"
+        try { GoogleDriveClient.downloadJsonForRestore(token, "recovery-meta"); fail("A new read must recheck ancestry") }
+        catch (expected: DriveAccessFailure) { assertEquals(DriveAccessFailure.Reason.NAMESPACE, expected.reason) }
+    }
+
+    @Test fun unreadableDeletionMarkerMustNeverBeTreatedAsNoDeletions() = runBlocking {
+        val config = initialize()
+        remote.put("available-original", "original.jpg", config.receiptsFolderId, "JPEG", mime = "image/jpeg")
+        installRecoveryReceipt(config, "available-original")
+        remote.put("deletion-folder", "deletions", config.systemFolderId, mime = folder)
+        remote.put("invalid-tombstone", "invalid.json", "deletion-folder", "{}")
+        val before = repository.allReceipts.first()
+        val report = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+        assertFalse(report.isSuccess)
+        assertEquals(before, repository.allReceipts.first())
+    }
+
+    @Test fun retryInvalidationRetainsEarlierObjectsForFinalAttestation() = runBlocking {
+        val config = initialize()
+        remote.put("available-original", "original.jpg", config.receiptsFolderId, "JPEG", mime = "image/jpeg")
+        installRecoveryReceipt(config, "available-original")
+        remote.put("other-json", "other.json", config.systemFolderId, "{}")
+        var reads = 0
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/other-json") && chain.request().url.queryParameter("alt") == "media" && ++reads == 1) {
+                remote.entries.getValue("available-original").parent = "foreign-system"
+                throw java.net.SocketTimeoutException("synthetic")
+            }
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        try {
+            GoogleDriveClient.withReadProof(token) {
+                GoogleDriveClient.downloadJsonForRestore(token, "recovery-meta")
+                GoogleDriveClient.downloadJsonForRestore(token, "other-json")
+            }
+            fail("Retry must not forget an earlier original")
+        } catch (expected: DriveAccessFailure) { assertEquals(DriveAccessFailure.Reason.NAMESPACE, expected.reason) }
+        assertEquals(2, reads)
+    }
+
 }
