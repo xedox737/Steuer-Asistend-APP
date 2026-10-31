@@ -23,4 +23,7 @@ object DriveEnvironment {
 
     internal fun validateJsonReferences(json: String, token: String, send: (Request) -> Response) =
         policy.validateJsonReferences(json, token, send)
+    internal fun validateRestoreJsonReferences(json: String, token: String, send: (Request) -> Response): Set<String> =
+        policy.validateRestoreJsonReferences(json, token, send)
+
 }

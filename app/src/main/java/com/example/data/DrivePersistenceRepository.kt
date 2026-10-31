@@ -48,6 +48,7 @@ data class DriveInventoryCheck(
     val mainDocCount: Int = 0,
     val duplicateCount: Int = 0,
     val missingFileCount: Int = 0,
+    val unavailableOriginalCount: Int = 0,
     val schemaVersion: Int = 1,
     val propertyFound: Boolean = false,
     val propertyName: String = "",
@@ -2116,6 +2117,7 @@ class DrivePersistenceRepository(
     suspend fun checkDriveInventoryForRestore(accessToken: String, config: DriveAppConfig): DriveRestorePreviewResult {
         val issues = mutableListOf<String>()
         val previews = mutableListOf<ReceiptPreviewSummary>()
+        val unavailableOriginals = linkedSetOf<String>()
 
         try {
             if (config.schemaVersion > 1) {
@@ -2171,8 +2173,8 @@ class DrivePersistenceRepository(
 
             if (indexFile != null) {
                 try {
-                    val jsonStr = GoogleDriveClient.downloadJson(accessToken, indexFile.id)
-                    val root = JSONObject(jsonStr)
+                    val indexRead = GoogleDriveClient.downloadJsonForRestore(accessToken, indexFile.id)
+                    val root = JSONObject(indexRead.json)
                     var entries = mutableListOf<ReceiptIndexEntry>()
                     val array = root.getJSONArray("entries")
                     for (i in 0 until array.length()) {
@@ -2201,7 +2203,8 @@ class DrivePersistenceRepository(
                         )
                     }
 
-                    entries = sanitizeIndexEntries(entries, accessToken).toMutableList()
+                    entries = sanitizeIndexEntries(entries, accessToken)
+                        .filter { RestoreEligibilityPolicy.shouldRestore(it.syncStatus, null) }.toMutableList()
                     receiptCountInIndex = entries.size
 
                     val seenInternalIds = mutableSetOf<String>()
@@ -2209,6 +2212,7 @@ class DrivePersistenceRepository(
                     val seenMainFileIds = mutableSetOf<String>()
 
                     for (entry in entries) {
+                        if (entry.mainDriveFileId in indexRead.unavailableOriginalIds) unavailableOriginals += entry.mainDriveFileId
                         val entryIssues = mutableListOf<String>()
 
                         if (entry.internalId.isBlank()) {
@@ -2238,8 +2242,9 @@ class DrivePersistenceRepository(
                         var metaReachable = false
                         if (entry.metadataFileId.isNotBlank()) {
                             try {
-                                val metaJson = GoogleDriveClient.downloadJson(accessToken, entry.metadataFileId)
-                                val parsed = parsePersistedReceipt(metaJson)
+                                val metadataRead = GoogleDriveClient.downloadJsonForRestore(accessToken, entry.metadataFileId)
+                                val parsed = parsePersistedReceipt(metadataRead.json)
+                                unavailableOriginals += metadataRead.unavailableOriginalIds
                                 FilelessLogbookContract.validatePair(entry, parsed)
                                 if (parsed.bruttobetragCent != null) {
                                     metaReachable = true
@@ -2253,7 +2258,7 @@ class DrivePersistenceRepository(
                         }
 
                         var mainReachable = false
-                        if (entry.mainDriveFileId.isNotBlank()) {
+                        if (entry.mainDriveFileId.isNotBlank() && entry.mainDriveFileId !in unavailableOriginals) {
                             mainReachable = true
                             mainDocCount++
                         }
@@ -2287,6 +2292,7 @@ class DrivePersistenceRepository(
                 mainDocCount = mainDocCount,
                 duplicateCount = duplicateCount,
                 missingFileCount = missingFileCount,
+                unavailableOriginalCount = unavailableOriginals.size,
                 schemaVersion = config.schemaVersion,
                 propertyFound = propertyFound,
                 propertyName = propertyName,
@@ -2295,7 +2301,8 @@ class DrivePersistenceRepository(
                 learnedRulesFound = learnedRulesFound,
                 exportsCount = 0,
                 canRestore = complete && (receiptCountInIndex > 0 || propertyFound),
-                issues = issues
+                issues = issues + if (unavailableOriginals.isEmpty()) emptyList() else listOf(
+                    "${unavailableOriginals.size} Originaldatei(en) nicht erreichbar (HTTP 404). Alle Belegdaten und Dateiverweise bleiben erhalten.")
             )
 
             return DriveRestorePreviewResult(
@@ -2798,8 +2805,8 @@ class DrivePersistenceRepository(
         val indexFile = managedDocumentDriveGateway.findJsonFile(accessToken, config.systemFolderId, "receiptIndex")
         if (indexFile != null) {
             try {
-                val jsonStr = managedDocumentDriveGateway.downloadJson(accessToken, indexFile.id)
-                val root = JSONObject(jsonStr)
+                val indexRead = managedDocumentDriveGateway.downloadRestoreJson(accessToken, indexFile.id)
+                val root = JSONObject(indexRead.json)
                 val array = root.getJSONArray("entries")
                 var indexEntries = mutableListOf<ReceiptIndexEntry>()
                 for (i in 0 until array.length()) {
@@ -2859,8 +2866,15 @@ class DrivePersistenceRepository(
                     }
 
                     try {
-                        val metaJson = managedDocumentDriveGateway.downloadJson(accessToken, entry.metadataFileId)
-                        val persisted = parsePersistedReceipt(metaJson)
+                        val metadataRead = managedDocumentDriveGateway.downloadRestoreJson(accessToken, entry.metadataFileId)
+                        val persisted = parsePersistedReceipt(metadataRead.json)
+                        val unavailable = metadataRead.unavailableOriginalIds +
+                            indexRead.unavailableOriginalIds.filter { it == entry.mainDriveFileId }
+                        unavailable.forEach { _ ->
+                            warnings.add(RestoreWarning("UNAVAILABLE_ORIGINAL",
+                                "Originaldatei für Beleg '${persisted.displayId ?: persisted.aussteller ?: "ohne Belegnummer"}' nicht erreichbar (HTTP 404). Belegdaten und Dateiverweis bleiben erhalten.",
+                                targetId = entry.internalId))
+                        }
                         FilelessLogbookContract.validatePair(entry, persisted)
 
                         val candidate = persisted.toLocalReceipt(entry.metadataFileId)

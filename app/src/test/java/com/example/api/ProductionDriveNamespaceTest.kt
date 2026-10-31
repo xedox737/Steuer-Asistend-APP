@@ -436,4 +436,128 @@ class ProductionDriveNamespaceTest {
         assertEquals(before, repository.allReceipts.first())
     }
 
+    private fun installRecoveryReceipt(config: DriveAppConfig, original: String = "missing-original") {
+        remote.put("recovery-meta", "recovery.json", config.systemFolderId,
+            JSONObject().put("internalId", "recovery-receipt").put("displayId", "RECOVERY-1")
+                .put("driveFileId", original).put("driveFolderId", config.receiptsFolderId)
+                .put("bruttobetragCent", 12345).put("aussteller", "Synthetic retained vendor")
+                .put("datum", "2026-01-01").put("hauptkategorie", "Instandhaltung")
+                .put("createdAt", "2026-01-01T00:00:00").put("updatedAt", "2026-01-01T00:00:00")
+                .put("originalDocuments", JSONArray().put(JSONObject()
+                    .put("documentId", "receipt:recovery-receipt").put("originalFilename", "retained-original.jpg")
+                    .put("storedFilename", "retained-original.jpg").put("mimeType", "image/jpeg")
+                    .put("driveFileId", original).put("driveFolderId", config.receiptsFolderId)
+                    .put("sha256", "a".repeat(64)).put("fileSizeBytes", 4096)
+                    .put("createdAt", "2026-01-01T00:00:00").put("updatedAt", "2026-01-01T00:00:00")))
+                .toString())
+        remote.put("recovery-index", "receipt-index.json", config.systemFolderId,
+            JSONObject().put("version", 1).put("entries", JSONArray()
+                .put(JSONObject().put("internalId", "deleted-receipt").put("metadataFileId", "deleted-meta")
+                    .put("mainDriveFileId", "deleted-original").put("syncStatus", "DELETED"))
+                .put(JSONObject().put("internalId", "recovery-receipt").put("displayId", "RECOVERY-1")
+                    .put("metadataFileId", "recovery-meta").put("mainDriveFileId", original)
+                    .put("syncStatus", "SYNCED"))).toString(), "receiptIndex")
+    }
+
+    @Test fun restoreRetainsActiveReceiptWithMissingOriginalAndSkipsDeletedHistory() = runBlocking {
+        val config = initialize(); installRecoveryReceipt(config)
+        val before = remote.inventory(config.rootFolderId)
+        remote.requests.clear()
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertTrue(preview.toString(), preview.success)
+        assertTrue(preview.inventory.canRestore)
+        assertEquals(1, preview.inventory.receiptCountInIndex)
+        assertEquals(1, preview.inventory.metadataFileCount)
+        assertEquals(0, preview.inventory.mainDocCount)
+        assertEquals(1, preview.inventory.unavailableOriginalCount)
+        assertTrue(preview.inventory.issues.any { it.contains("HTTP 404") })
+        assertEquals(before, remote.inventory(config.rootFolderId))
+        assertTrue(remote.requests.all { it.method == "GET" })
+        repeat(2) {
+            val report = drive.executeFullDriveRestore(token, config, RestoreMode.MERGE)
+            assertTrue(report.errors.toString(), report.isSuccess)
+            assertTrue(report.errors.any { it.contains("HTTP 404") })
+            val local = repository.getReceiptByInternalId("recovery-receipt")!!
+            assertEquals("missing-original", local.driveFileId)
+            assertEquals(123.45, local.bruttobetrag, 0.001)
+            assertEquals("recovery-meta", local.driveMetadataFileId)
+            assertEquals(1, repository.allReceipts.first().size)
+            val document = repository.getManagedDocument("receipt:recovery-receipt")!!
+            assertEquals("missing-original", document.driveFileId)
+            assertEquals("a".repeat(64), document.sha256)
+            assertEquals(4096L, document.fileSizeBytes)
+            assertNull(repository.getReceiptByInternalId("deleted-receipt"))
+        }
+        assertEquals(before, remote.inventory(config.rootFolderId).filterKeys { it in before })
+        assertFalse(remote.requests.any { it.url.encodedPath.endsWith("/missing-original") && it.url.queryParameter("alt") == "media" })
+        assertFalse(GoogleDriveClient.uploadJson(token, config.systemFolderId, "must-stay-strict.json",
+            """{"driveFileId":"missing-original"}""").success)
+    }
+
+    @Test fun recoveryNeverTreatsForeignContentOrMissingAncestorAsUnavailableOriginal() = runBlocking {
+        val config = initialize()
+        for (original in listOf("foreign-original", "orphan-original")) {
+            remote.put("orphan-original", "orphan.pdf", "missing-parent", mime = "application/pdf")
+            installRecoveryReceipt(config, original)
+            val before = repository.allReceipts.first()
+            val preview = drive.checkDriveInventoryForRestore(token, config)
+            assertFalse(preview.success)
+            val report = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+            assertFalse(report.isSuccess)
+            assertEquals(before, repository.allReceipts.first())
+        }
+        assertNoProductContentOrMutation()
+    }
+
+    @Test fun recoveryStillRequiresActiveMetadataAndReadableIndex() = runBlocking {
+        val config = initialize(); installRecoveryReceipt(config)
+        remote.entries.remove("recovery-meta")
+        assertFalse(drive.checkDriveInventoryForRestore(token, config).success)
+        val report = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+        assertFalse(report.isSuccess)
+        assertTrue(repository.allReceipts.first().isEmpty())
+    }
+
+    @Test fun recoveryDoesNotDowngradeAuthorizationOrNetworkFailuresToMissingOriginalWarnings() = runBlocking {
+        val config = initialize(); installRecoveryReceipt(config)
+        for (code in listOf(401, 403, 503)) {
+            transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+                if (chain.request().url.encodedPath.endsWith("/missing-original"))
+                    okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                        .code(code).message("Synthetic").body("{}".toResponseBody()).build()
+                else chain.proceed(chain.request())
+            }.addInterceptor(remote).build())
+            if (code == 401) {
+                try { drive.checkDriveInventoryForRestore(token, config); fail("Authorization must propagate") }
+                catch (expected: DriveAccessFailure) { assertEquals(401, expected.httpStatus) }
+            } else assertFalse(drive.checkDriveInventoryForRestore(token, config).success)
+        }
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/missing-original")) throw CancellationException("synthetic")
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        try { drive.checkDriveInventoryForRestore(token, config); fail("Cancellation must propagate") }
+        catch (_: CancellationException) { }
+    }
+
+    @Test fun supplementalRecoveryPreservesUnavailableOriginalAndReportsItBeforeImport() = runBlocking {
+        val config = initialize()
+        repository.upsertManagedDocument(ManagedDocument(documentId = "retained-standalone", propertyId = StableDocumentIdentity.LEGACY_PROPERTY_ID,
+            originalFilename = "retained.jpg", storedFilename = "retained.jpg", mimeType = "image/jpeg",
+            driveFileId = "missing-original", driveFolderId = config.receiptsFolderId,
+            createdAt = "2026-01-01T00:00:00", updatedAt = "2026-01-01T00:00:00"))
+        val payload = SupplementalDriveBackup.createPayload(context, db)
+        remote.put("recovery-supplemental", "supplemental-backup.json", config.systemFolderId,
+            payload.toString(), "supplementalBackup")
+        val before = remote.inventory(config.rootFolderId)
+        var unavailable = emptySet<String>()
+        val read = SupplementalDriveBackup.loadValidatedPayload(token, config.systemFolderId) { unavailable = it }
+        assertNotNull(read)
+        assertEquals(setOf("missing-original"), unavailable)
+        assertEquals("missing-original", read!!.getJSONArray("managedDocuments").getJSONObject(0).getString("driveFileId"))
+        assertEquals(before, remote.inventory(config.rootFolderId))
+        try { GoogleDriveClient.downloadJson(token, "recovery-supplemental"); fail("Ordinary JSON reads remain strict") }
+        catch (expected: DriveAccessFailure) { assertEquals(404, expected.httpStatus) }
+    }
+
 }

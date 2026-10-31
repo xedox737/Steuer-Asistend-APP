@@ -16,6 +16,9 @@ interface ManagedDocumentDriveGateway {
     suspend fun downloadJson(accessToken: String, fileId: String): String =
         GoogleDriveClient.downloadJson(accessToken, fileId)
 
+    suspend fun downloadRestoreJson(accessToken: String, fileId: String): com.example.api.DriveRestoreJsonRead =
+        com.example.api.DriveRestoreJsonRead(downloadJson(accessToken, fileId))
+
     suspend fun findReceiptJsonFile(accessToken: String, folderId: String, internalId: String): String? =
         GoogleDriveClient.findMetadataFileByProperties(accessToken, folderId, internalId)?.id
             ?: GoogleDriveClient.findFileByName(accessToken, folderId, "$internalId.json")
@@ -68,6 +71,9 @@ interface ManagedDocumentDriveGateway {
 }
 
 class GoogleManagedDocumentDriveGateway(private val context: Context) : ManagedDocumentDriveGateway {
+    override suspend fun downloadRestoreJson(accessToken: String, fileId: String): com.example.api.DriveRestoreJsonRead =
+        GoogleDriveClient.downloadJsonForRestore(accessToken, fileId)
+
     override suspend fun findJsonFile(accessToken: String, folderId: String, entityType: String): com.example.api.DriveFile? =
         GoogleDriveClient.findFileByAppProperty(accessToken, folderId, entityType, failOnError = true)
 

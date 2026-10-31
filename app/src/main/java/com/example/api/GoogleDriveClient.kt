@@ -27,6 +27,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 
+/** Original IDs retained for recovery; unavailable files are not fetched or replaced. */
+data class DriveRestoreJsonRead(val json: String, val unavailableOriginalIds: Set<String> = emptySet())
+
 object GoogleDriveClient {
     private const val TAG = "GoogleDriveClient"
     // Private transport; QA replaces it reflectively with an in-memory HTTP interceptor.
@@ -730,7 +733,12 @@ object GoogleDriveClient {
     suspend fun downloadJson(
         accessToken: String,
         fileId: String
-    ): String {
+    ): String = readJson(accessToken, fileId, restore = false).json
+
+    internal suspend fun downloadJsonForRestore(accessToken: String, fileId: String): DriveRestoreJsonRead =
+        readJson(accessToken, fileId, restore = true)
+
+    private suspend fun readJson(accessToken: String, fileId: String, restore: Boolean): DriveRestoreJsonRead {
         val url = "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
         val request = Request.Builder()
             .url(url)
@@ -740,8 +748,13 @@ object GoogleDriveClient {
         executeDriveRequest(request).use { response ->
             if (response.isSuccessful) {
                 val json = response.body?.string() ?: ""
-                validateDataReferences(accessToken, json)
-                return json
+                val missing = if (restore) {
+                    DriveEnvironment.validateRestoreJsonReferences(json, accessToken) { client.newCall(it).execute() }
+                } else {
+                    validateDataReferences(accessToken, json)
+                    emptySet()
+                }
+                return DriveRestoreJsonRead(json, missing)
             } else {
                 throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
             }

@@ -45,14 +45,16 @@ object SupplementalDriveBackup {
         try {
             val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE)
                 ?: return Result(true, "Keine Zusatzdaten-Sicherung vorhanden")
+            val read = GoogleDriveClient.downloadJsonForRestore(accessToken, file.id)
             restorePayload(
                 context,
                 database,
-                JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)),
+                JSONObject(read.json),
                 replaceManagedDocuments,
                 restoreMode
             )
-            Result(true, "Zusatzdaten einschließlich Fahrtenbuch wiederhergestellt")
+            Result(true, if (read.unavailableOriginalIds.isEmpty()) "Zusatzdaten einschließlich Fahrtenbuch wiederhergestellt"
+                else "Zusatzdaten wiederhergestellt. ${read.unavailableOriginalIds.size} Originaldatei(en) nicht erreichbar; Dateiverweise bleiben erhalten.")
         } catch (e: Exception) {
             Result(false, e.message ?: "Zusatzdaten-Wiederherstellung fehlgeschlagen")
         }
@@ -444,9 +446,11 @@ object SupplementalDriveBackup {
         }
     }
 
-    internal suspend fun loadValidatedPayload(accessToken: String, systemFolderId: String): JSONObject? {
-        val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE) ?: return null
-        return JSONObject(GoogleDriveClient.downloadJson(accessToken, file.id)).also(::validatePayload)
+    internal suspend fun loadValidatedPayload(accessToken: String, systemFolderId: String,
+        onUnavailableOriginals: (Set<String>) -> Unit = {}): JSONObject? {
+        val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE, failOnError = true) ?: return null
+        val read = GoogleDriveClient.downloadJsonForRestore(accessToken, file.id)
+        return JSONObject(read.json).also(::validatePayload).also { onUnavailableOriginals(read.unavailableOriginalIds) }
     }
 
     private fun ExportAuditRun.toBackupJson() = JSONObject().apply {
