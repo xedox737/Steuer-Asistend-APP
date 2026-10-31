@@ -99,11 +99,21 @@ internal class DriveNamespacePolicy(
         }
     }
 
-    fun validateJsonReferences(json: String, token: String, send: (Request) -> Response) {
+    fun validateJsonReferences(json: String, token: String, send: (Request) -> Response) =
+        validateReferences(json, token, send, null)
+
+    /** Restore may retain unavailable originals as references; this never permits content access
+     * or a write to an unproved ID. Missing metadata, folders and ancestors remain fatal. */
+    fun validateRestoreJsonReferences(json: String, token: String, send: (Request) -> Response): Set<String> =
+        linkedSetOf<String>().also { validateReferences(json, token, send, it) }
+
+    private fun validateReferences(json: String, token: String, send: (Request) -> Response,
+        unavailableOriginals: MutableSet<String>?) {
         val fields = setOf("rootFolderId", "systemFolderId", "receiptsFolderId", "paymentsFolderId", "exportsFolderId",
             "transactionsFolderId", "backupsFolderId", "driveFileId", "driveFolderId", "driveMetadataFileId",
             "metadataFileId", "mainDriveFileId", "previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
-        val references = mutableSetOf<Triple<String, Boolean, Boolean>>()
+        data class Reference(val id: String, val folder: Boolean, val historyOnly: Boolean, val original: Boolean)
+        val references = mutableSetOf<Reference>()
         val historical = setOf("previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
         val root = org.json.JSONTokener(json).nextValue()
         // Only the two diagnostic file fields directly inside a complete app config are optional.
@@ -114,13 +124,22 @@ internal class DriveNamespacePolicy(
             config.optString("appIdentifier") == appIdentifier && config.optInt("schemaVersion") == 1 &&
                 configFolders.all { config.opt(it) is String && config.getString(it).isNotBlank() }
         }?.optJSONObject("testReferences")
+        val deletedEntries = (root as? JSONObject)?.optJSONArray("entries")?.let { array ->
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+                .filter { it.optString("syncStatus") == "DELETED" }.toSet()
+        }.orEmpty()
         fun walk(value: Any?) {
             when (value) {
                 is JSONObject -> value.keys().forEach { key ->
                     val item = value.opt(key)
                     val optionalDiagnostic = value === diagnosticReferences && key in setOf("mainDriveFileId", "metadataFileId")
-                    if (key in fields && item is String && item.isNotBlank())
-                        references += Triple(item, key.endsWith("FolderId"), key in historical || optionalDiagnostic)
+                    if (key in fields && item is String && item.isNotBlank()) {
+                        val deletedReference = unavailableOriginals != null && value in deletedEntries &&
+                            key in setOf("metadataFileId", "mainDriveFileId")
+                        references += Reference(item, key.endsWith("FolderId"),
+                            key in historical || optionalDiagnostic || deletedReference,
+                            key in setOf("driveFileId", "mainDriveFileId"))
+                    }
                     walk(item)
                 }
                 is org.json.JSONArray -> (0 until value.length()).forEach { walk(value.opt(it)) }
@@ -130,14 +149,18 @@ internal class DriveNamespacePolicy(
         // Reuse ancestor metadata and root attestation only within this JSON check, never across operations.
         val proof = mutableMapOf<String, JSONObject>()
         val rootProofs = mutableSetOf<String>()
-        references.forEach { (id, folderExpected, historyOnly) ->
+        references.forEach { (id, folderExpected, historyOnly, original) ->
             try {
                 val meta = owned(id, "Bearer $token", send, proof, rootProofs)
                 if ((meta.optString("mimeType") == FOLDER) != folderExpected) denied()
             } catch (missing: MissingReference) {
                 // Tombstones and optional diagnostic files may already be absent. No access is granted.
-                // Only the referenced ID's own 404 is tolerated; ancestors and current data fail closed.
-                if (!historyOnly || missing.id != id) throw missing
+                // An ancestor 404 is never recoverable. Ordinary reads/writes also reject current-file 404s.
+                if (missing.id != id) throw missing
+                if (!historyOnly) {
+                    if (unavailableOriginals == null || !original || folderExpected) throw missing
+                    unavailableOriginals += id
+                }
             }
         }
     }

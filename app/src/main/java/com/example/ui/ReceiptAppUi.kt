@@ -11737,7 +11737,9 @@ fun DriveRestoreConfirmationDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    if (verified) "Es wurde ein gesicherter App-Bestand in Ihrem Google Drive gefunden. Möchten Sie diesen vollständig in die lokale App wiederherstellen?"
+                    if (verified && inv.unavailableOriginalCount > 0)
+                        "Die Belegdaten können wiederhergestellt werden. ${inv.unavailableOriginalCount} Originaldatei(en) sind nicht erreichbar. Alle zugehörigen Belegdaten und Dateiverweise bleiben erhalten; fehlende Dateien werden nicht ersetzt."
+                    else if (verified) "Es wurde ein gesicherter App-Bestand in Ihrem Google Drive gefunden. Möchten Sie diesen vollständig in die lokale App wiederherstellen?"
                     else "Der Drive-Bestand konnte nicht vollständig geprüft werden. Die Beleganzahl ist unbekannt. Wiederherstellung ist gesperrt; bitte die angegebenen Dateiverweise prüfen und die Bestandsprüfung erneut starten.",
                     fontSize = 12.sp,
                     color = DarkNavy
@@ -11758,10 +11760,13 @@ fun DriveRestoreConfirmationDialog(
                         DetailRow("Wohneinheiten", "${inv.unitsCount} Einheiten")
                         DetailRow("Belege im Index", if (verified) "${inv.receiptCountInIndex} Einträge" else "Nicht prüfbar")
                         DetailRow("Metadaten-Dateien", if (verified) "${inv.metadataFileCount} JSON-Dateien" else "Nicht prüfbar")
-                        DetailRow("Hauptdokumente (PDF/Img)", if (verified) "${inv.mainDocCount} Dateien" else "Nicht prüfbar")
+                        DetailRow("Erreichbare Hauptdokumente (PDF/Img)", if (verified) "${inv.mainDocCount} Dateien" else "Nicht prüfbar")
                         DetailRow("DATEV-Profil", if (inv.datevProfileFound) "Vorhanden" else "Fehlt")
                         DetailRow("KI-Lernregeln", if (inv.learnedRulesFound) "Vorhanden" else "Fehlt")
                         
+                        if (inv.unavailableOriginalCount > 0) {
+                            Text("⚠️ Nicht erreichbare Originaldateien: ${inv.unavailableOriginalCount}", fontSize = 11.sp, color = CrimsonRed)
+                        }
                         if (inv.duplicateCount > 0) {
                             Text("⚠️ Duplikate/Warnungen: ${inv.duplicateCount}", fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
                         }
@@ -11794,7 +11799,7 @@ fun DriveRestoreConfirmationDialog(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Wiederherstellen...", color = Color.White)
                 } else {
-                    Text("Jetzt wiederherstellen", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(if (inv.unavailableOriginalCount > 0) "Belegdaten wiederherstellen" else "Jetzt wiederherstellen", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         },
@@ -11829,7 +11834,8 @@ fun DriveRestoreReportDialog(
                     tint = if (report.isSuccess) EmeraldGreen else CrimsonRed
                 )
                 Text(
-                    if (report.isSuccess) "Wiederherstellung abgeschlossen" else "Wiederherstellungs-Bericht",
+                    if (report.isSuccess && report.errorCount > 0) "Wiederherstellung mit Hinweisen"
+                    else if (report.isSuccess) "Wiederherstellung abgeschlossen" else "Wiederherstellungs-Bericht",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = DarkNavy

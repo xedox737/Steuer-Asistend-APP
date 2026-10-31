@@ -492,6 +492,40 @@ class DriveConnectionRegressionTest {
         assertEquals(1, db.receiptDao().getAllReceipts().first().size)
     }
 
+    @Test fun fullRestoreKeepsReceiptAndSupplementalOriginalReferenceWhenImageIsUnavailable() = runBlocking {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        val system = remote.entries.values.single { it.name == "_BelegApp-Daten" }
+        val receiptsFolder = remote.entries.values.single { it.name == "receipts" && it.parent == system.id }
+        remote.put("vm-recovery-meta", "vm-recovery.json", system.id,
+            org.json.JSONObject().put("internalId", "vm-recovery").put("driveFileId", "vm-missing-original")
+                .put("driveFolderId", receiptsFolder.id).put("bruttobetragCent", 12345)
+                .put("createdAt", "2026-01-01T00:00:00").put("updatedAt", "2026-01-01T00:00:00").toString())
+        remote.put("vm-recovery-index", "receipt-index.json", system.id,
+            """{"entries":[{"internalId":"vm-recovery","metadataFileId":"vm-recovery-meta","mainDriveFileId":"vm-missing-original","syncStatus":"SYNCED"}]}""", "receiptIndex")
+        val db = com.example.data.AppDatabase.getDatabase(app, CoroutineScope(Dispatchers.IO))
+        db.managedDocumentDao().upsert(com.example.data.ManagedDocument(documentId = "vm-original",
+            propertyId = com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID,
+            receiptInternalId = "vm-recovery", originalFilename = "retained.jpg", storedFilename = "retained.jpg",
+            driveFileId = "vm-missing-original", driveFolderId = receiptsFolder.id,
+            createdAt = "2026-01-01T00:00:00", updatedAt = "2026-01-01T00:00:00"))
+        val payload = com.example.data.SupplementalDriveBackup.createPayload(app, db)
+        remote.put("vm-supplemental", "supplementalBackup.json", system.id, payload.toString(), "supplementalBackup")
+        val before = remote.entries.mapValues { it.value.bytes.toList() }
+        vm.checkForDriveRestore()
+        withTimeout(15_000) { vm.restorePreview.first { it?.success == true } }
+        assertEquals(1, vm.restorePreview.value!!.inventory.unavailableOriginalCount)
+        vm.performFullRestoreConfirmation()
+        val report = withTimeout(15_000) { vm.restoreReport.first { it != null }!! }
+        withTimeout(15_000) { vm.isRestoring.first { !it } }
+        assertTrue(report.errors.toString(), report.isSuccess)
+        assertTrue(report.errors.any { it.contains("HTTP 404") })
+        assertEquals("vm-missing-original", db.receiptDao().getReceiptByInternalId("vm-recovery")!!.driveFileId)
+        assertEquals("vm-missing-original", db.managedDocumentDao().getById("vm-original")!!.driveFileId)
+        assertEquals(1, db.receiptDao().getAllReceiptsList().size)
+        assertEquals(before, remote.entries.filterKeys { it in before }.mapValues { it.value.bytes.toList() })
+        assertAccountRetained(vm)
+    }
+
     @Implements(GoogleAuthUtil::class)
     class AuthShadow {
         companion object {

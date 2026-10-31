@@ -1492,10 +1492,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     var supplementalPayload: org.json.JSONObject? = null
+                    var supplementalUnavailableOriginals = emptySet<String>()
                     var documentsBeforeCore = emptyMap<String, com.example.data.ManagedDocument>()
                     val outcome = com.example.data.FullRestoreCoordinator.execute(
                         preflight = {
-                            supplementalPayload = com.example.data.SupplementalDriveBackup.loadValidatedPayload(token, initResult.config.systemFolderId)
+                            supplementalPayload = com.example.data.SupplementalDriveBackup.loadValidatedPayload(token, initResult.config.systemFolderId) {
+                                supplementalUnavailableOriginals = it
+                            }
                             documentsBeforeCore = repository.getAllManagedDocuments().associateBy { it.documentId }
                             if (mode == com.example.data.RestoreMode.REPLACE_FULL) {
                                 com.example.data.SupplementalDriveBackup.validateFullRestoreCoverage(getApplication(), database, supplementalPayload)
@@ -1509,14 +1512,18 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                                     replaceManagedDocuments = mode == com.example.data.RestoreMode.REPLACE_FULL,
                                     restoreMode = mode, localDocumentsBeforeCore = documentsBeforeCore)
                             }
-                            com.example.data.SupplementalDriveBackup.Result(true, "Zusatzdaten vollständig geprüft und wiederhergestellt")
+                            com.example.data.SupplementalDriveBackup.Result(true, "Zusatzdaten wiederhergestellt")
                         },
                         onPhase = { phase ->
                             drivePersistenceRepository.updateLatestRestorePhase(phase)
                             _driveSyncStatus.value = "Wiederherstellung: ${phase.name}"
                         }
                     )
-                    val report = outcome.coreReport
+                    val supplementalWarnings = if (supplementalUnavailableOriginals.isEmpty()) emptyList() else listOf(
+                        "${supplementalUnavailableOriginals.size} Originaldatei(en) aus Zusatzdaten nicht erreichbar (HTTP 404). Alle Dateiverweise bleiben erhalten.")
+                    val report = outcome.coreReport.copy(
+                        errorCount = outcome.coreReport.errorCount + supplementalWarnings.size,
+                        errors = outcome.coreReport.errors + supplementalWarnings)
                     _restoreReport.value = if (outcome.isSuccess || !report.isSuccess) report else report.copy(
                         isSuccess = false,
                         errorCount = report.errorCount + 1,
@@ -1528,7 +1535,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         refreshPreferencesAfterRestore()
                     }
                     _driveSyncStatus.value = if (outcome.isSuccess) {
-                        "Wiederherstellung erfolgreich! ${report.receiptsRestored} Belege sowie Miet- und Darlehensdaten geladen."
+                        if (report.errorCount > 0) "Belegdaten wiederhergestellt. Bitte Hinweise im Wiederherstellungsbericht beachten."
+                        else "Wiederherstellung erfolgreich! ${report.receiptsRestored} Belege sowie Miet- und Darlehensdaten geladen."
                     } else {
                         outcome.message
                     }

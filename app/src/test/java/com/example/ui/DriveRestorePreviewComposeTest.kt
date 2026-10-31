@@ -43,4 +43,18 @@ class DriveRestorePreviewComposeTest {
         ui.onNodeWithTag("confirm_restore_button").assertIsEnabled()
         ui.onNodeWithText("0 Einträge").assertExists()
     }
+    @Test fun verifiedReceiptDataWithUnavailableOriginalRequiresExplicitlyLabelledRestore() {
+        var confirmed = false
+        val preview = DriveRestorePreviewResult(success = true, inventory = DriveInventoryCheck(
+            hasDriveFolder = true, propertyFound = true, receiptCountInIndex = 1, metadataFileCount = 1,
+            unavailableOriginalCount = 1, canRestore = true,
+            issues = listOf("Originaldatei nicht erreichbar (HTTP 404). Dateiverweis bleibt erhalten.")))
+        ui.setContent { MaterialTheme { DriveRestoreConfirmationDialog(preview, false, { confirmed = true }, {}) } }
+        ui.onNodeWithTag("confirm_restore_button").assertIsEnabled()
+        ui.onNodeWithText("Belegdaten wiederherstellen").assertExists()
+        ui.onNodeWithText("1 Einträge").assertExists()
+        ui.onNodeWithTag("confirm_restore_button").performClick()
+        ui.runOnIdle { org.junit.Assert.assertTrue(confirmed) }
+    }
+
 }
