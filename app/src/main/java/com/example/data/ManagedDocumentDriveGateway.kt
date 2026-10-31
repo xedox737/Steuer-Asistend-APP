@@ -68,6 +68,9 @@ interface ManagedDocumentDriveGateway {
 }
 
 class GoogleManagedDocumentDriveGateway(private val context: Context) : ManagedDocumentDriveGateway {
+    override suspend fun findJsonFile(accessToken: String, folderId: String, entityType: String): com.example.api.DriveFile? =
+        GoogleDriveClient.findFileByAppProperty(accessToken, folderId, entityType, failOnError = true)
+
     override suspend fun getOrCreateFolder(
         accessToken: String,
         folderName: String,
