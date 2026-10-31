@@ -1,0 +1,18 @@
+{
+  "Evidence.zip": {
+    "bytes": 1636028,
+    "sha256": "79f5424f09b3e641dfcb56fd7e0ace650296878c454e6c5da5c11a616012973a"
+  },
+  "ABNAHME.md": {
+    "bytes": 7944,
+    "sha256": "7d581327a40eb6ee9ac1a307299fbb58249a5cbe11e8813fc340ece3ded20439"
+  },
+  "INSTALLATION.md": {
+    "bytes": 2758,
+    "sha256": "b0cb15f45724f63db6a7b4724a6ecf21ea4a584739b7b070234b73a51168f6f2"
+  },
+  "verify-evidence.py": {
+    "bytes": 2276,
+    "sha256": "1c0f7019768b9a363e71a483b9cae4b8ffd5926bc7386976236d422459904047"
+  }
+}
