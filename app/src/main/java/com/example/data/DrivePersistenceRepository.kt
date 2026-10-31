@@ -2131,7 +2131,7 @@ class DrivePersistenceRepository(
             var datevProfileFound = false
             var learnedRulesFound = false
 
-            val metaFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "propertyMetadata")
+            val metaFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "propertyMetadata", failOnError = true)
             if (metaFile != null) {
                 try {
                     val json = GoogleDriveClient.downloadJson(accessToken, metaFile.id)
@@ -2144,7 +2144,7 @@ class DrivePersistenceRepository(
                 }
             }
 
-            val unitsFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "units")
+            val unitsFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "units", failOnError = true)
             if (unitsFile != null) {
                 try {
                     val json = GoogleDriveClient.downloadJson(accessToken, unitsFile.id)
@@ -2156,13 +2156,13 @@ class DrivePersistenceRepository(
                 }
             }
 
-            val datevFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "datevProfiles")
+            val datevFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "datevProfiles", failOnError = true)
             if (datevFile != null) datevProfileFound = true
 
-            val rulesFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "aiLearnedRules")
+            val rulesFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "aiLearnedRules", failOnError = true)
             if (rulesFile != null) learnedRulesFound = true
 
-            val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex")
+            val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex", failOnError = true)
             var receiptCountInIndex = 0
             var metadataFileCount = 0
             var mainDocCount = 0
@@ -2174,7 +2174,7 @@ class DrivePersistenceRepository(
                     val jsonStr = GoogleDriveClient.downloadJson(accessToken, indexFile.id)
                     val root = JSONObject(jsonStr)
                     var entries = mutableListOf<ReceiptIndexEntry>()
-                    val array = root.optJSONArray("entries") ?: JSONArray()
+                    val array = root.getJSONArray("entries")
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
                         entries.add(
@@ -2258,6 +2258,7 @@ class DrivePersistenceRepository(
                             mainDocCount++
                         }
 
+                        issues.addAll(entryIssues.map { "Beleg ${entry.displayId ?: entry.internalId}: $it" })
                         previews.add(
                             ReceiptPreviewSummary(
                                 internalId = entry.internalId,
@@ -2277,6 +2278,8 @@ class DrivePersistenceRepository(
                 }
             }
 
+            // A readable property backup cannot authorize restore when receipt inventory failed.
+            val complete = issues.isEmpty() && previews.all { it.issues.isEmpty() }
             val inventory = DriveInventoryCheck(
                 hasDriveFolder = true,
                 receiptCountInIndex = receiptCountInIndex,
@@ -2291,12 +2294,13 @@ class DrivePersistenceRepository(
                 datevProfileFound = datevProfileFound,
                 learnedRulesFound = learnedRulesFound,
                 exportsCount = 0,
-                canRestore = receiptCountInIndex > 0 || propertyFound,
+                canRestore = complete && (receiptCountInIndex > 0 || propertyFound),
                 issues = issues
             )
 
             return DriveRestorePreviewResult(
-                success = true,
+                success = complete,
+                errorMessage = if (complete) null else "Drive-Bestand nicht vollständig prüfbar. Wiederherstellung und Synchronisierung wurden nicht gestartet.",
                 inventory = inventory,
                 receiptPreviews = previews
             )
@@ -2796,7 +2800,7 @@ class DrivePersistenceRepository(
             try {
                 val jsonStr = managedDocumentDriveGateway.downloadJson(accessToken, indexFile.id)
                 val root = JSONObject(jsonStr)
-                val array = root.optJSONArray("entries") ?: JSONArray()
+                val array = root.getJSONArray("entries")
                 var indexEntries = mutableListOf<ReceiptIndexEntry>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
@@ -2951,7 +2955,13 @@ class DrivePersistenceRepository(
         )
         saveRestoreJournal(journal)
 
-        val snapshot = buildRestoreSnapshot(accessToken, config)
+        val snapshot = try {
+            buildRestoreSnapshot(accessToken, config)
+        } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
+            RestoreSnapshot(errors = listOf(RestoreError("INVENTORY_READ_ERROR",
+                "Drive-Bestand konnte nicht vollständig geprüft werden. Es wurden keine Daten übernommen.", isBlocking = true)))
+        }
 
         journal = journal.copy(phase = FullRestorePhase.VALIDATION.name, snapshotReceiptCount = snapshot.receipts.size)
         saveRestoreJournal(journal)

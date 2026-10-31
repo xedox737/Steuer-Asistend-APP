@@ -6,6 +6,7 @@ import com.example.data.*
 import com.example.comparison.ComparisonDriveHttpFixture
 import com.example.ui.IsolatedAppDatabaseRule
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -367,6 +368,72 @@ class ProductionDriveNamespaceTest {
         val nested = JSONObject(json)
         nested.getJSONObject("testReferences").put("nested", JSONObject().put("metadataFileId", "missing-current-metadata"))
         assertFalse(GoogleDriveClient.uploadJson(token, config.systemFolderId, "nested.json", nested.toString()).success)
+    }
+
+    @Test fun unreadableCurrentIndexReferenceCannotAdvertiseZeroReceiptRestore() = runBlocking {
+        val config = initialize()
+        remote.put("damaged-index", "receipt-index.json", config.systemFolderId,
+            """{"entries":[{"internalId":"keep-receipt","metadataFileId":"missing-current-metadata","mainDriveFileId":"missing-current-original"}]}""", "receiptIndex")
+        val before = remote.inventory(config.rootFolderId)
+        remote.requests.clear()
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertFalse("An unverified index is not a successful inventory", preview.success)
+        assertFalse("Property metadata alone must not authorize incomplete restore", preview.inventory.canRestore)
+        assertTrue(preview.inventory.issues.any { it.contains("receipt-index.json") })
+        assertEquals(before, remote.inventory(config.rootFolderId))
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
+    @Test fun malformedIndexArrayCannotBeDeclaredEmptyOrRestored() = runBlocking {
+        val config = initialize()
+        remote.put("malformed-index", "receipt-index.json", config.systemFolderId,
+            """{"entries":"not-an-array"}""", "receiptIndex")
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertFalse(preview.success)
+        assertFalse(preview.inventory.canRestore)
+        val report = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+        assertFalse("Malformed backup must fail restore preflight", report.isSuccess)
+    }
+
+    @Test fun verifiedEmptyIndexAndPropertyBackupRemainRestorable() = runBlocking {
+        val config = initialize()
+        remote.put("empty-index", "receipt-index.json", config.systemFolderId, """{"entries":[]}""", "receiptIndex")
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertTrue(preview.toString(), preview.success)
+        assertTrue(preview.inventory.propertyFound)
+        assertEquals(0, preview.inventory.receiptCountInIndex)
+        assertTrue(preview.inventory.canRestore)
+    }
+
+    @Test fun failedIndexSearchCannotBeTreatedAsAbsentEmptyBackup() = runBlocking {
+        val config = initialize()
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.queryParameter("q").orEmpty().contains("receiptIndex"))
+                okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(503).message("Synthetic unavailable").body("{}".toResponseBody()).build()
+            else chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        val preview = drive.checkDriveInventoryForRestore(token, config)
+        assertFalse(preview.success)
+        assertFalse(preview.inventory.canRestore)
+        val before = repository.allReceipts.first()
+        val report = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+        assertFalse("A failed search must block backend restore as well", report.isSuccess)
+        assertEquals(before, repository.allReceipts.first())
+    }
+
+    @Test fun malformedIndexBlocksReplaceFullBeforeLocalDataChanges() = runBlocking {
+        val config = initialize()
+        val local = Receipt(aussteller = "Synthetic preserved original", datum = "2026-10-31", uhrzeit = "",
+            bruttobetrag = 1.0, hauptkategorie = "Test", unterkategorie = "Test", kontoNr = "4800", beschreibung = "",
+            internalId = "synthetic-preserve-local")
+        repository.insert(local)
+        val before = repository.allReceipts.first()
+        remote.put("malformed-index", "receipt-index.json", config.systemFolderId,
+            """{"entries":"not-an-array"}""", "receiptIndex")
+        val report = drive.executeFullDriveRestore(token, config, RestoreMode.REPLACE_FULL)
+        assertFalse(report.isSuccess)
+        assertEquals(before, repository.allReceipts.first())
     }
 
 }

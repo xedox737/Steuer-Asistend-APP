@@ -11716,6 +11716,8 @@ fun DriveRestoreConfirmationDialog(
 ) {
     val inv = preview?.inventory ?: com.example.data.DriveInventoryCheck()
 
+    val verified = preview?.success == true
+
     AlertDialog(
         onDismissRequest = { if (!isRestoring) onDismiss() },
         title = {
@@ -11724,7 +11726,7 @@ fun DriveRestoreConfirmationDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(Icons.Default.Cloud, contentDescription = null, tint = AccentBlue)
-                Text("Google Drive-Bestand gefunden", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
+                Text(if (verified) "Google Drive-Bestand gefunden" else "Drive-Bestand nicht vollständig geprüft", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
             }
         },
         text = {
@@ -11735,7 +11737,8 @@ fun DriveRestoreConfirmationDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    "Es wurde ein gesicherter App-Bestand in Ihrem Google Drive gefunden. Möchten Sie diesen vollständig in die lokale App wiederherstellen?",
+                    if (verified) "Es wurde ein gesicherter App-Bestand in Ihrem Google Drive gefunden. Möchten Sie diesen vollständig in die lokale App wiederherstellen?"
+                    else "Der Drive-Bestand konnte nicht vollständig geprüft werden. Die Beleganzahl ist unbekannt. Wiederherstellung ist gesperrt; bitte die angegebenen Dateiverweise prüfen und die Bestandsprüfung erneut starten.",
                     fontSize = 12.sp,
                     color = DarkNavy
                 )
@@ -11753,9 +11756,9 @@ fun DriveRestoreConfirmationDialog(
                         HorizontalDivider()
                         DetailRow("Immobilien-Objekt", if (inv.propertyFound) inv.propertyName else "Kein Name")
                         DetailRow("Wohneinheiten", "${inv.unitsCount} Einheiten")
-                        DetailRow("Belege im Index", "${inv.receiptCountInIndex} Einträge")
-                        DetailRow("Metadaten-Dateien", "${inv.metadataFileCount} JSON-Dateien")
-                        DetailRow("Hauptdokumente (PDF/Img)", "${inv.mainDocCount} Dateien")
+                        DetailRow("Belege im Index", if (verified) "${inv.receiptCountInIndex} Einträge" else "Nicht prüfbar")
+                        DetailRow("Metadaten-Dateien", if (verified) "${inv.metadataFileCount} JSON-Dateien" else "Nicht prüfbar")
+                        DetailRow("Hauptdokumente (PDF/Img)", if (verified) "${inv.mainDocCount} Dateien" else "Nicht prüfbar")
                         DetailRow("DATEV-Profil", if (inv.datevProfileFound) "Vorhanden" else "Fehlt")
                         DetailRow("KI-Lernregeln", if (inv.learnedRulesFound) "Vorhanden" else "Fehlt")
                         
@@ -11768,6 +11771,9 @@ fun DriveRestoreConfirmationDialog(
                     }
                 }
 
+                if (!verified && inv.issues.isEmpty()) {
+                    Text(preview?.errorMessage ?: "Bestandsprüfung ausstehend.", fontSize = 10.sp, color = CrimsonRed)
+                }
                 if (inv.issues.isNotEmpty()) {
                     Text("Hinweise / Anmerkungen:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = DarkNavy)
                     inv.issues.forEach { issue ->
@@ -11779,7 +11785,7 @@ fun DriveRestoreConfirmationDialog(
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                enabled = !isRestoring,
+                enabled = verified && inv.canRestore && !isRestoring,
                 colors = ButtonDefaults.buttonColors(containerColor = EmeraldGreen),
                 modifier = Modifier.testTag("confirm_restore_button")
             ) {

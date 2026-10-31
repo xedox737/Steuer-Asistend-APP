@@ -1377,8 +1377,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         if (isLocalEmpty) {
                             val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, result.config)
                             ensureDriveSession(session)
-                            check(preview.success) { "Drive-Bestandsprüfung fehlgeschlagen" }
-                            _restorePreview.value = preview
+                            if (publishIncompleteDriveInventory(preview)) return@launch
                             if (preview.inventory.canRestore) {
                                 _isRestoreRequired.value = true
                                 _driveSyncStatus.value = "Google Drive Bestand gefunden (${preview.inventory.receiptCountInIndex} Belege). Wiederherstellung angeboten."
@@ -1413,6 +1412,17 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         driveInitializationJob?.start()
     }
 
+    /** Publish a failed inventory without treating an unreadable backup as an empty one. */
+    private fun publishIncompleteDriveInventory(preview: com.example.data.DriveRestorePreviewResult): Boolean {
+        _restorePreview.value = preview
+        if (preview.success) return false
+        _isRestoreRequired.value = true
+        _driveSyncStatus.value = "Drive-Bestand nicht vollständig prüfbar. Wiederherstellung und Synchronisierung gesperrt."
+        _driveSyncError.value = "Gesicherte Dateien oder Dateiverweise konnten nicht vollständig gelesen werden. Bitte Bestand prüfen und erneut versuchen."
+        sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
+        return true
+    }
+
     fun checkForDriveRestore() {
         val email = _googleAccountEmail.value ?: return
         val session = driveSession.get()
@@ -1426,9 +1436,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 }
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, initResult.config)
-                    _restorePreview.value = preview
+                    ensureDriveSession(session)
+                    if (publishIncompleteDriveInventory(preview)) return@launch
+                    _driveSyncError.value = null
+                    sharedPrefs.edit().remove("drive_sync_error").apply()
+                    _isRestoreRequired.value = preview.inventory.canRestore
                     if (preview.inventory.canRestore) {
-                        _isRestoreRequired.value = true
                         _driveSyncStatus.value = "Google Drive Bestand gefunden (${preview.inventory.receiptCountInIndex} Belege). Wiederherstellung bereit."
                     } else {
                         _driveSyncStatus.value = "Kein wiederherstellbarer Bestand in Google Drive gefunden."
@@ -1462,6 +1475,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun performFullRestoreConfirmation(mode: com.example.data.RestoreMode = com.example.data.RestoreMode.MERGE) {
         val email = _googleAccountEmail.value ?: return
+        val preview = _restorePreview.value
+        if (preview != null && (!preview.success || !preview.inventory.canRestore)) {
+            _driveSyncStatus.value = "Wiederherstellung gesperrt. Bitte Google-Drive-Bestand erneut prüfen."
+            return
+        }
         val session = driveSession.get()
         _isRestoring.value = true
         _driveSyncStatus.value = "Wiederherstellung aus Google Drive läuft..."
@@ -1921,9 +1939,6 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 val config = when (initResult) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> {
                         _driveSystemFolderStatus.value = "Gefunden"
-                        val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                        _lastStammdatenBackupTime.value = nowStr
-                        sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
                         initResult.config
                     }
                     is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> {
@@ -1932,9 +1947,6 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                             _wohneinheitenStatus.value = getWohneinheitenFromPrefs()
                             loadLearnedRules()
                         }
-                        val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                        _lastStammdatenBackupTime.value = nowStr
-                        sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
                         initResult.config
                     }
                     is com.example.data.DriveInitializationResult.Failure -> {
@@ -1948,9 +1960,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 // 2. Upload CSV Ledger
                 val list = receipts.value
                 val isLocalEmpty = list.isEmpty()
-                if (isLocalEmpty && initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
+                if ((isLocalEmpty || _restorePreview.value?.success == false) &&
+                    initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
                     val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, initResult.config)
-                    if (preview.inventory.canRestore) {
+                    ensureDriveSession(session)
+                    if (publishIncompleteDriveInventory(preview)) return@launch
+                    if (isLocalEmpty && preview.inventory.canRestore) {
                         _restorePreview.value = preview
                         _isRestoreRequired.value = true
                         _isDriveSyncing.value = false
@@ -1990,7 +2005,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     successCount == list.size && documentSuccessCount == standaloneDocuments.size) {
                     _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten, $successCount Belege und $documentSuccessCount Dokumente synchronisiert."
                     _driveSyncError.value = null
-                    sharedPrefs.edit().remove("drive_sync_error").apply()
+                    val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                    _lastStammdatenBackupTime.value = nowStr
+                    sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
                 } else if (csvSuccess) {
                     _driveSyncStatus.value = "Teilweise erfolgreich: $successCount/${list.size} Belege und $documentSuccessCount/${standaloneDocuments.size} Dokumente synchronisiert."
                     _driveSyncError.value = "Sicherung unvollständig. Nicht alle Daten oder Dateien wurden gesichert."

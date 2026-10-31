@@ -428,6 +428,70 @@ class DriveConnectionRegressionTest {
         } finally { retry.cancel() }
     }
 
+    private fun addUnreadableIndex() {
+        val system = remote.entries.values.single { it.name == "_BelegApp-Daten" }
+        remote.put("damaged-index", "receipt-index.json", system.id,
+            """{"entries":[{"internalId":"keep-current","metadataFileId":"missing-metadata","mainDriveFileId":"missing-original"}]}""", "receiptIndex")
+    }
+
+    @Test fun incompleteInventoryRetainsConnectionAndFoundFolderWithoutStampingBackup() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        addUnreadableIndex()
+        prefs.edit().putString("last_stammdaten_backup_time", "verified-previous").commit()
+        vm.initializeDrivePersistence(); awaitFailure(vm)
+        assertAccountRetained(vm)
+        assertEquals("Gefunden", vm.driveSystemFolderStatus.value)
+        assertFalse(vm.restorePreview.value!!.success)
+        assertTrue(vm.isRestoreRequired.value)
+        assertFalse(vm.driveSyncStatus.value.orEmpty().contains("Initialisiere"))
+        assertEquals("verified-previous", prefs.getString("last_stammdaten_backup_time", null))
+    }
+
+    @Test fun emptyLocalSyncCannotOverwriteUnreadableRemoteInventory() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        addUnreadableIndex()
+        prefs.edit().putString("last_stammdaten_backup_time", "verified-previous").commit()
+        val before = remote.entries.mapValues { it.value.bytes.toList() }
+        remote.requests.clear()
+        vm.syncAllToDrive()
+        runBlocking { withTimeout(15_000) { vm.isDriveSyncing.first { !it } } }
+        assertAccountRetained(vm)
+        assertFalse(vm.restorePreview.value!!.success)
+        assertFalse(vm.driveSyncError.value.isNullOrBlank())
+        assertEquals(before, remote.entries.mapValues { it.value.bytes.toList() })
+        assertTrue(remote.requests.all { it.method == "GET" })
+        assertEquals("verified-previous", prefs.getString("last_stammdaten_backup_time", null))
+    }
+
+    @Test fun directRestoreCannotStartFromKnownIncompletePreview() {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        addUnreadableIndex(); vm.checkForDriveRestore()
+        runBlocking { withTimeout(15_000) { vm.restorePreview.first { it != null && !it.success } } }
+        remote.requests.clear()
+        vm.performFullRestoreConfirmation(com.example.data.RestoreMode.REPLACE_FULL)
+        assertFalse(vm.isRestoring.value)
+        assertTrue("No restore I/O after rejected preview", remote.requests.isEmpty())
+    }
+
+    @Test fun knownIncompleteInventoryAlsoBlocksSyncOfLocalReceipts() = runBlocking {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        val db = com.example.data.AppDatabase.getDatabase(app, CoroutineScope(Dispatchers.IO))
+        db.receiptDao().insertReceipt(com.example.data.Receipt(aussteller = "Synthetic", datum = "2026-10-31", uhrzeit = "",
+            bruttobetrag = 1.0, hauptkategorie = "Test", unterkategorie = "Test", kontoNr = "4800", beschreibung = "",
+            internalId = "synthetic-local-original"))
+        withTimeout(15_000) { vm.receipts.first { it.isNotEmpty() } }
+        addUnreadableIndex(); vm.checkForDriveRestore()
+        withTimeout(15_000) { vm.restorePreview.first { it != null && !it.success } }
+        remote.requests.clear()
+        val before = remote.entries.mapValues { it.value.bytes.toList() }
+        vm.syncAllToDrive()
+        withTimeout(15_000) { vm.isDriveSyncing.first { !it } }
+        assertAccountRetained(vm)
+        assertEquals(before, remote.entries.mapValues { it.value.bytes.toList() })
+        assertTrue(remote.requests.all { it.method == "GET" })
+        assertEquals(1, db.receiptDao().getAllReceipts().first().size)
+    }
+
     @Implements(GoogleAuthUtil::class)
     class AuthShadow {
         companion object {
