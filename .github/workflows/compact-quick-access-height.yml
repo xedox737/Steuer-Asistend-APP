@@ -186,6 +186,9 @@ jobs:
             Direkt aus dem bereits geprüften UI-Build veröffentlicht.
             Commit `${{ steps.release_meta.outputs.sha }}`.
             GitHub-Actions-Lauf `${{ github.run_id }}`.
+            Dauerhafte Zertifikat-SHA1: `18:76:FC:D5:F5:D3:65:26:FC:44:F3:BA:37:AA:6C:AC:AB:FB:D9:8D`.
+            Neuinstallation fuer alte Versionen 102/103 erforderlich; kein direktes Update.
+            Bestehende Nutzer mit Daten duerfen nicht ohne gepruefte Sicherung deinstallieren.
           prerelease: true
           make_latest: false
           files: |

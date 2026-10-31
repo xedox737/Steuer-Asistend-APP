@@ -32,7 +32,7 @@ class ProductSigningPreparationTests(unittest.TestCase):
                             '-dname', 'CN=Synthetic Test Only', '-keyalg', 'RSA', '-keysize', '2048',
                             '-validity', '1'], check=True, capture_output=True)
             env = dict(os.environ, PRODUCTION_DEBUG_KEYSTORE_BASE64=base64.b64encode((root/'synthetic.jks').read_bytes()).decode(),
-                       PRODUCTION_DEBUG_SHA1=preparation.INSTALLED_PRODUCT_SHA1)
+                       PRODUCTION_DEBUG_SHA1=preparation.APPROVED_PRODUCT_SHA1)
             result = subprocess.run([sys.executable, str(SCRIPTS/'prepare-product-signing.py')],
                                     env=env, cwd=root, capture_output=True, text=True)
             self.assertNotEqual(0, result.returncode)
