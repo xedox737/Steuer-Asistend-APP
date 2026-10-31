@@ -15,22 +15,31 @@ class SigningCertificateTests(unittest.TestCase):
                     signingSha256="ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d")
 
     def test_installed_version_103_reference_matches_device_extracted_apk(self):
-        self.assertEqual("cf438d2ed21d0fd5f8b0ab81bf518a5178a77385", parser.INSTALLED_PRODUCT_SHA1)
+        self.assertEqual("cf438d2ed21d0fd5f8b0ab81bf518a5178a77385", parser.LEGACY_VERSION_103_SHA1)
         with self.assertRaises(ValueError):
-            parser.require_product_update_identity(dict(package=parser.PRODUCT_PACKAGE,
+            parser.require_product_signing_identity(dict(package=parser.PRODUCT_PACKAGE,
                 signatureVerified=True, signingSha1="ea42886d5b6eaffbad492686d965b74762a97649"))
 
-    def test_exact_installed_product_certificate_is_required_for_updates(self):
-        parser.require_product_update_identity(dict(package=parser.PRODUCT_PACKAGE,
-            signatureVerified=True, signingSha1=parser.INSTALLED_PRODUCT_SHA1.upper()))
+    def test_user_owned_stable_certificate_is_accepted_for_fresh_install(self):
+        parser.require_product_signing_identity(dict(package=parser.PRODUCT_PACKAGE,
+            signatureVerified=True, signingSha1="1876fcd5f5d36526fc44f3ba37aa6cacabfbd98d"))
+
+    def test_legacy103_certificate_is_not_accepted_as_new_stable_release(self):
+        with self.assertRaises(ValueError):
+            parser.require_product_signing_identity(dict(package=parser.PRODUCT_PACKAGE,
+                signatureVerified=True, signingSha1="cf438d2ed21d0fd5f8b0ab81bf518a5178a77385"))
+
+    def test_exact_approved_product_certificate_is_required_for_future_updates(self):
+        parser.require_product_signing_identity(dict(package=parser.PRODUCT_PACKAGE,
+            signatureVerified=True, signingSha1=parser.APPROVED_PRODUCT_SHA1.upper()))
 
     def test_ci_test_other_and_unverified_apks_cannot_be_product_updates(self):
-        valid = dict(package=parser.PRODUCT_PACKAGE, signatureVerified=True, signingSha1=parser.INSTALLED_PRODUCT_SHA1)
+        valid = dict(package=parser.PRODUCT_PACKAGE, signatureVerified=True, signingSha1=parser.APPROVED_PRODUCT_SHA1)
         for change in [dict(package=parser.PRODUCT_PACKAGE+".phase11a"), dict(signatureVerified=False),
                        dict(signatureVerified="true"), dict(signingSha1=self.expected["signingSha1"]),
-                       dict(signingSha1=None), dict(signingSha1=""), dict(signingSha1=" " + parser.INSTALLED_PRODUCT_SHA1)]:
+                       dict(signingSha1=None), dict(signingSha1=""), dict(signingSha1=" " + parser.APPROVED_PRODUCT_SHA1)]:
             with self.subTest(change=change), self.assertRaises(ValueError):
-                parser.require_product_update_identity(valid | change)
+                parser.require_product_signing_identity(valid | change)
 
     def test_verified_certificate_is_independent_of_human_digest_labels(self):
         self.assertEqual(self.expected, parser.certificate_fingerprints("New SDK signer heading, no SHA1 text\n" + self.pem))

@@ -46,7 +46,7 @@ jobs:
           test -f app/build.gradle.kts
           gradle --version
 
-      # A transient keystore is permitted for CI checks, never for a downloadable product update.
+      # A transient keystore is permitted for CI checks, never for an installable product release.
       # Configure PRODUCTION_DEBUG_KEYSTORE_BASE64 with the persistent debug.keystore bytes
       # (store/key password: android; alias: androiddebugkey).
       - name: Prepare product debug signing identity
@@ -55,16 +55,7 @@ jobs:
           PRODUCTION_DEBUG_SHA1: ${{ vars.PRODUCTION_DEBUG_SHA1 }}
         run: |
           if [ -n "$PRODUCTION_DEBUG_KEYSTORE_BASE64" ] && [ -n "$PRODUCTION_DEBUG_SHA1" ]; then
-            printf '%s' "$PRODUCTION_DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-            actual_sha1="$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | sed -n 's/^[[:space:]]*SHA1: //p' | head -n 1)"
-            expected_sha1="$(printf '%s' "$PRODUCTION_DEBUG_SHA1" | tr '[:lower:]' '[:upper:]')"
-            # Existing installed product version 103 must remain upgradeable.
-            # An OAuth-approved but DIFFERENT signing identity cannot update that installation.
-            installed_product_sha1="CF:43:8D:2E:D2:1D:0F:D5:F8:B0:AB:81:BF:51:8A:51:78:A7:73:85"
-            if [ -z "$actual_sha1" ] || [ "$actual_sha1" != "$expected_sha1" ] || [ "$actual_sha1" != "$installed_product_sha1" ]; then
-              echo "::error::Product APK signing identity differs from approved OAuth SHA-1 or installed version 103. Refusing incompatible update."
-              exit 1
-            fi
+            python3 .github/scripts/prepare-product-signing.py
             echo "STABLE_PRODUCT_DEBUG_SIGNING=true" >> "$GITHUB_ENV"
           else
             echo "::warning::Missing persistent keystore or approved SHA-1: CI-only APK. Publishing is disabled."
@@ -143,7 +134,7 @@ jobs:
       - name: Verify actual APK identity and provider authorities
         run: python3 .github/scripts/e11a-inspect-apk.py app/build/outputs/apk/debug/app-debug.apk --package com.aistudio.steuerassistent.vnhqkp
 
-      - name: Verify built product update certificate
+      - name: Verify built persistent product certificate
         if: env.STABLE_PRODUCT_DEBUG_SIGNING == 'true'
         run: python3 .github/scripts/verify-product-update-identity.py
 
@@ -191,35 +182,8 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      - name: Prepare traceable debug release
-        if: success() && env.STABLE_PRODUCT_DEBUG_SIGNING == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          cp app/build/outputs/apk/debug/app-debug.apk "Steuer-Assistent-debug-${SHORT_SHA}.apk"
-          {
-            echo "commit=${GITHUB_SHA}"
-            echo "short_commit=${SHORT_SHA}"
-            echo "run_id=${GITHUB_RUN_ID}"
-            echo "run_number=${GITHUB_RUN_NUMBER}"
-            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          } > build-info.txt
-
-      - name: Publish current debug APK
-        if: success() && env.STABLE_PRODUCT_DEBUG_SIGNING == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: debug-${{ github.sha }}
-          target_commitish: ${{ github.sha }}
-          name: Steuer-Assistent Testversion ${{ github.run_number }}
-          body: |
-            Automatisch erzeugte Testversion aus Commit `${{ github.sha }}`.
-            GitHub-Actions-Lauf: `${{ github.run_id }}`.
-          prerelease: true
-          make_latest: false
-          files: |
-            Steuer-Assistent-debug-*.apk
-            build-info.txt
-          fail_on_unmatched_files: true
+      # The sole automatic publisher runs only after BOTH CI jobs succeed.
+      # Signed app-debug artifacts remain available; no parallel release can overwrite them.
 
   android-emulator-e2e:
     needs: verify

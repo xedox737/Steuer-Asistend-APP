@@ -1,17 +1,17 @@
-"""Install only the persistent keystore capable of updating original version 103."""
+"""Install only the approved persistent keystore; the new baseline requires a fresh install."""
 import base64
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-from apk_signing import certificate_fingerprints, require_product_update_identity, PRODUCT_PACKAGE, INSTALLED_PRODUCT_SHA1
+from apk_signing import certificate_fingerprints, require_product_signing_identity, PRODUCT_PACKAGE, APPROVED_PRODUCT_SHA1
 
 
 def prepare():
     encoded = os.environ.get('PRODUCTION_DEBUG_KEYSTORE_BASE64', '')
     approved = os.environ.get('PRODUCTION_DEBUG_SHA1', '').replace(':', '').lower()
-    if not encoded or approved != INSTALLED_PRODUCT_SHA1:
+    if not encoded or approved != APPROVED_PRODUCT_SHA1:
         raise ValueError('Persistent original signing key and matching approved SHA1 required')
     data = base64.b64decode(''.join(encoded.split()), validate=True)
     os.umask(0o077)
@@ -23,11 +23,11 @@ def prepare():
                                  '-storepass', 'android', '-alias', 'androiddebugkey'],
                                 capture_output=True, text=True, check=True)
         fingerprints = certificate_fingerprints(result.stdout)
-        require_product_update_identity(dict(package=PRODUCT_PACKAGE, signatureVerified=True,
+        require_product_signing_identity(dict(package=PRODUCT_PACKAGE, signatureVerified=True,
                                              signingSha1=fingerprints['signingSha1']))
         shutil.copyfile(candidate, 'debug.keystore')
         Path('debug.keystore').chmod(0o600)
-    print('Persistent signing certificate matches installed original version 103')
+    print('Persistent signing certificate verified; new baseline requires fresh install for version 103')
 
 
 if __name__ == '__main__':
