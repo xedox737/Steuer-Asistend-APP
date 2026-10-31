@@ -1229,6 +1229,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun runRealDriveTest() {
+        if (_driveTestState.value?.isRunning == true) return
+        val session = driveSession.get()
         val email = _googleAccountEmail.value.takeIf { !it.isNullOrBlank() } ?: "Nicht angemeldet"
         _driveTestState.value = DriveTestState(
             isRunning = true,
@@ -1258,10 +1260,22 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
+                drivePersistenceRepository.retireLegacyDriveDiagnostic()
                 val token = getValidToken(email)
+                ensureDriveSession(session)
                 val apiResult = GoogleDriveClient.runDriveTest(token)
                 val nowStr = dateFormat.format(Date())
 
+                ensureDriveSession(session)
+                if (!(apiResult.uploadSuccess && apiResult.downloadSuccess && apiResult.contentIdentical)) {
+                    _driveTestState.value = DriveTestState(isRunning = false, googleAccount = email,
+                        mainFolderId = apiResult.mainFolderId, systemFolderId = apiResult.systemFolderId,
+                        testFileId = apiResult.testFileId, uploadSuccess = apiResult.uploadSuccess,
+                        downloadSuccess = apiResult.downloadSuccess, contentIdentical = apiResult.contentIdentical,
+                        isSuccess = false, affectedAction = apiResult.affectedAction, errorMessage = apiResult.errorMessage,
+                        httpStatusCode = apiResult.httpStatusCode, isReAuthRequired = apiResult.isReAuthRequired, testRunTime = nowStr)
+                    return@launch
+                }
                 var receiptTestRes = com.example.data.DriveReceiptTestResult(success = false, errorMessage = "Drive nicht initialisiert")
                 val initResult = drivePersistenceRepository.initializeDriveStorage(token)
                 if (initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
@@ -1270,6 +1284,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     receiptTestRes = drivePersistenceRepository.testDriveReceiptStorage(token, initResult.config)
                 }
 
+                ensureDriveSession(session)
                 val initializationFailure = initResult as? com.example.data.DriveInitializationResult.Failure
                 val basicSuccess = apiResult.uploadSuccess && apiResult.downloadSuccess && apiResult.contentIdentical && apiResult.testFileId.isNotBlank()
                 val isSuccess = basicSuccess && receiptTestRes.success
@@ -1290,7 +1305,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     testReceiptMetadataPath = receiptTestRes.metadataPath,
                     isSuccess = isSuccess,
                     affectedAction = if (!basicSuccess) apiResult.affectedAction else if (initializationFailure != null) "Drive-Initialisierung"
-                        else if (!receiptTestRes.success) "Beleg-Speicherungs-Test" else null,
+                        else if (!receiptTestRes.success) "Drive-Schreib-/Lesetest" else null,
                     errorMessage = apiResult.errorMessage ?: initializationFailure?.error ?: receiptTestRes.errorMessage,
                     httpStatusCode = apiResult.httpStatusCode
                         ?: (initializationFailure?.cause as? com.example.api.DriveAccessFailure)?.httpStatus,
@@ -1373,6 +1388,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     }
                     is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> {
                         _driveSystemFolderStatus.value = "Gefunden"
+                        drivePersistenceRepository.retireLegacyDriveDiagnostic()
                         val isLocalEmpty = repository.allReceipts.first().isEmpty()
                         if (isLocalEmpty) {
                             val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, result.config)
@@ -1965,8 +1981,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
-                // 2. Upload CSV Ledger
-                val list = receipts.value
+                // A synthetic legacy test row must never make an empty profile look restored.
+                drivePersistenceRepository.retireLegacyDriveDiagnostic()
+                val list = repository.allReceipts.first()
                 val isLocalEmpty = list.isEmpty()
                 if ((isLocalEmpty || _restorePreview.value?.success == false) &&
                     initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {

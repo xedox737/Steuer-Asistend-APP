@@ -29,9 +29,10 @@ interface ManagedDocumentDriveGateway {
         else GoogleDriveClient.uploadJson(accessToken, folderId, filename, json, appProperties)
 
     suspend fun tombstoneJsonFiles(accessToken: String, systemFolderId: String): List<String> {
-        val folder = GoogleDriveClient.getOrCreateFolder(accessToken, "deletions", systemFolderId) ?: return emptyList()
-        return GoogleDriveClient.searchFiles(accessToken, "'$folder' in parents and mimeType = 'application/json' and trashed = false")
-            .mapNotNull { runCatching { GoogleDriveClient.downloadJson(accessToken, it.id) }.getOrNull() }
+        val folder = GoogleDriveClient.getOrCreateFolder(accessToken, "deletions", systemFolderId)
+            ?: throw java.io.IOException("Löschmarkierungen konnten nicht geprüft werden.")
+        return GoogleDriveClient.listJsonFilesForRestore(accessToken, folder)
+            .map { GoogleDriveClient.downloadJson(accessToken, it.id) }
     }
 
     suspend fun getOrCreateFolder(

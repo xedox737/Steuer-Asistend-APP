@@ -7607,11 +7607,11 @@ fun GoogleDriveDiagnoseCard(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Führe echten Drive-Test aus...", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Prüfe Drive mit Diagnosedateien...", color = Color.White, fontWeight = FontWeight.Bold)
                     } else {
                         Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Echten Drive-Test starten", fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Drive-Schreib-/Lesetest starten", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
 
@@ -11769,6 +11769,9 @@ fun DriveRestoreConfirmationDialog(
                         }
                         if (inv.duplicateCount > 0) {
                             Text("⚠️ Duplikate/Warnungen: ${inv.duplicateCount}", fontSize = 11.sp, color = CrimsonRed, fontWeight = FontWeight.Bold)
+                        }
+                        if (inv.temporaryReadErrorCount > 0) {
+                            Text("Verbindungsunterbrechungen beim Lesen: ${inv.temporaryReadErrorCount}", fontSize = 11.sp, color = CrimsonRed)
                         }
                         if (inv.missingFileCount > 0) {
                             Text("⚠️ Unvollständige Dateien: ${inv.missingFileCount}", fontSize = 11.sp, color = CrimsonRed)

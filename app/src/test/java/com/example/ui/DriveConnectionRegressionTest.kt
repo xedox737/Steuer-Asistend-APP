@@ -82,6 +82,10 @@ class DriveConnectionRegressionTest {
         withTimeout(15_000) {
             vm.driveSystemFolderStatus.first { it == "Gefunden" }
             while (vm.driveSyncStatus.value.orEmpty().contains("Initialisiere")) delay(10)
+            // A published success status precedes the producer coroutine's completion.
+            // Tests that mutate the fake cloud afterward must await that producer as well.
+            val field = ReceiptViewModel::class.java.getDeclaredField("driveInitializationJob").apply { isAccessible = true }
+            (field.get(vm) as? Job)?.join()
         }
     }
     private fun assertAccountRetained(vm: ReceiptViewModel) {
@@ -523,6 +527,27 @@ class DriveConnectionRegressionTest {
         assertEquals("vm-missing-original", db.managedDocumentDao().getById("vm-original")!!.driveFileId)
         assertEquals(1, db.receiptDao().getAllReceiptsList().size)
         assertEquals(before, remote.entries.filterKeys { it in before }.mapValues { it.value.bytes.toList() })
+        assertAccountRetained(vm)
+    }
+
+    @Test fun legacyProbeCannotMakeAnEmptyBusinessProfileOverwriteCloudBackup() = runBlocking {
+        val vm = model(); vm.connectDrive("synthetic@example.invalid"); awaitSuccess(vm)
+        val db = com.example.data.AppDatabase.getDatabase(app, CoroutineScope(Dispatchers.IO))
+        db.receiptDao().insertReceipt(com.example.data.Receipt(id = 999999,
+            aussteller = "Test Baustoffhandel GmbH", datum = "2026-01-01", uhrzeit = "12:00",
+            bruttobetrag = 119.0, hauptkategorie = "Test", unterkategorie = "Test", kontoNr = "4800",
+            beschreibung = "E2E Testbeleg für Google Drive Speichertest", internalId = "synthetic-old-probe",
+            displayId = "TEST-BLG-2026-000001"))
+        withTimeout(15_000) { vm.receipts.first { it.isNotEmpty() } }
+        addUnreadableIndex()
+        val before = remote.entries.mapValues { it.value.bytes.toList() }
+        remote.requests.clear()
+        vm.syncAllToDrive()
+        withTimeout(15_000) { vm.isDriveSyncing.first { !it } }
+        assertEquals(before, remote.entries.mapValues { it.value.bytes.toList() })
+        assertTrue(remote.requests.all { it.method == "GET" })
+        assertEquals("DELETED", db.receiptDao().getReceiptById(999999)!!.deletionStatus)
+        assertEquals(1, db.receiptDao().getAllReceiptsIncludingDeletedList().size)
         assertAccountRetained(vm)
     }
 

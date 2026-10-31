@@ -57,4 +57,14 @@ class DriveRestorePreviewComposeTest {
         ui.runOnIdle { org.junit.Assert.assertTrue(confirmed) }
     }
 
+    @Test fun temporaryReadInterruptionIsNotLabelledAsMissingFile() {
+        val preview = DriveRestorePreviewResult(success = false, inventory = DriveInventoryCheck(
+            hasDriveFolder = true, temporaryReadErrorCount = 1,
+            issues = listOf("Metadatenübertragung vorübergehend unterbrochen.")))
+        ui.setContent { MaterialTheme { DriveRestoreConfirmationDialog(preview, false, {}, {}) } }
+        ui.onNodeWithTag("confirm_restore_button").assertIsNotEnabled()
+        ui.onNodeWithText("Verbindungsunterbrechungen beim Lesen: 1").assertExists()
+        ui.onNodeWithText("Unvollständige Dateien", substring = true).assertDoesNotExist()
+    }
+
 }
