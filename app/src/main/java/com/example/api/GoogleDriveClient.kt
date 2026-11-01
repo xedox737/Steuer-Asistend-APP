@@ -24,7 +24,11 @@ import java.util.ArrayDeque
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.withLock
 
@@ -34,9 +38,18 @@ data class DriveRestoreJsonRead(val json: String, val unavailableOriginalIds: Se
 object GoogleDriveClient {
     private const val TAG = "GoogleDriveClient"
     // Private transport; QA replaces it reflectively with an in-memory HTTP interceptor.
-    private var client = OkHttpClient()
+    private var client = OkHttpClient.Builder().retryOnConnectionFailure(false)
+        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS).build()
     private fun executeDriveRequest(request: Request): okhttp3.Response {
-        val response = DriveEnvironment.execute(request) { client.newCall(it).execute() }
+        if (request.method != "GET") {
+            val token = request.header("Authorization")?.removePrefix("Bearer ").orEmpty()
+            val id = request.url.encodedPath.substringAfter("/drive/v3/files/", "")
+            DriveEnvironment.currentReadProof(token)?.let { it.syncJson.remove(id); it.syncOriginals.remove(id) }
+        }
+        val response = DriveEnvironment.execute(request) { sendRawDriveRequest(it) }
         if (response.code == 401) {
             response.close()
             throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 401)
@@ -44,14 +57,153 @@ object GoogleDriveClient {
         return response
     }
 
+    private val readRetryBudget = ThreadLocal<MutableMap<String, Int>?>()
+    private fun sendOnce(request: Request): okhttp3.Response = DriveSyncTrace.raw(request) { client.newCall(it).execute() }.also { response ->
+        if (request.method == "GET" && request.url.queryParameter("alt") != "media" && response.isSuccessful) {
+            val id = request.url.encodedPath.removePrefix("/drive/v3/files/")
+            if (id.matches(Regex("[A-Za-z0-9_-]+"))) {
+                val token = request.header("Authorization")?.removePrefix("Bearer ").orEmpty()
+                response.header("ETag")?.let { DriveEnvironment.currentReadProof(token)?.metadataEtags?.put(id, it) }
+            }
+        }
+    }
+    private val creationContext = ThreadLocal<Context?>()
+    internal suspend fun <T> withCreateRecovery(context: Context, block: suspend () -> T): T =
+        withContext(creationContext.asContextElement(context.applicationContext)) { block() }
+
+    private data class CreatePlan(val id: String, val existing: DriveOriginalFingerprint?)
+    /** Persist a Google-allocated ID before POST. An unknown POST result can only reuse that ID,
+     * even if files.list has not yet caught up. No filename-based duplicate guess is required. */
+    private fun prepareCreation(token: String, metadata: JSONObject, bytes: ByteArray): CreatePlan? {
+        val context = creationContext.get() ?: return null
+        val account = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+            .getString("connected_email", null)?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotBlank)
+            ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        val scope = com.example.data.StableDocumentIdentity.sha256("${DriveEnvironment.appIdentifier}\u0000$account".toByteArray())
+        val properties = metadata.optJSONObject("appProperties") ?: JSONObject()
+        val identity = JSONObject(properties.toString()).apply { remove("contentSha256"); remove("displayId"); remove("schemaVersion") }
+        // A stable receipt/document identity survives a local rename or folder reassignment.
+        val stableAsset = properties.optString("receiptInternalId").isNotBlank() || properties.optString("documentId").isNotBlank()
+        val key = com.example.data.StableDocumentIdentity.sha256((canonicalDriveJson(identity) +
+            if (stableAsset) "" else "\u0000${metadata.optJSONArray("parents")}\u0000${metadata.getString("name")}").toByteArray())
+        val store = com.example.data.DrivePendingWrites(context)
+        val pending = store.creation(scope, key, com.example.data.StableDocumentIdentity.sha256(bytes)) {
+            val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/generateIds?count=1&space=drive&type=files")
+                .header("Authorization", "Bearer $token").build()
+            executeDriveRequest(request).use { response ->
+                if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
+                val ids = JSONObject(response.body?.string().orEmpty()).getJSONArray("ids")
+                require(ids.length() == 1)
+                ids.getString(0)
+            }
+        }
+        metadata.put("id", pending.fileId)
+        val owned = try { DriveEnvironment.readOwnedMetadata(token, pending.fileId, ::sendRawDriveRequest) }
+        catch (missing: DriveAccessFailure) {
+            if (missing.httpStatus == 404) return CreatePlan(pending.fileId, null)
+            throw missing
+        }
+        val actual = owned.json
+        val parents = actual.getJSONArray("parents")
+        val expectedParents = metadata.optJSONArray("parents")
+        val isRoot = expectedParents == null
+        if ((!isRoot && canonicalDriveJson(parents) != canonicalDriveJson(expectedParents!!)) ||
+            actual.getString("name") != metadata.getString("name")) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+        val folder = metadata.optString("mimeType") == "application/vnd.google-apps.folder"
+        if (folder && actual.getString("mimeType") != metadata.getString("mimeType")) throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_MIME)
+        var hash = actual.optString("sha256Checksum")
+        if (!folder && hash.isBlank()) {
+            val bytesOnDrive = downloadFileBytesChecked(token, pending.fileId)
+            val after = fetchOriginalFingerprintChecked(token, pending.fileId)
+            if (actual.optString("version").isBlank() || actual.optString("version") != after.version)
+                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+            hash = com.example.data.StableDocumentIdentity.sha256(bytesOnDrive)
+        }
+        if (!folder && hash !in pending.hashes) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+        return CreatePlan(pending.fileId, DriveOriginalFingerprint(pending.fileId, actual.optLong("size"), hash,
+            actual.optString("version"), owned.etag))
+    }
+    private fun sendRawDriveRequest(request: Request): okhttp3.Response {
+        if (request.method != "GET") return sendOnce(request)
+        val budgets = readRetryBudget.get() ?: mutableMapOf()
+        val key = request.url.toString()
+        while (true) {
+            DriveSyncTrace.ensureActive()
+            val response = try { sendOnce(request) }
+            catch (error: IOException) {
+                val retry = budgets[key] ?: 0
+                val pause = if (com.example.data.DriveSyncFailurePolicy.retryableRead(error))
+                    com.example.data.DriveSyncFailurePolicy.readRetryDelayMillis(retry) else null
+                if (pause == null) throw DriveAccessFailure(if (error is java.net.SocketTimeoutException)
+                    DriveAccessFailure.Reason.TIMEOUT else DriveAccessFailure.Reason.NETWORK).apply { initCause(error) }
+                budgets[key] = retry + 1
+                waitForReadRetry(pause)
+                continue
+            }
+            if (!com.example.data.DriveSyncFailurePolicy.retryableReadStatus(response.code)) return response
+            val retry = budgets[key] ?: 0
+            val pause = com.example.data.DriveSyncFailurePolicy.readRetryDelayMillis(retry, response.header("Retry-After"))
+                ?: return response
+            response.close()
+            budgets[key] = retry + 1
+            waitForReadRetry(pause)
+        }
+    }
+
+    // This transport runs on Dispatchers.IO. Short slices observe cancellation before another GET.
+    private fun waitForReadRetry(millis: Long) {
+        DriveSyncTrace.retry()
+        val deadline = System.nanoTime() + millis * 1_000_000
+        while (true) {
+            DriveSyncTrace.ensureActive()
+            val remaining = (deadline - System.nanoTime()) / 1_000_000
+            if (remaining <= 0) return
+            Thread.sleep(minOf(remaining, 50))
+        }
+    }
+
     internal fun validateDataReferences(accessToken: String, json: String) =
-        DriveEnvironment.validateJsonReferences(json, accessToken) { client.newCall(it).execute() }
+        DriveEnvironment.validateJsonReferences(json, accessToken) { sendRawDriveRequest(it) }
 
     fun validateStorageConfig(accessToken: String, config: com.example.data.DriveAppConfig, rootId: String? = null, systemId: String? = null) =
-        DriveEnvironment.validateConfig(config, accessToken, rootId, systemId) { client.newCall(it).execute() }
+        DriveEnvironment.validateConfig(config, accessToken, rootId, systemId) { sendRawDriveRequest(it) }
 
     internal suspend fun <T> withReadProof(token: String, block: suspend () -> T): T =
-        DriveEnvironment.withReadProof(token, { client.newCall(it).execute() }, block)
+        DriveEnvironment.withReadProof(token, { sendRawDriveRequest(it) }, block)
+
+    internal suspend fun <T> withReadProofIfNeeded(token: String, block: suspend () -> T): T =
+        if (DriveEnvironment.currentReadProof(token) != null) block() else withReadProof(token, block)
+
+    /** Content snapshots are data, never authority for a mutation. Every write stays freshly fenced.
+     * Verify the final ETags before a complete-backup result can leave this scope. */
+    internal suspend fun <T> withSyncReadProof(token: String, block: suspend () -> T): T = withReadProof(token) {
+        val scope = requireNotNull(DriveEnvironment.currentReadProof(token))
+        scope.syncCacheEnabled = true
+        val result = block()
+        DriveSyncTrace.step(DriveSyncPhase.COMPLETION) {
+            // alt=media and metadata are different HTTP representations. Their opaque ETags
+            // need not match. Verify JSON bytes against Drive's server checksum and version.
+            val expected = (scope.syncJson.values.map { DriveOriginalFingerprint(it.fileId,
+                it.read.json.toByteArray(Charsets.UTF_8).size.toLong(),
+                com.example.data.StableDocumentIdentity.sha256(it.read.json.toByteArray(Charsets.UTF_8)), it.version, it.etag) } +
+                scope.syncOriginals.values).associateBy { it.fileId }
+            // Independent GETs only. No index, folder or media write runs concurrently here.
+            coroutineScope {
+                for (batch in expected.entries.chunked(3)) {
+                    batch.map { (id, before) -> async(Dispatchers.IO) {
+                        DriveSyncTrace.inCurrentJob {
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                            val current = fetchOriginalFingerprintChecked(token, id)
+                            if (before.version.isBlank() || current.version != before.version ||
+                                current.size != before.size || (before.sha256.isNotBlank() && current.sha256.isNotBlank() && current.sha256 != before.sha256))
+                                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                        }
+                    } }.awaitAll()
+                }
+            }
+        }
+        result
+    }
 
     private val folderCache = ConcurrentHashMap<String, String>()
 
@@ -78,17 +230,9 @@ object GoogleDriveClient {
             prefs.edit().putString(canonicalPathKey, folderId).apply()
 
             // 2. Save in category-folder-mappings.json on Drive
-            val mappingsFile = findFileByAppProperty(accessToken, systemFolderId, "categoryFolderMappings")
-            val mappingsJson = if (mappingsFile != null) {
-                try {
-                    downloadJson(accessToken, mappingsFile.id)
-                } catch (e: Exception) {
-                    e.rethrowDriveControlFailure()
-                    JSONObject().apply { put("mappings", JSONArray()) }.toString()
-                }
-            } else {
-                JSONObject().apply { put("mappings", JSONArray()) }.toString()
-            }
+            val mappingsFile = findFileByAppProperty(accessToken, systemFolderId, "categoryFolderMappings", failOnError = true)
+            val source = mappingsFile?.let { downloadSyncJsonSnapshot(accessToken, it.id) }
+            val mappingsJson = source?.read?.json ?: JSONObject().put("mappings", JSONArray()).toString()
 
             val rootObj = JSONObject(mappingsJson)
             val array = rootObj.optJSONArray("mappings") ?: JSONArray()
@@ -125,7 +269,7 @@ object GoogleDriveClient {
             val newJsonStr = rootObj.toString(4)
 
             if (mappingsFile != null) {
-                updateJson(accessToken, mappingsFile.id, newJsonStr)
+                check(updateSyncJson(accessToken, mappingsFile.id, newJsonStr, requireNotNull(source)).success)
             } else {
                 uploadJson(
                     accessToken = accessToken,
@@ -141,7 +285,8 @@ object GoogleDriveClient {
             }
         } catch (e: Exception) {
             e.rethrowDriveControlFailure()
-            DiagnosticLog.e(TAG, "Error saving category mapping")
+            DriveSyncTrace.failure(e)
+            throw e
         }
     }
 
@@ -152,29 +297,9 @@ object GoogleDriveClient {
         documentRole: String = "ORIGINAL"
     ): DriveFile? {
         val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
-        try {
-            val encodedQ = URLEncoder.encode(q, "UTF-8")
-            val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-            executeDriveRequest(request).use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = JSONObject(body)
-                    val files = json.optJSONArray("files")
-                    if (files != null && files.length() > 0) {
-                        val fileObj = files.getJSONObject(0)
-                        return DriveFile(fileObj.getString("id"), fileObj.getString("name"))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.rethrowDriveControlFailure()
-            DiagnosticLog.e(TAG, "Error finding file by receipt properties")
-        }
-        return null
+        val found = initializationSearch(accessToken, q)
+        if (found.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        return found.singleOrNull()?.let { DriveFile(it.getString("id"), it.getString("name")) }
     }
 
     suspend fun findFileByReceiptPropertiesGlobally(
@@ -184,14 +309,24 @@ object GoogleDriveClient {
     ): DriveFile? {
         if (receiptInternalId.isBlank()) return null
         val q = "appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and appProperties has { key='documentRole' and value='$documentRole' } and trashed = false"
-        return searchFiles(accessToken, q).singleOrNull()
+        val root = getOrCreateFolder(accessToken) ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        // The bounded tree inventory already contains appProperties. Re-querying every returned
+        // folder for the same stable ID added one redundant files.list per folder per receipt.
+        val inventory = listAppTreeFiles(accessToken, root)
+        if (inventory.size >= 10_000) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+        val matches = inventory.filter {
+            it.appProperties["appName"] == DriveEnvironment.appIdentifier &&
+                it.appProperties["receiptInternalId"] == receiptInternalId && it.appProperties["documentRole"] == documentRole
+        }
+        if (matches.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        return matches.singleOrNull()?.let { DriveFile(it.id, it.name) }
     }
 
     /** Errors must not be mistaken for an empty search: that would create duplicate backup structures. */
     private inline fun <T> initializationCall(block: () -> T): T = try { block() }
         catch (e: DriveAccessFailure) { throw e }
-        catch (_: java.net.SocketTimeoutException) { throw DriveAccessFailure(DriveAccessFailure.Reason.TIMEOUT) }
-        catch (_: IOException) { throw DriveAccessFailure(DriveAccessFailure.Reason.NETWORK) }
+        catch (e: java.net.SocketTimeoutException) { throw DriveAccessFailure(DriveAccessFailure.Reason.TIMEOUT).apply { initCause(e) } }
+        catch (e: IOException) { throw DriveAccessFailure(DriveAccessFailure.Reason.NETWORK).apply { initCause(e) } }
         catch (_: org.json.JSONException) { throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA) }
 
     private fun initializationSearch(accessToken: String, query: String, orderBy: String? = null): List<JSONObject> = initializationCall {
@@ -277,10 +412,11 @@ object GoogleDriveClient {
                     .put("appName", DriveEnvironment.appIdentifier).put("folderRole", "CATEGORY")
                     .put("canonicalPathKey", canonicalPathKey).put("parentFolderId", parentId.orEmpty()).put("schemaVersion", "1"))
             }
+            val reservation = prepareCreation(accessToken, body, byteArrayOf())
             val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files")
                 .header("Authorization", "Bearer $accessToken")
                 .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-            val created = initializationCall {
+            val created = reservation?.takeIf { it.existing != null }?.id ?: initializationCall {
                 executeDriveRequest(request).use {
                     if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
                     JSONObject(it.body?.string().orEmpty()).getString("id")
@@ -501,33 +637,31 @@ object GoogleDriveClient {
         mimeType: String,
         fileContent: ByteArray
     ): Boolean {
-        // 1. Search for existing file
         val escapedFilename = filename.replace("\\", "\\\\").replace("'", "\\'")
         val fileQ = "name = '$escapedFilename' and '$folderId' in parents and trashed = false"
-        var existingFileId: String? = null
+        val existingFileId: String?
+        var etag: String? = null
         try {
-            val encodedFileQ = URLEncoder.encode(fileQ, "UTF-8")
-            val searchUrl = "https://www.googleapis.com/drive/v3/files?q=$encodedFileQ&fields=files(id)"
-            
-            val searchRequest = Request.Builder()
-                .url(searchUrl)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-            
-            executeDriveRequest(searchRequest).use { response ->
-                if (response.isSuccessful) {
-                    val responseBody = response.body?.string() ?: ""
-                    val json = JSONObject(responseBody)
-                    val files = json.optJSONArray("files")
-                    if (files != null && files.length() > 0) {
-                        existingFileId = files.getJSONObject(0).getString("id")
-                        DiagnosticLog.d(TAG, "Found existing file")
-                    }
+            val found = initializationSearch(accessToken, fileQ)
+            if (found.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            existingFileId = found.singleOrNull()?.getString("id")
+            if (existingFileId != null) {
+                val current = fetchOriginalFingerprintChecked(accessToken, existingFileId)
+                val localHash = com.example.data.StableDocumentIdentity.sha256(fileContent)
+                val actualHash = current.sha256.ifBlank {
+                    com.example.data.StableDocumentIdentity.sha256(downloadFileBytesChecked(accessToken, existingFileId))
                 }
+                if (current.size == fileContent.size.toLong() && actualHash == localHash) {
+                    rememberVerifiedOriginal(accessToken, current, actualHash)
+                    return true
+                }
+                etag = current.etag?.takeIf(String::isNotBlank)
+                    ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
             }
         } catch (e: Exception) {
             e.rethrowDriveControlFailure()
-            DiagnosticLog.e(TAG, "Error searching file")
+            DriveSyncTrace.failure(e)
+            return false
         }
 
         // 2. Upload or Update
@@ -542,6 +676,7 @@ object GoogleDriveClient {
             Request.Builder()
                 .url(url)
                 .patch(requestBody)
+                .header("If-Match", requireNotNull(etag))
                 .addHeader("Authorization", "Bearer $accessToken")
                 .build()
         } else {
@@ -550,6 +685,13 @@ object GoogleDriveClient {
             val metadata = JSONObject().apply {
                 put("name", filename)
                 put("parents", JSONArray().put(folderId))
+            }
+
+            val reservation = prepareCreation(accessToken, metadata, fileContent)
+            if (reservation?.existing != null) {
+                if (reservation.existing.sha256 != com.example.data.StableDocumentIdentity.sha256(fileContent))
+                    updateOriginalChecked(accessToken, reservation.existing, fileContent, mimeType)
+                return true
             }
 
             val delimiter = "\r\n--$boundary\r\n"
@@ -632,6 +774,13 @@ object GoogleDriveClient {
                 }
                 put("appProperties", appPropsJson)
             }
+        }
+
+        val reservation = prepareCreation(accessToken, metadata, json.toByteArray(Charsets.UTF_8))
+        if (reservation?.existing != null) {
+            if (reservation.existing.sha256 == com.example.data.StableDocumentIdentity.sha256(json.toByteArray(Charsets.UTF_8)))
+                return DriveFileResult(true, reservation.id)
+            return updateSyncJson(accessToken, reservation.id, json)
         }
 
         val delimiter = "\r\n--$boundary\r\n"
@@ -765,30 +914,97 @@ object GoogleDriveClient {
         }
     }
 
+    internal suspend fun downloadSyncJsonSnapshot(token: String, fileId: String): DriveJsonSnapshot {
+        val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }
+        scope?.syncJson?.get(fileId)?.let { return it }
+        return withReadProofIfNeeded(token) { readJson(token, fileId, restore = true, snapshot = true) }
+            .also { scope?.syncJson?.put(fileId, it) }
+    }
+
+    internal suspend fun confirmJsonBaseline(context: Context, token: String, result: DriveFileResult, json: String): DriveFileResult {
+        if (!result.success) return result
+        val id = result.fileId ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        val source = downloadSyncJsonSnapshot(token, id)
+        val expected = canonicalDriveJsonText(json)
+        if (canonicalDriveJsonText(source.read.json) != expected) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+        com.example.data.DrivePendingWrites(context).rememberJsonBaseline(id,
+            com.example.data.StableDocumentIdentity.sha256(expected.toByteArray(Charsets.UTF_8)))
+        return result
+    }
+
+    /** JSON-only conservation of references already present in this exact, owned preimage.
+     * A conditional update prevents an older snapshot overwriting concurrent changes. */
+    internal suspend fun updateSyncJson(token: String, fileId: String, json: String, previous: DriveJsonSnapshot? = null,
+                                        conflictContext: Context? = null): DriveFileResult {
+        val source = previous ?: downloadSyncJsonSnapshot(token, fileId)
+        require(source.fileId == fileId) { "JSON source identity mismatch" }
+        val before = canonicalDriveJsonText(source.read.json)
+        val desired = canonicalDriveJsonText(json)
+        val journal = conflictContext?.let { com.example.data.DrivePendingWrites(it) }
+        val hash = com.example.data.StableDocumentIdentity.sha256(desired.toByteArray(Charsets.UTF_8))
+        if (before == desired) {
+            journal?.rememberJsonBaseline(fileId, hash)
+            return DriveFileResult(true, fileId)
+        }
+        if (journal != null) com.example.data.DriveBackupConflictGuard.validate(
+            org.json.JSONTokener(source.read.json).nextValue(), org.json.JSONTokener(json).nextValue(),
+            journal.jsonBaseline(fileId) == com.example.data.StableDocumentIdentity.sha256(before.toByteArray(Charsets.UTF_8)))
+        DriveEnvironment.validatePreservedJsonReferences(json, token, source.read, ::sendRawDriveRequest)
+        val etag = source.etag?.takeIf(String::isNotBlank)
+            ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
+        val request = Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files/$fileId?uploadType=media")
+            .header("Authorization", "Bearer $token").header("If-Match", etag)
+            .patch(json.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        return executeDriveRequest(request).use { response ->
+            if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
+            var verified = fetchOriginalFingerprintChecked(token, fileId)
+            if (verified.sha256.isBlank()) {
+                val confirmation = downloadSyncJsonSnapshot(token, fileId)
+                if (confirmation.read.json != json) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                verified = verified.copy(etag = confirmation.etag, version = confirmation.version)
+            }
+            if ((verified.sha256.isNotBlank() && verified.sha256 != com.example.data.StableDocumentIdentity.sha256(json.toByteArray(Charsets.UTF_8))) ||
+                verified.size != json.toByteArray(Charsets.UTF_8).size.toLong())
+                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+            DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }?.syncJson?.put(fileId,
+                DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, source.read.unavailableOriginalIds), verified.etag, verified.version))
+            journal?.rememberJsonBaseline(fileId, hash)
+            DriveFileResult(true, fileId)
+        }
+    }
+
     suspend fun downloadJson(
         accessToken: String,
         fileId: String
-    ): String = readJson(accessToken, fileId, restore = false).json
+    ): String = readJson(accessToken, fileId, restore = false).read.json
 
     internal suspend fun downloadJsonForRestore(accessToken: String, fileId: String): DriveRestoreJsonRead =
-        readJson(accessToken, fileId, restore = true)
+        readJson(accessToken, fileId, restore = true).read
 
-    private suspend fun readJson(accessToken: String, fileId: String, restore: Boolean): DriveRestoreJsonRead {
-        for (attempt in 0..1) {
+    private suspend fun readJson(accessToken: String, fileId: String, restore: Boolean, snapshot: Boolean = false): DriveJsonSnapshot =
+        withContext(readRetryBudget.asContextElement(readRetryBudget.get() ?: mutableMapOf())) {
+        val key = "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
+        while (true) {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            try { return readJsonOnce(accessToken, fileId, restore) }
-            catch (timeout: java.net.SocketTimeoutException) {
+            try { return@withContext readJsonOnce(accessToken, fileId, restore, snapshot) }
+            catch (timeout: IOException) {
+                if (timeout is DriveAccessFailure || !com.example.data.DriveSyncFailurePolicy.retryableRead(timeout)) throw timeout
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 DriveEnvironment.invalidateReadProof()
-                if (attempt == 1) throw DriveAccessFailure(DriveAccessFailure.Reason.TIMEOUT)
-                // Only an idempotent JSON GET is retried, never an upload or a test assertion.
-                kotlinx.coroutines.delay(250)
+                val budgets = requireNotNull(readRetryBudget.get())
+                val retry = budgets[key] ?: 0
+                val pause = com.example.data.DriveSyncFailurePolicy.readRetryDelayMillis(retry)
+                    ?: throw DriveAccessFailure(if (timeout is java.net.SocketTimeoutException) DriveAccessFailure.Reason.TIMEOUT else DriveAccessFailure.Reason.NETWORK).apply { initCause(timeout) }
+                budgets[key] = retry + 1
+                DriveSyncTrace.retry()
+                kotlinx.coroutines.delay(pause)
             }
         }
+        @Suppress("UNREACHABLE_CODE")
         error("unreachable")
     }
 
-    private suspend fun readJsonOnce(accessToken: String, fileId: String, restore: Boolean): DriveRestoreJsonRead {
+    private suspend fun readJsonOnce(accessToken: String, fileId: String, restore: Boolean, snapshot: Boolean): DriveJsonSnapshot {
         val url = "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
         val request = Request.Builder()
             .url(url)
@@ -799,12 +1015,28 @@ object GoogleDriveClient {
             if (response.isSuccessful) {
                 val json = response.body?.string() ?: ""
                 val missing = if (restore) {
-                    DriveEnvironment.validateRestoreJsonReferences(json, accessToken) { client.newCall(it).execute() }
+                    DriveEnvironment.validateRestoreJsonReferences(json, accessToken) { sendRawDriveRequest(it) }
                 } else {
                     validateDataReferences(accessToken, json)
                     emptySet()
                 }
-                return DriveRestoreJsonRead(json, missing)
+                if (!snapshot) return DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, missing), response.header("ETag"))
+                val scope = DriveEnvironment.currentReadProof(accessToken)
+                var fingerprint = scope?.metadata?.get(fileId)?.let { metadata ->
+                    fingerprintFromMetadata(fileId, metadata, scope.metadataEtags[fileId])
+                } ?: fetchOriginalFingerprintChecked(accessToken, fileId)
+                if (fingerprint.sha256.isBlank()) {
+                    // If Drive has no checksum, compare its monotonic version before and after
+                    // reading bytes. Never bind an older body to a newer write precondition.
+                    val after = fetchOriginalFingerprintChecked(accessToken, fileId)
+                    if (fingerprint.version.isBlank() || fingerprint.version != after.version)
+                        throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                    fingerprint = after
+                }
+                if ((fingerprint.sha256.isNotBlank() && fingerprint.sha256 != com.example.data.StableDocumentIdentity.sha256(json.toByteArray(Charsets.UTF_8))) ||
+                    fingerprint.size != json.toByteArray(Charsets.UTF_8).size.toLong())
+                    throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                return DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, missing), fingerprint.etag, fingerprint.version)
             } else {
                 throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
             }
@@ -850,6 +1082,15 @@ object GoogleDriveClient {
         }
     }
 
+    internal fun downloadFileBytesChecked(token: String, fileId: String): ByteArray {
+        val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/$fileId?alt=media")
+            .header("Authorization", "Bearer $token").build()
+        return executeDriveRequest(request).use { response ->
+            if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
+            response.body?.bytes() ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        }
+    }
+
     suspend fun downloadFileBytes(
         accessToken: String,
         fileId: String
@@ -887,20 +1128,74 @@ object GoogleDriveClient {
 
     /** Strict variant for identity checks: HTTP, permission, MIME and namespace failures stay distinct. */
     internal suspend fun getFileMetadataChecked(accessToken: String, fileId: String): DriveManagedFile = initializationCall {
-        if (!Regex("[A-Za-z0-9_-]+").matches(fileId)) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_ID)
-        val request = Request.Builder()
-            .url("https://www.googleapis.com/drive/v3/files/$fileId?fields=id,name,mimeType,size,parents,trashed,appProperties")
-            .header("Authorization", "Bearer $accessToken").build()
-        executeDriveRequest(request).use {
-            if (!it.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, it.code)
-            val json = JSONObject(it.body?.string().orEmpty())
-            if (json.optBoolean("trashed")) throw DriveAccessFailure(DriveAccessFailure.Reason.NAMESPACE)
-            if (json.optString("id") != fileId || json.optString("name").isBlank() || json.optString("mimeType").isBlank())
-                throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
-            DriveManagedFile(fileId, json.getString("name"), json.getString("mimeType"), json.optLong("size", 0L),
-                json.optJSONArray("parents")?.let { array -> (0 until array.length()).map { i -> array.getString(i) } }.orEmpty(),
-                json.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty())
+        val json = DriveEnvironment.readOwnedMetadata(accessToken, fileId, ::sendRawDriveRequest).json
+        DriveManagedFile(fileId, json.getString("name"), json.getString("mimeType"), json.optLong("size", 0L),
+            json.optJSONArray("parents")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
+            json.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty())
+    }
+
+    /** A server checksum or a run-scoped checksum proven by a byte read, never appProperties. */
+    internal fun rememberVerifiedOriginal(token: String, observed: DriveOriginalFingerprint, hash: String) {
+        require(hash.matches(Regex("[a-f0-9]{64}")))
+        DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }?.syncOriginals?.put(observed.fileId, observed.copy(sha256 = hash))
+    }
+
+    internal suspend fun getOriginalFingerprintChecked(token: String, fileId: String): DriveOriginalFingerprint {
+        val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }
+        scope?.syncOriginals?.get(fileId)?.let { return it }
+        scope?.metadata?.get(fileId)?.let { metadata ->
+            val observed = fingerprintFromMetadata(fileId, metadata, scope.metadataEtags[fileId])
+            scope.syncOriginals[fileId] = observed
+            return observed
         }
+        return fetchOriginalFingerprintChecked(token, fileId).also { scope?.syncOriginals?.put(fileId, it) }
+    }
+
+    private fun fetchOriginalFingerprintChecked(token: String, fileId: String): DriveOriginalFingerprint {
+        val owned = DriveEnvironment.readOwnedMetadata(token, fileId, ::sendRawDriveRequest)
+        return fingerprintFromMetadata(fileId, owned.json, owned.etag)
+    }
+
+    private fun fingerprintFromMetadata(fileId: String, json: JSONObject, etag: String?): DriveOriginalFingerprint {
+        val sha = json.optString("sha256Checksum").takeIf { it != "null" }.orEmpty()
+        if (json.getString("mimeType") == "application/vnd.google-apps.folder" ||
+            (sha.isNotBlank() && !sha.matches(Regex("[a-fA-F0-9]{64}")))) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        return DriveOriginalFingerprint(fileId, json.optLong("size", 0), sha.lowercase(java.util.Locale.ROOT),
+            json.optString("version"), etag)
+    }
+
+    /** Same ID, exact preimage, no replay of an uncertain media PATCH. */
+    internal fun updateOriginalChecked(token: String, before: DriveOriginalFingerprint, bytes: ByteArray, mime: String) {
+        val current = fetchOriginalFingerprintChecked(token, before.fileId)
+        val currentHash = current.sha256.ifBlank {
+            val content = downloadFileBytesChecked(token, before.fileId)
+            val after = fetchOriginalFingerprintChecked(token, before.fileId)
+            if (current.version.isBlank() || current.version != after.version)
+                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+            com.example.data.StableDocumentIdentity.sha256(content)
+        }
+        val etag = current.etag?.takeIf(String::isNotBlank) ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
+        if ((before.etag != null && current.etag != before.etag) ||
+            current.version != before.version || (before.sha256.isNotBlank() && currentHash != before.sha256) || current.size != before.size)
+            throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+        val request = Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files/${before.fileId}?uploadType=media")
+            .header("Authorization", "Bearer $token").header("If-Match", etag)
+            .patch(bytes.toRequestBody(mime.toMediaType())).build()
+        executeDriveRequest(request).use { response ->
+            if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
+        }
+        val verified = fetchOriginalFingerprintChecked(token, before.fileId)
+        val actualHash = verified.sha256.ifBlank {
+            val actual = downloadFileBytesChecked(token, before.fileId)
+            val after = fetchOriginalFingerprintChecked(token, before.fileId)
+            if (verified.version.isBlank() || after.version != verified.version)
+                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+            com.example.data.StableDocumentIdentity.sha256(actual)
+        }
+        if (verified.size != bytes.size.toLong() || actualHash != com.example.data.StableDocumentIdentity.sha256(bytes))
+            throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }?.syncOriginals?.put(before.fileId, verified)
+        DriveSyncTrace.originalTransferred()
     }
 
     /** Bounded inventory below the app root. It never scans unrelated Drive areas. */
@@ -926,7 +1221,9 @@ object GoogleDriveClient {
     private suspend fun listManagedChildren(accessToken: String, parentId: String, limit: Int): List<DriveManagedFile> {
         val result = mutableListOf<DriveManagedFile>()
         var pageToken = ""
+        var pages = 0
         do {
+            if (++pages > 100) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
             val q = "'$parentId' in parents and trashed = false"
             val url = buildString {
                 append("https://www.googleapis.com/drive/v3/files?q=").append(URLEncoder.encode(q, "UTF-8"))
@@ -938,7 +1235,8 @@ object GoogleDriveClient {
                 if (!response.isSuccessful) throw IOException("Drive-Inventur fehlgeschlagen (${response.code})")
                 JSONObject(response.body?.string().orEmpty())
             }
-            val files = responseJson.optJSONArray("files") ?: JSONArray()
+            val files = responseJson.driveFileListItems()
+            if (responseJson.optBoolean("incompleteSearch")) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
             for (index in 0 until files.length()) {
                 if (result.size >= limit) break
                 val file = files.getJSONObject(index)
@@ -1094,11 +1392,18 @@ object GoogleDriveClient {
         failOnError: Boolean = false
     ): DriveFile? {
         if (failOnError) {
+            val scope = DriveEnvironment.currentReadProof(accessToken)?.takeIf { it.syncCacheEnabled }
+            val key = "$folderId/$entityType"
+            scope?.syncEntities?.get(key)?.let { return it }
             val query = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
             val found = initializationSearch(accessToken, query).ifEmpty {
                 initializationSearch(accessToken, "name = '${getFilenameForEntityType(entityType)}' and '$folderId' in parents and trashed = false")
-            }.firstOrNull() ?: return null
-            return initializationCall { DriveFile(found.getString("id"), found.getString("name")) }
+            }
+            if (found.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            val one = found.singleOrNull() ?: return null
+            return initializationCall { DriveFile(one.getString("id"), one.getString("name")) }.also {
+                scope?.syncEntities?.put(key, it)
+            }
         }
         val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='$entityType' } and trashed = false"
         try {
@@ -1156,28 +1461,9 @@ object GoogleDriveClient {
     fun findFileByName(accessToken: String, folderId: String, filename: String): String? {
         val escapedFilename = filename.replace("\\", "\\\\").replace("'", "\\'")
         val q = "name = '$escapedFilename' and '$folderId' in parents and trashed = false"
-        try {
-            val encodedQ = URLEncoder.encode(q, "UTF-8")
-            val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id)"
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-            executeDriveRequest(request).use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = JSONObject(body)
-                    val files = json.optJSONArray("files")
-                    if (files != null && files.length() > 0) {
-                        return files.getJSONObject(0).getString("id")
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.rethrowDriveControlFailure()
-            DiagnosticLog.e("GoogleDriveClient", "Error finding file by name")
-        }
-        return null
+        val found = initializationSearch(accessToken, q)
+        if (found.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        return found.singleOrNull()?.getString("id")
     }
 
     fun uploadFile(
@@ -1188,6 +1474,14 @@ object GoogleDriveClient {
         fileContent: ByteArray,
         existingFileId: String? = null,
         appProperties: Map<String, String>? = null
+    ): String? = DriveSyncTrace.stepBlocking(DriveSyncPhase.ORIGINAL,
+        outcome = { id: String? -> if (id.isNullOrBlank()) DriveSyncOutcome.FAILED else DriveSyncOutcome.SUCCESS }) {
+        uploadFileCheckedTransport(accessToken, folderId, filename, mimeType, fileContent, existingFileId, appProperties)
+    }
+
+    private fun uploadFileCheckedTransport(
+        accessToken: String, folderId: String, filename: String, mimeType: String,
+        fileContent: ByteArray, existingFileId: String?, appProperties: Map<String, String>?
     ): String? {
         if (!existingFileId.isNullOrEmpty()) {
             val mediaRequestBody = fileContent.toRequestBody(mimeType.toMediaType())
@@ -1205,6 +1499,7 @@ object GoogleDriveClient {
                     }
                 }
                 
+                DriveSyncTrace.originalTransferred()
                 // Now, update metadata if name or appProperties is provided
                 val metaJson = JSONObject().apply {
                     put("name", filename)
@@ -1256,6 +1551,13 @@ object GoogleDriveClient {
                 }
             }
 
+            val reservation = prepareCreation(accessToken, metadata, fileContent)
+            if (reservation?.existing != null) {
+                if (reservation.existing.sha256 != com.example.data.StableDocumentIdentity.sha256(fileContent))
+                    updateOriginalChecked(accessToken, reservation.existing, fileContent, mimeType)
+                return reservation.id
+            }
+
             val delimiter = "\r\n--$boundary\r\n"
             val closeDelimiter = "\r\n--$boundary--"
 
@@ -1289,6 +1591,7 @@ object GoogleDriveClient {
             executeDriveRequest(request).use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string() ?: ""
+                    DriveSyncTrace.originalTransferred()
                     DiagnosticLog.d(TAG, "File uploaded successfully")
                     if (!existingFileId.isNullOrEmpty()) {
                         existingFileId
@@ -1730,29 +2033,9 @@ object GoogleDriveClient {
         receiptInternalId: String
     ): DriveFile? {
         val q = "'$folderId' in parents and appProperties has { key='appName' and value='${DriveEnvironment.appIdentifier}' } and appProperties has { key='entityType' and value='receiptMetadata' } and appProperties has { key='receiptInternalId' and value='$receiptInternalId' } and trashed = false"
-        try {
-            val encodedQ = URLEncoder.encode(q, "UTF-8")
-            val url = "https://www.googleapis.com/drive/v3/files?q=$encodedQ&fields=files(id,name)"
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
-            executeDriveRequest(request).use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = JSONObject(body)
-                    val files = json.optJSONArray("files")
-                    if (files != null && files.length() > 0) {
-                        val fileObj = files.getJSONObject(0)
-                        return DriveFile(fileObj.getString("id"), fileObj.getString("name"))
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.rethrowDriveControlFailure()
-            DiagnosticLog.e("GoogleDriveClient", "Error finding metadata file by properties")
-        }
-        return null
+        val found = initializationSearch(accessToken, q)
+        if (found.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        return found.singleOrNull()?.let { DriveFile(it.getString("id"), it.getString("name")) }
     }
 
     suspend fun listAllReceiptMetadataFiles(
@@ -1836,6 +2119,7 @@ data class DriveTestApiResult(
 
 data class DriveFolder(val id: String, val name: String)
 data class DriveFile(val id: String, val name: String)
+internal data class DriveOriginalFingerprint(val fileId: String,val size: Long,val sha256: String,val version: String,val etag: String?)
 data class DriveManagedFile(
     val id: String,
     val name: String,

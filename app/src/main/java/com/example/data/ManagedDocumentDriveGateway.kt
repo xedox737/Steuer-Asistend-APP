@@ -136,11 +136,11 @@ class GoogleManagedDocumentDriveGateway(private val context: Context) : ManagedD
         filename: String,
         json: String
     ): DriveFileResult {
-        val existing = GoogleDriveClient.findFileByAppProperty(accessToken, folderId, entityType)
+        val existing = GoogleDriveClient.findFileByAppProperty(accessToken, folderId, entityType, failOnError = true)
         return if (existing != null) {
-            GoogleDriveClient.updateJson(accessToken, existing.id, json)
+            GoogleDriveClient.updateSyncJson(accessToken, existing.id, json, conflictContext = context)
         } else {
-            GoogleDriveClient.uploadJson(
+            GoogleDriveClient.confirmJsonBaseline(context, accessToken, GoogleDriveClient.uploadJson(
                 accessToken,
                 folderId,
                 filename,
@@ -150,7 +150,7 @@ class GoogleManagedDocumentDriveGateway(private val context: Context) : ManagedD
                     "entityType" to entityType,
                     "schemaVersion" to "1"
                 )
-            )
+            ), json)
         }
     }
 }

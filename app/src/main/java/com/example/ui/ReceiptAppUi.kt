@@ -6721,6 +6721,9 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
     val email by viewModel.googleAccountEmail.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isDriveSyncing.collectAsStateWithLifecycle()
     val syncStatus by viewModel.driveSyncStatus.collectAsStateWithLifecycle()
+    val syncReport by viewModel.driveSyncReport.collectAsStateWithLifecycle()
+    val syncClipboard = LocalClipboardManager.current
+    var showSyncDetails by rememberSaveable { mutableStateOf(false) }
     val autoBackup by viewModel.autoDriveBackup.collectAsStateWithLifecycle()
     val systemFolderStatus by viewModel.driveSystemFolderStatus.collectAsStateWithLifecycle()
     val lastBackupTime by viewModel.lastStammdatenBackupTime.collectAsStateWithLifecycle()
@@ -7172,6 +7175,42 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                             Text("Synchronisieren", fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
+                }
+            }
+
+            // Remains available after failures, disconnection and process restart.
+            syncReport?.let { report ->
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+                    .background(SoftBackground).border(1.dp, BorderColor, RoundedCornerShape(8.dp))
+                    .padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(if (isSyncing) "Google Drive wird synchronisiert" else "Letzter Synchronisierungsbericht",
+                        fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
+                    Text(report.currentPhase?.label ?: report.outcome.label, fontSize = 12.sp, color = SlateGray)
+                    if (report.isCheckpoint) Text("Zwischenstand vor App-Neustart; spätere Vorgänge sind unbekannt.", fontSize = 11.sp, color = SlateGray)
+                    Text("${report.receiptsProcessed} von ${report.receiptsTotal} Belegen geprüft", fontSize = 12.sp)
+                    Text("${report.unchanged} unverändert · ${report.uploaded} übertragen · ${report.metadataOnly} nur Metadaten", fontSize = 11.sp)
+                    Text("${report.failed} fehlgeschlagen · ${report.blocked} gesperrt · ${report.notAttempted} ${if (report.isCheckpoint) "am Speicherpunkt offen" else "nicht versucht"}", fontSize = 11.sp)
+                    if (report.interrupted > 0) Text("${report.interrupted} Belegübertragung(en) unterbrochen", fontSize = 11.sp)
+                    if (report.documents.total > 0) {
+                        val docs = report.documents
+                        Text("Dokumente: ${docs.processed}/${docs.total} geprüft · ${docs.unchanged} unverändert · ${docs.uploaded} übertragen", fontSize = 11.sp)
+                        Text("${docs.metadataOnly} nur Metadaten · ${docs.failed} fehlgeschlagen · ${docs.blocked} gesperrt · ${docs.interrupted} unterbrochen · ${docs.notAttempted} nicht versucht", fontSize = 11.sp)
+                    }
+                    val seconds = report.elapsedMs / 1000
+                    Text("Dauer: %02d:%02d".format(seconds / 60, seconds % 60), fontSize = 11.sp)
+                    report.steps.lastOrNull { it.failure != null && it.outcome in setOf(
+                        com.example.api.DriveSyncOutcome.FAILED, com.example.api.DriveSyncOutcome.BLOCKED) }?.let { step ->
+                        Text("${step.phase.label}: ${step.failure?.description}", color = CrimsonRed, fontSize = 11.sp)
+                    }
+                    if (isSyncing) OutlinedButton(onClick = viewModel::cancelDriveSynchronization,
+                        modifier = Modifier.testTag("cancel_drive_sync")) { Text("Sicher abbrechen") }
+                    TextButton(onClick = { showSyncDetails = !showSyncDetails }) {
+                        Text(if (showSyncDetails) "Diagnose ausblenden" else "Diagnose anzeigen")
+                    }
+                    if (showSyncDetails) Text(report.germanText(), fontSize = 10.sp, color = SlateGray)
+                    TextButton(onClick = { syncClipboard.setText(AnnotatedString(report.germanText())) },
+                        modifier = Modifier.testTag("copy_drive_sync_report")) { Text("Diagnosebericht kopieren") }
                 }
             }
 

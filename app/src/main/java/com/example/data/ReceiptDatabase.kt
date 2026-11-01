@@ -204,6 +204,27 @@ interface ReceiptDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReceipt(receipt: Receipt): Long
 
+    /** Sync acknowledgements never replace a row or write financial/authored columns. */
+    @Query("""UPDATE receipts SET
+        internalId = CASE WHEN internalId = '' THEN :internalId ELSE internalId END,
+        displayId = CASE WHEN displayId IS NULL OR displayId = '' THEN :displayId ELSE displayId END,
+        driveFileId = COALESCE(NULLIF(:driveFileId, ''), driveFileId),
+        driveFolderId = COALESCE(NULLIF(:driveFolderId, ''), driveFolderId),
+        driveMetadataFileId = COALESCE(NULLIF(:metadataId, ''), driveMetadataFileId),
+        storedFilename = COALESCE(NULLIF(:filename, ''), storedFilename),
+        originalMimeType = COALESCE(NULLIF(:mime, ''), originalMimeType),
+        fileSizeBytes = CASE WHEN :size > 0 THEN :size ELSE fileSizeBytes END,
+        syncStatus = :status, syncError = :error,
+        lastSyncedAt = COALESCE(:syncedAt, lastSyncedAt), driveRevision = COALESCE(:revision, driveRevision),
+        isArchivedToDrive = CASE WHEN :archived THEN 1 ELSE isArchivedToDrive END
+        WHERE id = :id AND (internalId = :internalId OR internalId = '')
+        AND (:driveFileId IS NULL OR :driveFileId = '' OR driveFileId IS NULL OR driveFileId = '' OR driveFileId = :driveFileId)
+        AND (:metadataId IS NULL OR :metadataId = '' OR driveMetadataFileId IS NULL OR driveMetadataFileId = '' OR driveMetadataFileId = :metadataId)
+        AND (:revision IS NULL OR driveRevision IS NULL OR driveRevision <= :revision)""")
+    suspend fun updateDriveSyncFields(id: Int, internalId: String, displayId: String?, driveFileId: String?,
+        driveFolderId: String?, metadataId: String?, filename: String?, mime: String?, size: Long?,
+        status: String, error: String?, syncedAt: String?, revision: Long?, archived: Boolean): Int
+
     @Query("DELETE FROM receipts WHERE id = :id")
     suspend fun deleteReceiptById(id: Int)
 
@@ -833,6 +854,33 @@ class ReceiptRepository(
     private val receiptDocumentDao: ReceiptDocumentDao? = null,
     private val managedDocumentDao: ManagedDocumentDao? = null
 ) {
+    suspend fun updateDriveSyncFields(snapshot: Receipt): Receipt {
+        val changed = receiptDao.updateDriveSyncFields(snapshot.id, snapshot.internalId, snapshot.displayId,
+            snapshot.driveFileId, snapshot.driveFolderId, snapshot.driveMetadataFileId, snapshot.storedFilename,
+            snapshot.originalMimeType, snapshot.fileSizeBytes, snapshot.syncStatus, snapshot.syncError,
+            snapshot.lastSyncedAt, snapshot.driveRevision, snapshot.isArchivedToDrive)
+        if (changed != 1) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+        val latest = receiptDao.getReceiptById(snapshot.id)
+            ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+        val dao = managedDocumentDao
+        if (dao != null) {
+            val existing = dao.getById(StableDocumentIdentity.receiptDocumentId(latest.internalId))
+                ?: dao.getByReceiptId(latest.internalId)
+            if (existing == null) indexReceiptDocument(latest, latest)
+            else dao.updateDriveStorageIfPresent(existing, existing.copy(
+                driveFileId = latest.driveFileId ?: existing.driveFileId,
+                driveFolderId = latest.driveFolderId ?: existing.driveFolderId,
+                storedFilename = latest.storedFilename ?: existing.storedFilename,
+                mimeType = latest.originalMimeType ?: existing.mimeType,
+                fileSizeBytes = latest.fileSizeBytes?.takeIf { it > 0 } ?: existing.fileSizeBytes), latest)
+        }
+        return latest
+    }
+
+    suspend fun updateManagedDocumentDriveFields(expected: ManagedDocument, saved: ManagedDocument): ManagedDocument? =
+        managedDocumentDao?.updateDriveStorageIfPresent(expected, saved,
+            expected.receiptInternalId?.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptByInternalId(it) })
+
     val allReceipts: Flow<List<Receipt>> = receiptDao.getAllReceipts()
     val deletedReceipts: Flow<List<Receipt>> = receiptDao.getDeletedReceipts()
     val propertyMetadata: Flow<PropertyMetadata?> = propertyDao.getPropertyMetadataFlow()

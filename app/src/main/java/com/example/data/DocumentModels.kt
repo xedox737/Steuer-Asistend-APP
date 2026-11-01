@@ -122,6 +122,32 @@ interface ManagedDocumentDao {
     @Update
     suspend fun updateExisting(document: ManagedDocument): Int
 
+    /** Storage acknowledgement cannot replace newer OCR, review, loan or property assignments. */
+    @Transaction
+    suspend fun updateDriveStorageIfPresent(expected: ManagedDocument, saved: ManagedDocument, receipt: Receipt? = null): ManagedDocument? {
+        val current = getById(expected.documentId) ?: return null
+        if (!current.driveFileId.isNullOrBlank() && !saved.driveFileId.isNullOrBlank() && current.driveFileId != saved.driveFileId) return null
+        if (current.sha256 != expected.sha256 && current.sha256 != saved.sha256) return null
+        val sameTarget = current.propertyId == expected.propertyId && current.unitId == expected.unitId &&
+            current.documentType == expected.documentType && current.documentDate == expected.documentDate &&
+            current.title == expected.title && current.storedFilename == expected.storedFilename && current.documentCategory == expected.documentCategory
+        val updated = current.copy(
+            driveFileId = saved.driveFileId?.takeIf(String::isNotBlank) ?: current.driveFileId,
+            driveFolderId = saved.driveFolderId?.takeIf(String::isNotBlank) ?: current.driveFolderId,
+            storedFilename = if (sameTarget) saved.storedFilename else current.storedFilename,
+            documentCategory = if (sameTarget) saved.documentCategory else current.documentCategory,
+            mimeType = saved.mimeType.takeIf(String::isNotBlank) ?: current.mimeType,
+            fileSizeBytes = saved.fileSizeBytes.takeIf { it > 0 } ?: current.fileSizeBytes,
+            sha256 = saved.sha256.takeIf(String::isNotBlank) ?: current.sha256,
+            localUri = if (current.localUri == expected.localUri) saved.localUri else current.localUri,
+            migrationStatus = if (sameTarget) saved.migrationStatus else current.migrationStatus,
+            legacyDriveFolderId = saved.legacyDriveFolderId ?: current.legacyDriveFolderId)
+        if (updateExisting(updated) != 1) return null
+        deleteSearchEntry(updated.documentId)
+        insertSearchEntry(DocumentSearchFts(updated.documentId, DocumentSearchTextBuilder.build(updated, receipt)))
+        return updated
+    }
+
     @Transaction
     suspend fun updateLoanIfPresent(expected: ManagedDocument, loanId: Int): ManagedDocument? {
         val current = getById(expected.documentId) ?: return null

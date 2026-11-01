@@ -51,8 +51,11 @@ class ComparisonDriveHttpFixture : Interceptor {
         val id = path.removePrefix(base).removePrefix("/").let { if (it == "root") myDrive else it }
         fun reply(code: Int, bytes: ByteArray, mime: String = "application/json") = Response.Builder()
             .request(request).protocol(Protocol.HTTP_1_1).code(code).message(if (code < 400) "OK" else "Missing")
+            .header("ETag", "\"revision-${entries[id]?.revision ?: 0}\"")
             .body(bytes.toResponseBody(mime.toMediaType())).build()
         fun json(code: Int, value: JSONObject) = reply(code, value.toString().toByteArray())
+        if (request.method == "GET" && id == "generateIds")
+            return json(200, JSONObject().put("ids", JSONArray().put("reserved-${++sequence}")))
         if (request.method == "GET" && id.isBlank()) {
             val query = url.queryParameter("q") ?: error("Unbounded inventory request")
             val parents = Regex("'([^']+)' in parents").findAll(query).map { it.groupValues[1].let { p -> if (p == "root") myDrive else p } }.toList()
@@ -67,6 +70,9 @@ class ComparisonDriveHttpFixture : Interceptor {
         if (request.method == "GET") {
             val file = entries[id] ?: return json(404, JSONObject())
             return if (url.queryParameter("alt") == "media") reply(200, file.bytes, file.mime) else json(200, metadata(file))
+        }
+        request.header("If-Match")?.let { expected ->
+            if (expected != "\"revision-${entries[id]?.revision ?: 0}\"") return json(412, JSONObject())
         }
         if (request.method == "DELETE") {
             entries.remove(id)
@@ -96,7 +102,8 @@ class ComparisonDriveHttpFixture : Interceptor {
         }
         fun properties() = meta.optJSONObject("appProperties")?.let { obj -> obj.keys().asSequence().associateWith { obj.getString(it) } }.orEmpty()
         if (request.method == "POST") {
-            val newId = "created-${++sequence}"
+            val newId = meta.optString("id").ifBlank { "created-${++sequence}" }
+            if (entries.containsKey(newId)) return json(409, JSONObject())
             val file = Entry(newId, meta.getString("name"), meta.optString("mimeType", contentMime),
                 meta.optJSONArray("parents")?.getString(0) ?: myDrive, content, properties())
             entries[newId] = file
@@ -112,6 +119,7 @@ class ComparisonDriveHttpFixture : Interceptor {
     }
 
     private fun metadata(file: Entry) = JSONObject().put("id", file.id).put("name", file.name).put("mimeType", file.mime)
+        .put("sha256Checksum", com.example.data.StableDocumentIdentity.sha256(file.bytes)).put("version", file.revision.toString())
         .put("size", file.bytes.size).put("parents", JSONArray().apply { if (file.parent.isNotBlank()) put(file.parent) })
         .put("trashed", false).put("appProperties", JSONObject(file.properties))
         .put("createdTime", "2026-10-25T00:00:00Z")
