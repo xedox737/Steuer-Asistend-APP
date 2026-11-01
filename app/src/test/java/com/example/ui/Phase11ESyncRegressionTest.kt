@@ -472,6 +472,30 @@ class Phase11ESyncRegressionTest {
         return missing
     }
 
+    @Test fun unchangedCloudOnlyLegacyWithoutHashDoesNotOverwriteOrInventBaseline() = runBlocking {
+        seedReceipts(1)
+        val missing = removeOriginalBaseline(1)
+        val cloudBytes = remote.entries.getValue(missing.driveFileId!!).bytes.copyOf()
+        val result = measure(connectedModel(), "cloud-only-legacy-unmodified")
+        assertFalse(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("originalCreates") + result.getInt("originalUpdates"))
+        assertArrayEquals(cloudBytes, remote.entries.getValue(missing.driveFileId).bytes)
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+    }
+
+    @Test fun editedCloudOnlyLegacyWithoutHashMustStillBlockWrites() = runBlocking {
+        seedReceipts(1)
+        val missing = removeOriginalBaseline(1)
+        val row = repo.getReceiptById(1)!!
+        repo.insert(row.copy(aussteller = "LOCAL_CHANGED_AFTER_RESTORE"))
+        val cloudBytes = remote.entries.getValue(missing.driveFileId!!).bytes.copyOf()
+        val result = measure(connectedModel(), "cloud-only-legacy-edited")
+        assertTrue(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertArrayEquals(cloudBytes, remote.entries.getValue(missing.driveFileId).bytes)
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+    }
+
     @Test fun legacyBaselineCanBeEstablishedFromMatchingIndependentLocalOriginal() = runBlocking {
         seedReceipts(3, localBytes = true)
         val missing = removeOriginalBaseline(3)
