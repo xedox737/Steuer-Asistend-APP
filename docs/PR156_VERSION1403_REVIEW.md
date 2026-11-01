@@ -118,7 +118,46 @@ Der Lauf 41360703071 prüft den inzwischen durch P1-Befunde überholten Head und
 ist kein Nachweis für diese Folgekorrektur. Der Folgecommit startet erneut die
 vollständige Android-CI und erhält eine neue Codex-Review-Anforderung.
 
-## Verfügbarkeit des Review Loops
+## Codex-Befund zur Bank-Identität
+
+Die nächste Codex-Prüfung von `682fb2b2a03fa221c61b02e0a0efb80d51e1eb08`
+fand einen P2-Fehler im neuen Backup-Konfliktschutz: Banktransaktionen mit
+derselben Objekt-/Einheitenzuordnung wurden über diese Fremdschlüssel statt
+über `transactionId` verglichen. Normale Änderungen oder Ergänzungen sperrten
+dadurch die Zusatzsicherung. Die Variantenprüfung identifizierte denselben
+Selektor für Konten, Belegverknüpfungen, Lernregeln, Evidenz, Miet-/Darlehens-
+zuweisungen und wiederkehrende Muster. Diese acht Listen verwenden nun ihre
+jeweiligen serialisierten Primärschlüssel. Fehlende und doppelte Schlüssel
+werden vor einer Änderung abgelehnt; bestehende Datensätze dürfen auch mit
+bekannter Baseline nicht entfallen. Andere Backup-Listen behalten ihre
+bisherigen Regeln. Restore- und Finanzfachlogik bleiben unverändert.
+
+Drei neue Testmethoden wurden zuvor rot reproduziert: ein tatsächlich über
+Room und `SupplementalDriveBackup.createPayload` serialisierter Bankbestand,
+ein Variantenvergleich über die acht Listen und die negativen Fälle für
+ersetzte/fehlende/doppelte Primärschlüssel. Dabei zeigte die negative Kontrolle
+auch, dass der alte untypisierte Kontenvergleich einen ersetzten Datensatz bei
+gleicher Listenlänge akzeptierte. Nach der Korrektur bestehen alle drei neuen
+Methoden und die bestehenden Negativtests gegen ältere Remote-Versionen und
+das Weglassen eines Bankdatensatzes. Der Korrekturcode kompiliert gegen SDK36;
+`git diff --check` ist sauber. Kein Bankbestand wurde zur Fehlerverdeckung
+gelöscht, keine Assertion deaktiviert oder abgeschwächt.
+
+Die 22 Kotlin-Dateien der ursprünglichen PR-Dateiliste wurden auf den
+Identitätsselektor, `transactionId`, `assignmentId` und `linkId` durchsucht.
+Der ähnliche Selektor in `SupplementalDriveBackup.validatePayload` erzeugt nur
+Diagnosebezeichnungen und ersetzt keine Datensatzidentität; er bleibt
+unverändert. Der Lauf 41362598755 ist wegen dieses belegten Fehlers überholt;
+der Folgecommit erhält erneut vollständige CI und Codex-Nachprüfung.
+
+Abschließend bestehen **73/73 Phase11E-Methoden**, null Fehler/Skips, im
+ergänzenden SDK35-Prüfaufbau mit dem gegen SDK36 kompilierten Produktcode.
+Das umfasst alle bisherigen Fälle, die beiden #157-Tests und sämtliche neuen
+Seiten-, Wiederaufnahme-, Referenz- und Bank-Schutzprüfungen. Die vollständigen
+CI-/APK-/Emulatorergebnisse werden am aktuellen PR-Head dokumentiert; der reale
+POCO-/Android16-Test bleibt ausdrücklich offen.
+
+## CLI-Voraussetzungen
 
 Angewendet: GH Review Loop sowie Agent Skills für Code-Review, Fehlersuche,
 Tests, Sicherheit und Git-Arbeit. `gh` 2.46.0 und Python3 sind installiert.

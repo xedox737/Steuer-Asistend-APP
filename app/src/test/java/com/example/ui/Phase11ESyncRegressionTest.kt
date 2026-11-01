@@ -958,8 +958,75 @@ class Phase11ESyncRegressionTest {
         assertFalse(remote.entries.getValue("phase11e-index").bytes.toString(Charsets.UTF_8).contains("Local author edit"))
     }
 
+    @Test fun actualSupplementalBankBackupKeepsTransactionsSharingOneAssignment() = runBlocking {
+        seedReceipts(1)
+        db.bankDao().upsertAccount(BankAccount("synthetic-shared-account", "Synthetic account"))
+        val first = BankTransaction(transactionId = "synthetic-bank-one", accountId = "synthetic-shared-account",
+            bookingDate = "2026-01-01", amount = 100.0, propertyId = "synthetic-shared-property",
+            unitId = "synthetic-shared-unit", purpose = "First", updatedAt = "2026-01-01T00:00:00Z")
+        val second = first.copy(transactionId = "synthetic-bank-two", amount = 200.0, purpose = "Second")
+        db.bankDao().upsertTransaction(first)
+        db.bankDao().upsertTransaction(second)
+        val before = SupplementalDriveBackup.createPayload(app, db)
+        val file = remote.put("synthetic-bank-snapshot", "supplemental-backup.json", config.systemFolderId,
+            before.toString(), "supplementalBackup")
+        assertTrue(GoogleDriveClient.updateSyncJson(token, file.id, before.toString(), conflictContext = app).success)
+        db.bankDao().upsertTransaction(first.copy(purpose = "Confirmed local edit", updatedAt = "2026-01-02T00:00:00Z"))
+        db.bankDao().upsertTransaction(first.copy(transactionId = "synthetic-bank-three", amount = 300.0))
+        val after = SupplementalDriveBackup.createPayload(app, db)
+        assertTrue(GoogleDriveClient.updateSyncJson(token, file.id, after.toString(), conflictContext = app).success)
+        val rows = JSONObject(file.bytes.toString(Charsets.UTF_8)).getJSONArray("bankTransactions")
+        val byId = (0 until rows.length()).map { rows.getJSONObject(it) }.associateBy { it.getString("transactionId") }
+        assertEquals(setOf(first.transactionId, second.transactionId, "synthetic-bank-three"), byId.keys)
+        assertEquals("Confirmed local edit", byId.getValue(first.transactionId).getString("purpose"))
+        assertEquals(200.0, byId.getValue(second.transactionId).getDouble("amount"), 0.0)
+        assertTrue(byId.values.all { it.getString("unitId") == first.unitId && it.getString("propertyId") == first.propertyId })
+    }
+
+    private fun bankIdentityCases() = linkedMapOf("bankTransactions" to "transactionId", "bankAccounts" to "accountId",
+        "bankReceiptLinks" to "linkId", "bankLearningRules" to "ruleId", "bankRuleEvidence" to "evidenceId",
+        "bankRentAssignments" to "assignmentId", "bankLoanAssignments" to "assignmentId", "bankRecurringPatterns" to "patternId")
+
+    private fun bankIdentityRow(table: String, key: String, id: String): JSONObject = JSONObject().apply {
+        if (table != "bankAccounts") {
+            put("propertyId", "shared-property"); put("unitId", "shared-unit"); put("transactionId", "shared-transaction")
+            put("accountId", "shared-account"); put("ruleId", "shared-rule")
+        }
+        put(key, id); put("note", "Original")
+    }
+
+    @Test fun bankBackupGuardUsesEachEntityPrimaryKeyInsteadOfSharedReferences() {
+        for ((table, key) in bankIdentityCases()) {
+            val first = bankIdentityRow(table, key, "first")
+            val second = bankIdentityRow(table, key, "second")
+            val before = JSONObject().put(table, JSONArray().put(first).put(second))
+            val candidate = JSONObject().put(table, JSONArray().put(second)
+                .put(JSONObject(first.toString()).put("note", "Local edit")).put(bankIdentityRow(table, key, "third")))
+            DriveBackupConflictGuard.validate(before, candidate, knownBaseline = true)
+            assertEquals("Original", first.getString("note"))
+            assertEquals(3, candidate.getJSONArray(table).length())
+        }
+    }
+
+    @Test fun bankPrimaryKeysStillRejectDroppedDuplicateOrMissingEntitiesWithKnownBaseline() {
+        for ((table, key) in bankIdentityCases()) {
+            val first = bankIdentityRow(table, key, "first")
+            val second = bankIdentityRow(table, key, "second")
+            val before = JSONObject().put(table, JSONArray().put(first).put(second))
+            val unsafe = listOf(JSONArray().put(first).put(bankIdentityRow(table, key, "replacement")),
+                JSONArray().put(first).put(JSONObject(first.toString())),
+                JSONArray().put(first).put(JSONObject(second.toString()).apply { remove(key) }))
+            for (rows in unsafe) try {
+                DriveBackupConflictGuard.validate(before, JSONObject().put(table, rows), knownBaseline = true)
+                fail("$table must retain unique explicit $key values")
+            } catch (failure: com.example.api.DriveSyncConflict) {
+                assertEquals(com.example.api.DriveSyncCheck.BACKUP_PREIMAGE_CONFLICT, failure.check)
+            }
+        }
+    }
+
     @Test fun unknownNewerRemoteSnapshotCannotBeOverwrittenByOlderLocalData() = runBlocking {
-        val old = JSONObject().put("bankTransactions", JSONArray().put(JSONObject().put("id", "bank-synthetic-1")
+        val old = JSONObject().put("bankTransactions", JSONArray().put(JSONObject().put("transactionId", "bank-synthetic-1")
             .put("amountCent", 900).put("updatedAt", "2026-10-31T12:00:00Z")))
         remote.put("conflict-snapshot", "supplementalBackup.json", config.systemFolderId, old.toString(), "supplementalBackup")
         val stale = JSONObject(old.toString())
@@ -974,7 +1041,7 @@ class Phase11ESyncRegressionTest {
     }
 
     @Test fun knownBaselineDoesNotAuthorizeDroppingAnExistingBankRecord() = runBlocking {
-        val before = JSONObject().put("bankTransactions", JSONArray().put(JSONObject().put("id", "synthetic-bank-keep").put("amountCent", 300)))
+        val before = JSONObject().put("bankTransactions", JSONArray().put(JSONObject().put("transactionId", "synthetic-bank-keep").put("amountCent", 300)))
         remote.put("conserved-snapshot", "supplementalBackup.json", config.systemFolderId, before.toString(), "supplementalBackup")
         assertTrue(GoogleDriveClient.updateSyncJson(token, "conserved-snapshot", before.toString(), conflictContext = app).success)
         remote.requests.clear()
