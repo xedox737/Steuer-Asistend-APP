@@ -496,6 +496,22 @@ class Phase11ESyncRegressionTest {
         assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
     }
 
+    @Test fun changedLocalCloudOnlyLegacyReferenceBlocksBeforeAnyCloudWrite() = runBlocking {
+        seedReceipts(1)
+        val missing = removeOriginalBaseline(1)
+        val reference = repo.getDocumentsForReceipt(missing.receiptInternalId!!).single()
+        repo.insertDocument(reference.copy(filename = "LOCAL_CHANGED_AFTER_RESTORE.png"))
+        val before = remote.inventory(config.rootFolderId)
+        val cloudBytes = remote.entries.getValue(missing.driveFileId!!).bytes.copyOf()
+        val result = measure(connectedModel(), "cloud-only-legacy-reference-edited")
+        assertTrue(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertEquals(before, remote.inventory(config.rootFolderId))
+        assertArrayEquals(cloudBytes, remote.entries.getValue(missing.driveFileId).bytes)
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+        assertEquals("LOCAL_CHANGED_AFTER_RESTORE.png", repo.getDocumentsForReceipt(missing.receiptInternalId).single().filename)
+    }
+
     @Test fun legacyBaselineCanBeEstablishedFromMatchingIndependentLocalOriginal() = runBlocking {
         seedReceipts(3, localBytes = true)
         val missing = removeOriginalBaseline(3)
@@ -668,7 +684,7 @@ class Phase11ESyncRegressionTest {
         assertEquals(1, repo.allReceipts.first().size)
     }
 
-    @Test fun missingLegacyOriginalHashIsNotReportedAsAnActualHttp412() = runBlocking {
+    @Test fun editedLegacyOriginalWithoutHashIsNotReportedAsAnActualHttp412() = runBlocking {
         seedReceipts(3)
         val row = repo.getReceiptById(3)!!
         val metadata = remote.entries.getValue(row.driveMetadataFileId!!)
@@ -677,15 +693,21 @@ class Phase11ESyncRegressionTest {
         metadata.bytes = payload.toString().toByteArray(Charsets.UTF_8)
         val original = repo.getAllManagedDocuments().single { it.receiptInternalId == row.internalId }
         db.managedDocumentDao().upsert(original.copy(sha256 = "", localUri = ""))
+        // Unchanged cloud-only originals are a read-only no-op since PR #157.
+        // A local edit must still fail before writes, with a local check rather than HTTP 412.
+        repo.insert(row.copy(aussteller = "LOCAL_CHANGED_AFTER_RESTORE"))
+        val cloudBytes = remote.entries.getValue(original.driveFileId!!).bytes.copyOf()
         val vm = connectedModel()
         val result = measure(vm, "legacy-original-hash-missing")
         assertTrue(result.getBoolean("hasSyncError"))
         assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
         val report = vm.driveSyncReport.value!!
         assertEquals(3, report.notAttempted)
-        assertTrue(report.germanText(), report.germanText().contains("ORIGINAL_BASELINE_MISSING"))
+        assertTrue(report.germanText(), report.germanText().contains("ORIGINAL_BASELINE_REFERENCE_MISMATCH"))
         assertTrue(report.steps.filter { it.failure?.check != null }.all { it.failure?.httpStatus == null })
         assertFalse(report.germanText().contains("HTTP=412"))
+        assertArrayEquals(cloudBytes, remote.entries.getValue(original.driveFileId).bytes)
+        assertEquals("", repo.getManagedDocument(original.documentId)!!.sha256)
         assertTrue(vm.isDriveConnected.value)
     }
 

@@ -1747,11 +1747,13 @@ class DrivePersistenceRepository(
      * certified as historically unchanged or adopted as a baseline on that basis.
      * A changed receipt/revision/reference cannot take this no-op path.
      */
-    private fun canSkipCloudOnlyLegacy(
+    private suspend fun canSkipCloudOnlyLegacy(
         row: Receipt, saved: PersistedReceipt, expected: ManagedDocument,
         local: ManagedDocument, fingerprint: com.example.api.DriveOriginalFingerprint
     ): Boolean {
         if (expected.sha256.isNotBlank() || local.sha256.isNotBlank() || fingerprint.size <= 0) return false
+        // Apply the complete reference check during inventory, before any backup writes.
+        if (localRepository.getDocumentsForReceipt(row.internalId) != saved.documents) return false
         if (saved.revision != row.driveRevision ||
             comparableReceipt(row, saved.schemaVersion < 2) !=
                 comparableReceipt(saved.toLocalReceipt(row.driveMetadataFileId), saved.schemaVersion < 2)) return false
