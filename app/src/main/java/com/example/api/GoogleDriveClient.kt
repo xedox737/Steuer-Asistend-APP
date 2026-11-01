@@ -1179,9 +1179,36 @@ object GoogleDriveClient {
         return fetchOriginalFingerprintChecked(token, fileId).also { scope?.syncOriginals?.put(fileId, it) }
     }
 
+    internal fun markRecoveredOriginal(token: String, id: String) {
+        DriveEnvironment.currentReadProof(token)?.recoveredOriginals?.add(id)
+    }
+    internal fun wasOriginalBaselineRecovered(token: String, id: String): Boolean =
+        DriveEnvironment.currentReadProof(token)?.recoveredOriginals?.contains(id) == true
+
     private fun fetchOriginalFingerprintChecked(token: String, fileId: String): DriveOriginalFingerprint {
         val owned = DriveEnvironment.readOwnedMetadata(token, fileId, ::sendRawDriveRequest)
         return fingerprintFromMetadata(fileId, owned.json, owned.etag)
+    }
+
+    /** Read-only proof for a missing baseline: owned bytes, exact binding and stable version.
+     * A new Drive hash alone is never historical evidence; the caller supplies an independent hash. */
+    internal fun verifyOriginalBaselineBytes(token: String, before: DriveOriginalFingerprint,
+        parentId: String, filename: String, mime: String, independentHash: String): DriveOriginalFingerprint {
+        val bytes = downloadFileBytesChecked(token, before.fileId)
+        val owned = DriveEnvironment.readOwnedMetadata(token, before.fileId, ::sendRawDriveRequest)
+        val after = fingerprintFromMetadata(before.fileId, owned.json, owned.etag)
+        if (before.version.isBlank() || after.version != before.version)
+            throw DriveSyncConflict(DriveSyncCheck.ORIGINAL_BASELINE_CHANGED_DURING_READ)
+        val meta = owned.json
+        if (meta.getString("name") != filename || meta.getString("mimeType") != mime ||
+            meta.getJSONArray("parents").length() != 1 || meta.getJSONArray("parents").getString(0) != parentId)
+            throw DriveSyncConflict(DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
+        val hash = com.example.data.StableDocumentIdentity.sha256(bytes)
+        if (bytes.isEmpty() || before.size != bytes.size.toLong() || after.size != before.size ||
+            (before.sha256.isNotBlank() && !before.sha256.equals(hash, true)) ||
+            (after.sha256.isNotBlank() && !after.sha256.equals(hash, true)) || !hash.equals(independentHash, true))
+            throw DriveSyncConflict(DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
+        return after.copy(sha256 = hash)
     }
 
     private fun fingerprintFromMetadata(fileId: String, json: JSONObject, etag: String?): DriveOriginalFingerprint {

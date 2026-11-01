@@ -43,7 +43,10 @@ data class DriveDocumentSyncCounts(val total: Int = 0, val processed: Int = 0, v
 enum class DriveSyncCheck(val label: String) {
     LOCAL_PRECONDITION("Lokaler Prüfnachweis widersprüchlich; Schreiben gesperrt"),
     RECEIPT_REVISION_MISMATCH("Lokaler Beleg und Drive-Metadaten unterscheiden sich; gemeinsamer Revisionsstand fehlt"),
-    ORIGINAL_BASELINE_MISSING("Für das Original fehlt ein gespeicherter Vergleichs-Hash; unveränderter Zustand nicht nachweisbar"),
+    ORIGINAL_BASELINE_MISSING("Original ohne Vergleichs-Hash und ohne unabhängige lokale Kopie; historischer Inhalt nicht nachweisbar. Keine Datei verändert"),
+    ORIGINAL_BASELINE_CONTENT_MISMATCH("Lokales Original und Drive-Inhalt widersprechen sich; fehlende Baseline wird nicht ersetzt"),
+    ORIGINAL_BASELINE_REFERENCE_MISMATCH("Gespeicherte Originalreferenzen oder gemeinsamer Belegstand passen nicht; Baseline-Aufbau gesperrt"),
+    ORIGINAL_BASELINE_CHANGED_DURING_READ("Original wurde während des Baseline-Nachweises geändert; erneut sicher prüfen"),
     ORIGINAL_CHECKSUM_MISMATCH("Original-Hash passt nicht zum gespeicherten Vergleichsstand"),
     ORIGINAL_SIZE_INVALID("Für das Original wurde keine gültige Dateigröße nachgewiesen"),
     INDEX_BINDING_MISMATCH("Lokaler Beleg und Drive-Index haben unterschiedliche Dateibindungen"),
@@ -122,19 +125,27 @@ data class DriveSyncReport(
     val uploaded: Int = 0, val unchanged: Int = 0, val metadataOnly: Int = 0, val failed: Int = 0, val blocked: Int = 0,
     val apiCalls: Int = 0, val sentBytes: Long = 0, val receivedBytes: Long = 0,
     val lastSuccessfulPhase: DriveSyncPhase? = null,
-    val documents: DriveDocumentSyncCounts = DriveDocumentSyncCounts(), val interrupted: Int = 0
+    val documents: DriveDocumentSyncCounts = DriveDocumentSyncCounts(), val interrupted: Int = 0,
+    val appVersionCode: Int? = null
 ) {
     val currentPhase: DriveSyncPhase? get() = steps.lastOrNull { it.outcome==DriveSyncOutcome.RUNNING }?.phase
     val notAttempted: Int get() = (receiptsTotal-receiptsProcessed).coerceAtLeast(0)
     val isCheckpoint: Boolean get() = steps.any { it.failure?.kind == "PROCESS_RESTART" }
     fun germanText(): String = buildString {
         appendLine("ImmoPilot – Google-Drive-Synchronisierung")
+        appendLine("App-Versionscode beim Lauf: ${appVersionCode ?: "im alten Bericht nicht erfasst"}")
         appendLine("Ergebnis: ${outcome.label}")
         appendLine("Beginn: $startedAt")
         if (isCheckpoint) appendLine("Zwischenstand vor App-Neustart: Alle Zähler beziehen sich auf den letzten Speicherpunkt; spätere Vorgänge sind unbekannt.")
         appendLine("Dauer: ${String.format(java.util.Locale.GERMANY,"%.1f",elapsedMs/1000.0)} Sekunden")
         val failures=steps.filter { it.outcome in setOf(DriveSyncOutcome.FAILED,DriveSyncOutcome.BLOCKED) }
         if(failures.isNotEmpty()) appendLine("Fehlgeschlagen bei: ${failures.map { it.phase.label }.distinct().joinToString()}")
+        val primary = failures.firstOrNull { it.internalReceiptId != null && it.failure?.check != null }
+        if (primary != null) {
+            appendLine("Ursprünglicher Sicherheitskonflikt: ${primary.phase.label}; interne Beleg-ID=${primary.internalReceiptId}; Prüfcode=${primary.failure?.check?.name}")
+            val dependent = steps.count { it.phase == primary.phase && it.internalReceiptId != null && it.outcome == DriveSyncOutcome.CANCELLED }
+            appendLine("Dadurch abgebrochene parallele Prüfungen: $dependent (kein zusätzlicher Originalkonflikt)")
+        }
         appendLine("Belege: $uploaded übertragen · $unchanged unverändert · $metadataOnly nur Metadaten · $failed fehlgeschlagen · $blocked gesperrt · $notAttempted nicht versucht")
         appendLine("Belegabgleich bearbeitet: $receiptsProcessed von $receiptsTotal")
         appendLine("Unterbrochene Belege: $interrupted")
@@ -160,6 +171,7 @@ data class DriveSyncReport(
     }
     fun toJson(): String = JSONObject().apply {
         put("outcome",outcome.name);put("elapsedMs",elapsedMs);put("startedAt",startedAt)
+        put("appVersionCode",appVersionCode ?: JSONObject.NULL)
         put("receiptsTotal",receiptsTotal);put("receiptsProcessed",receiptsProcessed)
         put("uploaded",uploaded);put("unchanged",unchanged);put("metadataOnly",metadataOnly);put("failed",failed);put("blocked",blocked)
         put("apiCalls",apiCalls);put("sentBytes",sentBytes);put("receivedBytes",receivedBytes)
@@ -200,7 +212,8 @@ data class DriveSyncReport(
                     o.optInt("receiptsTotal"),o.optInt("receiptsProcessed"),o.optInt("uploaded"),o.optInt("unchanged"),o.optInt("metadataOnly"),o.optInt("failed"),o.optInt("blocked"),
                     o.optInt("apiCalls"),o.optLong("sentBytes"),o.optLong("receivedBytes"),o.optString("lastSuccessfulPhase").takeIf { it!="null" && it.isNotBlank() }?.let(DriveSyncPhase::valueOf),
                     DriveDocumentSyncCounts(d.optInt("total"), d.optInt("processed"), d.optInt("uploaded"), d.optInt("unchanged"),
-                        d.optInt("metadataOnly"), d.optInt("failed"), d.optInt("blocked"), d.optInt("interrupted")), o.optInt("interrupted"))
+                        d.optInt("metadataOnly"), d.optInt("failed"), d.optInt("blocked"), d.optInt("interrupted")), o.optInt("interrupted"),
+                    if (o.isNull("appVersionCode")) null else o.getInt("appVersionCode"))
             }
         } catch (_: org.json.JSONException) { null } catch (_: IllegalArgumentException) { null }
     }
@@ -214,7 +227,7 @@ internal class DriveSyncRecorder(
     @Synchronized fun originalWritten(id: String) { originalWrites += id }
     @Synchronized fun wasOriginalWritten(id: String): Boolean = id in originalWrites
     private val start=nanos()
-    private var report=DriveSyncReport(startedAt=java.time.Instant.now().toString())
+    private var report=DriveSyncReport(startedAt=java.time.Instant.now().toString(), appVersionCode=com.example.BuildConfig.VERSION_CODE)
     private fun elapsed()=((nanos()-start)/1_000_000).coerceAtLeast(0)
     @Synchronized fun snapshot(): DriveSyncReport = report.copy(elapsedMs=elapsed())
     private fun publish() { report=report.copy(elapsedMs=elapsed());onUpdate(report) }
@@ -295,7 +308,7 @@ internal object DriveSyncTrace {
         val parent=context.get() ?: return block()
         val key=parent.recorder.begin(phase,id)
         return withContext(context.asContextElement(parent.copy(keys=parent.keys+key, job=currentCoroutineContext()[Job], receiptId=id ?: parent.receiptId))) {
-            try { val result=block();parent.recorder.end(key,outcome(result));result }
+            try { val result=block();currentCoroutineContext().ensureActive();parent.recorder.end(key,outcome(result));result }
             catch(e: Throwable) { val failure=DriveSyncFailure.from(e)
                 parent.recorder.end(key,if(failure.kind=="CANCELLED")DriveSyncOutcome.CANCELLED else if(failure.kind in setOf("SAFETY", "CONFLICT"))DriveSyncOutcome.BLOCKED else DriveSyncOutcome.FAILED,failure);throw e }
         }

@@ -18,6 +18,8 @@ internal class DriveReadProof(val authorization: String) {
     var syncCacheEnabled = false
     val syncJson = java.util.concurrent.ConcurrentHashMap<String, DriveJsonSnapshot>()
     val syncOriginals = java.util.concurrent.ConcurrentHashMap<String, DriveOriginalFingerprint>()
+    // A recovered baseline authorizes no original replacement during this run.
+    val recoveredOriginals = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     // Positive lookups only, scoped to this account-bound run; never proof for a mutation.
     val syncEntities = java.util.concurrent.ConcurrentHashMap<String, DriveFile>()
     val roots = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()

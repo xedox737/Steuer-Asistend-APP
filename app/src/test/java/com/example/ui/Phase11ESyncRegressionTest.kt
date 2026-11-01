@@ -458,6 +458,192 @@ class Phase11ESyncRegressionTest {
         assertTrue(vm.isDriveConnected.value)
     }
 
+    private suspend fun removeOriginalBaseline(id: Int, removeSavedHash: Boolean = true): ManagedDocument {
+        val row = repo.getReceiptById(id)!!
+        if (removeSavedHash) {
+            val metadata = remote.entries.getValue(row.driveMetadataFileId!!)
+            metadata.bytes = JSONObject(metadata.bytes.toString(Charsets.UTF_8)).apply {
+                put("schemaVersion", 1); remove("originalDocuments")
+            }.toString().toByteArray()
+        }
+        val document = repo.getAllManagedDocuments().single { it.receiptInternalId == row.internalId }
+        val missing = document.copy(sha256 = "")
+        db.managedDocumentDao().upsert(missing)
+        return missing
+    }
+
+    @Test fun legacyBaselineCanBeEstablishedFromMatchingIndependentLocalOriginal() = runBlocking {
+        seedReceipts(3, localBytes = true)
+        val missing = removeOriginalBaseline(3)
+        val originalBytes = remote.entries.getValue(missing.driveFileId!!).bytes.copyOf()
+        val vm = connectedModel()
+        val result = measure(vm, "legacy-baseline-local-copy")
+        assertFalse(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(StableDocumentIdentity.sha256(originalBytes), repo.getManagedDocument(missing.documentId)!!.sha256)
+        assertEquals(0, result.getInt("originalCreates") + result.getInt("originalUpdates"))
+        assertArrayEquals(originalBytes, remote.entries.getValue(missing.driveFileId).bytes)
+        val next = measure(vm, "legacy-baseline-identical-repeat")
+        assertFalse(next.toString(), next.getBoolean("hasSyncError"))
+        assertEquals(0, next.getInt("filesCreate") + next.getInt("filesUpdate"))
+        assertEquals(0, next.getInt("originalMediaGets"))
+    }
+
+    @Test fun savedOriginalHashRepairsOnlyMissingLocalHashWithCloudOnlyOriginal() = runBlocking {
+        seedReceipts(1)
+        val missing = removeOriginalBaseline(1, removeSavedHash = false)
+        val vm = connectedModel()
+        val result = measure(vm, "baseline-saved-hash")
+        assertFalse(result.toString(), result.getBoolean("hasSyncError"))
+        assertFalse(repo.getManagedDocument(missing.documentId)!!.sha256.isBlank())
+        assertEquals(0, result.getInt("originalCreates") + result.getInt("originalUpdates"))
+    }
+
+    @Test fun changedLegacyOriginalCannotBeAdoptedBySizeOrReachability() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val missing = removeOriginalBaseline(1)
+        val original = remote.entries.getValue(missing.driveFileId!!)
+        original.bytes = original.bytes.copyOf().also { it[it.lastIndex] = 99 }
+        original.revision++
+        val result = measure(connectedModel(), "baseline-different-bytes-same-size")
+        assertTrue(result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+        assertTrue(result.toString().contains("ORIGINAL_BASELINE_CONTENT_MISMATCH"))
+    }
+
+    @Test fun changedCloudVersionDuringBaselineReadKeepsMissingHashAndOriginal() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val missing = removeOriginalBaseline(1)
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            if (chain.request().url.encodedPath.endsWith("/" + missing.driveFileId) && chain.request().url.queryParameter("alt") == "media")
+                remote.entries.getValue(missing.driveFileId!!).revision++
+            response
+        }.addInterceptor(remote).build())
+        val result = measure(connectedModel(), "baseline-cloud-race")
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertTrue(result.toString().contains("ORIGINAL_BASELINE_CHANGED_DURING_READ"))
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+    }
+
+    @Test fun concurrentLocalDocumentEditIsNotOverwrittenByBaselineAdoption() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val missing = removeOriginalBaseline(1)
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            if (chain.request().url.encodedPath.endsWith("/" + missing.driveFileId) && chain.request().url.queryParameter("alt") == "media")
+                runBlocking { db.managedDocumentDao().upsert(missing.copy(title = "Concurrent synthetic edit")) }
+            response
+        }.addInterceptor(remote).build())
+        val result = measure(connectedModel(), "baseline-local-race")
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+        assertEquals("Concurrent synthetic edit", repo.getManagedDocument(missing.documentId)!!.title)
+        assertTrue(result.toString().contains("LOCAL_RECEIPT_CHANGED"))
+    }
+
+    @Test fun cancellationDuringBaselineReadDoesNotAdoptOrUpload() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val missing = removeOriginalBaseline(1)
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/" + missing.driveFileId) && chain.request().url.queryParameter("alt") == "media")
+                throw CancellationException("Synthetic user cancellation")
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        val vm = connectedModel()
+        val result = measure(vm, "baseline-cancelled")
+        assertEquals(com.example.api.DriveSyncOutcome.CANCELLED, vm.driveSyncReport.value!!.outcome)
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+        assertTrue(vm.isDriveConnected.value)
+    }
+
+    @Test fun renamedOriginalCannotBootstrapFromAnUnrelatedReference() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val missing = removeOriginalBaseline(1)
+        remote.entries.getValue(missing.driveFileId!!).name = "Different synthetic original.png"
+        val result = measure(connectedModel(), "baseline-binding-conflict")
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertEquals("", repo.getManagedDocument(missing.documentId)!!.sha256)
+        assertTrue(result.toString().contains("ORIGINAL_BASELINE_REFERENCE_MISMATCH"))
+    }
+
+    @Test fun primaryBaselineConflictAndCancelledSiblingChecksRemainDistinct() = runBlocking {
+        val recorder = com.example.api.DriveSyncRecorder({})
+        val started = java.util.concurrent.atomic.AtomicInteger()
+        val ready = CompletableDeferred<Unit>()
+        try {
+            com.example.api.DriveSyncTrace.run(recorder) {
+                coroutineScope {
+                    repeat(2) { index -> launch {
+                        com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, "synthetic-sibling-$index") {
+                            if (started.incrementAndGet() == 2) ready.complete(Unit)
+                            awaitCancellation()
+                        }
+                    } }
+                    launch {
+                        ready.await()
+                        com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, "synthetic-primary") {
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_MISSING)
+                        }
+                    }
+                }
+            }
+            fail("Primary conflict must propagate")
+        } catch (_: com.example.api.DriveSyncConflict) { }
+        recorder.finish(com.example.api.DriveSyncOutcome.BLOCKED)
+        val report = recorder.snapshot()
+        assertEquals(1, report.steps.count { it.outcome == com.example.api.DriveSyncOutcome.BLOCKED })
+        assertEquals(2, report.steps.count { it.outcome == com.example.api.DriveSyncOutcome.CANCELLED })
+        assertTrue(report.germanText().contains("Ursprünglicher Sicherheitskonflikt:"))
+        assertTrue(report.germanText().contains("Dadurch abgebrochene parallele Prüfungen: 2"))
+        assertEquals(report, com.example.api.DriveSyncReport.fromJson(report.toJson()))
+    }
+
+    @Test fun legacyStockPlusOneNewReceiptRemainsTwentyThreeWithNoDuplicateOriginals() = runBlocking {
+        seedReceipts(22, localBytes = true)
+        removeOriginalBaseline(3)
+        val before = repo.allReceipts.first().associate { it.internalId to it.driveFileId }
+        val template = repo.getReceiptById(1)!!
+        val file = File(app.filesDir, "baseline-new-23.png").apply { writeBytes(File(template.imageUrl).readBytes()) }
+        repo.insert(template.copy(id = 23, internalId = "synthetic-added-23", displayId = "BLG-2026-000023",
+            imageUrl = file.absolutePath, driveFileId = null, driveMetadataFileId = null, driveFolderId = null,
+            storedFilename = null, originalMimeType = null, fileSizeBytes = 0, driveRevision = null,
+            syncStatus = "PENDING", lastSyncedAt = null, isArchivedToDrive = false))
+        val vm = connectedModel()
+        val result = measure(vm, "baseline-22-plus-one-new")
+        assertFalse(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(1, result.getInt("originalCreates"))
+        assertEquals(0, result.getInt("originalUpdates"))
+        assertEquals(23, repo.allReceipts.first().size)
+        before.forEach { (id, driveId) -> assertEquals(driveId, repo.getReceiptByInternalId(id)!!.driveFileId) }
+        val noOp = measure(vm, "baseline-23-repeat-noop")
+        assertFalse(noOp.toString(), noOp.getBoolean("hasSyncError"))
+        assertEquals(0, noOp.getInt("filesCreate") + noOp.getInt("filesUpdate"))
+        assertEquals(0, noOp.getInt("originalMediaGets"))
+    }
+
+    @Test fun verifiedBaselineSurvivesIndexFailureAndViewModelRestartWithoutDuplicateOriginals() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val missing = removeOriginalBaseline(1)
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().method == "PATCH" && chain.request().url.encodedPath.endsWith("/phase11e-index"))
+                okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                    .code(503).message("Synthetic index failure").body(okhttp3.ResponseBody.create(null, "{}")).build()
+            else chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        val first = measure(connectedModel(), "baseline-index-failure")
+        assertTrue(first.getBoolean("hasSyncError"))
+        assertFalse(repo.getManagedDocument(missing.documentId)!!.sha256.isBlank())
+        stores.forEach { it.clear() }; models.forEach { it.viewModelScope.coroutineContext[Job]?.join() }
+        transport.set(null, OkHttpClient.Builder().addInterceptor(remote).build())
+        val repeated = measure(connectedModel(), "baseline-resume-after-restart")
+        assertFalse(repeated.toString(), repeated.getBoolean("hasSyncError"))
+        assertEquals(0, repeated.getInt("originalCreates") + repeated.getInt("originalUpdates"))
+        assertEquals(missing.driveFileId, repo.getManagedDocument(missing.documentId)!!.driveFileId)
+        assertEquals(1, repo.allReceipts.first().size)
+    }
+
     @Test fun missingLegacyOriginalHashIsNotReportedAsAnActualHttp412() = runBlocking {
         seedReceipts(3)
         val row = repo.getReceiptById(3)!!

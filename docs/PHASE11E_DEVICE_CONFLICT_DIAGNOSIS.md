@@ -44,3 +44,8 @@ Vor der jeweiligen Korrektur tatsächlich rote Tests: fehlender Legacy-Hash wurd
 Der neue CI-Lauf mit Head/Run-ID und dessen tatsächliche Ergebnisse gehören in PR #156; vorherige grüne Läufe sind kein Nachweis für das neue APK. Kein Merge oder öffentliches APK-Release. Version 1401 verwendet unverändert Original-Package, OAuth und Produktzertifikat.
 
 Nach erfolgreicher Build-/Identitätsprüfung: Update über 1400 installieren, nicht deinstallieren. Auto-Backup aus lassen. **Einen** manuellen Lauf ausführen und den neuen vollständigen Bericht mit `Prüfcode`, lokalen/Drive-Revisionen und Feldnamen weitergeben. Bei erneuter Sperre nicht durch Bereinigung, wiederholtes Restore oder Ersetzen von Dateien umgehen. Erst anhand des konkreten Prüfcodes wird eine gegebenenfalls notwendige Legacy-Behandlung festgelegt. Realer Erfolg und Performance-Abnahme weiterhin **OFFEN**.
+
+
+## Bestätigter Folgeauftrag nach 1401
+
+Der neue reale Lauf nennt ausdrücklich `ORIGINAL_BASELINE_MISSING` (42,3 Sekunden, 129 API-Aufrufe, null geschriebene Bytes). Damit ist die vorher offene lokale Prüfstelle bestimmt. Der kleinste nachweisbare Korrekturpfad und seine weiterhin gesperrten unbekannten Fälle stehen in [PHASE11E_BASELINE_RECOVERY.md](PHASE11E_BASELINE_RECOVERY.md). Die oben beschriebenen Einschränkungen beziehen sich auf Kandidat 1401; Kandidat 1402 ergänzt ausschließlich unabhängig belegte fehlende Vergleichswerte. Praktische Abnahme bleibt offen.

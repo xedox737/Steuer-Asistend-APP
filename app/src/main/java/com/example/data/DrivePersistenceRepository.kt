@@ -1643,6 +1643,7 @@ class DrivePersistenceRepository(
         val indexEvidence = mutableMapOf<String, String?>()
         val localById = local.associateBy { it.internalId }
         val localOriginals = localRepository.getAllManagedDocuments().groupBy { it.receiptInternalId }
+        val baselines = java.util.concurrent.ConcurrentLinkedQueue<Pair<ManagedDocument, String>>()
         val checks = mutableListOf<Triple<String, String, Receipt>>()
         for (i in 0 until entries.length()) {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -1702,6 +1703,15 @@ class DrivePersistenceRepository(
                     val id = document.driveFileId?.takeIf(String::isNotBlank)
                         ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
                     val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(token, id)
+                    val localDocument = localOriginals[row.internalId].orEmpty().singleOrNull { it.driveFileId == id }
+                        ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
+                    if (document.sha256.isBlank() || localDocument.sha256.isBlank()) {
+                        val verified = proveMissingOriginalBaseline(token, row, persisted, document, localDocument, fingerprint)
+                        if (localDocument.sha256.isBlank()) baselines.add(localDocument to verified.sha256)
+                        GoogleDriveClient.markRecoveredOriginal(token, id)
+                        GoogleDriveClient.rememberVerifiedOriginal(token, verified, verified.sha256)
+                        continue
+                    }
                     val hash = fingerprint.sha256.ifBlank { getSha256(GoogleDriveClient.downloadFileBytesChecked(token, id)) }
                     val pending = DrivePendingWrites(context).originalChange(config.rootFolderId, id)
                     val committedByThisApp = pending != null && pending.beforeSha256.equals(document.sha256, ignoreCase = true) &&
@@ -1718,6 +1728,48 @@ class DrivePersistenceRepository(
                 } }
             }.awaitAll()
         }
+        // No partial baseline adoption while another inventory task still has an unknown conflict.
+        for ((document, hash) in baselines) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, document.receiptInternalId) {
+                if (!localRepository.adoptOriginalBaseline(document, hash))
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
+            }
+        }
+    }
+
+    /** A missing local hash may be recovered only from a saved hash or matching independent bytes.
+     * Cloud-only legacy references without either witness remain blocked; size/name are not identity. */
+    private suspend fun proveMissingOriginalBaseline(token: String, row: Receipt, saved: PersistedReceipt,
+        expected: ManagedDocument, local: ManagedDocument, before: com.example.api.DriveOriginalFingerprint
+    ): com.example.api.DriveOriginalFingerprint {
+        fun conflict(code: com.example.api.DriveSyncCheck): Nothing = throw com.example.api.DriveSyncConflict(code)
+        val reference = saved.documents.singleOrNull { it.driveFileId == before.fileId }
+        if (reference == null || expected.documentId != local.documentId || expected.driveFileId != local.driveFileId ||
+            expected.driveFolderId != local.driveFolderId || reference.driveFolderId != local.driveFolderId ||
+            reference.filename != local.storedFilename || reference.mimeType != local.mimeType ||
+            reference.sizeBytes != before.size || local.fileSizeBytes != before.size ||
+            local.driveFolderId.isNullOrBlank() || localRepository.getDocumentsForReceipt(row.internalId).none { it == reference } ||
+            saved.revision != row.driveRevision || comparableReceipt(row, saved.schemaVersion < 2) !=
+                comparableReceipt(saved.toLocalReceipt(row.driveMetadataFileId), saved.schemaVersion < 2))
+            conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
+        val paths = (if (before.fileId == row.driveFileId) ReceiptOriginalChain.paths(row.imageUrl).singleOrNull()?.let { listOf(it) }.orEmpty() else emptyList()) + local.localUri
+        val localHashes = paths.filter(String::isNotBlank).distinct().mapNotNull { path ->
+            try {
+                val bytes = if (path.startsWith("content://") || path.startsWith("file://"))
+                    context.contentResolver.openInputStream(android.net.Uri.parse(path))?.use { it.readBytes() }
+                else File(path).takeIf { it.isFile }?.readBytes()
+                bytes?.takeIf { it.isNotEmpty() }?.let { getSha256(it) }
+            } catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
+        }.distinct()
+        val savedHash = expected.sha256.takeIf(String::isNotBlank) ?: local.sha256.takeIf(String::isNotBlank)
+        if (savedHash == null && localHashes.isEmpty()) conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_MISSING)
+        val independent = savedHash ?: localHashes.singleOrNull()
+            ?: conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
+        if (!independent.matches(Regex("[a-fA-F0-9]{64}")) || localHashes.any { !it.equals(independent, true) })
+            conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
+        return GoogleDriveClient.verifyOriginalBaselineBytes(token, before, requireNotNull(local.driveFolderId),
+            local.storedFilename, local.mimeType, independent)
     }
 
     /** Only compiled property names, never values; optional diagnostics cannot alter the guard. */
@@ -1783,6 +1835,8 @@ class DrivePersistenceRepository(
                         }.getOrNull()?.takeIf { it.isNotEmpty() }
                     }
                     if (localBytes != null && getSha256(localBytes) != actual) {
+                        if (GoogleDriveClient.wasOriginalBaselineRecovered(accessToken, id))
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
                         require(checkMagicBytes(localBytes)) { "Lokales Originalformat nicht gültig" }
                         if (persisted.revision != receipt.driveRevision)
                             throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)

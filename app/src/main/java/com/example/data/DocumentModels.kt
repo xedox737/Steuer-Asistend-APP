@@ -122,6 +122,13 @@ interface ManagedDocumentDao {
     @Update
     suspend fun updateExisting(document: ManagedDocument): Int
 
+    /** Adopt only an independently verified missing hash, never replace a changed row or reference. */
+    @Transaction
+    suspend fun adoptOriginalBaseline(expected: ManagedDocument, hash: String): Boolean {
+        if (expected.sha256.isNotBlank() || !hash.matches(Regex("[a-f0-9]{64}")) || getById(expected.documentId) != expected) return false
+        return updateExisting(expected.copy(sha256 = hash)) == 1
+    }
+
     /** Storage acknowledgement cannot replace newer OCR, review, loan or property assignments. */
     @Transaction
     suspend fun updateDriveStorageIfPresent(expected: ManagedDocument, saved: ManagedDocument, receipt: Receipt? = null): ManagedDocument? {

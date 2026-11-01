@@ -892,6 +892,8 @@ class ReceiptRepository(
 
     suspend fun getAllManagedDocuments(): List<ManagedDocument> = managedDocumentDao?.getAll().orEmpty()
     suspend fun getManagedDocument(id: String): ManagedDocument? = managedDocumentDao?.getById(id)
+    internal suspend fun adoptOriginalBaseline(expected: ManagedDocument, hash: String): Boolean =
+        managedDocumentDao?.adoptOriginalBaseline(expected, hash) == true
     suspend fun updateManagedDocumentReview(expected: ManagedDocument, reviewed: ManagedDocument): ManagedDocument? =
         managedDocumentDao?.updateReviewIfPresent(expected, reviewed)
     suspend fun updateManagedDocumentLoan(expected: ManagedDocument, loanId: Int): ManagedDocument? =
