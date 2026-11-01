@@ -53,6 +53,18 @@ internal class DrivePendingWrites(context: Context) {
     fun completedReceiptIndex(metadataId: String) = synchronized(lock) { record("receipt-index-pending", metadataId).delete() }
 
     data class Creation(val fileId: String, val hashes: Set<String>)
+    /** Read existing evidence only. A missing journal must never allocate/adopt an ID. */
+    fun pendingCreation(scope: String, key: String): Creation? = synchronized(lock) {
+        val file = record(scope, "create:$key")
+        val previous = try { file.openRead().use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) } }
+            catch (_: java.io.FileNotFoundException) { return@synchronized null }
+        check(previous.getInt("version") == 1 && previous.getString("scope") == scope && previous.getString("key") == key)
+        val id = previous.getString("file")
+        val array = previous.getJSONArray("hashes")
+        val hashes = (0 until array.length()).map { array.getString(it) }.toSet()
+        check(id.matches(Regex("[A-Za-z0-9_-]{1,256}")) && hashes.isNotEmpty() && hashes.all { it.matches(SHA) })
+        Creation(id, hashes)
+    }
     fun jsonBaseline(id: String): String? = synchronized(lock) {
         val file = record("json-baseline", id)
         val json = try { file.openRead().use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) } }
@@ -74,14 +86,10 @@ internal class DrivePendingWrites(context: Context) {
     fun creation(scope: String, key: String, desiredHash: String, allocate: () -> String): Creation = synchronized(lock) {
         require(desiredHash.matches(SHA))
         val file = record(scope, "create:$key")
-        val previous = try { file.openRead().use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) } }
-            catch (_: java.io.FileNotFoundException) { null }
-        if (previous != null) check(previous.getString("scope") == scope && previous.getString("key") == key)
-        val id = previous?.getString("file") ?: allocate()
+        val previous = pendingCreation(scope, key)
+        val id = previous?.fileId ?: allocate()
         require(id.matches(Regex("[A-Za-z0-9_-]{1,256}")))
-        val hashes = previous?.getJSONArray("hashes")?.let { array ->
-            (0 until array.length()).map { array.getString(it) }.toSet()
-        }.orEmpty()
+        val hashes = previous?.hashes.orEmpty()
         check(hashes.all { it.matches(SHA) })
         val allowed = hashes + desiredHash
         val bytes = JSONObject().put("version", 1).put("scope", scope).put("key", key).put("file", id)

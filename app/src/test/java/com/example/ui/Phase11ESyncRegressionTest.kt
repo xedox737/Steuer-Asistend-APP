@@ -1106,6 +1106,117 @@ class Phase11ESyncRegressionTest {
         assertEquals(initial.internalId, after.internalId)
     }
 
+    private suspend fun assertMissingPrimaryNeverUsesAnotherPage(emptyPrimary: Boolean) {
+        seedReceipts(1, localBytes = true)
+        val row = repo.getReceiptById(1)!!
+        val primary = repo.getAllManagedDocuments().single()
+        val primaryBytes = remote.entries.getValue(row.driveFileId!!).bytes.copyOf()
+        val otherBytes = primaryBytes.copyOf().also { it[it.lastIndex] = 92 }
+        val otherFile = File(app.filesDir, "synthetic-page-two.png").apply { writeBytes(otherBytes) }
+        val other = primary.copy(documentId = primary.documentId + ":page-two", localUri = otherFile.absolutePath,
+            driveFileId = "synthetic-page-two", storedFilename = otherFile.name, originalFilename = otherFile.name,
+            sha256 = StableDocumentIdentity.sha256(otherBytes), extractedFieldsJson = "{\"_receiptOriginalOrder\":1}")
+        remote.put(other.driveFileId!!, other.storedFilename, config.receiptsFolderId, mime = other.mimeType).bytes = otherBytes
+        repo.upsertManagedDocument(other)
+        repo.insertDocument(ReceiptDocumentReference(id = other.documentId, receiptInternalId = row.internalId,
+            driveFileId = other.driveFileId, driveFolderId = other.driveFolderId, filename = other.storedFilename,
+            mimeType = other.mimeType, sizeBytes = other.fileSizeBytes, role = "ATTACHMENT", createdAt = other.createdAt))
+        val pages = row.copy(imageUrl = JSONArray().put(primary.localUri).put(other.localUri).toString())
+        db.receiptDao().insertReceipt(pages)
+        drive.upsertReceiptMetadata(token, config, pages)
+        val ready = repo.getReceiptById(1)!!.copy(driveRevision = 2)
+        db.receiptDao().insertReceipt(ready)
+        DrivePendingWrites(app).completedReceiptIndex(ready.driveMetadataFileId!!)
+        if (emptyPrimary) File(primary.localUri).writeBytes(byteArrayOf()) else File(primary.localUri).delete()
+        remote.requests.clear()
+        assertTrue(drive.syncReceiptToDrive(token, config, ready))
+        assertArrayEquals(primaryBytes, remote.entries.getValue(row.driveFileId).bytes)
+        assertArrayEquals(otherBytes, remote.entries.getValue(other.driveFileId).bytes)
+        assertEquals(primary.sha256, repo.getManagedDocument(primary.documentId)!!.sha256)
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
+    @Test fun emptyPrimaryCacheNeverOverwritesItsCloudIdWithTheSecondPage() = runBlocking {
+        assertMissingPrimaryNeverUsesAnotherPage(emptyPrimary = true)
+    }
+
+    @Test fun absentPrimaryCacheNeverOverwritesItsCloudIdWithTheSecondPage() = runBlocking {
+        assertMissingPrimaryNeverUsesAnotherPage(emptyPrimary = false)
+    }
+
+    private suspend fun interruptedFirstUpload(unexpectedCloudReceipt: Boolean, beforeMetadata: Boolean = true, localEdit: Boolean = false) {
+        val bytes = byteArrayOf(0x89.toByte(),0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a) + ByteArray(32) { 73 }
+        val file = File(app.filesDir, "synthetic-first-upload.png").apply { writeBytes(bytes) }
+        repo.insert(Receipt(id = 1, internalId = "synthetic-first-upload", displayId = "BLG-2026-000001",
+            aussteller = "Synthetic first upload", datum = "2026-01-01", uhrzeit = "12:00", bruttobetrag = 119.0,
+            hauptkategorie = "Instandhaltung", unterkategorie = "Material", kontoNr = "4800", beschreibung = "Synthetic first upload",
+            imageUrl = file.absolutePath,
+            syncStatus = "PENDING"))
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val body = okio.Buffer().also { request.body?.writeTo(it) }.readUtf8()
+            if (request.method == "POST" && body.contains(if (beforeMetadata) "receiptMetadata" else "receiptIndex"))
+                okhttp3.Response.Builder().request(request).protocol(okhttp3.Protocol.HTTP_1_1).code(503)
+                    .message("Synthetic interruption after original").body(okhttp3.ResponseBody.create(null, "{}")).build()
+            else chain.proceed(request)
+        }.addInterceptor(remote).build())
+        val first = measure(connectedModel(), "first-upload-interrupted-before-index")
+        assertTrue(first.toString(), first.getBoolean("hasSyncError"))
+        val saved = repo.getReceiptById(1)!!
+        val originalId = requireNotNull(saved.driveFileId)
+        if (beforeMetadata) assertNull(saved.driveMetadataFileId) else assertNotNull(saved.driveMetadataFileId)
+        assertTrue(remote.entries.values.none { it.properties["entityType"] == "receiptIndex" })
+        assertArrayEquals(bytes, remote.entries.getValue(originalId).bytes)
+        if (unexpectedCloudReceipt) remote.put("unexplained-cloud-original", "old.png", config.receiptsFolderId,
+            mime = "image/png").bytes = bytes
+        if (localEdit) repo.insert(saved.copy(aussteller = "Newer local user edit after interrupted first upload"))
+        val before = remote.inventory(config.rootFolderId)
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor(remote).build())
+        GoogleDriveClient.clearFolderCache()
+        val resumed = measure(connectedModel(), "first-upload-resumed-after-restart")
+        val blocked = unexpectedCloudReceipt || localEdit
+        assertEquals(resumed.toString(), blocked, resumed.getBoolean("hasSyncError"))
+        assertEquals(originalId, repo.getReceiptById(1)!!.driveFileId)
+        saved.driveMetadataFileId?.let { assertEquals(it, repo.getReceiptById(1)!!.driveMetadataFileId) }
+        assertEquals(0, resumed.getInt("originalCreates") + resumed.getInt("originalUpdates"))
+        assertArrayEquals(bytes, remote.entries.getValue(originalId).bytes)
+        if (blocked) {
+            assertEquals(0, resumed.getInt("filesCreate") + resumed.getInt("filesUpdate"))
+            assertEquals(before, remote.inventory(config.rootFolderId))
+        } else {
+            assertNotNull(repo.getReceiptById(1)!!.driveMetadataFileId)
+            val repeat = measure(connectedModel(), "first-upload-identical-repeat")
+            assertFalse(repeat.toString(), repeat.getBoolean("hasSyncError"))
+            assertEquals(0, repeat.getInt("filesCreate") + repeat.getInt("filesUpdate"))
+        }
+    }
+
+    @Test fun interruptedFirstOriginalUploadResumesFullSyncWithoutReplacingItsId() = runBlocking {
+        interruptedFirstUpload(unexpectedCloudReceipt = false)
+    }
+
+    @Test fun interruptedFirstMetadataUploadResumesFullSyncWithoutReplacingOriginalOrMetadata() = runBlocking {
+        interruptedFirstUpload(unexpectedCloudReceipt = false, beforeMetadata = false)
+    }
+
+    @Test fun pendingFirstUploadCannotHideAnUnexplainedCloudOriginalWithoutIndex() = runBlocking {
+        interruptedFirstUpload(unexpectedCloudReceipt = true)
+    }
+
+    @Test fun pendingFirstUploadCannotOverwriteCsvAfterAnUnprovenLocalEdit() = runBlocking {
+        interruptedFirstUpload(unexpectedCloudReceipt = false, localEdit = true)
+    }
+
+    @Test fun missingIndexWithoutCreationProofStillBlocksBeforeWrites() = runBlocking {
+        seedReceipts(1)
+        remote.entries.remove("phase11e-index")
+        val before = remote.inventory(config.rootFolderId)
+        val result = measure(connectedModel(), "missing-index-no-creation-proof")
+        assertTrue(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        assertEquals(before, remote.inventory(config.rootFolderId))
+    }
+
     @Test fun newReceiptMetadataPreservesConfirmedPaymentMethodSourceAndConfidence() = runBlocking {
         seedReceipts(1, localBytes = true)
         val initial = repo.allReceipts.first().single()

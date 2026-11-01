@@ -1630,13 +1630,8 @@ class DrivePersistenceRepository(
      * DELETED entries and unavailable supplemental originals remain untouched. */
     suspend fun validateSynchronizationInventory(token: String, config: DriveAppConfig, local: List<Receipt>) {
         val indexFile = GoogleDriveClient.findFileByAppProperty(token, config.systemFolderId, "receiptIndex", failOnError = true)
-        if (indexFile == null) {
-            if (local.any { !it.driveMetadataFileId.isNullOrBlank() || !it.driveFileId.isNullOrBlank() })
-                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
-            return
-        }
-        val source = GoogleDriveClient.downloadSyncJsonSnapshot(token, indexFile.id)
-        val entries = JSONObject(source.read.json).getJSONArray("entries")
+        val entries = if (indexFile == null) pendingInitialReceiptEntries(token, config, local)
+        else JSONObject(GoogleDriveClient.downloadSyncJsonSnapshot(token, indexFile.id).read.json).getJSONArray("entries")
         val seen = hashSetOf<String>()
         val seenMetadata = hashSetOf<String>()
         val seenOriginals = hashSetOf<String>()
@@ -1739,6 +1734,40 @@ class DrivePersistenceRepository(
                     throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
             }
         }
+    }
+
+    /** An absent first index is recoverable only for journal-proven, unfinished creations.
+     * Unknown or previously completed cloud receipts still block before every write. */
+    private suspend fun pendingInitialReceiptEntries(token: String, config: DriveAppConfig, local: List<Receipt>): JSONArray {
+        fun invalid(): Nothing = throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+        val bound = local.filter { !it.driveMetadataFileId.isNullOrBlank() || !it.driveFileId.isNullOrBlank() }
+        if (bound.isEmpty()) return JSONArray()
+        val pending = DrivePendingWrites(context)
+        for (row in bound) {
+            if (row.isArchivedToDrive || !GoogleDriveClient.hasPendingReceiptOriginal(context, token, row)) invalid()
+            val metadataId = row.driveMetadataFileId?.takeIf(String::isNotBlank)
+            if (metadataId == null && row.driveRevision != null) invalid()
+            if (metadataId != null && !pending.receiptIndexPending(metadataId)) invalid()
+        }
+        val allowed = bound.flatMap { listOfNotNull(it.driveFileId, it.driveMetadataFileId) }.toSet()
+        val inventory = GoogleDriveClient.listAppTreeFiles(token, config.rootFolderId)
+        if (inventory.size >= 10_000) invalid()
+        val csvs = mapOf("Steuerassistent_Belege_Hauptbuch.csv" to GoogleDriveClient.ledgerCsv(local),
+            "Steuerassistent_Wohneinheiten.csv" to GoogleDriveClient.unitsCsv(getWohneinheitenFromPrefs(localRepository.getPropertyMetadata())))
+        for (file in inventory.filter { it.mimeType != "application/vnd.google-apps.folder" && it.id !in allowed }) {
+            val tags = file.appProperties
+            val csv = csvs[file.name]
+            if (csv != null && GoogleDriveClient.hasPendingInitialCsv(context, token, config.rootFolderId, file, csv)) continue
+            if (!tags["receiptInternalId"].isNullOrBlank() || tags["entityType"] in setOf("receiptMetadata", "receiptIndex") ||
+                config.receiptsFolderId in file.parentIds || tags["entityType"].isNullOrBlank() ||
+                tags["appName"] != DriveEnvironment.appIdentifier) invalid()
+        }
+        // Existing pending metadata uses the ordinary complete inventory checks below.
+        // An original without metadata reaches the existing same-ID upload recovery path.
+        return JSONArray().apply { bound.filter { !it.driveMetadataFileId.isNullOrBlank() }.forEach { row ->
+            put(JSONObject().put("internalId", row.internalId).put("metadataFileId", row.driveMetadataFileId)
+                .put("mainDriveFileId", row.driveFileId).put("syncStatus", "PENDING"))
+        } }
     }
 
     /**
@@ -1904,7 +1933,8 @@ class DrivePersistenceRepository(
                             throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                         reconciled += document to fingerprint.copy(sha256 = actual)
                     }
-                    val paths = if (id == originalId) ReceiptOriginalChain.paths(receipt.imageUrl) + document.localUri else listOf(document.localUri)
+                    val paths = if (id == originalId) listOfNotNull(ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull()) + document.localUri
+                        else listOf(document.localUri)
                     val localBytes = paths.firstNotNullOfOrNull { path ->
                         runCatching {
                             if (path.startsWith("content://") || path.startsWith("file://"))

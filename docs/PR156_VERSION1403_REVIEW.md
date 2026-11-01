@@ -72,7 +72,53 @@ Testzahlen, Signaturprüfung und APK-Artefakt werden im Prüfkommentar zu
 [PR #156](https://github.com/xedox737/Steuer-Asistend-APP/pull/156) dokumentiert.
 Ein grüner Alt-Lauf von 1402 ist kein Nachweis für 1403.
 
-## Review-Werkzeuge und Sicherheit
+## Codex-Nachprüfung des ersten Korrekturcommits
+
+Codex prüfte `7f9ca980ed636c59c1a023705d3f30028a097f25` und meldete zwei
+P1-Befunde. Beide wurden im ergänzenden SDK35-Prüfaufbau vor der Korrektur
+reproduziert:
+
+- Der bekannte Mehrseiten-Pfad nahm eine lesbare Folgeseite als Ersatz für eine
+  leere oder fehlende erste lokale Seite. In beiden Tests wurde das erste
+  Cloud-Original tatsächlich mit den Bytes der zweiten Seite überschrieben.
+  `syncKnownReceipt` liest jetzt nur den ersten Bildpfad und die lokale URI
+  des aktuellen Primärdokuments; Anhänge verwenden ausschließlich ihre eigene
+  URI. Die Tests verlangen unveränderte Originalbytes, Hashes und reine GETs.
+- Nach Unterbrechung des ersten Original-Uploads blockierte die fehlende
+  `receipt-index.json` die Vollsicherung dauerhaft. Die Vorprüfung erkennt
+  jetzt ausschließlich nachweislich unvollendete Erst-Uploads: bestehendes
+  kontogebundenes Erstellungsjournal mit derselben ID und passenden Hashes,
+  frische Namespace-/Dateiname-/MIME-/Eltern-/Größenbindung und vollständiges
+  Cloud-Inventar. Bereits abgeschlossene oder unerklärte Bestände werden
+  weiterhin gesperrt. Die beiden ungetaggten ersten Root-CSVs benötigen
+  ebenfalls ihre Erstellungsjournale und müssen exakt zu den aktuellen lokalen
+  CSV-Bytes passen. Vorhandene ausstehende Metadaten durchlaufen die normalen
+  Bestandsprüfungen; neue Metadaten verwenden den bisherigen Uploadpfad.
+
+Sieben gezielte neue Prüfungen bestehen: leere/fehlende erste Seite,
+Wiederaufnahme vor Metadaten bzw. vor erstem Index, unbekanntes Cloud-Original,
+ungeklärte lokale Änderung gegenüber der CSV und fehlendes Journal.
+Original- und Metadaten-IDs bleiben erhalten; der unveränderte Folgelauf
+schreibt nichts. Fehlende Nachweise bleiben ein Sperrgrund; es wird kein
+unbekannter Index rekonstruiert und kein Altbestand übernommen.
+
+Der abschließende ergänzende Lauf nach diesen Korrekturen besteht mit
+**70/70 Phase11E-Methoden**, null Fehler/Skips. Außerdem bestehen erneut alle
+16 Python-Prüfungen und `git diff --check`. Der unveränderte Room-Vertrag
+benötigt keine Migration. Die vollständige SDK36-/API35-CI und der reale
+POCO-Test bleiben davon getrennte Nachweise.
+
+Der Scope-Sweep untersuchte alle 22 Kotlin-Dateien der ursprünglichen
+PR-Dateiliste auf `firstNotNullOfOrNull`, `ReceiptOriginalChain.paths`,
+`if (indexFile == null)` und `receiptIndexPending`. Der schreibende
+Seiten-Fallback und die zentrale Index-Vorprüfung waren die relevanten Stellen;
+andere Treffer dienen Anzeige/Export, zählen Anhänge oder sind schon auf
+eindeutige Pfade begrenzt. Keine produktiven Daten wurden zum Nachweis genutzt.
+Der Lauf 41360703071 prüft den inzwischen durch P1-Befunde überholten Head und
+ist kein Nachweis für diese Folgekorrektur. Der Folgecommit startet erneut die
+vollständige Android-CI und erhält eine neue Codex-Review-Anforderung.
+
+## Verfügbarkeit des Review Loops
 
 Angewendet: GH Review Loop sowie Agent Skills für Code-Review, Fehlersuche,
 Tests, Sicherheit und Git-Arbeit. `gh` 2.46.0 und Python3 sind installiert.

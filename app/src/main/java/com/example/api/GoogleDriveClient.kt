@@ -72,20 +72,72 @@ object GoogleDriveClient {
         withContext(creationContext.asContextElement(context.applicationContext)) { block() }
 
     private data class CreatePlan(val id: String, val existing: DriveOriginalFingerprint?)
-    /** Persist a Google-allocated ID before POST. An unknown POST result can only reuse that ID,
-     * even if files.list has not yet caught up. No filename-based duplicate guess is required. */
-    private fun prepareCreation(token: String, metadata: JSONObject, bytes: ByteArray): CreatePlan? {
-        val context = creationContext.get() ?: return null
+    private fun creationScope(context: Context): String {
         val account = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
             .getString("connected_email", null)?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotBlank)
             ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
-        val scope = com.example.data.StableDocumentIdentity.sha256("${DriveEnvironment.appIdentifier}\u0000$account".toByteArray())
+        return com.example.data.StableDocumentIdentity.sha256("${DriveEnvironment.appIdentifier}\u0000$account".toByteArray())
+    }
+    private fun creationKey(metadata: JSONObject): String {
         val properties = metadata.optJSONObject("appProperties") ?: JSONObject()
         val identity = JSONObject(properties.toString()).apply { remove("contentSha256"); remove("displayId"); remove("schemaVersion") }
         // A stable receipt/document identity survives a local rename or folder reassignment.
         val stableAsset = properties.optString("receiptInternalId").isNotBlank() || properties.optString("documentId").isNotBlank()
-        val key = com.example.data.StableDocumentIdentity.sha256((canonicalDriveJson(identity) +
+        return com.example.data.StableDocumentIdentity.sha256((canonicalDriveJson(identity) +
             if (stableAsset) "" else "\u0000${metadata.optJSONArray("parents")}\u0000${metadata.getString("name")}").toByteArray())
+    }
+
+    /** Prove an unfinished first original from this account's pre-POST journal, not presence alone. */
+    internal fun hasPendingReceiptOriginal(context: Context, token: String, row: Receipt): Boolean {
+        val id = row.driveFileId?.takeIf(String::isNotBlank) ?: return false
+        if (row.storedFilename.isNullOrBlank() || row.driveFolderId.isNullOrBlank() || row.originalMimeType.isNullOrBlank()) return false
+        val properties = JSONObject().put("appName", DriveEnvironment.appIdentifier)
+            .put("receiptInternalId", row.internalId).put("documentRole", "ORIGINAL")
+        val expected = JSONObject().put("appProperties", properties).put("name", row.storedFilename)
+            .put("mimeType", row.originalMimeType).put("parents", JSONArray().put(row.driveFolderId))
+        val verified = pendingCreationFingerprint(context, token, expected, id) ?: return false
+        return verified.size == row.fileSizeBytes
+    }
+
+    /** The two initial root CSVs have no appProperties, so require their own creation journals. */
+    internal fun hasPendingInitialCsv(context: Context, token: String, rootId: String, file: DriveManagedFile, desired: String): Boolean {
+        if (file.name !in setOf("Steuerassistent_Belege_Hauptbuch.csv", "Steuerassistent_Wohneinheiten.csv") ||
+            file.parentIds != listOf(rootId) || file.mimeType != "text/csv") return false
+        val expected = JSONObject().put("name", file.name).put("mimeType", "text/csv").put("parents", JSONArray().put(rootId))
+        val verified = pendingCreationFingerprint(context, token, expected, file.id) ?: return false
+        return verified.sha256 == com.example.data.StableDocumentIdentity.sha256(desired.toByteArray(Charsets.UTF_8))
+    }
+
+    private fun pendingCreationFingerprint(context: Context, token: String, expected: JSONObject, id: String): DriveOriginalFingerprint? {
+        val pending = com.example.data.DrivePendingWrites(context).pendingCreation(creationScope(context),
+            creationKey(expected)) ?: return null
+        if (pending.fileId != id) return null
+        val owned = DriveEnvironment.readOwnedMetadata(token, id, ::sendRawDriveRequest)
+        val meta = owned.json
+        val tags = meta.optJSONObject("appProperties") ?: JSONObject()
+        val requiredTags = expected.optJSONObject("appProperties") ?: JSONObject()
+        if (requiredTags.keys().asSequence().any { tags.optString(it) != requiredTags.getString(it) } ||
+            meta.getString("name") != expected.getString("name") || meta.getString("mimeType") != expected.getString("mimeType") ||
+            canonicalDriveJson(meta.getJSONArray("parents")) != canonicalDriveJson(expected.getJSONArray("parents"))) return null
+        val before = fingerprintFromMetadata(id, meta, owned.etag)
+        val hash = before.sha256.ifBlank {
+            val bytes = downloadFileBytesChecked(token, id)
+            val after = fetchOriginalFingerprintChecked(token, id)
+            if (before.version.isBlank() || before.version != after.version || before.size != after.size)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+            com.example.data.StableDocumentIdentity.sha256(bytes)
+        }
+        if (before.size <= 0 || hash !in pending.hashes) return null
+        rememberVerifiedOriginal(token, before, hash)
+        return before.copy(sha256 = hash)
+    }
+
+    /** Persist a Google-allocated ID before POST. An unknown POST result can only reuse that ID,
+     * even if files.list has not yet caught up. No filename-based duplicate guess is required. */
+    private fun prepareCreation(token: String, metadata: JSONObject, bytes: ByteArray): CreatePlan? {
+        val context = creationContext.get() ?: return null
+        val scope = creationScope(context)
+        val key = creationKey(metadata)
         val store = com.example.data.DrivePendingWrites(context)
         val pending = store.creation(scope, key, com.example.data.StableDocumentIdentity.sha256(bytes)) {
             val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/generateIds?count=1&space=drive&type=files")
@@ -1282,7 +1334,7 @@ object GoogleDriveClient {
             val q = "'$parentId' in parents and trashed = false"
             val url = buildString {
                 append("https://www.googleapis.com/drive/v3/files?q=").append(URLEncoder.encode(q, "UTF-8"))
-                append("&pageSize=1000&fields=nextPageToken,files(id,name,mimeType,size,parents,trashed,appProperties)")
+                append("&pageSize=1000&fields=nextPageToken,incompleteSearch,files(id,name,mimeType,size,parents,trashed,appProperties)")
                 if (pageToken.isNotBlank()) append("&pageToken=").append(URLEncoder.encode(pageToken, "UTF-8"))
             }
             val request = Request.Builder().url(url).addHeader("Authorization", "Bearer $accessToken").build()
