@@ -101,3 +101,11 @@ Zusätzlich geändert: ausschließlich `test/ui/Phase5BComposeWorkflowTest.kt`, 
 - Reale neue Diagnose muss den zuletzt auf dem POCO fehlgeschlagenen Teilschritt bestätigen. HyperOS-Akkueinstellung ist nur eine Testbedingung.
 
 Die [Geräteanleitung](PHASE11E_DRIVE_SYNC.md#reproduzierbarer-poco-x8-pro-test-android-16--hyperos) fordert ausdrücklich einen neuen echten Messwert und den kopierten Bericht an. Praktische Abnahme bleibt **OFFEN**; kein automatischer Merge, keine APK-Veröffentlichung ohne gesonderte Freigabe.
+
+## Vorbereitung des updatefähigen Gerätetest-Builds
+
+Die ursprüngliche grüne CI 41293820401, Versuch 2, für Head `c1920cbee049edd9902c0caa3f5f3c6d060701d3` enthält 1288 bestandene Unit-Tests, 70 bestandene Instrumentation-Tests auf API35, Lint und assembleDebug. Sie baute den bisherigen Versionscode 1. Dieser ist kein Update für die bestätigte Testversion 1300.
+
+Für den internen Gerätetest-Kandidaten wird ausschließlich `defaultConfig.versionCode` auf 1400 erhöht. Paket-ID, VersionName, Signaturweg, OAuth, Fachlogik und Room-Schema werden dabei nicht geändert. Der bestehende Veröffentlichungs-Workflow bleibt unberührt und wird nicht gestartet. Der neue Build muss selbst erfolgreich geprüft und seine tatsächliche APK-Identität bestätigt werden. Keine Bereitstellung ohne gesonderte Freigabe; keine Deinstallation als Ausweg bei einem Update-Konflikt.
+
+Anleitung: [PHASE11E_POCO_TEST.md](PHASE11E_POCO_TEST.md). Praktische Abnahme weiterhin OFFEN.
