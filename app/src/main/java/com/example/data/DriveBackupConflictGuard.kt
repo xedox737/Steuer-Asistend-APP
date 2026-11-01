@@ -1,6 +1,5 @@
 package com.example.data
 
-import com.example.api.DriveAccessFailure
 import com.example.api.canonicalDriveJson
 import org.json.JSONArray
 import org.json.JSONObject
@@ -9,7 +8,7 @@ import org.json.JSONObject
  * existing entities, reject newer remote versions, and require a known common preimage for
  * ambiguous unversioned edits. This performs no merge, cleanup, restore or ID replacement. */
 internal object DriveBackupConflictGuard {
-    private fun conflict(): Nothing = throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+    private fun conflict(): Nothing = throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.BACKUP_PREIMAGE_CONFLICT)
     fun validate(before: Any?, candidate: Any?, knownBaseline: Boolean, path: String = "") {
         if (canonicalDriveJson(before) == canonicalDriveJson(candidate)) return
         if (before is JSONObject && candidate is JSONObject) {

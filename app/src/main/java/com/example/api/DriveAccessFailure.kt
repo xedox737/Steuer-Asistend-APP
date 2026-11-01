@@ -19,6 +19,20 @@ internal open class DriveAccessFailure(val reason: Reason, val httpStatus: Int? 
     enum class Reason { HTTP, NETWORK, TIMEOUT, INVALID_ID, INVALID_METADATA, WRONG_MIME, WRONG_LOCATION, NAMESPACE, INCOMPLETE_SEARCH }
 }
 
+/** Local failed invariants keep the legacy conflict status internally, but must never be
+ * presented as an HTTP response or proof that somebody changed the cloud data. */
+internal class DriveSyncConflict(
+    val check: DriveSyncCheck,
+    val localRevision: Long? = null,
+    val driveRevision: Long? = null,
+    differentFields: List<String> = emptyList(),
+    val expectedBytes: Long? = null,
+    val actualBytes: Long? = null
+) : DriveAccessFailure(Reason.HTTP, 412) {
+    override val message: String get() = "Lokale Drive-Sicherheitsprüfung [${check.name}]: Schreiben gesperrt."
+    val differentFields = differentFields.filter { it.matches(Regex("[A-Za-z][A-Za-z0-9_]{0,63}")) }.distinct().sorted().take(64)
+}
+
 /** Control failures must survive legacy helpers returning false/null on ordinary Drive errors. */
 internal fun Throwable.rethrowDriveControlFailure() {
     if (this is kotlinx.coroutines.CancellationException || (this is DriveAccessFailure && httpStatus == 401)) throw this

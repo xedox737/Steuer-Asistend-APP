@@ -1651,16 +1651,16 @@ class DrivePersistenceRepository(
             require(id.isNotBlank() && seen.add(id)) { "Belegindex enthält mehrdeutige interne IDs" }
             if (entry.optString("syncStatus") == "DELETED") {
                 if (localById[id]?.deletionStatus == "ACTIVE")
-                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_DELETED_LOCAL_ACTIVE)
                 continue
             }
-            val row = localById[id] ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+            val row = localById[id] ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_RECEIPT_NOT_LOCAL)
             val metadataId = entry.getString("metadataFileId")
             val originalId = entry.getString("mainDriveFileId")
             if (!seenMetadata.add(metadataId) || (originalId.isNotBlank() && !seenOriginals.add(originalId)))
                 throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
             if (row.driveMetadataFileId != metadataId || row.driveFileId.orEmpty() != originalId)
-                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_BINDING_MISMATCH)
             indexEvidence[row.internalId] = FilelessLogbookContract.read(entry)
             if (indexEvidence[row.internalId] != null && originalId.isNotBlank())
                 throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
@@ -1679,9 +1679,12 @@ class DrivePersistenceRepository(
                 if (persisted.internalId != row.internalId || persisted.driveFileId != originalId ||
                     (persisted.schemaVersion >= 2 && persisted.receiptId != row.id))
                     throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.NAMESPACE)
-                if (comparableReceipt(row, persisted.schemaVersion < 2) !=
-                    comparableReceipt(persisted.toLocalReceipt(metadataId), persisted.schemaVersion < 2) && persisted.revision != row.driveRevision)
-                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                val comparedLocal = comparableReceipt(row, persisted.schemaVersion < 2)
+                val comparedRemote = comparableReceipt(persisted.toLocalReceipt(metadataId), persisted.schemaVersion < 2)
+                if (comparedLocal != comparedRemote && persisted.revision != row.driveRevision)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.RECEIPT_REVISION_MISMATCH,
+                        localRevision = row.driveRevision, driveRevision = persisted.revision,
+                        differentFields = differingReceiptFieldNames(comparedLocal, comparedRemote))
                 if (originalId.isBlank() && persisted.filelessLogbookEvidence == null)
                     throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
                 FilelessLogbookContract.validateMetadata(persisted)
@@ -1701,9 +1704,14 @@ class DrivePersistenceRepository(
                     val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(token, id)
                     val hash = fingerprint.sha256.ifBlank { getSha256(GoogleDriveClient.downloadFileBytesChecked(token, id)) }
                     val pending = DrivePendingWrites(context).originalChange(config.rootFolderId, id)
-                    val committedByThisApp = pending?.beforeSha256 == document.sha256 && pending.afterSha256 == hash
-                    if (fingerprint.size <= 0 || document.sha256.isBlank() || (hash != document.sha256 && !committedByThisApp))
-                        throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                    val committedByThisApp = pending != null && pending.beforeSha256.equals(document.sha256, ignoreCase = true) &&
+                        pending.afterSha256.equals(hash, ignoreCase = true)
+                    if (fingerprint.size <= 0)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_SIZE_INVALID)
+                    if (document.sha256.isBlank())
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_MISSING)
+                    if (!hash.equals(document.sha256, ignoreCase = true) && !committedByThisApp)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_CHECKSUM_MISMATCH)
                     GoogleDriveClient.rememberVerifiedOriginal(token, fingerprint, hash)
                 }
                 }
@@ -1711,6 +1719,15 @@ class DrivePersistenceRepository(
             }.awaitAll()
         }
     }
+
+    /** Only compiled property names, never values; optional diagnostics cannot alter the guard. */
+    private fun differingReceiptFieldNames(local: Receipt, remote: Receipt): List<String> = runCatching {
+        Receipt::class.java.declaredFields.filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .mapNotNull { field ->
+                field.isAccessible = true
+                field.name.takeIf { field.get(local) != field.get(remote) }
+            }
+    }.getOrDefault(emptyList())
 
     private fun comparableReceipt(row: Receipt, legacyNumericId: Boolean = false): Receipt = row.copy(
         id = if (legacyNumericId) 0 else row.id, imageUrl = "", isArchivedToDrive = false,
@@ -1752,8 +1769,9 @@ class DrivePersistenceRepository(
                     }
                     if (!expected.equals(actual, ignoreCase = true)) {
                         val known = pending.originalChange(config.rootFolderId, id)
-                        if (known?.beforeSha256 != expected || known.afterSha256 != actual)
-                            throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                        if (known == null || !known.beforeSha256.equals(expected, ignoreCase = true) ||
+                            !known.afterSha256.equals(actual, ignoreCase = true))
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                         reconciled += document to fingerprint.copy(sha256 = actual)
                     }
                     val paths = if (id == originalId) ReceiptOriginalChain.paths(receipt.imageUrl) + document.localUri else listOf(document.localUri)
@@ -1767,7 +1785,7 @@ class DrivePersistenceRepository(
                     if (localBytes != null && getSha256(localBytes) != actual) {
                         require(checkMagicBytes(localBytes)) { "Lokales Originalformat nicht gültig" }
                         if (persisted.revision != receipt.driveRevision)
-                            throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                         updates += Triple(document, fingerprint.copy(sha256 = actual), localBytes)
                     }
                 }
@@ -1777,7 +1795,7 @@ class DrivePersistenceRepository(
                 val matching = index?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.filter { it.getString("internalId") == receipt.internalId } }.orEmpty()
                 if (matching.size > 1 || matching.any { it.optString("syncStatus") == "DELETED" ||
                         it.getString("mainDriveFileId") != originalId || it.getString("metadataFileId") != metadataId })
-                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                 val metadataJson = JSONObject(source.read.json)
                 val summaryFields = listOf("aussteller", "datum", "bruttobetragCent", "hauptkategorie", "unterkategorie",
                     "wohneinheit", "pruefstatus", "freigabestatus", "exportstatus")
@@ -1791,7 +1809,7 @@ class DrivePersistenceRepository(
         if (updates.isNotEmpty() || reconciled.isNotEmpty()) {
             val latest = localRepository.getReceiptById(receipt.id) ?: return false
             if (comparableReceipt(latest) != comparableReceipt(receipt) || latest.imageUrl != receipt.imageUrl)
-                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
             for ((document, fingerprint, bytes) in updates) {
                 val fileId = requireNotNull(document.driveFileId)
                 val old = pending.originalChange(config.rootFolderId, fileId)
@@ -1819,9 +1837,9 @@ class DrivePersistenceRepository(
         val sameReceipt = comparableReceipt(receipt, persisted.schemaVersion < 2) == comparableReceipt(persisted.toLocalReceipt(metadataId), persisted.schemaVersion < 2)
         val sameReferences = localRepository.getDocumentsForReceipt(receipt.internalId) == persisted.documents
         val changed = !(sameReceipt && sameOriginalMetadata && sameReferences)
-        if (changed && persisted.revision != receipt.driveRevision) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+        if (changed && persisted.revision != receipt.driveRevision) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
         val current = localRepository.getReceiptById(receipt.id) ?: return false
-        if (comparableReceipt(current) != comparableReceipt(receipt) || current.imageUrl != receipt.imageUrl) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+        if (comparableReceipt(current) != comparableReceipt(receipt) || current.imageUrl != receipt.imageUrl) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
         if (changed) {
             pending.rememberReceiptIndexPending(metadataId)
             val saved = upsertReceiptMetadata(accessToken, config, current, source) ?: return false
@@ -1842,7 +1860,7 @@ class DrivePersistenceRepository(
             if (!success) return false
         }
         val latest = localRepository.getReceiptById(receipt.id) ?: return false
-        if (comparableReceipt(latest) != comparableReceipt(receipt) || latest.imageUrl != receipt.imageUrl) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+        if (comparableReceipt(latest) != comparableReceipt(receipt) || latest.imageUrl != receipt.imageUrl) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
         val acknowledged = latest.copy(syncStatus = "SYNCED", syncError = null, isArchivedToDrive = true,
             driveRevision = verified.revision, lastSyncedAt = verified.lastSyncedAt)
         if (acknowledged != latest) localRepository.updateDriveSyncFields(acknowledged)
@@ -2131,7 +2149,7 @@ class DrivePersistenceRepository(
                             } else {
                                 // No metadata baseline exists on this legacy path. Different bytes
                                 // are a conflict, never permission to replace an original.
-                                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                             }
                         }
                     } catch (e: Exception) {
@@ -2323,9 +2341,9 @@ class DrivePersistenceRepository(
             )
 
             val beforeMetadata = localRepository.getReceiptById(currentReceipt.id)
-                ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
             if (comparableReceipt(beforeMetadata) != comparableReceipt(currentReceipt) || beforeMetadata.imageUrl != currentReceipt.imageUrl)
-                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
             val uploadedMetadataId = upsertReceiptMetadata(accessToken, config, currentReceipt)
             var driveMetadataFileId = uploadedMetadataId
 
@@ -3973,7 +3991,7 @@ class DrivePersistenceRepository(
                 // 1. Get the latest state of the receipt from the database
                 val currentReceipt = localRepository.getReceiptById(receipt.id) ?: receipt
                 if (currentReceipt.driveAuthoredState() != receipt.driveAuthoredState())
-                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                 var driveMetadataFileId = currentReceipt.driveMetadataFileId
 
                 // 2. Prepare metadata content
@@ -4043,7 +4061,7 @@ class DrivePersistenceRepository(
                     if (remote.internalId != currentReceipt.internalId || remote.driveFileId != currentReceipt.driveFileId.orEmpty())
                         throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.NAMESPACE)
                     if (!currentReceipt.driveMetadataFileId.isNullOrBlank() && currentReceipt.driveMetadataFileId != source.fileId)
-                        throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                     // A lost CREATE acknowledgement can leave this one technical ID unbound.
                     // Body identity, original ID and authored data must still match exactly.
                     val same = comparableReceipt(currentReceipt.copy(driveMetadataFileId = source.fileId), remote.schemaVersion < 2) ==
@@ -4056,7 +4074,7 @@ class DrivePersistenceRepository(
                         return@withLock source.fileId
                     }
                     if (remote.revision != currentReceipt.driveRevision)
-                        throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                 }
                 val updatedJson = if (source != null) {
                     val previous = JSONObject(source.read.json)
@@ -4530,7 +4548,7 @@ class DrivePersistenceRepository(
                 metadata.name == document.storedFilename) {
                 val local = File(document.localUri.removePrefix("file://"))
                 if (local.isFile && getSha256(local.readBytes()) != document.sha256)
-                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                 val linkedOriginal = document.migrationStatus == "IDENTISCHES_ORIGINAL_VERKNUEPFT"
                 val extension = metadata.name.substringAfterLast('.', "bin")
                 val canonicalName = DocumentFilenameGenerator.document(type, document.documentDate, document.title, extension, document.documentId)

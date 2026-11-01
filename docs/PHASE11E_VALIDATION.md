@@ -8,7 +8,7 @@ Base: `5d5e61437fcf7324bb5e0f6442669f777d8ddeda`. Branch: `fix/phase11e-drive-sy
 
 | Prüfung | Ergebnis |
 |---|---|
-| Neue Phase11E-HTTP-/Room-/ViewModel-Regressionen | 43/43 bestanden |
+| Neue Phase11E-HTTP-/Room-/ViewModel-Regressionen | 50/50 bestanden (43 ursprüngliche plus 7 Diagnose-/Bytevergleichstests) |
 | Bestehende Namespace-, Login-, Restore-Vorschau-, Preservation- und Phase10A/10D-Tests | 107/107 bestanden |
 | Weitere Backup-/Dokument-/Bank-/Immobilien-/DATEV-/AfA-/Fahrtenbuch-/Mietdaten-Regressionen, 21 Klassen | 117/117 bestanden |
 | Unveränderte Base mit separatem 20-ms-Transport | Fehler 0/22 reproduziert; eigene Baseline-Assertion 1/1 bestanden |
@@ -18,9 +18,9 @@ Base: `5d5e61437fcf7324bb5e0f6442669f777d8ddeda`. Branch: `fix/phase11e-drive-sy
 | Lokales Gradle / lintDebug / assembleDebug | Extern blockiert: FileLockContentionHandler, kein nutzbares wildcard IP |
 | Lokaler nativer Emulator | Nicht ausgeführt, `/dev/kvm` fehlt |
 | GitHub verify / android-emulator-e2e | Ergebnisse mit Run-ID und geprüftem Commit in der PR-Beschreibung dokumentieren |
-| POCO X8 Pro / Android16 / echte Google Drive API | Nicht durchgeführt; neuer Lauf und kopierter Gerätebericht erforderlich |
+| POCO X8 Pro / Android16 / echte Google Drive API | Kandidat 1400 real getestet: nach 39,5 Sekunden gesperrt; kein erfolgreicher Sync-Nachweis. Kandidat 1401 noch nicht real getestet |
 
-Das sind **267 bestandene Produkt-/Regressionstests**, zuzüglich einer unabhängigen Baseline-Reproduktion. Ergänzende lokale Robolectric-Ausführung verwendet ausschließlich externe SDK35-Testkopien, Java21 und den vorhandenen Cache. Die eingecheckten SDK36-Annotationen bleiben unverändert. Dies ersetzt keine vollständige Gradle-/SDK36-/Emulatorprüfung. Im ergänzenden SDK35-Lauf traten Fontconfig-Cache-Warnungen und bei bestehenden ViewModel-Test-Teardowns Ausgaben bereits geschlossener In-Memory-Datenbanken auf; keine Assertions wurden abgeschwächt oder deaktiviert. Native CI ist gesondert auszuwerten.
+Das sind **274 bestandene Produkt-/Regressionstests**, zuzüglich einer unabhängigen Baseline-Reproduktion. Ergänzende lokale Robolectric-Ausführung verwendet ausschließlich externe SDK35-Testkopien, Java21 und den vorhandenen Cache. Die eingecheckten SDK36-Annotationen bleiben unverändert. Dies ersetzt keine vollständige Gradle-/SDK36-/Emulatorprüfung. Im ergänzenden SDK35-Lauf traten Fontconfig-Cache-Warnungen und bei bestehenden ViewModel-Test-Teardowns Ausgaben bereits geschlossener In-Memory-Datenbanken auf; keine Assertions wurden abgeschwächt oder deaktiviert. Native CI ist gesondert auszuwerten.
 
 Der erste breitere Lauf hatte vier echte Statusregressionen: Bei nicht erreichbaren Dokumentmetadaten wurde vorzeitig zurückgegeben, bevor der bisherige lokale Fehlerstatus gesetzt wurde. Der Nullpfad wurde gezielt korrigiert. Der erneute komplette 117-Test-Lauf besteht einschließlich unveränderter 404-/Timeout-/429-/503-Assertions und fehlender Ersatz-Uploads. Weitere vor ihrer Korrektur tatsächlich rote neue Regressionen sind in der Ursachenanalyse beschrieben.
 
@@ -75,7 +75,7 @@ Bei fehlenden Server-Checksummen werden tatsächliche Bytes heruntergeladen; die
 | `data/ReceiptDatabase.kt`, `DocumentModels.kt` | Ausschließlich Drive-Felder atomar bestätigen; konkurrierende fachliche Änderungen bewahren; keine Schema-/Versionsänderung |
 | `data/SupplementalDriveBackup.kt`, `ManagedDocumentDriveGateway.kt` | Eigene historische Referenzen erhalten, Kontroll-/Netzfehler weitergeben, vorhandenen Indexpfad nutzen |
 | `ui/ReceiptViewModel.kt`, `ReceiptAppUi.kt` | Gemeinsame Sperre, ehrliche Zähler und Sicherungszeit, ausschließlich Drive-Karte mit kopierbarer Diagnose und Abbruch |
-| `test/.../Phase11ESyncRegressionTest.kt`, `ComparisonDriveHttpFixture.kt` | 43 synthetische Vertrags-/Fehler-/Benchmarktests, kontrollierte SHA/ETag/Version/ID-Antworten |
+| `test/.../Phase11ESyncRegressionTest.kt`, `ComparisonDriveHttpFixture.kt` | 50 synthetische Vertrags-/Fehler-/Benchmarktests, kontrollierte SHA/ETag/Version/ID-Antworten |
 | `docs/PHASE11E_DRIVE_SYNC.md`, dieser Bericht, synthetische JSON-Evidenz | Ursachen, Aufrufketten, Messergebnisse, Pflichtmatrix, offene Risiken und echte Geräteanleitung |
 
 Keine Änderungen an Bank-/DATEV-/AfA-/Fahrtenbuch-Fachlogik, Mietdatenmodellen, globalem Header oder Bottom Navigation. Backup/Restore behält bestehende IDs und Verweise; Synchronisierung führt kein automatisches Restore aus. Original-App und isolierte Test-App werden nicht vermischt. Die 117 angrenzenden Tests prüfen insbesondere Supplemental-Roundtrip, Banklinks/Splits/Lernregeln, Portfolio-/Mietdaten, DATEV-Exportregeln, bestätigte AfA und Fahrtenbuch; die 107 Drive-Tests prüfen zusätzlich Anmeldung, Namespace und Restore.
@@ -104,8 +104,12 @@ Die [Geräteanleitung](PHASE11E_DRIVE_SYNC.md#reproduzierbarer-poco-x8-pro-test-
 
 ## Vorbereitung des updatefähigen Gerätetest-Builds
 
-Die ursprüngliche grüne CI 41293820401, Versuch 2, für Head `c1920cbee049edd9902c0caa3f5f3c6d060701d3` enthält 1288 bestandene Unit-Tests, 70 bestandene Instrumentation-Tests auf API35, Lint und assembleDebug. Sie baute den bisherigen Versionscode 1. Dieser ist kein Update für die bestätigte Testversion 1300.
+Die ursprüngliche grüne CI 41293820401, Versuch 2, für Head `c1920cbee049edd9902c0caa3f5f3c6d060701d3` enthält 1288 bestandene Unit-Tests, 70 bestandene Instrumentation-Tests auf API35, Lint und assembleDebug. Sie baute den bisherigen Versionscode 1. Die Bezeichnung „Testversion 1300“ belegt alleine keinen Android-Versionscode; aus ihr lässt sich die Updatefähigkeit von Versionscode 1 nicht ableiten. Die gebaute und installierte APK-Identität ist entscheidend.
 
 Für den internen Gerätetest-Kandidaten wird ausschließlich `defaultConfig.versionCode` auf 1400 erhöht. Paket-ID, VersionName, Signaturweg, OAuth, Fachlogik und Room-Schema werden dabei nicht geändert. Der bestehende Veröffentlichungs-Workflow bleibt unberührt und wird nicht gestartet. Der neue Build muss selbst erfolgreich geprüft und seine tatsächliche APK-Identität bestätigt werden. Keine Bereitstellung ohne gesonderte Freigabe; keine Deinstallation als Ausweg bei einem Update-Konflikt.
 
 Anleitung: [PHASE11E_POCO_TEST.md](PHASE11E_POCO_TEST.md). Praktische Abnahme weiterhin OFFEN.
+
+## Reales Ergebnis nach Testkandidat 1400
+
+Der erste echte POCO-Lauf ist weiterhin blockiert: 39,5 Sekunden, 23 lokale Belege, 129 API-Versuche, null Cloud-Schreibvorgänge. Dies ist kein erfolgreicher Performance-Nachweis. Die genaue Sperrursache ist mit dem bisherigen Sammelstatus 412 noch nicht trennbar. [Gerätebefund, rein lesende Prüfung und Diagnosekandidat 1401](PHASE11E_DEVICE_CONFLICT_DIAGNOSIS.md). Die Schutzentscheidung wird nicht durch blindes Überschreiben umgangen.

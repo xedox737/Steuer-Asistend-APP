@@ -859,9 +859,9 @@ class ReceiptRepository(
             snapshot.driveFileId, snapshot.driveFolderId, snapshot.driveMetadataFileId, snapshot.storedFilename,
             snapshot.originalMimeType, snapshot.fileSizeBytes, snapshot.syncStatus, snapshot.syncError,
             snapshot.lastSyncedAt, snapshot.driveRevision, snapshot.isArchivedToDrive)
-        if (changed != 1) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+        if (changed != 1) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
         val latest = receiptDao.getReceiptById(snapshot.id)
-            ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+            ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
         val dao = managedDocumentDao
         if (dao != null) {
             val existing = dao.getById(StableDocumentIdentity.receiptDocumentId(latest.internalId))

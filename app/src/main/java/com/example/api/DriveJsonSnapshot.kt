@@ -7,7 +7,8 @@ import org.json.JSONTokener
 /** A freshly read, owned JSON source and its HTTP concurrency precondition; never persisted. */
 internal data class DriveOwnedMetadata(val json: JSONObject,val etag: String?)
 
-internal data class DriveJsonSnapshot(val fileId: String,val read: DriveRestoreJsonRead,val etag: String?, val version: String = "")
+internal data class DriveJsonSnapshot(val fileId: String,val read: DriveRestoreJsonRead,val etag: String?, val version: String = "",
+    val rawFingerprint: DriveOriginalFingerprint? = null)
 
 internal val driveReferenceFields=setOf("rootFolderId","systemFolderId","receiptsFolderId","paymentsFolderId","exportsFolderId",
     "transactionsFolderId","backupsFolderId","driveFileId","driveFolderId","driveMetadataFileId","metadataFileId",

@@ -39,13 +39,34 @@ data class DriveDocumentSyncCounts(val total: Int = 0, val processed: Int = 0, v
     val notAttempted: Int get() = (total - processed).coerceAtLeast(0)
 }
 
-data class DriveSyncFailure(val kind: String, val httpStatus: Int? = null) {
-    val description: String get() = when (kind) {
+/** Stable diagnostic codes, never document values, paths, filenames or credentials. */
+enum class DriveSyncCheck(val label: String) {
+    LOCAL_PRECONDITION("Lokaler Prüfnachweis widersprüchlich; Schreiben gesperrt"),
+    RECEIPT_REVISION_MISMATCH("Lokaler Beleg und Drive-Metadaten unterscheiden sich; gemeinsamer Revisionsstand fehlt"),
+    ORIGINAL_BASELINE_MISSING("Für das Original fehlt ein gespeicherter Vergleichs-Hash; unveränderter Zustand nicht nachweisbar"),
+    ORIGINAL_CHECKSUM_MISMATCH("Original-Hash passt nicht zum gespeicherten Vergleichsstand"),
+    ORIGINAL_SIZE_INVALID("Für das Original wurde keine gültige Dateigröße nachgewiesen"),
+    INDEX_BINDING_MISMATCH("Lokaler Beleg und Drive-Index haben unterschiedliche Dateibindungen"),
+    INDEX_DELETED_LOCAL_ACTIVE("Drive-Index kennzeichnet einen lokal aktiven Beleg als gelöscht"),
+    INDEX_RECEIPT_NOT_LOCAL("Ein aktiver Indexbeleg fehlt im lokalen Bestand"),
+    JSON_ENCODING_INVALID("JSON-Datei hat keine gültige Zeichenkodierung; Lesen gesperrt"),
+    JSON_CHECKSUM_MISMATCH("JSON-Datei und gelesener Prüfnachweis haben unterschiedliche Hashes"),
+    JSON_SIZE_MISMATCH("JSON-Datei und gelesener Prüfnachweis haben unterschiedliche Byte-Größen"),
+    JSON_VERSION_MISSING("Für die JSON-Datei fehlt ein erforderlicher Versionsnachweis"),
+    JSON_VERSION_MISMATCH("Versionsnachweise vor und nach dem JSON-Lesen stimmen nicht überein"),
+    BACKUP_PREIMAGE_CONFLICT("Sicherung würde einen unbekannten oder neueren Datenstand verändern"),
+    LOCAL_RECEIPT_CHANGED("Lokaler Beleg wurde während des Abgleichs geändert oder entfernt")
+}
+
+data class DriveSyncFailure(val kind: String, val httpStatus: Int? = null,
+    val check: DriveSyncCheck? = null, val localRevision: Long? = null, val driveRevision: Long? = null,
+    val differentFields: List<String> = emptyList(), val expectedBytes: Long? = null, val actualBytes: Long? = null) {
+    val description: String get() = check?.label ?: when (kind) {
         "DNS" -> "DNS-Auflösung fehlgeschlagen"
         "TIMEOUT" -> "Zeitüberschreitung bei der Netzwerkübertragung"
         "NETWORK" -> "Netzwerkverbindung unterbrochen"
         "SAFETY" -> "Durch Sicherheitsprüfung blockiert"
-        "CONFLICT" -> "Der Drive-Bestand wurde zwischenzeitlich geändert; Überschreiben gesperrt"
+        "CONFLICT" -> "Versionskonflikt; Überschreiben gesperrt"
         "PRECONDITION" -> "Sichere Versionsvorbedingung von Google Drive fehlt; Update gesperrt"
         "LOCAL_SOURCE" -> "Lokale Originaldatei nicht lesbar und kein unverändertes Drive-Original nachgewiesen"
         "CANCELLED" -> "Vom Nutzer oder durch Sitzungswechsel abgebrochen"
@@ -68,6 +89,9 @@ data class DriveSyncFailure(val kind: String, val httpStatus: Int? = null) {
                 causes.any { it is kotlinx.coroutines.CancellationException } -> DriveSyncFailure("CANCELLED")
                 causes.any { it is java.net.UnknownHostException } -> DriveSyncFailure("DNS")
                 causes.any { it is java.net.SocketTimeoutException } -> DriveSyncFailure("TIMEOUT")
+                error is DriveSyncConflict -> DriveSyncFailure("CONFLICT", check = error.check,
+                    localRevision = error.localRevision, driveRevision = error.driveRevision,
+                    differentFields = error.differentFields, expectedBytes = error.expectedBytes, actualBytes = error.actualBytes)
                 error is DriveAccessFailure -> when (error.reason) {
                     DriveAccessFailure.Reason.HTTP -> DriveSyncFailure(when (error.httpStatus) { 412 -> "CONFLICT"; 428 -> "PRECONDITION"; else -> "HTTP" },error.httpStatus)
                     DriveAccessFailure.Reason.TIMEOUT -> DriveSyncFailure("TIMEOUT")
@@ -112,7 +136,7 @@ data class DriveSyncReport(
         val failures=steps.filter { it.outcome in setOf(DriveSyncOutcome.FAILED,DriveSyncOutcome.BLOCKED) }
         if(failures.isNotEmpty()) appendLine("Fehlgeschlagen bei: ${failures.map { it.phase.label }.distinct().joinToString()}")
         appendLine("Belege: $uploaded übertragen · $unchanged unverändert · $metadataOnly nur Metadaten · $failed fehlgeschlagen · $blocked gesperrt · $notAttempted nicht versucht")
-        appendLine("Geprüft: $receiptsProcessed von $receiptsTotal")
+        appendLine("Belegabgleich bearbeitet: $receiptsProcessed von $receiptsTotal")
         appendLine("Unterbrochene Belege: $interrupted")
         appendLine("Dokumente: ${documents.uploaded} übertragen · ${documents.unchanged} unverändert · ${documents.metadataOnly} nur Metadaten · ${documents.failed} fehlgeschlagen · ${documents.blocked} gesperrt · ${documents.interrupted} unterbrochen · ${documents.notAttempted} nicht versucht (${documents.processed}/${documents.total})")
         appendLine("Letzte erfolgreiche Phase: ${lastSuccessfulPhase?.label ?: "Keine"}")
@@ -120,7 +144,17 @@ data class DriveSyncReport(
         steps.forEach { step ->
             append("${step.phase.label}: ${step.outcome.label}; Start=${step.startMs} ms; Ende=${step.endMs ?: "offen"} ms; ${step.durationMs} ms; API=${step.calls} (list=${step.listCalls}, get=${step.getCalls}, create=${step.createCalls}, update=${step.updateCalls}, generateIds=${step.generateIdCalls}); Bytes=${step.sentBytes}/${step.receivedBytes}; Retries=${step.retries}")
             step.internalReceiptId?.let { append("; interne Beleg-ID=$it") }
-            step.failure?.let { append("; ${it.description}; Klasse=${it.kind}${it.httpStatus?.let { status -> "; HTTP=$status" }.orEmpty()}") }
+            step.failure?.let {
+                append("; ${it.description}; Klasse=${it.kind}${it.httpStatus?.let { status -> "; HTTP=$status" }.orEmpty()}")
+                it.check?.let { check ->
+                    append("; Quelle=lokale Sicherheitsprüfung; Prüfcode=${check.name}")
+                    if (check == DriveSyncCheck.RECEIPT_REVISION_MISMATCH)
+                        append("; lokale Revision=${it.localRevision ?: "unbekannt"}; Drive-Revision=${it.driveRevision ?: "unbekannt"}")
+                }
+                if (it.differentFields.isNotEmpty()) append("; abweichende Feldnamen=${it.differentFields.joinToString(",")}")
+                it.expectedBytes?.let { size -> append("; nachgewiesene Bytes=$size") }
+                it.actualBytes?.let { size -> append("; gelesene Bytes=$size") }
+            }
             appendLine()
         }
     }
@@ -140,6 +174,10 @@ data class DriveSyncReport(
             put("calls",s.calls);put("list",s.listCalls);put("get",s.getCalls);put("create",s.createCalls);put("update",s.updateCalls);put("generateIds",s.generateIdCalls)
             put("sent",s.sentBytes);put("received",s.receivedBytes);put("retries",s.retries)
             put("failure",s.failure?.kind ?: JSONObject.NULL);put("http",s.failure?.httpStatus ?: JSONObject.NULL)
+            put("check",s.failure?.check?.name ?: JSONObject.NULL)
+            put("localRevision",s.failure?.localRevision ?: JSONObject.NULL);put("driveRevision",s.failure?.driveRevision ?: JSONObject.NULL)
+            put("differentFields",JSONArray(s.failure?.differentFields.orEmpty()))
+            put("expectedBytes",s.failure?.expectedBytes ?: JSONObject.NULL);put("actualBytes",s.failure?.actualBytes ?: JSONObject.NULL)
         }) } })
     }.toString()
     companion object {
@@ -151,7 +189,12 @@ data class DriveSyncReport(
                         s.optString("internalReceiptId").takeIf { !s.isNull("internalReceiptId") && it.matches(Regex("[A-Za-z0-9_-]{1,128}")) },
                         s.getLong("startMs"),if(s.isNull("endMs"))null else s.getLong("endMs"),DriveSyncOutcome.valueOf(s.getString("outcome")),
                         s.optInt("calls"),s.optInt("list"),s.optInt("get"),s.optInt("create"),s.optInt("update"),s.optLong("sent"),s.optLong("received"),s.optInt("retries"),
-                        if(s.isNull("failure"))null else DriveSyncFailure(s.getString("failure"),if(s.isNull("http"))null else s.getInt("http")), s.optInt("generateIds")) }
+                        if(s.isNull("failure"))null else DriveSyncFailure(s.getString("failure"),if(s.isNull("http"))null else s.getInt("http"),
+                            s.optString("check").takeIf { it.isNotBlank() && it != "null" }?.let { name -> runCatching { DriveSyncCheck.valueOf(name) }.getOrNull() },
+                            if(s.isNull("localRevision"))null else s.getLong("localRevision"), if(s.isNull("driveRevision"))null else s.getLong("driveRevision"),
+                            s.optJSONArray("differentFields")?.let { fields -> (0 until fields.length()).map { fields.getString(it) }
+                                .filter { it.matches(Regex("[A-Za-z][A-Za-z0-9_]{0,63}")) }.distinct().sorted().take(64) }.orEmpty(),
+                            if(s.isNull("expectedBytes"))null else s.getLong("expectedBytes"),if(s.isNull("actualBytes"))null else s.getLong("actualBytes")), s.optInt("generateIds")) }
                 val d = o.optJSONObject("documents") ?: JSONObject()
                 DriveSyncReport(DriveSyncOutcome.valueOf(o.getString("outcome")),o.getLong("elapsedMs"),o.getString("startedAt"),steps,
                     o.optInt("receiptsTotal"),o.optInt("receiptsProcessed"),o.optInt("uploaded"),o.optInt("unchanged"),o.optInt("metadataOnly"),o.optInt("failed"),o.optInt("blocked"),

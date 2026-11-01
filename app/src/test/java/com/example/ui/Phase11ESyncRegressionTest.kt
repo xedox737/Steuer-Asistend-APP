@@ -244,7 +244,11 @@ class Phase11ESyncRegressionTest {
         val result = measure(vm, "unknown-cloud-active")
         assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
         assertEquals(2, vm.driveSyncReport.value!!.notAttempted)
-        assertTrue(vm.driveSyncReport.value!!.steps.any { it.failure?.httpStatus == 412 })
+        val failure = vm.driveSyncReport.value!!.steps.first {
+            it.failure?.check == com.example.api.DriveSyncCheck.INDEX_RECEIPT_NOT_LOCAL
+        }.failure!!
+        assertEquals("CONFLICT", failure.kind)
+        assertNull(failure.httpStatus)
     }
 
     @Test fun failedReportRemainsAvailableAfterViewModelRestart() = runBlocking {
@@ -452,6 +456,153 @@ class Phase11ESyncRegressionTest {
         assertTrue(remote.requests.isEmpty())
         assertFalse(prefs.getBoolean("auto_backup", true))
         assertTrue(vm.isDriveConnected.value)
+    }
+
+    @Test fun missingLegacyOriginalHashIsNotReportedAsAnActualHttp412() = runBlocking {
+        seedReceipts(3)
+        val row = repo.getReceiptById(3)!!
+        val metadata = remote.entries.getValue(row.driveMetadataFileId!!)
+        val payload = JSONObject(metadata.bytes.toString(Charsets.UTF_8))
+        payload.remove("originalDocuments")
+        metadata.bytes = payload.toString().toByteArray(Charsets.UTF_8)
+        val original = repo.getAllManagedDocuments().single { it.receiptInternalId == row.internalId }
+        db.managedDocumentDao().upsert(original.copy(sha256 = "", localUri = ""))
+        val vm = connectedModel()
+        val result = measure(vm, "legacy-original-hash-missing")
+        assertTrue(result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        val report = vm.driveSyncReport.value!!
+        assertEquals(3, report.notAttempted)
+        assertTrue(report.germanText(), report.germanText().contains("ORIGINAL_BASELINE_MISSING"))
+        assertTrue(report.steps.filter { it.failure?.check != null }.all { it.failure?.httpStatus == null })
+        assertFalse(report.germanText().contains("HTTP=412"))
+        assertTrue(vm.isDriveConnected.value)
+    }
+
+    @Test fun unchangedBomEncodedJsonIsVerifiedAgainstItsActualFileBytes() = runBlocking {
+        seedReceipts(1)
+        val row = repo.getReceiptById(1)!!
+        val metadata = remote.entries.getValue(row.driveMetadataFileId!!)
+        metadata.bytes = byteArrayOf(0xef.toByte(), 0xbb.toByte(), 0xbf.toByte()) + metadata.bytes
+        val vm = connectedModel()
+        val result = measure(vm, "utf8-bom-json")
+        assertFalse(result.toString(), result.getBoolean("hasSyncError"))
+        assertEquals(0, result.getInt("originalCreates") + result.getInt("originalUpdates"))
+        val noOp = measure(vm, "utf8-bom-json-noop")
+        assertFalse(noOp.toString(), noOp.getBoolean("hasSyncError"))
+        assertEquals(0, noOp.getInt("filesCreate") + noOp.getInt("filesUpdate"))
+    }
+
+    @Test fun receiptConflictReportsOnlyFieldNamesAndRevisionEvidenceAfterRestart() = runBlocking {
+        seedReceipts(1)
+        val row = repo.getReceiptById(1)!!
+        val metadata = remote.entries.getValue(row.driveMetadataFileId!!)
+        val payload = JSONObject(metadata.bytes.toString(Charsets.UTF_8))
+            .put("revision", 3).put("aussteller", "REMOTE_PRIVATE_CONTENT_MUST_NOT_BE_LOGGED")
+        metadata.bytes = payload.toString().toByteArray(Charsets.UTF_8)
+        repo.insert(row.copy(aussteller = "LOCAL_PRIVATE_CONTENT_MUST_NOT_BE_LOGGED"))
+        val vm = connectedModel()
+        val result = measure(vm, "detailed-revision-conflict")
+        assertEquals(0, result.getInt("filesCreate") + result.getInt("filesUpdate"))
+        val report = vm.driveSyncReport.value!!
+        val failure = report.steps.first { it.failure?.check == com.example.api.DriveSyncCheck.RECEIPT_REVISION_MISMATCH }.failure!!
+        assertNull(failure.httpStatus)
+        assertEquals(1L, failure.localRevision)
+        assertEquals(3L, failure.driveRevision)
+        assertEquals(listOf("aussteller"), failure.differentFields)
+        assertFalse(report.germanText().contains("PRIVATE_CONTENT"))
+        assertFalse(report.toJson().contains("PRIVATE_CONTENT"))
+        assertEquals(report, com.example.api.DriveSyncReport.fromJson(report.toJson()))
+        stores.forEach { it.clear() }; models.forEach { it.viewModelScope.coroutineContext[Job]?.join() }
+        val restarted = model().driveSyncReport.value!!
+        assertEquals(failure, restarted.steps.first { it.failure?.check == failure.check }.failure)
+        assertEquals(row.driveFileId, repo.getReceiptById(row.id)!!.driveFileId)
+    }
+
+    @Test fun actualServerHttp412RemainsDistinctFromLocalSafetyChecks() = runBlocking {
+        seedReceipts(1)
+        val row = repo.getReceiptById(1)!!
+        val vm = connectedModel()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            if (chain.request().url.encodedPath.endsWith("/" + row.driveMetadataFileId) && chain.request().url.queryParameter("alt") == "media")
+                okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1).code(412)
+                    .message("Synthetic server precondition").body(okhttp3.ResponseBody.create(null, "{}")).build()
+            else chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        measure(vm, "actual-server-http-412")
+        val report = vm.driveSyncReport.value!!
+        assertTrue(report.steps.any { it.failure?.httpStatus == 412 && it.failure?.check == null })
+        assertTrue(report.germanText().contains("HTTP=412"))
+        assertFalse(report.germanText().contains("Prüfcode="))
+    }
+
+    @Test fun utf16BomJsonKeepsRawByteProofWithoutRewritingTheFile() = runBlocking {
+        for ((charset, bom) in listOf(Charsets.UTF_16LE to byteArrayOf(255.toByte(), 254.toByte()),
+                Charsets.UTF_16BE to byteArrayOf(254.toByte(), 255.toByte()))) {
+            val content = JSONObject().put("text", "Synthetische Prüfung 😀").toString()
+            val id = "synthetic-encoding-" + charset.name().replace("-", "")
+            remote.put(id, id + ".json", config.systemFolderId, content)
+            val entry = remote.entries.getValue(id)
+            entry.bytes = bom + content.toByteArray(charset)
+            remote.requests.clear()
+            GoogleDriveClient.withSyncReadProof(token) {
+                assertEquals(content, GoogleDriveClient.downloadSyncJsonSnapshot(token, id).read.json)
+            }
+            assertTrue(remote.requests.all { it.method == "GET" })
+            assertArrayEquals(bom + content.toByteArray(charset), entry.bytes)
+        }
+    }
+
+    @Test fun malformedUtf8IsBlockedInsteadOfBeingSilentlyReplaced() = runBlocking {
+        val id = "synthetic-malformed-encoding"
+        remote.put(id, "malformed.json", config.systemFolderId, "{}")
+        remote.entries.getValue(id).bytes = "{\"text\":\"".toByteArray() + byteArrayOf(128.toByte()) + "\"}".toByteArray()
+        remote.requests.clear()
+        try {
+            GoogleDriveClient.withSyncReadProof(token) { GoogleDriveClient.downloadSyncJsonSnapshot(token, id) }
+            fail("Invalid UTF-8 must not become replacement characters in a writable snapshot")
+        } catch (error: com.example.api.DriveSyncConflict) {
+            assertEquals(com.example.api.DriveSyncCheck.JSON_ENCODING_INVALID, error.check)
+            assertNull(com.example.api.DriveSyncFailure.from(error).httpStatus)
+        }
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
+    @Test fun uppercaseOriginalDigestIsEquivalentAndLostMediaAckStillResumesSafely() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val row = repo.getReceiptById(1)!!
+        val metadata = remote.entries.getValue(row.driveMetadataFileId!!)
+        val json = JSONObject(metadata.bytes.toString(Charsets.UTF_8))
+        val document = repo.getAllManagedDocuments().single { it.receiptInternalId == row.internalId }
+        val uppercase = document.sha256.uppercase(java.util.Locale.ROOT)
+        json.getJSONArray("originalDocuments").getJSONObject(0).put("sha256", uppercase)
+        metadata.bytes = json.toString().toByteArray(Charsets.UTF_8)
+        db.managedDocumentDao().upsert(document.copy(sha256 = uppercase))
+        val vm = connectedModel()
+        val noOp = measure(vm, "uppercase-original-hash")
+        assertFalse(noOp.toString(), noOp.getBoolean("hasSyncError"))
+        assertEquals(0, noOp.getInt("originalCreates") + noOp.getInt("originalUpdates"))
+        val bytes = File(row.imageUrl).readBytes() + byteArrayOf(71, 72)
+        File(row.imageUrl).writeBytes(bytes)
+        val transfers = java.util.concurrent.atomic.AtomicInteger()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            if (request.method == "PATCH" && request.url.encodedPath.endsWith("/" + row.driveFileId) &&
+                request.url.queryParameter("uploadType") == "media" && transfers.incrementAndGet() == 1) {
+                response.close(); throw java.net.SocketTimeoutException("synthetic lost acknowledgement")
+            }
+            response
+        }.addInterceptor(remote).build())
+        assertFalse(drive.syncReceiptToDrive(token, config, repo.getReceiptById(row.id)!!))
+        val restarted = DrivePersistenceRepository(app, repo)
+        GoogleDriveClient.withSyncReadProof(token) {
+            restarted.validateSynchronizationInventory(token, config, repo.allReceipts.first())
+            assertTrue(restarted.syncReceiptToDrive(token, config, repo.getReceiptById(row.id)!!))
+        }
+        assertEquals(1, transfers.get())
+        assertEquals(row.driveFileId, repo.getReceiptById(row.id)!!.driveFileId)
+        assertArrayEquals(bytes, remote.entries.getValue(row.driveFileId!!).bytes)
     }
 
     @Test fun twentyTwoRestoredCloudOnlyReceiptsDoNotRequireLocalOriginalCache() = runBlocking {

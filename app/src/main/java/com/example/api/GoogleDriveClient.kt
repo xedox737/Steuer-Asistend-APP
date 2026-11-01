@@ -108,7 +108,7 @@ object GoogleDriveClient {
         val expectedParents = metadata.optJSONArray("parents")
         val isRoot = expectedParents == null
         if ((!isRoot && canonicalDriveJson(parents) != canonicalDriveJson(expectedParents!!)) ||
-            actual.getString("name") != metadata.getString("name")) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+            actual.getString("name") != metadata.getString("name")) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
         val folder = metadata.optString("mimeType") == "application/vnd.google-apps.folder"
         if (folder && actual.getString("mimeType") != metadata.getString("mimeType")) throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_MIME)
         var hash = actual.optString("sha256Checksum")
@@ -116,10 +116,10 @@ object GoogleDriveClient {
             val bytesOnDrive = downloadFileBytesChecked(token, pending.fileId)
             val after = fetchOriginalFingerprintChecked(token, pending.fileId)
             if (actual.optString("version").isBlank() || actual.optString("version") != after.version)
-                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
             hash = com.example.data.StableDocumentIdentity.sha256(bytesOnDrive)
         }
-        if (!folder && hash !in pending.hashes) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+        if (!folder && hash !in pending.hashes) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
         return CreatePlan(pending.fileId, DriveOriginalFingerprint(pending.fileId, actual.optLong("size"), hash,
             actual.optString("version"), owned.etag))
     }
@@ -183,7 +183,7 @@ object GoogleDriveClient {
         DriveSyncTrace.step(DriveSyncPhase.COMPLETION) {
             // alt=media and metadata are different HTTP representations. Their opaque ETags
             // need not match. Verify JSON bytes against Drive's server checksum and version.
-            val expected = (scope.syncJson.values.map { DriveOriginalFingerprint(it.fileId,
+            val expected = (scope.syncJson.values.map { it.rawFingerprint ?: DriveOriginalFingerprint(it.fileId,
                 it.read.json.toByteArray(Charsets.UTF_8).size.toLong(),
                 com.example.data.StableDocumentIdentity.sha256(it.read.json.toByteArray(Charsets.UTF_8)), it.version, it.etag) } +
                 scope.syncOriginals.values).associateBy { it.fileId }
@@ -196,7 +196,7 @@ object GoogleDriveClient {
                             val current = fetchOriginalFingerprintChecked(token, id)
                             if (before.version.isBlank() || current.version != before.version ||
                                 current.size != before.size || (before.sha256.isNotBlank() && current.sha256.isNotBlank() && current.sha256 != before.sha256))
-                                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
                         }
                     } }.awaitAll()
                 }
@@ -926,7 +926,7 @@ object GoogleDriveClient {
         val id = result.fileId ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
         val source = downloadSyncJsonSnapshot(token, id)
         val expected = canonicalDriveJsonText(json)
-        if (canonicalDriveJsonText(source.read.json) != expected) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+        if (canonicalDriveJsonText(source.read.json) != expected) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
         com.example.data.DrivePendingWrites(context).rememberJsonBaseline(id,
             com.example.data.StableDocumentIdentity.sha256(expected.toByteArray(Charsets.UTF_8)))
         return result
@@ -960,12 +960,12 @@ object GoogleDriveClient {
             var verified = fetchOriginalFingerprintChecked(token, fileId)
             if (verified.sha256.isBlank()) {
                 val confirmation = downloadSyncJsonSnapshot(token, fileId)
-                if (confirmation.read.json != json) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                if (confirmation.read.json != json) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
                 verified = verified.copy(etag = confirmation.etag, version = confirmation.version)
             }
             if ((verified.sha256.isNotBlank() && verified.sha256 != com.example.data.StableDocumentIdentity.sha256(json.toByteArray(Charsets.UTF_8))) ||
                 verified.size != json.toByteArray(Charsets.UTF_8).size.toLong())
-                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
             DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }?.syncJson?.put(fileId,
                 DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, source.read.unavailableOriginalIds), verified.etag, verified.version))
             journal?.rememberJsonBaseline(fileId, hash)
@@ -1004,6 +1004,27 @@ object GoogleDriveClient {
         error("unreachable")
     }
 
+    /** Match the existing BOM/Content-Type decoding, but never silently replace invalid bytes.
+     * Hash and size verification below always use the original file bytes. */
+    private fun decodeJsonFile(bytes: ByteArray, declared: java.nio.charset.Charset): String {
+        fun starts(vararg prefix: Int): Boolean = bytes.size >= prefix.size && prefix.indices.all { (bytes[it].toInt() and 255) == prefix[it] }
+        val (charset, offset) = when {
+            starts(0, 0, 254, 255) -> java.nio.charset.Charset.forName("UTF-32BE") to 4
+            starts(255, 254, 0, 0) -> java.nio.charset.Charset.forName("UTF-32LE") to 4
+            starts(239, 187, 191) -> Charsets.UTF_8 to 3
+            starts(254, 255) -> Charsets.UTF_16BE to 2
+            starts(255, 254) -> Charsets.UTF_16LE to 2
+            else -> declared to 0
+        }
+        return try {
+            charset.newDecoder().onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(bytes, offset, bytes.size - offset)).toString()
+        } catch (_: java.nio.charset.CharacterCodingException) {
+            throw DriveSyncConflict(DriveSyncCheck.JSON_ENCODING_INVALID)
+        }
+    }
+
     private suspend fun readJsonOnce(accessToken: String, fileId: String, restore: Boolean, snapshot: Boolean): DriveJsonSnapshot {
         val url = "https://www.googleapis.com/drive/v3/files/$fileId?alt=media"
         val request = Request.Builder()
@@ -1013,7 +1034,9 @@ object GoogleDriveClient {
 
         executeDriveRequest(request).use { response ->
             if (response.isSuccessful) {
-                val json = response.body?.string() ?: ""
+                val body = response.body
+                val fileBytes = body?.bytes() ?: byteArrayOf()
+                val json = decodeJsonFile(fileBytes, body?.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8)
                 val missing = if (restore) {
                     DriveEnvironment.validateRestoreJsonReferences(json, accessToken) { sendRawDriveRequest(it) }
                 } else {
@@ -1029,14 +1052,19 @@ object GoogleDriveClient {
                     // If Drive has no checksum, compare its monotonic version before and after
                     // reading bytes. Never bind an older body to a newer write precondition.
                     val after = fetchOriginalFingerprintChecked(accessToken, fileId)
-                    if (fingerprint.version.isBlank() || fingerprint.version != after.version)
-                        throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                    if (fingerprint.version.isBlank()) throw DriveSyncConflict(DriveSyncCheck.JSON_VERSION_MISSING)
+                    if (fingerprint.version != after.version) throw DriveSyncConflict(DriveSyncCheck.JSON_VERSION_MISMATCH)
                     fingerprint = after
                 }
-                if ((fingerprint.sha256.isNotBlank() && fingerprint.sha256 != com.example.data.StableDocumentIdentity.sha256(json.toByteArray(Charsets.UTF_8))) ||
-                    fingerprint.size != json.toByteArray(Charsets.UTF_8).size.toLong())
-                    throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
-                return DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, missing), fingerprint.etag, fingerprint.version)
+                val actualHash = com.example.data.StableDocumentIdentity.sha256(fileBytes)
+                if (fingerprint.sha256.isNotBlank() && fingerprint.sha256 != actualHash)
+                    throw DriveSyncConflict(DriveSyncCheck.JSON_CHECKSUM_MISMATCH,
+                        expectedBytes = fingerprint.size, actualBytes = fileBytes.size.toLong())
+                if (fingerprint.size != fileBytes.size.toLong())
+                    throw DriveSyncConflict(DriveSyncCheck.JSON_SIZE_MISMATCH,
+                        expectedBytes = fingerprint.size, actualBytes = fileBytes.size.toLong())
+                return DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, missing), fingerprint.etag, fingerprint.version,
+                    fingerprint.copy(sha256 = actualHash))
             } else {
                 throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
             }
@@ -1157,7 +1185,7 @@ object GoogleDriveClient {
     }
 
     private fun fingerprintFromMetadata(fileId: String, json: JSONObject, etag: String?): DriveOriginalFingerprint {
-        val sha = json.optString("sha256Checksum").takeIf { it != "null" }.orEmpty()
+        val sha = json.optString("sha256Checksum").takeIf { it != "null" }.orEmpty().lowercase(Locale.ROOT)
         if (json.getString("mimeType") == "application/vnd.google-apps.folder" ||
             (sha.isNotBlank() && !sha.matches(Regex("[a-fA-F0-9]{64}")))) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
         return DriveOriginalFingerprint(fileId, json.optLong("size", 0), sha.lowercase(java.util.Locale.ROOT),
@@ -1171,13 +1199,13 @@ object GoogleDriveClient {
             val content = downloadFileBytesChecked(token, before.fileId)
             val after = fetchOriginalFingerprintChecked(token, before.fileId)
             if (current.version.isBlank() || current.version != after.version)
-                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
             com.example.data.StableDocumentIdentity.sha256(content)
         }
         val etag = current.etag?.takeIf(String::isNotBlank) ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
         if ((before.etag != null && current.etag != before.etag) ||
             current.version != before.version || (before.sha256.isNotBlank() && currentHash != before.sha256) || current.size != before.size)
-            throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+            throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
         val request = Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files/${before.fileId}?uploadType=media")
             .header("Authorization", "Bearer $token").header("If-Match", etag)
             .patch(bytes.toRequestBody(mime.toMediaType())).build()
@@ -1189,7 +1217,7 @@ object GoogleDriveClient {
             val actual = downloadFileBytesChecked(token, before.fileId)
             val after = fetchOriginalFingerprintChecked(token, before.fileId)
             if (verified.version.isBlank() || after.version != verified.version)
-                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 412)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
             com.example.data.StableDocumentIdentity.sha256(actual)
         }
         if (verified.size != bytes.size.toLong() || actualHash != com.example.data.StableDocumentIdentity.sha256(bytes))

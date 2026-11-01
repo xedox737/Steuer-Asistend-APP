@@ -7188,7 +7188,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                         fontWeight = FontWeight.Bold, color = DarkNavy, fontSize = 13.sp)
                     Text(report.currentPhase?.label ?: report.outcome.label, fontSize = 12.sp, color = SlateGray)
                     if (report.isCheckpoint) Text("Zwischenstand vor App-Neustart; spätere Vorgänge sind unbekannt.", fontSize = 11.sp, color = SlateGray)
-                    Text("${report.receiptsProcessed} von ${report.receiptsTotal} Belegen geprüft", fontSize = 12.sp)
+                    Text("${report.receiptsProcessed} von ${report.receiptsTotal} Belegen abgeglichen", fontSize = 12.sp)
                     Text("${report.unchanged} unverändert · ${report.uploaded} übertragen · ${report.metadataOnly} nur Metadaten", fontSize = 11.sp)
                     Text("${report.failed} fehlgeschlagen · ${report.blocked} gesperrt · ${report.notAttempted} ${if (report.isCheckpoint) "am Speicherpunkt offen" else "nicht versucht"}", fontSize = 11.sp)
                     if (report.interrupted > 0) Text("${report.interrupted} Belegübertragung(en) unterbrochen", fontSize = 11.sp)
