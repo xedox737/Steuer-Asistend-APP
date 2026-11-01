@@ -21,7 +21,10 @@
     "app/src/main/java/com/example/data/DriveBackupConflictGuard.kt": "732b275dfde7e8dbf2c21225dc4d4561d018ed75691fbb110fd1972724e82dde",
     "app/src/main/java/com/example/data/DrivePendingWrites.kt": "70f1a80486194e90ed0491abd025a11e981e840c84ed33f60e1171d94cd281a6",
     "app/src/main/java/com/example/data/DriveSyncReceiptState.kt": "47b13120ed963718727ae5ff74610ba93d810b6c31f5dffb211633202dc1d592",
-    "app/src/test/java/com/example/ui/Phase11ESyncRegressionTest.kt": "dbdf9e71ad7b844f70bacd3dfc9c8eab3aacaf6b701d36c9aa255b9d3115ea50"
+    "app/src/test/java/com/example/ui/Phase11ESyncRegressionTest.kt": "dbdf9e71ad7b844f70bacd3dfc9c8eab3aacaf6b701d36c9aa255b9d3115ea50",
+    "app/src/test/java/com/example/ui/Phase5BComposeWorkflowTest.kt": "a018ccc8d9f16df05881ec7e2db3b3617b923051d8f4cd746b39bcd35d0e59d0",
+    "app/src/test/java/com/example/ui/RentOverviewComposeTest.kt": "da5348a2273ca3faddd93eda1a95d09192e6f7c96cf0f3afc574f88b1494e984",
+    "app/src/test/java/com/example/ui/MonthlyRentFixtureNavigation.kt": "60a7c670ceed55d1666e17fd9529b330d1aaa62afd9f85d114d9cab992c01941"
   },
   "beforeWarm22": {
     "baseSha": "5d5e61437fcf7324bb5e0f6442669f777d8ddeda",
@@ -346,5 +349,31 @@
       "received": 55967
     }
   },
-  "warning": "Child phase calls are inclusive; never add child totals to root phase totals. Local SDK35 cache substitute; committed tests SDK36. No real device acceptance."
+  "warning": "Child phase calls are inclusive; never add child totals to root phase totals. Local SDK35 cache substitute; committed tests SDK36. No real device acceptance.",
+  "firstCiRun": {
+    "id": 41269739084,
+    "head": "67583c105afb21a33251fde9b2f7605d634dc4fb",
+    "testedMerge": "6ebd38d02ca9e00909ccda5c1b1291e875d5de52",
+    "methods": 1288,
+    "passed": 1286,
+    "failed": 2,
+    "phase11eSdk36": {
+      "tests": 43,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 71.237
+    },
+    "verify": "failure",
+    "emulator": "skipped",
+    "diagnosis": "Two existing monthly-rent tests implicitly assumed October2026; both reproduce on exact base. Fixture month now explicitly selected through existing UI, assertions preserved."
+  },
+  "fixtureCorrectionLocal": {
+    "oldBaseBothFail": true,
+    "fixedMethodsPassed": 2,
+    "broadLocalUiAttempt": "ABORTED after thread dump showed existing performScrollToNode hang; not counted as pass",
+    "productChanges": false,
+    "assertionsWeakened": false,
+    "timeoutsRaised": false
+  }
 }

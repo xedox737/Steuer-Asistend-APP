@@ -1,6 +1,6 @@
 # Phase 11E – Drive-Synchronisierung
 
-Status: Untersuchung/Implementierung läuft. Praktische Abnahme **OFFEN**. Kein Merge und keine APK-Veröffentlichung ohne gesonderte Freigabe.
+Status: Implementierung im Entwurfs-PR #156; CI und praktische Abnahme getrennt auswerten. Praktische Abnahme **OFFEN**. Kein Merge und keine APK-Veröffentlichung ohne gesonderte Freigabe.
 
 ## Basis und verbindliche Grenzen
 
