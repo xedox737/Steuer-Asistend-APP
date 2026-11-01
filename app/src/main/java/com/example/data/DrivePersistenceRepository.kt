@@ -1706,6 +1706,9 @@ class DrivePersistenceRepository(
                     val localDocument = localOriginals[row.internalId].orEmpty().singleOrNull { it.driveFileId == id }
                         ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
                     if (document.sha256.isBlank() || localDocument.sha256.isBlank()) {
+                        // Cloud-only legacy originals are not new uploads. Never invent a historical hash.
+                        // Permit only a strictly unchanged, reference-identical read-only no-op.
+                        if (canSkipCloudOnlyLegacy(row, persisted, document, localDocument, fingerprint)) continue
                         val verified = proveMissingOriginalBaseline(token, row, persisted, document, localDocument, fingerprint)
                         if (localDocument.sha256.isBlank()) baselines.add(localDocument to verified.sha256)
                         GoogleDriveClient.markRecoveredOriginal(token, id)
@@ -1736,6 +1739,76 @@ class DrivePersistenceRepository(
                     throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
             }
         }
+    }
+
+    /**
+     * A cloud-only legacy file has no independent historical checksum. Its existing Drive
+     * binding may be retained as-is, but its bytes must NEVER be uploaded, replaced,
+     * certified as historically unchanged or adopted as a baseline on that basis.
+     * A changed receipt/revision/reference cannot take this no-op path.
+     */
+    private fun canSkipCloudOnlyLegacy(
+        row: Receipt, saved: PersistedReceipt, expected: ManagedDocument,
+        local: ManagedDocument, fingerprint: com.example.api.DriveOriginalFingerprint
+    ): Boolean {
+        if (expected.sha256.isNotBlank() || local.sha256.isNotBlank() || fingerprint.size <= 0) return false
+        if (saved.revision != row.driveRevision ||
+            comparableReceipt(row, saved.schemaVersion < 2) !=
+                comparableReceipt(saved.toLocalReceipt(row.driveMetadataFileId), saved.schemaVersion < 2)) return false
+        val reference = saved.documents.singleOrNull { it.driveFileId == fingerprint.fileId } ?: return false
+        if (expected.documentId != local.documentId || expected.driveFileId != local.driveFileId ||
+            expected.driveFolderId != local.driveFolderId || reference.driveFolderId != local.driveFolderId ||
+            reference.filename != local.storedFilename || reference.mimeType != local.mimeType ||
+            reference.sizeBytes != fingerprint.size || local.fileSizeBytes != fingerprint.size ||
+            local.driveFolderId.isNullOrBlank()) return false
+        // Never silently ignore an independent local original: it might contain real changes.
+        val paths = (if (fingerprint.fileId == row.driveFileId)
+            ReceiptOriginalChain.paths(row.imageUrl) else emptyList()) + local.localUri
+        for (path in paths.filter(String::isNotBlank).distinct()) {
+            val readable = try {
+                if (path.startsWith("content://") || path.startsWith("file://"))
+                    context.contentResolver.openInputStream(android.net.Uri.parse(path))?.use { it.read() != -1 } == true
+                else File(path).takeIf { it.isFile }?.inputStream()?.use { it.read() != -1 } == true
+            } catch (_: java.io.IOException) { false } catch (_: SecurityException) { false }
+            if (readable) return false
+        }
+        return true
+    }
+
+    /** Recheck metadata/index on each run; do not reuse an unverified baseline across sessions. */
+    private suspend fun skipUnchangedCloudOnlyLegacy(
+        token: String, config: DriveAppConfig, row: Receipt
+    ): Boolean {
+        val originals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == row.internalId }
+        if (originals.isEmpty() || originals.any { it.sha256.isNotBlank() || it.driveFileId.isNullOrBlank() }) return false
+        val metadataId = row.driveMetadataFileId?.takeIf(String::isNotBlank) ?: return false
+        val metadata = GoogleDriveClient.downloadSyncJsonSnapshot(token, metadataId)
+        if (metadata.read.unavailableOriginalIds.isNotEmpty()) return false
+        val saved = parsePersistedReceipt(metadata.read.json)
+        if (saved.internalId != row.internalId || saved.driveFileId != row.driveFileId ||
+            (saved.schemaVersion >= 2 && saved.receiptId != row.id) ||
+            saved.revision != row.driveRevision) return false
+        if (localRepository.getDocumentsForReceipt(row.internalId) != saved.documents) return false
+        // A second preflight proof ensures existing index references still point to these IDs.
+        val indexFile = GoogleDriveClient.findFileByAppProperty(token, config.systemFolderId, "receiptIndex", failOnError = true)
+            ?: return false
+        val entries = JSONObject(GoogleDriveClient.downloadSyncJsonSnapshot(token, indexFile.id).read.json).getJSONArray("entries")
+        val matches = (0 until entries.length()).map { entries.getJSONObject(it) }
+            .filter { it.optString("internalId") == row.internalId && it.optString("syncStatus") != "DELETED" }
+        if (matches.size != 1 || matches.single().optString("mainDriveFileId") != row.driveFileId ||
+            matches.single().optString("metadataFileId") != metadataId) return false
+        for (local in originals) {
+            val id = requireNotNull(local.driveFileId)
+            val expected = saved.originalDocuments.find { it.documentId == local.documentId }
+                ?: local // Legacy metadata omitted originalDocuments; use only verified existing binding.
+            val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(token, id)
+            if (!canSkipCloudOnlyLegacy(row, saved, expected, local, fingerprint)) return false
+        }
+        // Check for concurrent local edits after remote reads, before declaring a no-op.
+        val current = localRepository.getReceiptById(row.id) ?: return false
+        if (current != row || localRepository.getAllManagedDocuments()
+                .filter { it.receiptInternalId == row.internalId } != originals) return false
+        return true
     }
 
     /** A missing local hash may be recovered only from a saved hash or matching independent bytes.
@@ -1792,6 +1865,9 @@ class DrivePersistenceRepository(
     /** Reuse an owned, checksum-verified original even if its device cache was not restored.
      * No folder migration, substitute original, or empty-ID repair is performed here. */
     private suspend fun syncKnownReceipt(accessToken: String, config: DriveAppConfig, input: Receipt): Boolean? {
+        // An unchanged cloud-only legacy original requires no media or metadata write.
+        // Its historical content is NOT certified by this presence-only path.
+        if (skipUnchangedCloudOnlyLegacy(accessToken, config, input)) return true
         var receipt = input
         val pending = DrivePendingWrites(context)
         val updates = mutableListOf<Triple<ManagedDocument, com.example.api.DriveOriginalFingerprint, ByteArray>>()
