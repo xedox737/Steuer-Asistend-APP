@@ -7,6 +7,10 @@ import org.json.JSONTokener
 /** A freshly read, owned JSON source and its HTTP concurrency precondition; never persisted. */
 internal data class DriveOwnedMetadata(val json: JSONObject,val etag: String?)
 
+/** If-Match needs exactly one strong server validator, never a wildcard or weak ETag. */
+internal fun isStrongDriveEtag(value: String?): Boolean =
+    value != null && Regex("\"[^\"\\x00-\\x20\\x7f]+\"").matches(value)
+
 internal data class DriveJsonSnapshot(val fileId: String,val read: DriveRestoreJsonRead,val etag: String?, val version: String = "",
     val rawFingerprint: DriveOriginalFingerprint? = null)
 

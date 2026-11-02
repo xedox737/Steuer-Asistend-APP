@@ -255,7 +255,7 @@ internal class DriveSyncRecorder(
         keys.forEach { k -> val s=steps[k];steps[k]=s.copy(calls=s.calls+1,listCalls=s.listCalls+if(list)1 else 0,
             getCalls=s.getCalls+if(request.method=="GET" && !list && !generateIds)1 else 0,
             generateIdCalls=s.generateIdCalls+if(generateIds)1 else 0,createCalls=s.createCalls+if(request.method=="POST")1 else 0,
-            updateCalls=s.updateCalls+if(request.method=="PATCH")1 else 0) }
+            updateCalls=s.updateCalls+if(request.method=="PATCH" || request.method=="PUT")1 else 0) }
         report=report.copy(apiCalls=report.apiCalls+1,steps=steps)
     }
     @Synchronized fun bytes(keys: List<Int>,sent: Long=0,received: Long=0) {

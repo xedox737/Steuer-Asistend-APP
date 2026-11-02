@@ -18,6 +18,8 @@ class ComparisonDriveHttpFixture : Interceptor {
         var bytes: ByteArray, var properties: Map<String, String>, var revision: Int = 1)
     val entries = linkedMapOf<String, Entry>()
     val requests = mutableListOf<Request>()
+    var omitV3Etags = false
+    var omitV2Etags = false
     private var sequence = 0
     val myDrive = "account-root"
     init { entries[myDrive] = Entry(myDrive, "My Drive", FOLDER, "", byteArrayOf(), emptyMap()) }
@@ -46,12 +48,13 @@ class ComparisonDriveHttpFixture : Interceptor {
         requests += request
         val url = request.url
         val path = url.encodedPath
-        val base = if (path.startsWith("/upload/")) "/upload/drive/v3/files" else "/drive/v3/files"
+        val v2 = path.contains("/drive/v2/")
+        val base = if (path.startsWith("/upload/")) "/upload/drive/${if (v2) "v2" else "v3"}/files" else "/drive/${if (v2) "v2" else "v3"}/files"
         check(path == base || path.startsWith("$base/")) { "Unexpected endpoint" }
         val id = path.removePrefix(base).removePrefix("/").let { if (it == "root") myDrive else it }
         fun reply(code: Int, bytes: ByteArray, mime: String = "application/json") = Response.Builder()
             .request(request).protocol(Protocol.HTTP_1_1).code(code).message(if (code < 400) "OK" else "Missing")
-            .header("ETag", "\"revision-${entries[id]?.revision ?: 0}\"")
+            .apply { if (!(if (v2) omitV2Etags else omitV3Etags)) header("ETag", "\"revision-${entries[id]?.revision ?: 0}\"") }
             .body(bytes.toResponseBody(mime.toMediaType())).build()
         fun json(code: Int, value: JSONObject) = reply(code, value.toString().toByteArray())
         if (request.method == "GET" && id == "generateIds")
@@ -69,6 +72,8 @@ class ComparisonDriveHttpFixture : Interceptor {
         }
         if (request.method == "GET") {
             val file = entries[id] ?: return json(404, JSONObject())
+            if (v2) return json(200, JSONObject().put("id", file.id).put("version", file.revision.toString())
+                .put("fileSize", file.bytes.size.toString()).apply { if (!omitV2Etags) put("etag", "\"revision-${file.revision}\"") })
             return if (url.queryParameter("alt") == "media") reply(200, file.bytes, file.mime) else json(200, metadata(file))
         }
         request.header("If-Match")?.let { expected ->
@@ -79,7 +84,7 @@ class ComparisonDriveHttpFixture : Interceptor {
             return reply(204, byteArrayOf())
         }
         val bytes = Buffer().also { request.body!!.writeTo(it) }.readByteArray()
-        if (request.method == "PATCH" && url.queryParameter("uploadType") == "media") {
+        if ((request.method == "PATCH" || (v2 && request.method == "PUT")) && url.queryParameter("uploadType") == "media") {
             val file = entries[id] ?: return json(404, JSONObject())
             file.bytes = bytes
             file.revision++

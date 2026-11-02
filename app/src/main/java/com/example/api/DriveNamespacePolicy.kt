@@ -70,9 +70,22 @@ internal class DriveNamespacePolicy(
             val url = request.url
             if (url.host != "www.googleapis.com" || !url.isHttps) denied()
             val path = url.encodedPath
-            val base = if (path.startsWith("/upload/")) "/upload/drive/v3/files" else "/drive/v3/files"
+            val v2 = path.startsWith("/drive/v2/") || path.startsWith("/upload/drive/v2/")
+            val api = if (v2) "v2" else "v3"
+            val base = if (path.startsWith("/upload/")) "/upload/drive/$api/files" else "/drive/$api/files"
             if (path != base && !path.startsWith("$base/")) denied()
             val id = path.removePrefix(base).removePrefix("/")
+            if (v2) {
+                // Compatibility for absent v3 ETags only. The ordinary fresh v3 ownership,
+                // ancestry and protected-container checks below still fence both requests.
+                val read = request.method == "GET" && path == "/drive/v2/files/$id" &&
+                    url.queryParameterNames == setOf("fields") &&
+                    url.queryParameterValues("fields") == listOf("id,etag,version,fileSize")
+                val write = request.method == "PUT" && path == "/upload/drive/v2/files/$id" &&
+                    url.queryParameterNames == setOf("uploadType") && url.queryParameterValues("uploadType") == listOf("media") &&
+                    isStrongDriveEtag(request.headers.values("If-Match").singleOrNull())
+                if (!Regex("[A-Za-z0-9_-]+").matches(id) || (!read && !write)) denied()
+            }
             // Opaque unused IDs carry no account file data. Creation still passes the ordinary
             // fresh namespace/parent fence, including when the same ID is retried after a crash.
             if (path == "/drive/v3/files/generateIds" && request.method == "GET" &&

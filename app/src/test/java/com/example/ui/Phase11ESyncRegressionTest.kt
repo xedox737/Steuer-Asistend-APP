@@ -146,7 +146,7 @@ class Phase11ESyncRegressionTest {
             .put("filesList",remote.requests.count { it.method=="GET" && it.url.encodedPath.endsWith("/files") })
             .put("filesGet",remote.requests.count { it.method=="GET" && !it.url.encodedPath.endsWith("/files") && !it.url.encodedPath.endsWith("/generateIds") })
             .put("filesGenerateIds",remote.requests.count { it.url.encodedPath.endsWith("/generateIds") })
-            .put("filesCreate",remote.requests.count { it.method=="POST" }).put("filesUpdate",remote.requests.count { it.method=="PATCH" })
+            .put("filesCreate",remote.requests.count { it.method=="POST" }).put("filesUpdate",remote.requests.count { it.method=="PATCH" || it.method=="PUT" })
             .put("originalMediaGets",remote.requests.count { it.url.encodedPath.substringAfterLast('/') in originalIdsBefore && it.url.queryParameter("alt")=="media" })
             .put("missingLocalSourceErrors",rows.count { it.syncError.orEmpty().contains("Keine lokale Quelldatei") })
             .put("phases",vm.driveSyncReport.value?.let { JSONObject(it.toJson()).getJSONArray("steps") } ?: JSONArray())
@@ -156,6 +156,163 @@ class Phase11ESyncRegressionTest {
             .put("originalUpdates", remote.requests.count { it.method == "PATCH" && it.url.encodedPath.substringAfterLast('/') in originals && it.url.queryParameter("uploadType") == "media" })
         val output=File("build/reports/phase11e/$label.json"); output.parentFile!!.mkdirs();output.writeText(result.toString(2))
         return result
+    }
+
+    @Test fun drive1403FullSyncWithNoV3EtagUpdatesLedgerAndMetadataThenRepeatsWithoutWrites() = runBlocking {
+        seedReceipts(22, localBytes = true)
+        remote.omitV3Etags = true
+        val ledger = remote.put("ledger-1403", "Steuerassistent_Belege_Hauptbuch.csv", config.rootFolderId, "old ledger", mime = "text/csv")
+        val before = repo.allReceipts.first()
+        val originals = before.associate { it.driveFileId!! to remote.entries.getValue(it.driveFileId!!).bytes.copyOf() }
+        val vm = connectedModel()
+        val result = measure(vm, "drive1403-no-v3-etag-first")
+        assertFalse(result.toString(), result.getBoolean("hasSyncError"))
+        assertArrayEquals(GoogleDriveClient.ledgerCsv(before).toByteArray(), ledger.bytes)
+        val changed = repo.allReceipts.first().first().copy(aussteller = "Synthetic local edit 1403")
+        repo.insert(changed)
+        val edited = measure(vm, "drive1403-no-v3-etag-edit")
+        assertFalse(edited.toString(), edited.getBoolean("hasSyncError"))
+        assertTrue(JSONObject(remote.entries.getValue(changed.driveMetadataFileId!!).bytes.toString(Charsets.UTF_8))
+            .toString().contains(changed.aussteller))
+        val newFile = File(app.filesDir, "synthetic-1403-new.png").apply {
+            writeBytes(File(changed.imageUrl).readBytes() + byteArrayOf(23))
+        }
+        repo.insert(changed.copy(id = 23, internalId = "phase11e-new-1403", displayId = "BLG-2026-000023",
+            imageUrl = newFile.absolutePath, driveFileId = null, driveMetadataFileId = null, driveFolderId = null,
+            storedFilename = null, originalMimeType = null, fileSizeBytes = 0, driveRevision = null,
+            syncStatus = "PENDING", lastSyncedAt = null, isArchivedToDrive = false))
+        val created = measure(vm, "drive1403-no-v3-etag-create")
+        assertFalse(created.toString(), created.getBoolean("hasSyncError"))
+        assertEquals(1, created.getInt("originalCreates"))
+        val newRow = repo.allReceipts.first().single { it.internalId == "phase11e-new-1403" }
+        assertFalse(newRow.driveFileId.isNullOrBlank())
+        assertFalse(newRow.driveMetadataFileId.isNullOrBlank())
+        val repeated = measure(vm, "drive1403-no-v3-etag-repeat")
+        assertFalse(repeated.toString(), repeated.getBoolean("hasSyncError"))
+        assertEquals(0, repeated.getInt("filesCreate") + repeated.getInt("filesUpdate"))
+        assertEquals(before.map { it.internalId to it.driveFileId }, repo.allReceipts.first().filter { it.id <= 22 }.map { it.internalId to it.driveFileId })
+        assertEquals(23, repo.allReceipts.first().map { it.internalId }.toSet().size)
+        val finalRows = repo.allReceipts.first()
+        assertArrayEquals(GoogleDriveClient.ledgerCsv(finalRows).toByteArray(), ledger.bytes)
+        val index = JSONObject(remote.entries.getValue("phase11e-index").bytes.toString(Charsets.UTF_8)).getJSONArray("entries")
+        val newEntry = (0 until index.length()).map { index.getJSONObject(it) }.single { it.getString("internalId") == newRow.internalId }
+        assertEquals(newRow.driveFileId, newEntry.getString("mainDriveFileId"))
+        assertEquals(newRow.driveMetadataFileId, newEntry.getString("metadataFileId"))
+        before.forEach { old ->
+            val current = finalRows.single { it.id == old.id }
+            assertEquals(old.propertyId, current.propertyId)
+            assertEquals(old.displayId, current.displayId)
+            assertEquals(old.bruttobetrag, current.bruttobetrag, 0.0)
+            assertEquals(old.imageUrl, current.imageUrl)
+        }
+        originals.forEach { (id, bytes) -> assertArrayEquals(bytes, remote.entries.getValue(id).bytes) }
+        assertTrue(vm.isDriveConnected.value)
+    }
+
+    @Test fun drive1403OriginalUsesSameIdAndConditionalV2UpdateWhenV3HeaderIsMissing() = runBlocking {
+        remote.omitV3Etags = true
+        val file = remote.put("original-1403", "original.png", config.receiptsFolderId, "old", mime = "image/png")
+        val before = GoogleDriveClient.getOriginalFingerprintChecked(token, file.id)
+        val desired = "new bytes".toByteArray()
+        remote.requests.clear()
+        GoogleDriveClient.updateOriginalChecked(token, before, desired, file.mime)
+        assertArrayEquals(desired, remote.entries.getValue(file.id).bytes)
+        assertTrue(remote.requests.any { it.method == "PUT" && it.header("If-Match") == "\"revision-1\"" })
+        assertFalse(remote.requests.any { it.method == "POST" })
+    }
+
+    @Test fun drive1403MissingAllEtagsBlocksBeforeAnyMutationAndPreservesJson() = runBlocking {
+        remote.omitV3Etags = true
+        remote.omitV2Etags = true
+        val file = remote.put("json-1403", "data.json", config.systemFolderId, "{}")
+        remote.requests.clear()
+        try {
+            GoogleDriveClient.updateSyncJson(token, file.id, "{\"note\":\"local\"}")
+            fail("Missing server write precondition must block")
+        } catch (expected: com.example.api.DriveAccessFailure) { assertEquals(428, expected.httpStatus) }
+        assertEquals("{}", file.bytes.toString(Charsets.UTF_8))
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
+    @Test fun drive1403V2VersionMismatchDoesNotBindFreshEtagToStaleJson() = runBlocking {
+        remote.omitV3Etags = true
+        val file = remote.put("json-1403", "data.json", config.systemFolderId, "{}")
+        val source = GoogleDriveClient.downloadSyncJsonSnapshot(token, file.id)
+        file.bytes = "[]".toByteArray(); file.revision++ // Same size: only version can reject this binding.
+        remote.requests.clear()
+        try {
+            GoogleDriveClient.updateSyncJson(token, file.id, "{\"note\":\"local\"}", source)
+            fail("A newer ETag is not proof of the old version")
+        } catch (expected: com.example.api.DriveSyncConflict) { /* exact preimage remains mandatory */ }
+        assertTrue(remote.requests.all { it.method == "GET" })
+        assertEquals("[]", file.bytes.toString(Charsets.UTF_8))
+    }
+
+    @Test fun drive1403ConcurrentChangeAfterV2ReadIsRejectedByServerIfMatch() = runBlocking {
+        remote.omitV3Etags = true
+        val file = remote.put("json-1403", "data.json", config.systemFolderId, "{}")
+        transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+            if (chain.request().method == "PUT") {
+                file.bytes = "{\"note\":\"external\"}".toByteArray(); file.revision++
+            }
+            chain.proceed(chain.request())
+        }.addInterceptor(remote).build())
+        try {
+            GoogleDriveClient.updateSyncJson(token, file.id, "{\"note\":\"local\"}")
+            fail("Server must reject a stale If-Match")
+        } catch (expected: com.example.api.DriveAccessFailure) { assertEquals(412, expected.httpStatus) }
+        assertEquals("{\"note\":\"external\"}", file.bytes.toString(Charsets.UTF_8))
+        assertEquals(1, remote.requests.count { it.method == "PUT" })
+    }
+
+    @Test fun drive1403V2ReadPermissionAndOfflineFailuresNeverFallBackToUnconditionalWrites() = runBlocking {
+        remote.omitV3Etags = true
+        val file = remote.put("json-1403", "data.json", config.systemFolderId, "{}")
+        for (offline in listOf(false, true)) {
+            transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+                if (chain.request().url.encodedPath.contains("/drive/v2/")) {
+                    if (offline) throw java.net.UnknownHostException("synthetic offline")
+                    return@addInterceptor okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                        .code(403).message("Synthetic forbidden").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                }
+                chain.proceed(chain.request())
+            }.addInterceptor(remote).build())
+            remote.requests.clear()
+            try {
+                GoogleDriveClient.updateSyncJson(token, file.id, "{\"note\":\"local\"}")
+                fail("Failed precondition read must block")
+            } catch (expected: java.io.IOException) {
+                if (offline) {
+                    assertEquals(com.example.api.DriveAccessFailure.Reason.NETWORK, (expected as com.example.api.DriveAccessFailure).reason)
+                    assertTrue(expected.cause is java.net.UnknownHostException)
+                    assertEquals("DNS", com.example.api.DriveSyncFailure.from(expected).kind)
+                }
+                else assertEquals(403, (expected as com.example.api.DriveAccessFailure).httpStatus)
+            }
+            assertEquals("{}", file.bytes.toString(Charsets.UTF_8))
+            assertTrue(remote.requests.all { it.method == "GET" })
+        }
+    }
+
+    @Test fun drive1403MalformedOrUnboundV2PreconditionsNeverAuthorizeWrites() = runBlocking {
+        remote.omitV3Etags = true
+        val file = remote.put("json-1403", "data.json", config.systemFolderId, "{}")
+        for ((key, value) in listOf("id" to "another-file", "fileSize" to "999", "version" to "", "etag" to "*", "etag" to "W/\"revision-1\"")) {
+            transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
+                val response = chain.proceed(chain.request())
+                if (chain.request().url.encodedPath.contains("/drive/v2/")) {
+                    val json = JSONObject(response.body!!.string()).put(key, value)
+                    response.newBuilder().body(okhttp3.ResponseBody.create(null, json.toString())).build()
+                } else response
+            }.addInterceptor(remote).build())
+            remote.requests.clear()
+            try {
+                GoogleDriveClient.updateSyncJson(token, file.id, "{\"note\":\"local\"}")
+                fail("Invalid $key may not authorize a write")
+            } catch (expected: com.example.api.DriveAccessFailure) { /* fail closed */ }
+            assertEquals("{}", file.bytes.toString(Charsets.UTF_8))
+            assertTrue(remote.requests.all { it.method == "GET" })
+        }
     }
 
     @Test fun reproducibleTwentyMillisecondSyntheticLatencyBenchmarks() = runBlocking {
@@ -1500,6 +1657,7 @@ class Phase11ESyncRegressionTest {
 
     @Test fun absentHttpEtagAllowsVerifiedNoOpButBlocksAChangedMetadataWrite() = runBlocking {
         seedReceipts(1)
+        remote.omitV2Etags = true // Neither API supplies a usable conditional-write token.
         transport.set(null, OkHttpClient.Builder().addInterceptor { chain ->
             chain.proceed(chain.request()).newBuilder().removeHeader("ETag").build()
         }.addInterceptor(remote).build())

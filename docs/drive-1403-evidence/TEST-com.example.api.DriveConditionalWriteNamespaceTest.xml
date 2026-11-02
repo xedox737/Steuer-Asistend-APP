@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.api.DriveConditionalWriteNamespaceTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-02T09:44:55.368Z" hostname="3d02580c2f4e" time="5.932">
+  <properties/>
+  <testcase name="missingAncestorAndWrongHostCannotReachV2CompatibilityEndpoint" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="5.235"/>
+  <testcase name="rootSystemAndReceiptContainersCannotBeOverwrittenThroughV2" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="0.103"/>
+  <testcase name="compatibilityPathDoesNotEnableV2ListsCreatesDeletesMediaReadsOrMetadataWrites" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="0.056"/>
+  <testcase name="foreignV2ProjectionAndMediaPutAreDeniedBeforeCompatibilityEndpoint" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="0.057"/>
+  <testcase name="v2MediaPutRequiresOneStrongNonWildcardIfMatch" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="0.07"/>
+  <testcase name="ownedV2ProjectionAndConditionalMediaPutUseFreshV3OwnershipProofs" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="0.052"/>
+  <testcase name="previouslyObservedFileMovedToForeignTreeCannotUseV2Write" classname="com.example.api.DriveConditionalWriteNamespaceTest" time="0.052"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

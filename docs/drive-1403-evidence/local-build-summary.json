@@ -1,0 +1,15 @@
+{
+  "gradle": "9.3.1",
+  "javaUnit": "21.0.13",
+  "javaAndroid": "17.0.21",
+  "unitMethods": 1335,
+  "lintDebug": "SUCCESS",
+  "assembleDebug": "SUCCESS",
+  "assembleDebugAndroidTest": "SUCCESS",
+  "pythonSigningTests": 16,
+  "realGoogleDrive": "NOT_RUN",
+  "realPocoAndroid16": "OPEN",
+  "localKvm": false,
+  "localSigning": "TEMPORARY_CHECK_ONLY",
+  "strictE11AProvenance": "LOCAL_NOT_ACCEPTED_REQUIRES_CI_COMMIT"
+}

@@ -46,7 +46,7 @@ object GoogleDriveClient {
     private fun executeDriveRequest(request: Request): okhttp3.Response {
         if (request.method != "GET") {
             val token = request.header("Authorization")?.removePrefix("Bearer ").orEmpty()
-            val id = request.url.encodedPath.substringAfter("/drive/v3/files/", "")
+            val id = request.url.encodedPath.substringAfterLast('/')
             DriveEnvironment.currentReadProof(token)?.let { it.syncJson.remove(id); it.syncOriginals.remove(id) }
         }
         val response = DriveEnvironment.execute(request) { sendRawDriveRequest(it) }
@@ -692,7 +692,7 @@ object GoogleDriveClient {
         val escapedFilename = filename.replace("\\", "\\\\").replace("'", "\\'")
         val fileQ = "name = '$escapedFilename' and '$folderId' in parents and trashed = false"
         val existingFileId: String?
-        var etag: String? = null
+        var conditionalUpdate: Request? = null
         try {
             val found = initializationSearch(accessToken, fileQ)
             if (found.size > 1) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
@@ -707,8 +707,7 @@ object GoogleDriveClient {
                     rememberVerifiedOriginal(accessToken, current, actualHash)
                     return true
                 }
-                etag = current.etag?.takeIf(String::isNotBlank)
-                    ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
+                conditionalUpdate = conditionalMediaUpdateRequest(accessToken, current, fileContent.toRequestBody(mimeType.toMediaType()))
             }
         } catch (e: Exception) {
             e.rethrowDriveControlFailure()
@@ -717,20 +716,10 @@ object GoogleDriveClient {
         }
 
         // 2. Upload or Update
-        val url = if (existingFileId != null) {
-            "https://www.googleapis.com/upload/drive/v3/files/$existingFileId?uploadType=media"
-        } else {
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
-        }
+        val url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
 
         val request = if (existingFileId != null) {
-            val requestBody = fileContent.toRequestBody(mimeType.toMediaType())
-            Request.Builder()
-                .url(url)
-                .patch(requestBody)
-                .header("If-Match", requireNotNull(etag))
-                .addHeader("Authorization", "Bearer $accessToken")
-                .build()
+            requireNotNull(conditionalUpdate)
         } else {
             val boundary = "foo_bar_boundary"
 
@@ -1002,11 +991,9 @@ object GoogleDriveClient {
             org.json.JSONTokener(source.read.json).nextValue(), org.json.JSONTokener(json).nextValue(),
             journal.jsonBaseline(fileId) == com.example.data.StableDocumentIdentity.sha256(before.toByteArray(Charsets.UTF_8)))
         DriveEnvironment.validatePreservedJsonReferences(json, token, source.read, ::sendRawDriveRequest)
-        val etag = source.etag?.takeIf(String::isNotBlank)
-            ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
-        val request = Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files/$fileId?uploadType=media")
-            .header("Authorization", "Bearer $token").header("If-Match", etag)
-            .patch(json.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
+        val preimage = source.rawFingerprint ?: DriveOriginalFingerprint(fileId,
+            source.read.json.toByteArray(Charsets.UTF_8).size.toLong(), "", source.version, source.etag)
+        val request = conditionalMediaUpdateRequest(token, preimage, json.toRequestBody("application/json; charset=utf-8".toMediaType()))
         return executeDriveRequest(request).use { response ->
             if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
             var verified = fetchOriginalFingerprintChecked(token, fileId)
@@ -1282,7 +1269,37 @@ object GoogleDriveClient {
             json.optString("version"), etag)
     }
 
-    /** Same ID, exact preimage, no replay of an uncertain media PATCH. */
+    /** Keep validators on their own API representation. v3 can omit the HTTP ETag;
+     * v2 exposes it as a resource field. Bind that validator to the proven v3 version
+     * before using a conditional v2 update. A fresh read alone is never a write lock. */
+    private fun conditionalMediaUpdateRequest(token: String, before: DriveOriginalFingerprint, body: okhttp3.RequestBody): Request {
+        var etag = before.etag
+        val v3 = isStrongDriveEtag(etag)
+        if (!v3) {
+            if (!before.version.matches(Regex("[1-9][0-9]*")))
+                throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
+            val read = Request.Builder()
+                .url("https://www.googleapis.com/drive/v2/files/${before.fileId}?fields=id,etag,version,fileSize")
+                .header("Authorization", "Bearer $token").build()
+            val json = executeDriveRequest(read).use { response ->
+                if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
+                try { JSONObject(response.body?.string().orEmpty()) }
+                catch (_: org.json.JSONException) { throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA) }
+            }
+            if (json.optString("id") != before.fileId || json.optString("fileSize").toLongOrNull() != before.size)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+            if (json.optString("version") != before.version)
+                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+            etag = json.optString("etag")
+            if (!isStrongDriveEtag(etag)) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
+        }
+        val api = if (v3) "v3" else "v2"
+        return Request.Builder().url("https://www.googleapis.com/upload/drive/$api/files/${before.fileId}?uploadType=media")
+            .header("Authorization", "Bearer $token").header("If-Match", requireNotNull(etag))
+            .method(if (v3) "PATCH" else "PUT", body).build()
+    }
+
+    /** Same ID, exact preimage, no replay of an uncertain media update. */
     internal fun updateOriginalChecked(token: String, before: DriveOriginalFingerprint, bytes: ByteArray, mime: String) {
         val current = fetchOriginalFingerprintChecked(token, before.fileId)
         val currentHash = current.sha256.ifBlank {
@@ -1292,13 +1309,10 @@ object GoogleDriveClient {
                 throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
             com.example.data.StableDocumentIdentity.sha256(content)
         }
-        val etag = current.etag?.takeIf(String::isNotBlank) ?: throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 428)
         if ((before.etag != null && current.etag != before.etag) ||
             current.version != before.version || (before.sha256.isNotBlank() && currentHash != before.sha256) || current.size != before.size)
             throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
-        val request = Request.Builder().url("https://www.googleapis.com/upload/drive/v3/files/${before.fileId}?uploadType=media")
-            .header("Authorization", "Bearer $token").header("If-Match", etag)
-            .patch(bytes.toRequestBody(mime.toMediaType())).build()
+        val request = conditionalMediaUpdateRequest(token, current, bytes.toRequestBody(mime.toMediaType()))
         executeDriveRequest(request).use { response ->
             if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
         }
