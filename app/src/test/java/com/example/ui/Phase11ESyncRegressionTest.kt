@@ -158,6 +158,108 @@ class Phase11ESyncRegressionTest {
         return result
     }
 
+    @Test fun datevEquivalentPreimageCompletesEveryPhaseAndResumesAfterLostSupplementalAcknowledgement() = runBlocking {
+        seedReceipts(22, localBytes = true)
+        remote.omitV3Etags = true
+        val vm = connectedModel()
+        val initial = measure(vm, "datev-preimage-initial")
+        assertFalse(initial.toString(), initial.getBoolean("hasSyncError"))
+        val datev = remote.entries.values.single { it.properties["entityType"] == "datevProfiles" }
+        val supplemental = remote.entries.values.single { it.properties["entityType"] == "supplementalBackup" }
+        val profile = com.example.util.DatevProfileService.getActiveProfile(app)
+        com.example.util.DatevProfileService.saveActiveProfile(app, profile.copy(lastModified = profile.lastModified + 1000))
+        File(app.noBackupFilesDir, "drive-pending-writes").deleteRecursively()
+        val remoteBytes = remote.entries.mapValues { it.value.bytes.copyOf() }
+        val localBefore = repo.allReceipts.first()
+        val repeated = measure(vm, "datev-preimage-repeat")
+        assertFalse(repeated.toString(), repeated.getBoolean("hasSyncError"))
+        assertEquals(0, repeated.getInt("filesCreate") + repeated.getInt("filesUpdate"))
+        assertEquals(remoteBytes.keys, remote.entries.keys)
+        remoteBytes.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        assertEquals(localBefore, repo.allReceipts.first())
+        val report = requireNotNull(vm.driveSyncReport.value)
+        for (phase in listOf(com.example.api.DriveSyncPhase.DATEV_PROFILES, com.example.api.DriveSyncPhase.LEARNING_RULES,
+            com.example.api.DriveSyncPhase.CATEGORIES, com.example.api.DriveSyncPhase.RECEIPTS,
+            com.example.api.DriveSyncPhase.DOCUMENT_INDEX, com.example.api.DriveSyncPhase.SUPPLEMENTAL,
+            com.example.api.DriveSyncPhase.COMPLETION)) {
+            assertTrue("Phase $phase was not completed: ${report.toJson()}", report.steps.any {
+                it.phase == phase && it.outcome in setOf(com.example.api.DriveSyncOutcome.SUCCESS, com.example.api.DriveSyncOutcome.UNCHANGED)
+            })
+        }
+        val original = repo.getReceiptById(1)!!
+        repo.insert(original.copy(aussteller = "Synthetic DATEV continuation edit"))
+        val newFile = File(app.filesDir, "datev-continuation.png").apply { writeBytes(File(original.imageUrl).readBytes() + byteArrayOf(23)) }
+        repo.insert(original.copy(id = 23, internalId = "datev-continuation-23", displayId = "BLG-2026-000023",
+            imageUrl = newFile.absolutePath, driveFileId = null, driveMetadataFileId = null, driveFolderId = null,
+            storedFilename = null, originalMimeType = null, fileSizeBytes = 0, driveRevision = null,
+            syncStatus = "PENDING", lastSyncedAt = null, isArchivedToDrive = false))
+        val lost = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            if (request.method in setOf("PATCH", "PUT") && request.url.encodedPath.endsWith("/" + supplemental.id) &&
+                request.url.queryParameter("uploadType") == "media" && !lost.getAndSet(true)) {
+                response.close()
+                throw java.net.SocketTimeoutException("Synthetic lost supplemental acknowledgement")
+            }
+            response
+        }.addInterceptor(remote).build())
+        val stamp = prefs.getString("last_stammdaten_backup_time", null)
+        val partial = measure(vm, "datev-preimage-partial")
+        assertTrue(partial.toString(), partial.getBoolean("hasSyncError"))
+        assertTrue(lost.get())
+        assertEquals(stamp, prefs.getString("last_stammdaten_backup_time", null))
+        assertEquals(23, repo.allReceipts.first().size)
+        val afterPartial = repo.allReceipts.first()
+        val idsAfterPartial = remote.entries.keys.toSet()
+        transport.set(null, OkHttpClient.Builder().addInterceptor(remote).build())
+        val resumed = measure(vm, "datev-preimage-resumed")
+        assertFalse(resumed.toString(), resumed.getBoolean("hasSyncError"))
+        assertEquals(idsAfterPartial, remote.entries.keys)
+        assertEquals(afterPartial, repo.allReceipts.first())
+        assertEquals(0, resumed.getInt("filesCreate") + resumed.getInt("filesUpdate"))
+        assertArrayEquals(remoteBytes.getValue(datev.id), datev.bytes)
+        val savedPreference = JSONObject(supplemental.bytes.toString(Charsets.UTF_8))
+            .getJSONObject("datevProfilePrefs").getJSONObject("active_profile_json").getString("value")
+        val oldPreference = JSONObject(remoteBytes.getValue(supplemental.id).toString(Charsets.UTF_8))
+            .getJSONObject("datevProfilePrefs").getJSONObject("active_profile_json").getString("value")
+        assertEquals(oldPreference, savedPreference)
+        remoteBytes.filterKeys { id -> id.startsWith("phase11e-original-") }.forEach { (id, bytes) ->
+            assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes)
+        }
+        val beforeRestore = repo.allReceipts.first().associateBy { it.internalId }
+        val bytesBeforeRestore = remote.entries.mapValues { it.value.bytes.copyOf() }
+        var idsAfterRestore: Set<String>? = null
+        repeat(2) {
+            val restored = drive.executeFullDriveRestore(token, config, com.example.data.RestoreMode.MERGE)
+            assertTrue(restored.toString(), restored.isSuccess)
+            // Existing restore inventory initializes its missing deletion-history container.
+            // It must be unique and empty, and must never change existing business files.
+            val added = remote.entries.values.filter { it.id !in idsAfterPartial }
+            assertEquals(1, added.size)
+            assertEquals("deletions", added.single().name)
+            assertEquals("application/vnd.google-apps.folder", added.single().mime)
+            assertEquals(config.systemFolderId, added.single().parent)
+            if (idsAfterRestore != null) assertEquals(idsAfterRestore, remote.entries.keys)
+            idsAfterRestore = remote.entries.keys.toSet()
+            bytesBeforeRestore.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        }
+        assertEquals(beforeRestore.keys, repo.allReceipts.first().map { it.internalId }.toSet())
+        repo.allReceipts.first().forEach { row ->
+            val before = beforeRestore.getValue(row.internalId)
+            assertEquals(before.id, row.id)
+            assertEquals(before.driveFileId, row.driveFileId)
+            assertEquals(before.driveMetadataFileId, row.driveMetadataFileId)
+            assertEquals(before.bruttobetrag, row.bruttobetrag, 0.0)
+        }
+        val afterRestore = measure(vm, "datev-preimage-after-restore")
+        assertFalse(afterRestore.toString(), afterRestore.getBoolean("hasSyncError"))
+        val final = measure(vm, "datev-preimage-final-repeat")
+        assertFalse(final.toString(), final.getBoolean("hasSyncError"))
+        assertEquals(0, final.getInt("filesCreate") + final.getInt("filesUpdate"))
+        assertEquals(idsAfterRestore, remote.entries.keys)
+    }
+
     @Test fun drive1403FullSyncWithNoV3EtagUpdatesLedgerAndMetadataThenRepeatsWithoutWrites() = runBlocking {
         seedReceipts(22, localBytes = true)
         remote.omitV3Etags = true

@@ -1,0 +1,15 @@
+{
+  "productCompileSdk": 36,
+  "testExecutionSdk": 35,
+  "sourceTestAnnotationsChanged": false,
+  "newDatevMethods": 12,
+  "phase11eMethods": 84,
+  "failures": 0,
+  "skips": 0,
+  "pythonMethods": 16,
+  "fullGradle": "BLOCKED: FileLockContentionHandler cannot determine wildcard IP",
+  "deviceAcceptance": "OPEN",
+  "liveDrive": "NOT_RUN",
+  "mainSha": "5d5e61437fcf7324bb5e0f6442669f777d8ddeda",
+  "dependencySha": "57ab32d239869fc590af81de9d8eeea175366377"
+}

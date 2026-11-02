@@ -980,33 +980,41 @@ object GoogleDriveClient {
         val source = previous ?: downloadSyncJsonSnapshot(token, fileId)
         require(source.fileId == fileId) { "JSON source identity mismatch" }
         val before = canonicalDriveJsonText(source.read.json)
-        val desired = canonicalDriveJsonText(json)
+        val conserved = if (conflictContext != null)
+            com.example.data.DriveDatevPreimage.conserve(source.read.json, json) else json
+        val desired = canonicalDriveJsonText(conserved)
         val journal = conflictContext?.let { com.example.data.DrivePendingWrites(it) }
         val hash = com.example.data.StableDocumentIdentity.sha256(desired.toByteArray(Charsets.UTF_8))
         if (before == desired) {
             journal?.rememberJsonBaseline(fileId, hash)
             return DriveFileResult(true, fileId)
         }
-        if (journal != null) com.example.data.DriveBackupConflictGuard.validate(
-            org.json.JSONTokener(source.read.json).nextValue(), org.json.JSONTokener(json).nextValue(),
-            journal.jsonBaseline(fileId) == com.example.data.StableDocumentIdentity.sha256(before.toByteArray(Charsets.UTF_8)))
-        DriveEnvironment.validatePreservedJsonReferences(json, token, source.read, ::sendRawDriveRequest)
+        if (journal != null) try {
+            com.example.data.DriveBackupConflictGuard.validate(
+                org.json.JSONTokener(source.read.json).nextValue(), org.json.JSONTokener(conserved).nextValue(),
+                journal.jsonBaseline(fileId) == com.example.data.StableDocumentIdentity.sha256(before.toByteArray(Charsets.UTF_8)))
+        } catch (conflict: DriveSyncConflict) {
+            if (conflict.check != DriveSyncCheck.BACKUP_PREIMAGE_CONFLICT) throw conflict
+            throw DriveSyncConflict(conflict.check, differentFields =
+                com.example.data.DriveDatevPreimage.differentFields(source.read.json, conserved))
+        }
+        DriveEnvironment.validatePreservedJsonReferences(conserved, token, source.read, ::sendRawDriveRequest)
         val preimage = source.rawFingerprint ?: DriveOriginalFingerprint(fileId,
             source.read.json.toByteArray(Charsets.UTF_8).size.toLong(), "", source.version, source.etag)
-        val request = conditionalMediaUpdateRequest(token, preimage, json.toRequestBody("application/json; charset=utf-8".toMediaType()))
+        val request = conditionalMediaUpdateRequest(token, preimage, conserved.toRequestBody("application/json; charset=utf-8".toMediaType()))
         return executeDriveRequest(request).use { response ->
             if (!response.isSuccessful) throw DriveAccessFailure(DriveAccessFailure.Reason.HTTP, response.code)
             var verified = fetchOriginalFingerprintChecked(token, fileId)
             if (verified.sha256.isBlank()) {
                 val confirmation = downloadSyncJsonSnapshot(token, fileId)
-                if (confirmation.read.json != json) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+                if (confirmation.read.json != conserved) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
                 verified = verified.copy(etag = confirmation.etag, version = confirmation.version)
             }
-            if ((verified.sha256.isNotBlank() && verified.sha256 != com.example.data.StableDocumentIdentity.sha256(json.toByteArray(Charsets.UTF_8))) ||
-                verified.size != json.toByteArray(Charsets.UTF_8).size.toLong())
+            if ((verified.sha256.isNotBlank() && verified.sha256 != com.example.data.StableDocumentIdentity.sha256(conserved.toByteArray(Charsets.UTF_8))) ||
+                verified.size != conserved.toByteArray(Charsets.UTF_8).size.toLong())
                 throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
             DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled }?.syncJson?.put(fileId,
-                DriveJsonSnapshot(fileId, DriveRestoreJsonRead(json, source.read.unavailableOriginalIds), verified.etag, verified.version))
+                DriveJsonSnapshot(fileId, DriveRestoreJsonRead(conserved, source.read.unavailableOriginalIds), verified.etag, verified.version))
             journal?.rememberJsonBaseline(fileId, hash)
             DriveFileResult(true, fileId)
         }
