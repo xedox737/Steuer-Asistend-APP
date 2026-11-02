@@ -1263,6 +1263,17 @@ object GoogleDriveClient {
         return after.copy(sha256 = hash)
     }
 
+    /** A verified own rename/move supersedes only this file's old name/parent observations. */
+    internal fun reconfirmOriginalBinding(token: String, fileId: String, parent: String, filename: String, mime: String, hash: String) {
+        val scope = DriveEnvironment.currentReadProof(token) ?: return
+        val before = fetchOriginalFingerprintChecked(token, fileId)
+        val verified = verifyOriginalBaselineBytes(token, before, parent, filename, mime, hash)
+        val current = scope.metadata[fileId] ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+        if (current.optString("version") != verified.version) throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+        scope.replaceVerifiedObservation(fileId, current)
+        rememberVerifiedOriginal(token, verified, hash)
+    }
+
     private fun fingerprintFromMetadata(fileId: String, json: JSONObject, etag: String?): DriveOriginalFingerprint {
         val sha = json.optString("sha256Checksum").takeIf { it != "null" }.orEmpty().lowercase(Locale.ROOT)
         if (json.getString("mimeType") == "application/vnd.google-apps.folder" ||

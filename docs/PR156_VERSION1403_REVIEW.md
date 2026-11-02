@@ -157,7 +157,44 @@ Seiten-, Wiederaufnahme-, Referenz- und Bank-Schutzprüfungen. Die vollständige
 CI-/APK-/Emulatorergebnisse werden am aktuellen PR-Head dokumentiert; der reale
 POCO-/Android16-Test bleibt ausdrücklich offen.
 
-## CLI-Voraussetzungen
+## Nachweis nach eigener Dokumentverschiebung (Fortsetzung 2026-11-02)
+
+Codex fand am Head `cddeb8c30e7004d5d6b9e13a594694fb83a252a5` einen weiteren
+P1-Fehler: Eine vollständig verifizierte eigene Umbenennung oder Verschiebung
+blieb zusätzlich mit ihrer alten Namens-/Elternbindung im laufgebundenen
+Lesenachweis gespeichert. Die abschließende Bestandsprüfung sperrte deshalb
+auch korrekt ausgeführte Vollsicherungen. Zwei neue Vollsicherungstests
+reproduzierten diese falsche Abschlusssperre vor der Korrektur.
+
+Nach erfolgreicher eigener Same-ID-Änderung werden Inhalt, Name, MIME, Eltern
+und stabile Drive-Version erneut frisch geprüft. Erst dann ersetzt der
+Lesenachweis ausschließlich die überholten Beobachtungen dieser einen Datei
+durch ihre verifizierte neue Bindung. Alle anderen Datei-/Vorfahrbeobachtungen,
+Root-Nachweise und bereits erkannten Namespace-Fehler bleiben erhalten. Der
+normale Dokumentabgleich und die bestehende manuelle Dokumentorganisation
+nutzen denselben Nachweispfad; es wird keine zusätzliche Migration gestartet.
+
+Alle drei gezielten Tests bestehen: erfolgreiche Umbenennung, erfolgreiche
+Verschiebung und weiterhin gesperrter Abschluss bei einer gleichzeitig extern
+umbenannten anderen Datei. Original-ID, Bytes und Hash bleiben erhalten;
+unveränderte Folgeläufe führen keine Cloud-Schreibvorgänge aus. Es gibt keine
+global abgeschaltete Bestandsprüfung und keine Löschung von Cloud-Dateien.
+
+Der inzwischen erfolgreiche CI-Lauf 41363503032 gehört zum vorherigen Head
+und beweist diese Folgekorrektur noch nicht. Der neue Head erhält erneut
+vollständige CI, tatsächliche APK-/Zertifikatsprüfung und Codex-Nachprüfung.
+
+Abschlussprüfung vor Veröffentlichung der Folgekorrektur: **76/76 Methoden**,
+null Fehler/Skips im ergänzenden SDK35-Prüfaufbau, frische direkte
+Kotlin-Kompilierung der geänderten Produktklassen gegen SDK36 erfolgreich,
+`git diff --check` sauber. Der Vorläuferlauf 41363503032 ist tatsächlich
+erfolgreich: 1318 Unit- und 70 API35-Instrumentation-Methoden, jeweils null
+Fehler/Skips; gebaute APK mit VersionCode 1403, Original-Package und per
+`apksigner` geprüftem dauerhaftem Zertifikat
+`1876fcd5f5d36526fc44f3ba37aa6cacabfbd98d`. Dieser Vorläufer ist ausdrücklich
+kein APK-Nachweis für den neuen Head und kein realer POCO-Test.
+
+## GitHub-CLI und verbleibende Geräteabnahme
 
 Angewendet: GH Review Loop sowie Agent Skills für Code-Review, Fehlersuche,
 Tests, Sicherheit und Git-Arbeit. `gh` 2.46.0 und Python3 sind installiert.

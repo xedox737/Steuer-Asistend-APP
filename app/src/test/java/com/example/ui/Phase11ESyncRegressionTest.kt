@@ -1379,6 +1379,74 @@ class Phase11ESyncRegressionTest {
         } finally { persistent.close(); app.deleteDatabase(filename) }
     }
 
+    private suspend fun verifyFullSyncDocumentBindingChange(move: Boolean, changeUnrelated: Boolean) {
+        seedReceipts(1)
+        val property = requireNotNull(repo.getPropertyMetadata())
+        val id = "synthetic-document-binding"
+        val type = ManagedDocumentType.RECHNUNG
+        val file = File(app.filesDir, "synthetic-binding.png").apply {
+            writeBytes(byteArrayOf(0x89.toByte(),0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a) + ByteArray(64) { 23 })
+        }
+        repo.upsertManagedDocument(ManagedDocument(documentId = id, propertyId = property.propertyId, documentType = type.name,
+            documentDate = "2026-10-31", title = "Before local edit",
+            storedFilename = DocumentFilenameGenerator.document(type, "2026-10-31", "Before local edit", "png", id),
+            originalFilename = file.name, mimeType = "image/png", localUri = file.absolutePath,
+            sha256 = StableDocumentIdentity.sha256(file.readBytes()), fileSizeBytes = file.length(),
+            createdAt = "2026-10-30T00:00:00Z", updatedAt = "2026-10-31T00:00:00Z"))
+        val vm = connectedModel()
+        val baseline = measure(vm, "document-binding-before-$move-$changeUnrelated")
+        assertFalse(baseline.toString(), baseline.getBoolean("hasSyncError"))
+        val before = repo.getManagedDocument(id)!!
+        val originalId = requireNotNull(before.driveFileId)
+        val bytes = remote.entries.getValue(originalId).bytes.copyOf()
+        val oldBackup = vm.lastStammdatenBackupTime.value
+        repo.upsertManagedDocument(before.copy(title = "After local edit", documentDate = if (move) "2025-10-31" else before.documentDate,
+            updatedAt = "2026-11-01T00:00:00Z"))
+        val unrelatedId = repo.getReceiptById(1)!!.driveFileId!!
+        val unrelatedBytes = remote.entries.getValue(unrelatedId).bytes.copyOf()
+        val injected = java.util.concurrent.atomic.AtomicBoolean()
+        if (changeUnrelated) transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            if (request.method == "PATCH" && request.url.encodedPath == "/drive/v3/files/$originalId" && !injected.getAndSet(true))
+                remote.entries.getValue(unrelatedId).name = "externally-renamed-unrelated.png"
+            response
+        }.addInterceptor(remote).build())
+        val result = measure(vm, "document-binding-after-$move-$changeUnrelated")
+        assertEquals(result.toString(), changeUnrelated, result.getBoolean("hasSyncError"))
+        assertArrayEquals(bytes, remote.entries.getValue(originalId).bytes)
+        assertArrayEquals(unrelatedBytes, remote.entries.getValue(unrelatedId).bytes)
+        assertEquals(originalId, repo.getManagedDocument(id)!!.driveFileId)
+        assertFalse(remote.requests.any { it.method == "PATCH" && it.url.queryParameter("uploadType") == "media" &&
+            it.url.encodedPath.endsWith("/$originalId") })
+        if (changeUnrelated) {
+            assertTrue(injected.get())
+            assertEquals("externally-renamed-unrelated.png", remote.entries.getValue(unrelatedId).name)
+            assertEquals(oldBackup, vm.lastStammdatenBackupTime.value)
+        } else {
+            val after = repo.getManagedDocument(id)!!
+            assertNotEquals(before.storedFilename, after.storedFilename)
+            assertEquals(after.storedFilename, remote.entries.getValue(originalId).name)
+            assertEquals(after.driveFolderId, remote.entries.getValue(originalId).parent)
+            assertEquals(move, before.driveFolderId != after.driveFolderId)
+            val repeated = measure(vm, "document-binding-repeat-$move")
+            assertFalse(repeated.toString(), repeated.getBoolean("hasSyncError"))
+            assertEquals(0, repeated.getInt("filesCreate") + repeated.getInt("filesUpdate"))
+        }
+    }
+
+    @Test fun verifiedStandaloneRenameCompletesFullBackupAndRemainsNoOp() = runBlocking {
+        verifyFullSyncDocumentBindingChange(move = false, changeUnrelated = false)
+    }
+
+    @Test fun verifiedStandaloneMoveCompletesFullBackupAndRemainsNoOp() = runBlocking {
+        verifyFullSyncDocumentBindingChange(move = true, changeUnrelated = false)
+    }
+
+    @Test fun verifiedOwnMoveCannotHideAnUnrelatedExternalRename() = runBlocking {
+        verifyFullSyncDocumentBindingChange(move = true, changeUnrelated = true)
+    }
+
     @Test fun standaloneDocumentNoOpRetainsAuthorVersionAndAvoidsOriginalDownloadsAndWrites() = runBlocking {
         val property = requireNotNull(repo.getPropertyMetadata())
         val id = "synthetic-standalone-noop"

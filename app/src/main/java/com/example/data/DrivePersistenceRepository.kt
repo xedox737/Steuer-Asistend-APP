@@ -4771,6 +4771,8 @@ class DrivePersistenceRepository(
                 localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "DRIVE_VERIFY_FEHLGESCHLAGEN"))
                 return false
             }
+            if (plan.action != DocumentMigrationAction.UNVERAENDERT && managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway)
+                GoogleDriveClient.reconfirmOriginalBinding(accessToken, existingDriveId, folderId, targetFilename, metadata.mimeType, beforeHash)
             val updated = document.copy(
                 driveFileId = existingDriveId, driveFolderId = folderId, storedFilename = targetFilename,
                 documentCategory = route.segments.drop(1).joinToString("/"), sha256 = beforeHash,
@@ -5033,6 +5035,8 @@ class DrivePersistenceRepository(
                 localRepository.upsertDocumentMigrationJournal(journal.copy(state = "VERIFY_FAILED", lastError = "Hashprüfung fehlgeschlagen", updatedAt = java.time.Instant.now().toString()))
                 return@map concretePlan.copy(action = DocumentMigrationAction.PRUEFEN)
             }
+            if (concretePlan.action != DocumentMigrationAction.UNVERAENDERT)
+                GoogleDriveClient.reconfirmOriginalBinding(accessToken, concrete.driveFileId, targetFolder, concrete.targetFilename, meta.mimeType, concrete.beforeSha256)
             val migratedReceipt = receipt.copy(driveFolderId = targetFolder, storedFilename = concrete.targetFilename)
             localRepository.insert(migratedReceipt)
             localRepository.getDocumentsForReceipt(receipt.internalId)

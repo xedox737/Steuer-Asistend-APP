@@ -36,6 +36,14 @@ internal class DriveReadProof(val authorization: String) {
         previousMetadata.addAll(metadata.values); previousRoots.addAll(roots)
         metadata.clear(); metadataEtags.clear(); roots.clear()
     }
+
+    /** Called only after byte and binding verification of our own same-ID document mutation.
+     * Keep every unrelated observation, root proof and sticky ownership failure. */
+    fun replaceVerifiedObservation(id: String, current: JSONObject) {
+        require(current.getString("id") == id && current.getString("mimeType") != "application/vnd.google-apps.folder")
+        previousMetadata.removeIf { it.getString("id") == id }
+        metadata[id] = JSONObject(current.toString())
+    }
 }
 
 internal class DriveNamespacePolicy(
