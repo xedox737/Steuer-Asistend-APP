@@ -1,0 +1,21 @@
+{
+  "baseSha": "6dceb5005955d600268f5a8949db7fb2eea7f897",
+  "failedMainCi": 41677573776,
+  "failedJob": 126062206125,
+  "localRuntimeSdk": 35,
+  "sourceSdk": 36,
+  "sourceSdkUnchanged": true,
+  "sourceSdk36Compilation": true,
+  "localGradleBlocked": "FileLockContentionHandler: Could not determine a usable wildcard IP",
+  "testSourceSha256": "ea3ac6f422e532ad5c1eb368903d9b6ccc09ace99f64dc0394e3b8a8e09e5de4",
+  "red": {
+    "tests": 1,
+    "failures": 1,
+    "skipped": 0
+  },
+  "green": {
+    "tests": 45,
+    "failures": 0,
+    "skipped": 0
+  }
+}

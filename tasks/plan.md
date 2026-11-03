@@ -1,5 +1,13 @@
 # Drive-Synchronisation: Dokumentindex und vollständiger Abschluss
 
+Nachtrag zum ausdrücklich angeforderten Merge vom 03.11.2026: PR158/156 sind
+nach Main `6dceb5005955d600268f5a8949db7fb2eea7f897` gemergt; PR157 enthalten.
+Die frühere Merge-Sperre wurde damit vom Nutzer aufgehoben. Main-CI41677573776
+belegt zwei Fehler beim Aufräumen der Anmeldungstests. Separater Folgebranch
+`agent/drive1406-test-lifecycle`: Abbruchabschluss vor Main-/HTTP-Reset abwarten,
+deterministischer Rot-/Grün-Test, vollständige CI vor Folge-Merge und APK-Freigabe.
+Details: `docs/drive-1406-evidence/test-lifecycle.md`.
+
 Freigegebener Nutzerplan; kein automatischer Merge. Erledigt erst nach vollständigem
 erfolgreichem realem Sync und unveränderter Wiederholung mit dem betroffenen Bestand.
 
