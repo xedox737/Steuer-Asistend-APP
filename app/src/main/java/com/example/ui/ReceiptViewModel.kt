@@ -2246,9 +2246,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun importBankFile(uri: android.net.Uri) {
+        _bankImportStatus.value = "Kontoauszug wird eingelesen …"
         viewModelScope.launch(Dispatchers.IO) {
             _pendingBankAccountImports.value = emptyList()
-            _bankImportStatus.value = "Kontoauszug wird eingelesen …"
             try {
                 val resolver = getApplication<Application>().contentResolver
                 val displayName = runCatching {
