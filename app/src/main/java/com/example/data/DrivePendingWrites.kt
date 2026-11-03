@@ -39,6 +39,49 @@ internal class DrivePendingWrites(context: Context) {
     }
 
     fun completed(root: String, id: String) = synchronized(lock) { record(root, id).delete() }
+
+    private fun backupBinding(document: ManagedDocument): String = StableDocumentIdentity.sha256(
+        com.example.api.canonicalDriveJson(JSONObject().put("documentId", document.documentId)
+            .put("propertyId", document.propertyId).put("unitId", document.unitId ?: JSONObject.NULL)
+            .put("receiptInternalId", document.receiptInternalId ?: JSONObject.NULL)
+            .put("fileId", document.driveFileId).put("folderId", document.driveFolderId)
+            .put("filename", document.storedFilename).put("mime", document.mimeType)).toByteArray(Charsets.UTF_8))
+
+    /** Separate from receipt acknowledgement: both dependent backup manifests still need these
+     * exact own-write preimages. Never promote a legacy hash-only intent into this authority. */
+    fun backupOriginalPreimages(root: String, document: ManagedDocument, hash: String, size: Long): Set<DriveBackupConflictGuard.OriginalPreimage> = synchronized(lock) {
+        val id = requireNotNull(document.driveFileId)
+        val file = record("backup-original:$root", id)
+        val json = try { file.openRead().use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) } }
+            catch (_: java.io.FileNotFoundException) { return@synchronized emptySet() }
+        check(json.getInt("version") == 1 && json.getString("root") == root && json.getString("file") == id)
+        if (json.getString("binding") != backupBinding(document) || json.getString("after") != hash ||
+            json.getLong("afterSize") != size) return@synchronized emptySet()
+        val preimages = json.getJSONArray("preimages")
+        (0 until preimages.length()).map { index -> preimages.getJSONObject(index).let {
+            DriveBackupConflictGuard.OriginalPreimage(it.getString("sha256"), it.getLong("size"))
+        } }.toSet().also { values -> check(values.isNotEmpty() && values.all { it.sha256.matches(SHA) && it.size > 0 }) }
+    }
+
+    fun rememberBackupOriginalChange(root: String, document: ManagedDocument, beforeHash: String, beforeSize: Long,
+                                     afterHash: String, afterSize: Long) = synchronized(lock) {
+        require(beforeHash.matches(SHA) && afterHash.matches(SHA) && beforeSize > 0 && afterSize > 0)
+        val preimages = backupOriginalPreimages(root, document, beforeHash, beforeSize) +
+            DriveBackupConflictGuard.OriginalPreimage(beforeHash, beforeSize)
+        val id = requireNotNull(document.driveFileId)
+        val file = record("backup-original:$root", id)
+        val bytes = JSONObject().put("version", 1).put("root", root).put("file", id)
+            .put("binding", backupBinding(document)).put("after", afterHash).put("afterSize", afterSize)
+            .put("preimages", org.json.JSONArray(preimages.map { JSONObject().put("sha256", it.sha256).put("size", it.size) }))
+            .toString().toByteArray(Charsets.UTF_8)
+        val stream = file.startWrite()
+        try { stream.write(bytes); file.finishWrite(stream) }
+        catch (error: Throwable) { file.failWrite(stream); throw error }
+    }
+
+    fun completedBackupOriginal(root: String, id: String) = synchronized(lock) {
+        record("backup-original:$root", id).delete()
+    }
     fun receiptIndexPending(metadataId: String): Boolean = synchronized(lock) {
         val file = record("receipt-index-pending", metadataId)
         try { file.openRead().use { input -> check(input.read() == 1) }; true }

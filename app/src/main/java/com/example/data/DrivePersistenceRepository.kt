@@ -1708,6 +1708,7 @@ class DrivePersistenceRepository(
                         if (localDocument.sha256.isBlank()) baselines.add(localDocument to verified.sha256)
                         GoogleDriveClient.markRecoveredOriginal(token, id)
                         GoogleDriveClient.rememberVerifiedOriginal(token, verified, verified.sha256)
+                        rememberBackupOriginal(token, config, localDocument, verified)
                         continue
                     }
                     val hash = fingerprint.sha256.ifBlank { getSha256(GoogleDriveClient.downloadFileBytesChecked(token, id)) }
@@ -1721,6 +1722,7 @@ class DrivePersistenceRepository(
                     if (!hash.equals(document.sha256, ignoreCase = true) && !committedByThisApp)
                         throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_CHECKSUM_MISMATCH)
                     GoogleDriveClient.rememberVerifiedOriginal(token, fingerprint, hash)
+                    rememberBackupOriginal(token, config, localDocument, fingerprint.copy(sha256 = hash))
                 }
                 }
                 } }
@@ -1976,6 +1978,8 @@ class DrivePersistenceRepository(
                 val fileId = requireNotNull(document.driveFileId)
                 val old = pending.originalChange(config.rootFolderId, fileId)
                 // Retain the metadata baseline across repeated interrupted media updates.
+                pending.rememberBackupOriginalChange(config.rootFolderId, document,
+                    fingerprint.sha256, fingerprint.size, getSha256(bytes), bytes.size.toLong())
                 pending.rememberOriginalChange(config.rootFolderId, fileId,
                     old?.beforeSha256 ?: fingerprint.sha256, getSha256(bytes))
                 com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.ORIGINAL, receipt.internalId) {
@@ -1987,6 +1991,8 @@ class DrivePersistenceRepository(
             for ((document, fingerprint) in reconciled.asReversed().distinctBy { it.first.documentId }) {
                 requireNotNull(localRepository.updateManagedDocumentDriveFields(document,
                     document.copy(sha256 = fingerprint.sha256, fileSizeBytes = fingerprint.size))) { "Dokument wurde während der Übertragung geändert oder entfernt" }
+                rememberBackupOriginal(accessToken, config,
+                    document.copy(sha256 = fingerprint.sha256, fileSizeBytes = fingerprint.size), fingerprint)
                 localRepository.getDocumentsForReceipt(receipt.internalId).filter { it.driveFileId == fingerprint.fileId }
                     .forEach { localRepository.insertDocument(it.copy(sizeBytes = fingerprint.size)) }
                 if (fingerprint.fileId == originalId) receipt = receipt.copy(fileSizeBytes = fingerprint.size)
@@ -4715,8 +4721,12 @@ class DrivePersistenceRepository(
                 val extension = metadata.name.substringAfterLast('.', "bin")
                 val canonicalName = DocumentFilenameGenerator.document(type, document.documentDate, document.title, extension, document.documentId)
                 if (linkedOriginal || (metadata.name == canonicalName && ensureDocumentFolder(accessToken, config,
-                        property, type, document.documentDate, document.unitId, unit) == document.driveFolderId))
+                        property, type, document.documentDate, document.unitId, unit) == document.driveFolderId)) {
+                    // A saved standalone hash is independent evidence too. Preserve the same
+                    // proof when an older manifest still lacks this already verified hash.
+                    rememberBackupOriginal(accessToken, config, document, fingerprint)
                     return updateManagedDocumentIndex(accessToken, config)
+                }
             }
         }
         if (existingDriveId != null) {
@@ -4843,6 +4853,24 @@ class DrivePersistenceRepository(
             fileSizeBytes = bytes.size.toLong(), migrationStatus = "SYNCED"
         ))
         return updateManagedDocumentIndex(accessToken, config)
+    }
+
+    private fun rememberBackupOriginal(token: String, config: DriveAppConfig, document: ManagedDocument,
+                                       verified: com.example.api.DriveOriginalFingerprint) {
+        GoogleDriveClient.rememberBackupOriginal(token, document, verified,
+            DrivePendingWrites(context).backupOriginalPreimages(config.rootFolderId, document, verified.sha256, verified.size))
+    }
+
+    /** Called only after BOTH backup manifests acknowledged the complete current run. */
+    suspend fun acknowledgeOriginalBackupChanges(token: String, config: DriveAppConfig) {
+        val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled } ?: return
+        val pending = DrivePendingWrites(context)
+        for (document in localRepository.getAllManagedDocuments()) {
+            val proof = scope.backupOriginals[document.documentId] ?: continue
+            if (proof.ownPreimages.isNotEmpty() && document.driveFileId == proof.fileId &&
+                document.sha256 == proof.sha256 && document.fileSizeBytes == proof.size)
+                pending.completedBackupOriginal(config.rootFolderId, proof.fileId)
+        }
     }
 
     suspend fun updateManagedDocumentIndex(accessToken: String, config: DriveAppConfig): Boolean {

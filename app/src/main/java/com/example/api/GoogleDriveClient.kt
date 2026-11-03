@@ -47,7 +47,10 @@ object GoogleDriveClient {
         if (request.method != "GET") {
             val token = request.header("Authorization")?.removePrefix("Bearer ").orEmpty()
             val id = request.url.encodedPath.substringAfterLast('/')
-            DriveEnvironment.currentReadProof(token)?.let { it.syncJson.remove(id); it.syncOriginals.remove(id) }
+            DriveEnvironment.currentReadProof(token)?.let {
+                it.syncJson.remove(id); it.syncOriginals.remove(id)
+                it.backupOriginals.entries.removeIf { entry -> entry.value.fileId == id }
+            }
         }
         val response = DriveEnvironment.execute(request) { sendRawDriveRequest(it) }
         if (response.code == 401) {
@@ -990,13 +993,19 @@ object GoogleDriveClient {
             return DriveFileResult(true, fileId)
         }
         if (journal != null) try {
+            val oldValue = org.json.JSONTokener(source.read.json).nextValue()
+            val newValue = org.json.JSONTokener(conserved).nextValue()
+            val knownBaseline = journal.jsonBaseline(fileId) ==
+                com.example.data.StableDocumentIdentity.sha256(before.toByteArray(Charsets.UTF_8))
+            val originals = if (knownBaseline) emptyMap() else verifiedBackupOriginals(token, oldValue, newValue)
             com.example.data.DriveBackupConflictGuard.validate(
-                org.json.JSONTokener(source.read.json).nextValue(), org.json.JSONTokener(conserved).nextValue(),
-                journal.jsonBaseline(fileId) == com.example.data.StableDocumentIdentity.sha256(before.toByteArray(Charsets.UTF_8)))
+                oldValue, newValue, knownBaseline,
+                originals = originals)
         } catch (conflict: DriveSyncConflict) {
             if (conflict.check != DriveSyncCheck.BACKUP_PREIMAGE_CONFLICT) throw conflict
+            val datevFields = com.example.data.DriveDatevPreimage.differentFields(source.read.json, conserved)
             throw DriveSyncConflict(conflict.check, differentFields =
-                com.example.data.DriveDatevPreimage.differentFields(source.read.json, conserved))
+                datevFields.ifEmpty { conflict.differentFields })
         }
         DriveEnvironment.validatePreservedJsonReferences(conserved, token, source.read, ::sendRawDriveRequest)
         val preimage = source.rawFingerprint ?: DriveOriginalFingerprint(fileId,
@@ -1209,6 +1218,58 @@ object GoogleDriveClient {
             json.optJSONObject("appProperties")?.let(::jsonStringMap).orEmpty())
     }
 
+    /** Called after the receipt preflight proved an independent saved/local hash. Merely
+     * fetching an original fingerprint must never create this authority. */
+    internal fun rememberBackupOriginal(token: String, document: com.example.data.ManagedDocument,
+                                        verified: DriveOriginalFingerprint,
+                                        ownPreimages: Set<com.example.data.DriveBackupConflictGuard.OriginalPreimage> = emptySet()) {
+        val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled } ?: return
+        val metadata = scope.metadata[verified.fileId] ?: return
+        if (document.driveFileId != verified.fileId || document.documentId.isBlank() ||
+            document.driveFolderId.isNullOrBlank() || document.storedFilename.isBlank() ||
+            !verified.version.matches(Regex("[1-9][0-9]*")) || verified.size <= 0 || !verified.sha256.matches(Regex("[a-f0-9]{64}")) ||
+            metadata.optString("version") != verified.version || metadata.optString("name") != document.storedFilename ||
+            metadata.optString("mimeType") != document.mimeType ||
+            metadata.optJSONArray("parents")?.let { it.length() == 1 && it.optString(0) == document.driveFolderId } != true ||
+            (document.fileSizeBytes != 0L && document.fileSizeBytes != verified.size)) return
+        scope.backupOriginals[document.documentId] = com.example.data.DriveBackupConflictGuard.OriginalEvidence(
+            document.documentId, document.propertyId, document.unitId, document.receiptInternalId,
+            verified.fileId, requireNotNull(document.driveFolderId), document.storedFilename, document.mimeType,
+            verified.sha256, verified.size, verified.version, ownPreimages)
+    }
+
+    /** Re-attest just the originals whose hash/size is about to change. This
+     * proof stays account/run bound, and cannot authorize changes to any authored field. */
+    private fun verifiedBackupOriginals(token: String, before: Any?, candidate: Any?):
+        Map<String, com.example.data.DriveBackupConflictGuard.OriginalEvidence> {
+        val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled } ?: return emptyMap()
+        if (before !is JSONObject || candidate !is JSONObject) return emptyMap()
+        val verified = linkedMapOf<String, com.example.data.DriveBackupConflictGuard.OriginalEvidence>()
+        for (key in listOf("documents", "managedDocuments")) {
+            val old = before.optJSONArray(key) ?: continue
+            val next = candidate.optJSONArray(key) ?: continue
+            val byId = (0 until next.length()).mapNotNull { next.optJSONObject(it) }.groupBy { it.optString("documentId") }
+            for (index in 0 until old.length()) {
+                val item = old.optJSONObject(index) ?: continue
+                val id = item.optString("documentId")
+                val desired = byId[id]?.singleOrNull() ?: continue
+                if (listOf("sha256", "fileSizeBytes").all { canonicalDriveJson(item.opt(it)) == canonicalDriveJson(desired.opt(it)) }) continue
+                val proof = scope.backupOriginals[id] ?: continue
+                if (!com.example.data.DriveBackupConflictGuard.permitsOriginalFields(item, desired, proof)) continue
+                val current = fetchOriginalFingerprintChecked(token, proof.fileId)
+                val metadata = scope.metadata[proof.fileId] ?: throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+                if (current.version != proof.version || current.size != proof.size ||
+                    (current.sha256.isNotBlank() && current.sha256 != proof.sha256))
+                    throw DriveSyncConflict(DriveSyncCheck.ORIGINAL_BASELINE_CHANGED_DURING_READ)
+                if (metadata.optString("name") != proof.filename || metadata.optString("mimeType") != proof.mimeType ||
+                    metadata.optJSONArray("parents")?.let { it.length() == 1 && it.optString(0) == proof.folderId } != true)
+                    throw DriveSyncConflict(DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
+                verified[id] = proof
+            }
+        }
+        return verified
+    }
+
     /** A server checksum or a run-scoped checksum proven by a byte read, never appProperties. */
     internal fun rememberVerifiedOriginal(token: String, observed: DriveOriginalFingerprint, hash: String) {
         require(hash.matches(Regex("[a-f0-9]{64}")))
@@ -1244,7 +1305,7 @@ object GoogleDriveClient {
         val bytes = downloadFileBytesChecked(token, before.fileId)
         val owned = DriveEnvironment.readOwnedMetadata(token, before.fileId, ::sendRawDriveRequest)
         val after = fingerprintFromMetadata(before.fileId, owned.json, owned.etag)
-        if (before.version.isBlank() || after.version != before.version)
+        if (!before.version.matches(Regex("[1-9][0-9]*")) || after.version != before.version)
             throw DriveSyncConflict(DriveSyncCheck.ORIGINAL_BASELINE_CHANGED_DURING_READ)
         val meta = owned.json
         if (meta.getString("name") != filename || meta.getString("mimeType") != mime ||

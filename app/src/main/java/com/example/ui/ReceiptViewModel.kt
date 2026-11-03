@@ -2085,8 +2085,10 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     com.example.data.SupplementalDriveBackup.backup(getApplication(), database, token, config.systemFolderId)
                 }
 
-                csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess &&
+                val allBackupsComplete = csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess &&
                     successCount == list.size && documentSuccessCount == standaloneDocumentCount
+                if (allBackupsComplete) drivePersistenceRepository.acknowledgeOriginalBackupChanges(token, config)
+                allBackupsComplete
                 } }
                 ensureDriveSession(session)
                 if (complete) {
