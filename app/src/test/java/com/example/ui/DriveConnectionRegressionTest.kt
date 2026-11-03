@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.example.api.GoogleDriveClient
 import com.example.comparison.ComparisonDriveHttpFixture
@@ -36,6 +37,7 @@ class DriveConnectionRegressionTest {
     private val transport = GoogleDriveClient::class.java.getDeclaredField("client").apply { isAccessible = true }
     private lateinit var previous: OkHttpClient
     private val stores = mutableListOf<ViewModelStore>()
+    private val modelJobs = mutableListOf<Job>()
     private lateinit var remote: ComparisonDriveHttpFixture
     @Volatile private var status = 200
     @Volatile private var fault: Exception? = null
@@ -66,14 +68,45 @@ class DriveConnectionRegressionTest {
     }
 
     @After fun cleanup() {
-        stores.forEach { it.clear() }
+        runBlocking { withTimeout(15_000) { clearModels() } }
         transport.set(null, previous); GoogleDriveClient.clearFolderCache()
         Dispatchers.resetMain()
+    }
+
+    private suspend fun clearModels() {
+        stores.forEach { it.clear() }
+        // ViewModelStore.clear() cancels but does not join work running on IO.
+        // Keep Main and the fake HTTP transport installed until cancellation finishes.
+        modelJobs.joinAll()
     }
 
     private fun model(): ReceiptViewModel {
         val store = ViewModelStore().also { stores += it }
         return ViewModelProvider(store, ViewModelProvider.AndroidViewModelFactory(app))[ReceiptViewModel::class.java]
+            .also { modelJobs += it.viewModelScope.coroutineContext[Job]!! }
+    }
+
+    @Test fun teardownWaitsForCancelledViewModelChildren() = runBlocking {
+        val vm = model()
+        val finalizerEntered = CompletableDeferred<Unit>()
+        val releaseFinalizer = CompletableDeferred<Unit>()
+        val worker = vm.viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try { awaitCancellation() } finally {
+                withContext(NonCancellable) {
+                    finalizerEntered.complete(Unit)
+                    releaseFinalizer.await()
+                }
+            }
+        }
+        val teardown = async(start = CoroutineStart.UNDISPATCHED) { clearModels() }
+        try {
+            assertTrue(finalizerEntered.isCompleted)
+            assertFalse("Main/HTTP must remain installed until cancelled children finish", teardown.isCompleted)
+        } finally {
+            releaseFinalizer.complete(Unit)
+            withTimeout(15_000) { teardown.await(); worker.join() }
+        }
+        assertTrue(modelJobs.all { it.isCompleted })
     }
     private fun awaitFailure(vm: ReceiptViewModel) = runBlocking {
         withTimeout(15_000) { vm.driveSyncError.first { !it.isNullOrBlank() } }
