@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
@@ -58,11 +59,37 @@ class EmulatorEnvironmentRule(private val fontScale: () -> Float) : ExternalReso
             check(context.getSharedPreferences(it.name, 0).edit().clear().commit())
         }
         originalFontScale = shell("settings get system font_scale")
-        shell("settings put system font_scale ${fontScale()}")
         shell("mkdir -p $DEVICE_ARTIFACTS")
         // CI initializes the system launcher once before instrumentation starts.
         // Never kill Quickstep during ActivityScenario's return-to-home transition:
         // API 35 can retain its recents input consumer and stop delivering focus.
+    }
+
+    fun prepareFontScale(ui: ComposeTestRule) {
+        val original = checkNotNull(originalFontScale) { "Die geschützte Emulator-Vorbereitung muss zuerst laufen." }
+        val priorScale = if (original == "null") 1.0f else requireNotNull(original.toFloatOrNull())
+        // settings put returns before WindowManager applies the configuration. CI observed
+        // a previous test's reset to 1.0 arriving after the next 1.5 test had already launched.
+        // Settle that reset first, then wait for both the setting and real system configuration.
+        val deadline = android.os.SystemClock.uptimeMillis() + 10_000
+        fun awaitApplied(scale: Float) {
+            ui.waitUntil((deadline - android.os.SystemClock.uptimeMillis()).coerceAtLeast(1)) {
+                fontScaleIsApplied(scale)
+            }
+        }
+        awaitApplied(priorScale)
+        val requested = fontScale()
+        shell("settings put system font_scale $requested")
+        awaitApplied(requested)
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+    }
+
+    private fun fontScaleIsApplied(expected: Float): Boolean {
+        val stored = shell("settings get system font_scale").let { if (it == "null") 1.0f else it.toFloatOrNull() }
+            ?: return false
+        val applied = Regex("(?m)^\\s*mGlobalConfiguration=\\{([0-9]+(?:\\.[0-9]+)?)\\s")
+            .find(shell("dumpsys window"))?.groupValues?.get(1)?.toFloatOrNull() ?: return false
+        return kotlin.math.abs(stored - expected) < .01f && kotlin.math.abs(applied - expected) < .01f
     }
 
     override fun after() {
@@ -91,6 +118,13 @@ abstract class EmulatorTestSupport {
     // Launch after Compose has registered its roots; close after failure diagnostics.
     @get:Rule(order = 2) val activityLifecycle = object : ExternalResource() {
         override fun before() {
+            // The Compose rule is initialized here, and the Activity must not launch with
+            // a still-pending font configuration from the previous disposable test.
+            try { environment.prepareFontScale(ui) }
+            catch (failure: Throwable) {
+                runCatching { saveWindowState("font-setup-$fontScale-failure") }
+                throw failure
+            }
             scenario = ActivityScenario.launch(MainActivity::class.java)
             ui.onNodeWithText("Willkommen bei ImmoPilot").assertIsDisplayed()
             // Semantics can remain readable behind another Android window. Real key

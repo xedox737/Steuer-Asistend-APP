@@ -15,8 +15,10 @@ Der reale POCO-Lauf1405 vom03.11.2026 09:15:52Z scheiterte trotz grüner CI1376/
 und sauberem Codex-Review:22/22 Belege unverändert, Dokumentindex17856 Bytes und
 Zusatzsicherung308122 Bytes erfolgreich geschrieben, dann LOCAL_PRECONDITION in
 der Abschlussprüfung (15GETs,0Schreibzugriffe). Gesamt418 Aufrufe/200,7s.
-Der Nutzer bestätigte anschließend, dass der unveränderte zweite Lauf funktioniert.
-Der vollständige Bericht dieses erfolgreichen Zweitlaufs liegt nicht vor.
+Der vollständige Bericht bestätigt anschließend den erfolgreichen unveränderten
+Zweitlauf1405 vom09:31:12Z:22/22 unverändert,0 geschriebene Bytes,317 Aufrufe/
+85,4s,0 Retries; alle drei Abschlussprüfungen erfolgreich. Das ist ein belegter
+realer No-Op, keine Abnahme des zuvor fehlgeschlagenen Schreiblaufs.
 
 Lesende Prüfung der beiden neuen Drive-Payloads: Dokumentindex weiterhin24 identische
 IDs; einzig abweichendes Dokumentfeld ist der eine nachgewiesene Hash. Die Hauptschlüssel
@@ -24,6 +26,15 @@ der Zusatzsicherung und Anzahlen ihrer bisherigen Datensatzgruppen bleiben erhal
 Dies beweist weder sämtliche einzelnen Fachwerte noch eine erfolgreiche Abschlussprüfung
 des ersten Laufs. Keine produktiven Drive-Dateien wurden bei der Untersuchung geändert.
 Private Inhalte liegen außerhalb von Git und CI.
+
+Die404-Hinweise des erfolgreichen Zweitlaufs bedeuten nicht, dass Dokumentindex
+oder Zusatzsicherung fehlen: beide wurden vollständig lesend geladen. Zwei
+zusätzliche, bereits im älteren Index enthaltene Originalverweise außerhalb der
+22 Hauptoriginale sind derzeit auch über den verbundenen Drive-Zugang nicht
+erreichbar. Abwesenheit und fehlende Zugriffsrechte sind dadurch nicht sicher
+unterscheidbar; ein durch die Reparatur verursachter Datenverlust wird nicht
+behauptet. Bestehende IDs/Verweise bleiben erhalten, keine Ersatzdateien oder
+Löschungen. Diese Hinweise werden nicht stillschweigend unterdrückt.
 
 ## Eingrenzung und widerlegte Vermutung
 
@@ -85,6 +96,12 @@ Der Diagnosekandidat wird nicht als vollständige Fehlerbehebung oder als erfolg
 auf dem realen POCO getestete Reparatur bezeichnet. Kein Merge/Release. Erst nach
 nachgewiesener Ursache, gezielter Korrektur und vollständigem realem Schreib- und
 unverändertem Wiederholungslauf ist die abschließende Produktabnahme möglich.
+
+CI41614494878 prüfte den1406-Diagnosecode mit1382 echten Unitmethoden erfolgreich;
+im nativen70-Methoden-Lauf scheiterten zwei nachgewiesene Testvorbereitungen.
+[Stacks, Belege und eng begrenzte Testkorrektur](drive-1406-evidence/emulator-readiness.md).
+Der folgende Commit verändert keinen Produktcode. Neue Run-IDs und tatsächliche
+Methoden-/Signaturnachweise werden nach Auswertung im PR festgehalten.
 
 ## Quellen
 
