@@ -7,6 +7,9 @@ import com.example.util.DiagnosticLog
 
 import android.content.Context
 import androidx.room.withTransaction
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -539,17 +542,29 @@ class DrivePersistenceRepository(
         entityType: String,
         filename: String,
         json: String
-    ): DriveFileResult {
+    ): DriveFileResult = com.example.api.DriveSyncTrace.step(
+        when (entityType) {
+            "propertyMetadata" -> com.example.api.DriveSyncPhase.PROPERTY_METADATA
+            "units" -> com.example.api.DriveSyncPhase.UNIT_DATA
+            "datevProfiles" -> com.example.api.DriveSyncPhase.DATEV_PROFILES
+            "aiLearnedRules" -> com.example.api.DriveSyncPhase.LEARNING_RULES
+            "categories" -> com.example.api.DriveSyncPhase.CATEGORIES
+            "categoryFolderMappings" -> com.example.api.DriveSyncPhase.CATEGORY_MAPPINGS
+            "receiptIndex" -> com.example.api.DriveSyncPhase.RECEIPT_INDEX
+            else -> com.example.api.DriveSyncPhase.MASTER_DATA
+        }, outcome = { result: DriveFileResult -> if (result.success) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.FAILED }
+    ) {
         val file = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, entityType, failOnError = true)
-        return if (file != null) {
-            GoogleDriveClient.updateJson(accessToken, file.id, json)
+        if (file != null) {
+            GoogleDriveClient.updateSyncJson(accessToken, file.id, json, conflictContext = context)
         } else {
             val appProperties = mapOf(
                 "appName" to DriveEnvironment.appIdentifier,
                 "entityType" to entityType,
                 "schemaVersion" to "1"
             )
-            GoogleDriveClient.uploadJson(accessToken, systemFolderId, filename, json, appProperties)
+            GoogleDriveClient.confirmJsonBaseline(context, accessToken,
+                GoogleDriveClient.uploadJson(accessToken, systemFolderId, filename, json, appProperties), json)
         }
     }
 
@@ -571,11 +586,16 @@ class DrivePersistenceRepository(
     suspend fun initializeDriveStorage(accessToken: String): DriveInitializationResult {
         return initializationMutex.withLock {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            initializeDriveStorageLocked(accessToken)
+            initializeDriveStorageLocked(accessToken, allowMetadataRestore = true)
         }
     }
 
-    private suspend fun initializeDriveStorageLocked(accessToken: String): DriveInitializationResult {
+    suspend fun initializeDriveStorageForSync(accessToken: String): DriveInitializationResult = initializationMutex.withLock {
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        initializeDriveStorageLocked(accessToken, allowMetadataRestore = false)
+    }
+
+    private suspend fun initializeDriveStorageLocked(accessToken: String, allowMetadataRestore: Boolean): DriveInitializationResult {
         try {
             DiagnosticLog.d(TAG, "Initializing Google Drive storage...")
             // 1. Search for existing main folder "Steuerassistent Belege"
@@ -607,7 +627,7 @@ class DrivePersistenceRepository(
                     val hasLocalMetadata = localRepository.getPropertyMetadata() != null
 
                     var restored = false
-                    if (isLocalEmpty && !hasLocalMetadata) {
+                    if (allowMetadataRestore && isLocalEmpty && !hasLocalMetadata) {
                         DiagnosticLog.d(TAG, "Local receipts database is empty. Triggering automatic restore of Stammdaten...")
                         restoreStammdatenFromDrive(accessToken, config)
                         restored = true
@@ -689,39 +709,44 @@ class DrivePersistenceRepository(
             val metaUpload = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "propertyMetadata", "property-metadata.json", localMetadata.toJson()
             )
+            check(metaUpload.success) { "Erforderliche JSON-Sicherung nicht abgeschlossen" }
 
             // 2. Wohneinheiten
             val localUnits = getWohneinheitenFromPrefs(localMetadata)
             val unitsUpload = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "units", "wohneinheiten.json", localUnits.toJson()
             )
+            check(unitsUpload.success) { "Erforderliche JSON-Sicherung nicht abgeschlossen" }
 
             // 3. DATEV-Profile
             val localDatevProfile = DatevProfileService.getActiveProfile(context)
             val datevUpload = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "datevProfiles", "datev-profiles.json", serializeDatevProfile(localDatevProfile)
             )
+            check(datevUpload.success) { "Erforderliche JSON-Sicherung nicht abgeschlossen" }
 
             // 4. KI-Lernregeln
             val localRules = getLearnedRulesFromPrefs()
             val rulesUpload = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "aiLearnedRules", "ai-learned-rules.json", localRules.toRulesJson()
             )
+            check(rulesUpload.success) { "Erforderliche JSON-Sicherung nicht abgeschlossen" }
 
             // 5. Categories
             val categoriesUpload = uploadOrUpdateJson(
                 accessToken, config.systemFolderId, "categories", "categories.json", getCategoriesJson()
             )
+            check(categoriesUpload.success) { "Erforderliche JSON-Sicherung nicht abgeschlossen" }
 
             // 6. Category-Folder-Mappings (initialize empty mappings or read current ones if exist, otherwise upload basic structure)
-            val mappingsFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "categoryFolderMappings")
+            val mappingsFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "categoryFolderMappings", failOnError = true)
             if (mappingsFile == null) {
                 val initialMappingsJson = JSONObject().apply {
                     put("mappings", JSONArray())
                 }.toString(4)
-                uploadOrUpdateJson(
+                check(uploadOrUpdateJson(
                     accessToken, config.systemFolderId, "categoryFolderMappings", "category-folder-mappings.json", initialMappingsJson
-                )
+                ).success)
             }
 
             val allSuccessful = metaUpload.success && unitsUpload.success && datevUpload.success && rulesUpload.success && categoriesUpload.success
@@ -729,6 +754,7 @@ class DrivePersistenceRepository(
             return allSuccessful
         } catch (e: Exception) {
             e.rethrowDriveControlFailure()
+            com.example.api.DriveSyncTrace.failure(e)
             DiagnosticLog.e(TAG, "Error backing up Stammdaten")
             return false
         }
@@ -1409,14 +1435,16 @@ class DrivePersistenceRepository(
         newEntry: ReceiptIndexEntry
     ): Boolean = receiptIndexMutex.withLock {
         try {
-            val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex")
+            val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex", failOnError = true)
             var indexEntries = mutableListOf<ReceiptIndexEntry>()
+            var indexSource: com.example.api.DriveJsonSnapshot? = null
             
             if (indexFile != null) {
                 try {
-                    val jsonStr = GoogleDriveClient.downloadJson(accessToken, indexFile.id)
+                    indexSource = GoogleDriveClient.downloadSyncJsonSnapshot(accessToken, indexFile.id)
+                    val jsonStr = indexSource.read.json
                     val root = JSONObject(jsonStr)
-                    val array = root.optJSONArray("entries") ?: JSONArray()
+                    val array = root.getJSONArray("entries")
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
                         indexEntries.add(
@@ -1470,8 +1498,18 @@ class DrivePersistenceRepository(
             }
 
             val entriesArray = JSONArray()
+            val originalRoot = indexSource?.let { JSONObject(it.read.json) } ?: JSONObject()
+            val originalRows = originalRoot.optJSONArray("entries") ?: JSONArray()
+            val originalById = (0 until originalRows.length()).map { originalRows.getJSONObject(it) }
+                .groupBy { it.getString("internalId") }
+            require(originalById.values.all { it.size == 1 })
             for (entry in indexEntries) {
-                entriesArray.put(JSONObject().apply {
+                val previous = originalById[entry.internalId]?.single()
+                if (previous != null && entry.internalId != newEntry.internalId) {
+                    entriesArray.put(JSONObject(previous.toString()))
+                    continue
+                }
+                entriesArray.put((previous?.let { JSONObject(it.toString()) } ?: JSONObject()).apply {
                     put("internalId", entry.internalId)
                     put("displayId", entry.displayId ?: JSONObject.NULL)
                     put("metadataFileId", entry.metadataFileId)
@@ -1492,17 +1530,18 @@ class DrivePersistenceRepository(
                     put("updatedAt", entry.updatedAt)
                 })
             }
-            val indexJson = JSONObject().apply {
+            val indexJson = originalRoot.apply {
                 put("version", 1)
                 put("entries", entriesArray)
             }.toString(4)
 
-            val uploadRes = uploadOrUpdateJson(
-                accessToken, config.systemFolderId, "receiptIndex", "receipt-index.json", indexJson
-            )
+            val uploadRes = if (indexFile != null) {
+                GoogleDriveClient.updateSyncJson(accessToken, indexFile.id, indexJson, requireNotNull(indexSource))
+            } else uploadOrUpdateJson(accessToken, config.systemFolderId, "receiptIndex", "receipt-index.json", indexJson)
             uploadRes.success
         } catch (e: Exception) {
             e.rethrowDriveControlFailure()
+            com.example.api.DriveSyncTrace.failure(e)
             DiagnosticLog.e(TAG, "Exception during index update")
             false
         }
@@ -1555,10 +1594,14 @@ class DrivePersistenceRepository(
         val persisted = parsePersistedReceipt(managedDocumentDriveGateway.downloadJson(token, metadataId))
         require(persisted.filelessLogbookEvidence == proof) { "Fahrtnachweis wurde nicht vollständig gesichert." }
         val entry = receiptIndexEntry(persisted, metadataId, "")
-        require(updateReceiptIndexInDrive(token, config, entry)) { "Fahrtbeleg-Index konnte nicht gesichert werden." }
+        require(com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.RECEIPT_INDEX, receipt.internalId,
+            outcome = { ok: Boolean -> if (ok) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.FAILED }) {
+            updateReceiptIndexInDrive(token, config, entry)
+        }) { "Fahrtbeleg-Index konnte nicht gesichert werden." }
         val latest = localRepository.getReceiptByInternalId(receipt.internalId) ?: throw IOException("Lokaler Fahrtbeleg fehlt.")
-        localRepository.insert(latest.copy(syncStatus = "SYNCED", syncError = null, driveMetadataFileId = metadataId,
+        localRepository.updateDriveSyncFields(latest.copy(syncStatus = "SYNCED", syncError = null, driveMetadataFileId = metadataId,
             driveRevision = persisted.revision, lastSyncedAt = persisted.lastSyncedAt, isArchivedToDrive = true))
+        DrivePendingWrites(context).completedReceiptIndex(metadataId)
         return true
     }
 
@@ -1582,6 +1625,415 @@ class DrivePersistenceRepository(
                 syncStatus = "SYNCED",
                 updatedAt = persistedReceipt.updatedAt
             )
+
+    /** A readable complete active index is required before the first backup write. Historical
+     * DELETED entries and unavailable supplemental originals remain untouched. */
+    suspend fun validateSynchronizationInventory(token: String, config: DriveAppConfig, local: List<Receipt>) {
+        val indexFile = GoogleDriveClient.findFileByAppProperty(token, config.systemFolderId, "receiptIndex", failOnError = true)
+        val entries = if (indexFile == null) pendingInitialReceiptEntries(token, config, local)
+        else JSONObject(GoogleDriveClient.downloadSyncJsonSnapshot(token, indexFile.id).read.json).getJSONArray("entries")
+        val seen = hashSetOf<String>()
+        val seenMetadata = hashSetOf<String>()
+        val seenOriginals = hashSetOf<String>()
+        val indexEvidence = mutableMapOf<String, String?>()
+        val localById = local.associateBy { it.internalId }
+        val localOriginals = localRepository.getAllManagedDocuments().groupBy { it.receiptInternalId }
+        val baselines = java.util.concurrent.ConcurrentLinkedQueue<Pair<ManagedDocument, String>>()
+        val checks = mutableListOf<Triple<String, String, Receipt>>()
+        for (i in 0 until entries.length()) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            val entry = entries.getJSONObject(i)
+            val id = entry.getString("internalId")
+            require(id.isNotBlank() && seen.add(id)) { "Belegindex enthält mehrdeutige interne IDs" }
+            if (entry.optString("syncStatus") == "DELETED") {
+                if (localById[id]?.deletionStatus == "ACTIVE")
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_DELETED_LOCAL_ACTIVE)
+                continue
+            }
+            val row = localById[id] ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_RECEIPT_NOT_LOCAL)
+            val metadataId = entry.getString("metadataFileId")
+            val originalId = entry.getString("mainDriveFileId")
+            if (!seenMetadata.add(metadataId) || (originalId.isNotBlank() && !seenOriginals.add(originalId)))
+                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+            if (row.driveMetadataFileId != metadataId || row.driveFileId.orEmpty() != originalId)
+                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_BINDING_MISMATCH)
+            indexEvidence[row.internalId] = FilelessLogbookContract.read(entry)
+            if (indexEvidence[row.internalId] != null && originalId.isNotBlank())
+                throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+            checks += Triple(metadataId, originalId, row)
+        }
+        // Distinct metadata GETs, before every write. Batches keep concurrency and cancellation
+        // bounded; index mutation, folder creation and original uploads remain serial.
+        coroutineScope {
+            for (batch in checks.chunked(3)) batch.map { (metadataId, originalId, row) ->
+                async(Dispatchers.IO) { com.example.api.DriveSyncTrace.inCurrentJob {
+                com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, row.internalId) {
+                val metadata = GoogleDriveClient.downloadSyncJsonSnapshot(token, metadataId)
+                if (metadata.read.unavailableOriginalIds.isNotEmpty())
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 404)
+                val persisted = parsePersistedReceipt(metadata.read.json)
+                if (persisted.internalId != row.internalId || persisted.driveFileId != originalId ||
+                    (persisted.schemaVersion >= 2 && persisted.receiptId != row.id))
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.NAMESPACE)
+                val comparedLocal = comparableReceipt(row, persisted.schemaVersion < 2)
+                val comparedRemote = comparableReceipt(persisted.toLocalReceipt(metadataId), persisted.schemaVersion < 2)
+                if (comparedLocal != comparedRemote && persisted.revision != row.driveRevision)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.RECEIPT_REVISION_MISMATCH,
+                        localRevision = row.driveRevision, driveRevision = persisted.revision,
+                        differentFields = differingReceiptFieldNames(comparedLocal, comparedRemote))
+                if (originalId.isBlank() && persisted.filelessLogbookEvidence == null)
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                FilelessLogbookContract.validateMetadata(persisted)
+                if (indexEvidence[row.internalId] != persisted.filelessLogbookEvidence &&
+                    !DrivePendingWrites(context).receiptIndexPending(metadataId))
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                if (persisted.filelessLogbookEvidence != null && filelessEvidenceFor(row) == null)
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                val expectedOriginals = persisted.originalDocuments.ifEmpty {
+                    localOriginals[row.internalId].orEmpty().filter { it.driveFileId == originalId }
+                }
+                if (originalId.isNotBlank() && expectedOriginals.none { it.driveFileId == originalId })
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                for (document in expectedOriginals) {
+                    val id = document.driveFileId?.takeIf(String::isNotBlank)
+                        ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                    val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(token, id)
+                    val localDocument = localOriginals[row.internalId].orEmpty().singleOrNull { it.driveFileId == id }
+                        ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
+                    if (document.sha256.isBlank() || localDocument.sha256.isBlank()) {
+                        // Cloud-only legacy originals are not new uploads. Never invent a historical hash.
+                        // Permit only a strictly unchanged, reference-identical read-only no-op.
+                        if (canSkipCloudOnlyLegacy(row, persisted, document, localDocument, fingerprint)) continue
+                        val verified = proveMissingOriginalBaseline(token, row, persisted, document, localDocument, fingerprint)
+                        if (localDocument.sha256.isBlank()) baselines.add(localDocument to verified.sha256)
+                        GoogleDriveClient.markRecoveredOriginal(token, id)
+                        GoogleDriveClient.rememberVerifiedOriginal(token, verified, verified.sha256)
+                        rememberBackupOriginal(token, config, localDocument, verified)
+                        continue
+                    }
+                    val hash = fingerprint.sha256.ifBlank { getSha256(GoogleDriveClient.downloadFileBytesChecked(token, id)) }
+                    val pending = DrivePendingWrites(context).originalChange(config.rootFolderId, id)
+                    val committedByThisApp = pending?.matches(document.sha256, hash) == true
+                    if (fingerprint.size <= 0)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_SIZE_INVALID)
+                    if (document.sha256.isBlank())
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_MISSING)
+                    if (!hash.equals(document.sha256, ignoreCase = true) && !committedByThisApp)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_CHECKSUM_MISMATCH)
+                    GoogleDriveClient.rememberVerifiedOriginal(token, fingerprint, hash)
+                    rememberBackupOriginal(token, config, localDocument, fingerprint.copy(sha256 = hash))
+                }
+                }
+                } }
+            }.awaitAll()
+        }
+        // No partial baseline adoption while another inventory task still has an unknown conflict.
+        for ((document, hash) in baselines) {
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, document.receiptInternalId) {
+                if (!localRepository.adoptOriginalBaseline(document, hash))
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
+            }
+        }
+    }
+
+    /** An absent first index is recoverable only for journal-proven, unfinished creations.
+     * Unknown or previously completed cloud receipts still block before every write. */
+    private suspend fun pendingInitialReceiptEntries(token: String, config: DriveAppConfig, local: List<Receipt>): JSONArray {
+        fun invalid(): Nothing = throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+        val bound = local.filter { !it.driveMetadataFileId.isNullOrBlank() || !it.driveFileId.isNullOrBlank() }
+        if (bound.isEmpty()) return JSONArray()
+        val pending = DrivePendingWrites(context)
+        for (row in bound) {
+            if (row.isArchivedToDrive || !GoogleDriveClient.hasPendingReceiptOriginal(context, token, row)) invalid()
+            val metadataId = row.driveMetadataFileId?.takeIf(String::isNotBlank)
+            if (metadataId == null && row.driveRevision != null) invalid()
+            if (metadataId != null && !pending.receiptIndexPending(metadataId)) invalid()
+        }
+        val allowed = bound.flatMap { listOfNotNull(it.driveFileId, it.driveMetadataFileId) }.toSet()
+        val inventory = GoogleDriveClient.listAppTreeFiles(token, config.rootFolderId)
+        if (inventory.size >= 10_000) invalid()
+        val csvs = mapOf("Steuerassistent_Belege_Hauptbuch.csv" to GoogleDriveClient.ledgerCsv(local),
+            "Steuerassistent_Wohneinheiten.csv" to GoogleDriveClient.unitsCsv(getWohneinheitenFromPrefs(localRepository.getPropertyMetadata())))
+        for (file in inventory.filter { it.mimeType != "application/vnd.google-apps.folder" && it.id !in allowed }) {
+            val tags = file.appProperties
+            val csv = csvs[file.name]
+            if (csv != null && GoogleDriveClient.hasPendingInitialCsv(context, token, config.rootFolderId, file, csv)) continue
+            if (!tags["receiptInternalId"].isNullOrBlank() || tags["entityType"] in setOf("receiptMetadata", "receiptIndex") ||
+                config.receiptsFolderId in file.parentIds || tags["entityType"].isNullOrBlank() ||
+                tags["appName"] != DriveEnvironment.appIdentifier) invalid()
+        }
+        // Existing pending metadata uses the ordinary complete inventory checks below.
+        // An original without metadata reaches the existing same-ID upload recovery path.
+        return JSONArray().apply { bound.filter { !it.driveMetadataFileId.isNullOrBlank() }.forEach { row ->
+            put(JSONObject().put("internalId", row.internalId).put("metadataFileId", row.driveMetadataFileId)
+                .put("mainDriveFileId", row.driveFileId).put("syncStatus", "PENDING"))
+        } }
+    }
+
+    /**
+     * A cloud-only legacy file has no independent historical checksum. Its existing Drive
+     * binding may be retained as-is, but its bytes must NEVER be uploaded, replaced,
+     * certified as historically unchanged or adopted as a baseline on that basis.
+     * A changed receipt/revision/reference cannot take this no-op path.
+     */
+    private suspend fun canSkipCloudOnlyLegacy(
+        row: Receipt, saved: PersistedReceipt, expected: ManagedDocument,
+        local: ManagedDocument, fingerprint: com.example.api.DriveOriginalFingerprint
+    ): Boolean {
+        if (expected.sha256.isNotBlank() || local.sha256.isNotBlank() || fingerprint.size <= 0) return false
+        // Apply the complete reference check during inventory, before any backup writes.
+        if (localRepository.getDocumentsForReceipt(row.internalId) != saved.documents) return false
+        if (saved.revision != row.driveRevision ||
+            comparableReceipt(row, saved.schemaVersion < 2) !=
+                comparableReceipt(saved.toLocalReceipt(row.driveMetadataFileId), saved.schemaVersion < 2)) return false
+        val reference = saved.documents.singleOrNull { it.driveFileId == fingerprint.fileId } ?: return false
+        if (expected.documentId != local.documentId || expected.driveFileId != local.driveFileId ||
+            expected.driveFolderId != local.driveFolderId || reference.driveFolderId != local.driveFolderId ||
+            reference.filename != local.storedFilename || reference.mimeType != local.mimeType ||
+            reference.sizeBytes != fingerprint.size || local.fileSizeBytes != fingerprint.size ||
+            local.driveFolderId.isNullOrBlank()) return false
+        // Never silently ignore an independent local original: it might contain real changes.
+        val paths = (if (fingerprint.fileId == row.driveFileId)
+            ReceiptOriginalChain.paths(row.imageUrl) else emptyList()) + local.localUri
+        for (path in paths.filter(String::isNotBlank).distinct()) {
+            val readable = try {
+                if (path.startsWith("content://") || path.startsWith("file://"))
+                    context.contentResolver.openInputStream(android.net.Uri.parse(path))?.use { it.read() != -1 } == true
+                else File(path).takeIf { it.isFile }?.inputStream()?.use { it.read() != -1 } == true
+            } catch (_: java.io.IOException) { false } catch (_: SecurityException) { false }
+            if (readable) return false
+        }
+        return true
+    }
+
+    /** Recheck metadata/index on each run; do not reuse an unverified baseline across sessions. */
+    private suspend fun skipUnchangedCloudOnlyLegacy(
+        token: String, config: DriveAppConfig, row: Receipt
+    ): Boolean {
+        val originals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == row.internalId }
+        if (originals.isEmpty() || originals.any { it.sha256.isNotBlank() || it.driveFileId.isNullOrBlank() }) return false
+        val metadataId = row.driveMetadataFileId?.takeIf(String::isNotBlank) ?: return false
+        val metadata = GoogleDriveClient.downloadSyncJsonSnapshot(token, metadataId)
+        if (metadata.read.unavailableOriginalIds.isNotEmpty()) return false
+        val saved = parsePersistedReceipt(metadata.read.json)
+        if (saved.internalId != row.internalId || saved.driveFileId != row.driveFileId ||
+            (saved.schemaVersion >= 2 && saved.receiptId != row.id) ||
+            saved.revision != row.driveRevision) return false
+        if (localRepository.getDocumentsForReceipt(row.internalId) != saved.documents) return false
+        // A second preflight proof ensures existing index references still point to these IDs.
+        val indexFile = GoogleDriveClient.findFileByAppProperty(token, config.systemFolderId, "receiptIndex", failOnError = true)
+            ?: return false
+        val entries = JSONObject(GoogleDriveClient.downloadSyncJsonSnapshot(token, indexFile.id).read.json).getJSONArray("entries")
+        val matches = (0 until entries.length()).map { entries.getJSONObject(it) }
+            .filter { it.optString("internalId") == row.internalId && it.optString("syncStatus") != "DELETED" }
+        if (matches.size != 1 || matches.single().optString("mainDriveFileId") != row.driveFileId ||
+            matches.single().optString("metadataFileId") != metadataId) return false
+        for (local in originals) {
+            val id = requireNotNull(local.driveFileId)
+            val expected = saved.originalDocuments.find { it.documentId == local.documentId }
+                ?: local // Legacy metadata omitted originalDocuments; use only verified existing binding.
+            val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(token, id)
+            if (!canSkipCloudOnlyLegacy(row, saved, expected, local, fingerprint)) return false
+        }
+        // Check for concurrent local edits after remote reads, before declaring a no-op.
+        val current = localRepository.getReceiptById(row.id) ?: return false
+        if (current != row || localRepository.getAllManagedDocuments()
+                .filter { it.receiptInternalId == row.internalId } != originals) return false
+        return true
+    }
+
+    /** A missing local hash may be recovered only from a saved hash or matching independent bytes.
+     * Cloud-only legacy references without either witness remain blocked; size/name are not identity. */
+    private suspend fun proveMissingOriginalBaseline(token: String, row: Receipt, saved: PersistedReceipt,
+        expected: ManagedDocument, local: ManagedDocument, before: com.example.api.DriveOriginalFingerprint
+    ): com.example.api.DriveOriginalFingerprint {
+        fun conflict(code: com.example.api.DriveSyncCheck): Nothing = throw com.example.api.DriveSyncConflict(code)
+        val reference = saved.documents.singleOrNull { it.driveFileId == before.fileId }
+        if (reference == null || expected.documentId != local.documentId || expected.driveFileId != local.driveFileId ||
+            expected.driveFolderId != local.driveFolderId || reference.driveFolderId != local.driveFolderId ||
+            reference.filename != local.storedFilename || reference.mimeType != local.mimeType ||
+            reference.sizeBytes != before.size || local.fileSizeBytes != before.size ||
+            local.driveFolderId.isNullOrBlank() || localRepository.getDocumentsForReceipt(row.internalId).none { it == reference } ||
+            saved.revision != row.driveRevision || comparableReceipt(row, saved.schemaVersion < 2) !=
+                comparableReceipt(saved.toLocalReceipt(row.driveMetadataFileId), saved.schemaVersion < 2))
+            conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH)
+        val paths = (if (before.fileId == row.driveFileId) ReceiptOriginalChain.paths(row.imageUrl).singleOrNull()?.let { listOf(it) }.orEmpty() else emptyList()) + local.localUri
+        val localHashes = paths.filter(String::isNotBlank).distinct().mapNotNull { path ->
+            try {
+                val bytes = if (path.startsWith("content://") || path.startsWith("file://"))
+                    context.contentResolver.openInputStream(android.net.Uri.parse(path))?.use { it.readBytes() }
+                else File(path).takeIf { it.isFile }?.readBytes()
+                bytes?.takeIf { it.isNotEmpty() }?.let { getSha256(it) }
+            } catch (_: java.io.IOException) { null } catch (_: SecurityException) { null }
+        }.distinct()
+        val savedHash = expected.sha256.takeIf(String::isNotBlank) ?: local.sha256.takeIf(String::isNotBlank)
+        if (savedHash == null && localHashes.isEmpty()) conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_MISSING)
+        val independent = savedHash ?: localHashes.singleOrNull()
+            ?: conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
+        if (!independent.matches(Regex("[a-fA-F0-9]{64}")) || localHashes.any { !it.equals(independent, true) })
+            conflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
+        return GoogleDriveClient.verifyOriginalBaselineBytes(token, before, requireNotNull(local.driveFolderId),
+            local.storedFilename, local.mimeType, independent)
+    }
+
+    /** Only compiled property names, never values; optional diagnostics cannot alter the guard. */
+    private fun differingReceiptFieldNames(local: Receipt, remote: Receipt): List<String> = runCatching {
+        Receipt::class.java.declaredFields.filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) }
+            .mapNotNull { field ->
+                field.isAccessible = true
+                field.name.takeIf { field.get(local) != field.get(remote) }
+            }
+    }.getOrDefault(emptyList())
+
+    private fun comparableReceipt(row: Receipt, legacyNumericId: Boolean = false): Receipt = row.copy(
+        id = if (legacyNumericId) 0 else row.id, imageUrl = "", isArchivedToDrive = false,
+        driveFileId = row.driveFileId?.takeIf(String::isNotBlank), driveFolderId = row.driveFolderId?.takeIf(String::isNotBlank),
+        driveMetadataFileId = row.driveMetadataFileId?.takeIf(String::isNotBlank), storedFilename = row.storedFilename?.takeIf(String::isNotBlank),
+        originalMimeType = row.originalMimeType?.takeIf(String::isNotBlank), fileSizeBytes = row.fileSizeBytes?.takeIf { it > 0 },
+        syncStatus = "", syncError = null, lastSyncedAt = null, driveRevision = null,
+        positionenJson = ReceiptItemConverter.toJson(row.getPositionenList()))
+
+    /** Reuse an owned, checksum-verified original even if its device cache was not restored.
+     * No folder migration, substitute original, or empty-ID repair is performed here. */
+    private suspend fun syncKnownReceipt(accessToken: String, config: DriveAppConfig, input: Receipt): Boolean? {
+        // An unchanged cloud-only legacy original requires no media or metadata write.
+        // Its historical content is NOT certified by this presence-only path.
+        if (skipUnchangedCloudOnlyLegacy(accessToken, config, input)) return true
+        var receipt = input
+        val pending = DrivePendingWrites(context)
+        val updates = mutableListOf<Triple<ManagedDocument, com.example.api.DriveOriginalFingerprint, ByteArray>>()
+        val reconciled = mutableListOf<Pair<ManagedDocument, com.example.api.DriveOriginalFingerprint>>()
+        val originalId = receipt.driveFileId?.takeIf(String::isNotBlank) ?: return null
+        val metadataId = receipt.driveMetadataFileId?.takeIf(String::isNotBlank) ?: return null
+        val read = GoogleDriveClient.withReadProofIfNeeded(accessToken) {
+            com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.ORIGINAL, receipt.internalId) {
+                val source = GoogleDriveClient.downloadSyncJsonSnapshot(accessToken, metadataId)
+                if (source.read.unavailableOriginalIds.isNotEmpty()) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 404)
+                val persisted = parsePersistedReceipt(source.read.json)
+                if (persisted.internalId != receipt.internalId || persisted.driveFileId != originalId ||
+                    (persisted.schemaVersion >= 2 && persisted.receiptId != receipt.id))
+                    throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.NAMESPACE)
+                val originals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
+                for (document in originals) {
+                    val id = document.driveFileId?.takeIf(String::isNotBlank)
+                        ?: throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                    val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(accessToken, id)
+                    val expected = persisted.originalDocuments.find { it.documentId == document.documentId }?.sha256.orEmpty().ifBlank { document.sha256 }
+                    if (fingerprint.size <= 0 || expected.isBlank())
+                        throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                    val actual = fingerprint.sha256.ifBlank {
+                        val bytes = GoogleDriveClient.downloadFileBytesChecked(accessToken, id)
+                        require(checkMagicBytes(bytes)) { "Originalformat nicht gültig" }
+                        getSha256(bytes)
+                    }
+                    if (!expected.equals(actual, ignoreCase = true)) {
+                        val known = pending.originalChange(config.rootFolderId, id)
+                        if (known?.matches(expected, actual) != true)
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+                        reconciled += document to fingerprint.copy(sha256 = actual)
+                    }
+                    val paths = if (id == originalId) listOfNotNull(ReceiptOriginalChain.paths(receipt.imageUrl).firstOrNull()) + document.localUri
+                        else listOf(document.localUri)
+                    val localBytes = paths.firstNotNullOfOrNull { path ->
+                        runCatching {
+                            if (path.startsWith("content://") || path.startsWith("file://"))
+                                context.contentResolver.openInputStream(android.net.Uri.parse(path))?.use { it.readBytes() }
+                            else java.io.File(path).takeIf { it.isFile }?.readBytes()
+                        }.getOrNull()?.takeIf { it.isNotEmpty() }
+                    }
+                    if (localBytes != null && getSha256(localBytes) != actual) {
+                        if (GoogleDriveClient.wasOriginalBaselineRecovered(accessToken, id))
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_BASELINE_CONTENT_MISMATCH)
+                        require(checkMagicBytes(localBytes)) { "Lokales Originalformat nicht gültig" }
+                        if (persisted.revision != receipt.driveRevision)
+                            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+                        updates += Triple(document, fingerprint.copy(sha256 = actual), localBytes)
+                    }
+                }
+                if (originals.none { it.driveFileId == originalId }) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+                val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex", failOnError = true)
+                val index = indexFile?.let { JSONObject(GoogleDriveClient.downloadSyncJsonSnapshot(accessToken, it.id).read.json).getJSONArray("entries") }
+                val matching = index?.let { a -> (0 until a.length()).map { a.getJSONObject(it) }.filter { it.getString("internalId") == receipt.internalId } }.orEmpty()
+                if (matching.size > 1 || matching.any { it.optString("syncStatus") == "DELETED" ||
+                        it.getString("mainDriveFileId") != originalId || it.getString("metadataFileId") != metadataId })
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+                val metadataJson = JSONObject(source.read.json)
+                val summaryFields = listOf("aussteller", "datum", "bruttobetragCent", "hauptkategorie", "unterkategorie",
+                    "wohneinheit", "pruefstatus", "freigabestatus", "exportstatus")
+                val staleSummary = matching.any { entry -> summaryFields.any { field ->
+                    entry.has(field) && entry.opt(field).toString() != metadataJson.opt(field).toString()
+                } }
+                Triple(source, persisted, matching.isEmpty() || staleSummary || pending.receiptIndexPending(metadataId))
+            }
+        }
+        val (source, persisted, missingIndexEntry) = read
+        if (updates.isNotEmpty() || reconciled.isNotEmpty()) {
+            val latest = localRepository.getReceiptById(receipt.id) ?: return false
+            if (comparableReceipt(latest) != comparableReceipt(receipt) || latest.imageUrl != receipt.imageUrl)
+                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+            for ((document, fingerprint, bytes) in updates) {
+                val fileId = requireNotNull(document.driveFileId)
+                val old = pending.originalChange(config.rootFolderId, fileId)
+                // Retain the metadata baseline across repeated interrupted media updates.
+                pending.rememberBackupOriginalChange(config.rootFolderId, document,
+                    fingerprint.sha256, fingerprint.size, getSha256(bytes), bytes.size.toLong())
+                pending.rememberOriginalChange(config.rootFolderId, fileId,
+                    old?.beforeSha256 ?: fingerprint.sha256, getSha256(bytes), fingerprint.sha256)
+                com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.ORIGINAL, receipt.internalId) {
+                    GoogleDriveClient.updateOriginalChecked(accessToken, fingerprint, bytes, document.mimeType)
+                }
+                val verifiedFingerprint = GoogleDriveClient.getOriginalFingerprintChecked(accessToken, fileId)
+                reconciled += document to verifiedFingerprint.copy(sha256 = verifiedFingerprint.sha256.ifBlank { getSha256(bytes) })
+            }
+            for ((document, fingerprint) in reconciled.asReversed().distinctBy { it.first.documentId }) {
+                requireNotNull(localRepository.updateManagedDocumentDriveFields(document,
+                    document.copy(sha256 = fingerprint.sha256, fileSizeBytes = fingerprint.size))) { "Dokument wurde während der Übertragung geändert oder entfernt" }
+                rememberBackupOriginal(accessToken, config,
+                    document.copy(sha256 = fingerprint.sha256, fileSizeBytes = fingerprint.size), fingerprint)
+                localRepository.getDocumentsForReceipt(receipt.internalId).filter { it.driveFileId == fingerprint.fileId }
+                    .forEach { localRepository.insertDocument(it.copy(sizeBytes = fingerprint.size)) }
+                if (fingerprint.fileId == originalId) receipt = receipt.copy(fileSizeBytes = fingerprint.size)
+            }
+            localRepository.updateDriveSyncFields(latest.copy(fileSizeBytes = receipt.fileSizeBytes))
+        }
+        val localOriginals = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
+        val sameOriginalMetadata = com.example.api.canonicalDriveJson(ReceiptOriginalChain.metadataJson(localOriginals)) ==
+            com.example.api.canonicalDriveJson(ReceiptOriginalChain.metadataJson(persisted.originalDocuments))
+        val sameReceipt = comparableReceipt(receipt, persisted.schemaVersion < 2) == comparableReceipt(persisted.toLocalReceipt(metadataId), persisted.schemaVersion < 2)
+        val sameReferences = localRepository.getDocumentsForReceipt(receipt.internalId) == persisted.documents
+        val changed = !(sameReceipt && sameOriginalMetadata && sameReferences)
+        if (changed && persisted.revision != receipt.driveRevision) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+        val current = localRepository.getReceiptById(receipt.id) ?: return false
+        if (comparableReceipt(current) != comparableReceipt(receipt) || current.imageUrl != receipt.imageUrl) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+        if (changed) {
+            pending.rememberReceiptIndexPending(metadataId)
+            val saved = upsertReceiptMetadata(accessToken, config, current, source) ?: return false
+            if (saved != metadataId) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
+        }
+        val verified = if (changed) parsePersistedReceipt(GoogleDriveClient.downloadSyncJsonSnapshot(accessToken, metadataId).read.json) else persisted
+        if (changed) {
+            localRepository.getReceiptById(receipt.id)?.let { latest ->
+                // Technical acknowledgement survives an index failure without overwriting edits.
+                localRepository.updateDriveSyncFields(latest.copy(driveRevision = verified.revision))
+            }
+        }
+        if (changed || missingIndexEntry) {
+            val success = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.RECEIPT_INDEX, receipt.internalId,
+                outcome = { ok: Boolean -> if (ok) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.FAILED }) {
+                updateReceiptIndexInDrive(accessToken, config, receiptIndexEntry(verified, metadataId, originalId))
+            }
+            if (!success) return false
+        }
+        val latest = localRepository.getReceiptById(receipt.id) ?: return false
+        if (comparableReceipt(latest) != comparableReceipt(receipt) || latest.imageUrl != receipt.imageUrl) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+        val acknowledged = latest.copy(syncStatus = "SYNCED", syncError = null, isArchivedToDrive = true,
+            driveRevision = verified.revision, lastSyncedAt = verified.lastSyncedAt)
+        if (acknowledged != latest) localRepository.updateDriveSyncFields(acknowledged)
+        localOriginals.mapNotNull { it.driveFileId }.forEach { pending.completed(config.rootFolderId, it) }
+        pending.completedReceiptIndex(metadataId)
+        return true
+    }
 
     suspend fun syncReceiptToDrive(
         accessToken: String,
@@ -1666,7 +2118,7 @@ class DrivePersistenceRepository(
                     internalId = finalInternalId,
                     displayId = finalDisplayId
                 )
-                localRepository.insert(currentReceipt)
+                localRepository.updateDriveSyncFields(currentReceipt)
             }
 
             // Reject contradictory associations before any remote folder/file mutation.
@@ -1674,6 +2126,14 @@ class DrivePersistenceRepository(
                 localRepository.getManagedDocument(StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId)),
                 StableDocumentIdentity.receiptDocumentId(currentReceipt.internalId), currentReceipt.propertyId, currentReceipt.internalId
             )
+
+            syncKnownReceipt(accessToken, config, currentReceipt)?.let { success ->
+                if (!success) localRepository.getReceiptById(currentReceipt.id)?.let { latest ->
+                    localRepository.updateDriveSyncFields(latest.copy(syncStatus = "ERROR",
+                        syncError = com.example.api.DriveSyncTrace.currentFailure()?.description ?: "Belegsicherung nicht abgeschlossen. Diagnosebericht prüfen."))
+                }
+                return@run success
+            }
 
             GoogleDriveClient.validateDataReferences(accessToken, JSONObject()
                 .put("driveFileId", currentReceipt.driveFileId ?: JSONObject.NULL)
@@ -1844,7 +2304,7 @@ class DrivePersistenceRepository(
                 // Verify found file on Drive
                 if (!driveFileId.isNullOrEmpty()) {
                     try {
-                        val driveBytes = GoogleDriveClient.downloadFileBytes(accessToken, driveFileId!!)
+                        val driveBytes = GoogleDriveClient.downloadFileBytesChecked(accessToken, driveFileId!!)
                         if (driveBytes != null && driveBytes.isNotEmpty()) {
                             val driveSha256 = getSha256(driveBytes)
                             val isMagicValid = checkMagicBytes(driveBytes)
@@ -1853,35 +2313,15 @@ class DrivePersistenceRepository(
                                 filename = actualDriveFilename ?: filename
                                 DiagnosticLog.d(TAG, "Idempotency check: File on Drive is fully identical. Reusing ID")
                             } else {
-                                DiagnosticLog.d(TAG, "Idempotency check: File on Drive differs. Updating existing file.")
-                                val appProperties = mapOf(
-                                    "appName" to DriveEnvironment.appIdentifier,
-                                    "receiptInternalId" to currentReceipt.internalId,
-                                    "displayId" to (currentReceipt.displayId ?: ""),
-                                    "documentRole" to "ORIGINAL",
-                                    "contentSha256" to localSha256,
-                                    "schemaVersion" to "1"
-                                )
-                                val updatedId = GoogleDriveClient.uploadFile(
-                                    accessToken = accessToken,
-                                    folderId = targetFolderId,
-                                    filename = actualDriveFilename ?: filename!!,
-                                    mimeType = mimeType!!,
-                                    fileContent = fileBytes,
-                                    existingFileId = driveFileId,
-                                    appProperties = appProperties
-                                )
-                                if (updatedId != null) {
-                                    driveFileId = updatedId
-                                    filename = actualDriveFilename ?: filename
-                                    needsCreate = false
-                                }
+                                // No metadata baseline exists on this legacy path. Different bytes
+                                // are a conflict, never permission to replace an original.
+                                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                             }
                         }
                     } catch (e: Exception) {
                         e.rethrowDriveControlFailure()
                         DiagnosticLog.w(TAG, "Error downloading/verifying file")
-                        driveFileId = null
+                        throw e
                     }
                 }
 
@@ -1915,14 +2355,21 @@ class DrivePersistenceRepository(
                         appProperties = appProperties
                     )
                     if (uploadedId != null) {
-                        val checkBytes = GoogleDriveClient.downloadFileBytes(accessToken, uploadedId)
-                        if (checkBytes == null || checkBytes.isEmpty() || getSha256(checkBytes) != localSha256) {
+                        localRepository.getReceiptById(currentReceipt.id)?.let { latest ->
+                            localRepository.updateDriveSyncFields(latest.copy(driveFileId = uploadedId, driveFolderId = targetFolderId,
+                                storedFilename = filename, originalMimeType = mimeType, fileSizeBytes = sizeBytes))
+                        }
+                        val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(accessToken, uploadedId)
+                        val verifiedHash = fingerprint.sha256.ifBlank {
+                            getSha256(GoogleDriveClient.downloadFileBytesChecked(accessToken, uploadedId))
+                        }
+                        if (fingerprint.size != fileBytes.size.toLong() || verifiedHash != localSha256) {
                             DiagnosticLog.e(TAG, "Uploaded file check failed!")
                             val updatedReceipt = currentReceipt.copy(
                                 syncStatus = "ERROR",
                                 syncError = "Die hochgeladene Datei ist fehlerhaft oder leer."
                             )
-                            localRepository.insert(updatedReceipt)
+                            localRepository.updateDriveSyncFields(updatedReceipt)
                             return@run false
                         }
                         driveFileId = uploadedId
@@ -1936,13 +2383,13 @@ class DrivePersistenceRepository(
                             originalMimeType = mimeType,
                             fileSizeBytes = sizeBytes
                         )
-                        localRepository.insert(currentReceipt)
+                        localRepository.updateDriveSyncFields(currentReceipt)
                     } else {
                         val updatedReceipt = currentReceipt.copy(
                             syncStatus = "ERROR",
                             syncError = "Fehler beim Hochladen der Belegdatei."
                         )
-                        localRepository.insert(updatedReceipt)
+                        localRepository.updateDriveSyncFields(updatedReceipt)
                         return@run false
                     }
                 } else {
@@ -1954,14 +2401,14 @@ class DrivePersistenceRepository(
                         originalMimeType = mimeType,
                         fileSizeBytes = sizeBytes
                     )
-                    localRepository.insert(currentReceipt)
+                    localRepository.updateDriveSyncFields(currentReceipt)
                 }
             } else {
                 val updatedReceipt = currentReceipt.copy(
                     syncStatus = "ERROR",
                     syncError = "Keine lokale Quelldatei gefunden oder Datei ist leer."
                 )
-                localRepository.insert(updatedReceipt)
+                localRepository.updateDriveSyncFields(updatedReceipt)
                 return@run false
             }
 
@@ -2009,7 +2456,7 @@ class DrivePersistenceRepository(
             )
             localRepository.upsertManagedDocument(ReceiptDocumentSyncState.merge(existingManaged, receiptManagedDocument))
             if (!syncReceiptOriginalAttachments(accessToken, config, currentReceipt)) {
-                localRepository.insert(currentReceipt.copy(syncStatus = "ERROR", syncError = "Nicht alle Originalseiten konnten gesichert werden."))
+                localRepository.updateDriveSyncFields(currentReceipt.copy(syncStatus = "ERROR", syncError = "Nicht alle Originalseiten konnten gesichert werden."))
                 return@run false
             }
             val allDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
@@ -2059,6 +2506,10 @@ class DrivePersistenceRepository(
                 lastSyncedAt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
             )
 
+            val beforeMetadata = localRepository.getReceiptById(currentReceipt.id)
+                ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+            if (comparableReceipt(beforeMetadata) != comparableReceipt(currentReceipt) || beforeMetadata.imageUrl != currentReceipt.imageUrl)
+                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
             val uploadedMetadataId = upsertReceiptMetadata(accessToken, config, currentReceipt)
             var driveMetadataFileId = uploadedMetadataId
 
@@ -2067,13 +2518,17 @@ class DrivePersistenceRepository(
                     syncStatus = "ERROR",
                     syncError = "Fehler beim Hochladen der Belegmetadaten."
                 )
-                localRepository.insert(updatedReceipt)
+                localRepository.updateDriveSyncFields(updatedReceipt)
                 return@run false
             }
 
-            val indexEntry = receiptIndexEntry(persistedReceipt, driveMetadataFileId!!, driveFileId!!)
+            val verifiedMetadata = parsePersistedReceipt(GoogleDriveClient.downloadSyncJsonSnapshot(accessToken, driveMetadataFileId!!).read.json)
+            val indexEntry = receiptIndexEntry(verifiedMetadata, driveMetadataFileId!!, driveFileId!!)
 
-            val indexSuccess = updateReceiptIndexInDrive(accessToken, config, indexEntry)
+            val indexSuccess = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.RECEIPT_INDEX, currentReceipt.internalId,
+                outcome = { ok: Boolean -> if (ok) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.FAILED }) {
+                updateReceiptIndexInDrive(accessToken, config, indexEntry)
+            }
             
             if (indexSuccess) {
                 val finalReceipt = currentReceipt.copy(
@@ -2087,11 +2542,12 @@ class DrivePersistenceRepository(
                     fileSizeBytes = sizeBytes,
                     syncStatus = "SYNCED",
                     syncError = null,
-                    lastSyncedAt = persistedReceipt.lastSyncedAt,
-                    driveRevision = persistedReceipt.revision,
+                    lastSyncedAt = verifiedMetadata.lastSyncedAt,
+                    driveRevision = verifiedMetadata.revision,
                     isArchivedToDrive = true
                 )
-                localRepository.insert(finalReceipt)
+                localRepository.updateDriveSyncFields(finalReceipt)
+                DrivePendingWrites(context).completedReceiptIndex(driveMetadataFileId!!)
                 DiagnosticLog.d(TAG, "Receipt fully synced and saved locally. ID")
                 return@run true
             } else {
@@ -2099,18 +2555,20 @@ class DrivePersistenceRepository(
                     syncStatus = "ERROR",
                     syncError = "Index-Eintrag konnte nicht aktualisiert werden."
                 )
-                localRepository.insert(updatedReceipt)
+                localRepository.updateDriveSyncFields(updatedReceipt)
                 return@run false
             }
 
         } catch (e: Exception) {
             e.rethrowDriveControlFailure()
             DiagnosticLog.e(TAG, "Sync failed with exception")
-            val updatedReceipt = receipt.copy(
+            com.example.api.DriveSyncTrace.failure(e)
+            val latest = localRepository.getReceiptById(receipt.id) ?: return@run false
+            val updatedReceipt = latest.copy(
                 syncStatus = "ERROR",
-                syncError = e.message ?: e.toString()
+                syncError = com.example.api.DriveSyncFailure.from(e).description
             )
-            localRepository.insert(updatedReceipt)
+            localRepository.updateDriveSyncFields(updatedReceipt)
             return@run false
         }
     }
@@ -2752,8 +3210,19 @@ class DrivePersistenceRepository(
         return PermanentDeleteResult.Success
     }
 
-    suspend fun buildRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot =
-        GoogleDriveClient.withReadProof(accessToken) { readRestoreSnapshot(accessToken, config) }
+    private class RejectedRestoreConfiguration(val error: RestoreError) : Exception()
+
+    suspend fun buildRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot = try {
+        GoogleDriveClient.withReadProof(accessToken) {
+            val snapshot = readRestoreSnapshot(accessToken, config)
+            // Configuration rejection precedes every data read. Preserve that exact blocking
+            // diagnosis instead of re-attesting the rejected namespace as an inventory result.
+            snapshot.errors.firstOrNull { it.code == "DRIVE_NAMESPACE_MISMATCH" }?.let { throw RejectedRestoreConfiguration(it) }
+            snapshot
+        }
+    } catch (rejected: RejectedRestoreConfiguration) {
+        RestoreSnapshot(errors = listOf(rejected.error))
+    }
 
     private suspend fun readRestoreSnapshot(accessToken: String, config: DriveAppConfig): RestoreSnapshot {
         val warnings = mutableListOf<RestoreWarning>()
@@ -3672,16 +4141,23 @@ class DrivePersistenceRepository(
         return DocumentFilenameGenerator.receipt(receipt, extension)
     }
 
-    suspend fun upsertReceiptMetadata(
+    suspend fun upsertReceiptMetadata(accessToken: String, config: DriveAppConfig, receipt: Receipt): String? =
+        upsertReceiptMetadata(accessToken, config, receipt, null)
+
+    private suspend fun upsertReceiptMetadata(
         accessToken: String,
         config: DriveAppConfig,
-        receipt: Receipt
-    ): String? {
+        receipt: Receipt,
+        sourceSnapshot: com.example.api.DriveJsonSnapshot?
+    ): String? = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, receipt.internalId,
+        outcome = { id: String? -> if (id == null) com.example.api.DriveSyncOutcome.FAILED else com.example.api.DriveSyncOutcome.SUCCESS }) {
         val mutex = getMetadataMutex(receipt.internalId)
-        return mutex.withLock {
+        mutex.withLock {
             try {
                 // 1. Get the latest state of the receipt from the database
                 val currentReceipt = localRepository.getReceiptById(receipt.id) ?: receipt
+                if (currentReceipt.driveAuthoredState() != receipt.driveAuthoredState())
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                 var driveMetadataFileId = currentReceipt.driveMetadataFileId
 
                 // 2. Prepare metadata content
@@ -3692,6 +4168,8 @@ class DrivePersistenceRepository(
                     schemaVersion = 2,
                     filelessLogbookEvidence = filelessEvidence,
                     receiptId = currentReceipt.id,
+                    zahlungsart = currentReceipt.zahlungsart, zahlungsartQuelle = currentReceipt.zahlungsartQuelle,
+                    zahlungsartConfidence = currentReceipt.zahlungsartConfidence,
                     unitId = currentReceipt.unitId, exportlaufId = currentReceipt.exportlaufId,
                     kontoNr = currentReceipt.kontoNr, isEigenleistungSanierung = currentReceipt.isEigenleistungSanierung,
                     uhrzeit = currentReceipt.uhrzeit, mieter = currentReceipt.mieter,
@@ -3741,20 +4219,60 @@ class DrivePersistenceRepository(
                 if (driveMetadataFileId.isNullOrEmpty()) {
                     driveMetadataFileId = managedDocumentDriveGateway.findReceiptJsonFile(accessToken, config.receiptsFolderId, currentReceipt.internalId)
                 }
-                val uploadRes = managedDocumentDriveGateway.writeReceiptJson(
+                val source = sourceSnapshot ?: driveMetadataFileId?.takeIf {
+                    managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway
+                }?.let { GoogleDriveClient.downloadSyncJsonSnapshot(accessToken, it) }
+                if (source != null) {
+                    val remote = parsePersistedReceipt(source.read.json)
+                    if (remote.internalId != currentReceipt.internalId || remote.driveFileId != currentReceipt.driveFileId.orEmpty())
+                        throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.NAMESPACE)
+                    if (!currentReceipt.driveMetadataFileId.isNullOrBlank() && currentReceipt.driveMetadataFileId != source.fileId)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+                    // A lost CREATE acknowledgement can leave this one technical ID unbound.
+                    // Body identity, original ID and authored data must still match exactly.
+                    val same = comparableReceipt(currentReceipt.copy(driveMetadataFileId = source.fileId), remote.schemaVersion < 2) ==
+                        comparableReceipt(remote.toLocalReceipt(source.fileId), remote.schemaVersion < 2) &&
+                        com.example.api.canonicalDriveJson(ReceiptOriginalChain.metadataJson(originals)) ==
+                        com.example.api.canonicalDriveJson(ReceiptOriginalChain.metadataJson(remote.originalDocuments)) && allDocs == remote.documents
+                    if (same) {
+                        val latest = localRepository.getReceiptById(currentReceipt.id) ?: currentReceipt
+                        localRepository.updateDriveSyncFields(latest.copy(driveMetadataFileId = source.fileId, driveRevision = remote.revision))
+                        return@withLock source.fileId
+                    }
+                    if (remote.revision != currentReceipt.driveRevision)
+                        throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+                }
+                val updatedJson = if (source != null) {
+                    val previous = JSONObject(source.read.json)
+                    val next = JSONObject(persistedReceipt.toJson())
+                    // Preserve cloud fields with no editable local Receipt representation.
+                    val fields = setOf("schemaVersion", "filelessLogbookEvidence", "revision", "receiptId", "unitId", "exportlaufId", "kontoNr", "isEigenleistungSanierung",
+                        "uhrzeit", "mieter", "deletionStatus", "deletedAt", "deletedBy", "deletionId", "deletionReason", "displayId",
+                        "driveFileId", "driveFolderId", "filename", "mimeType", "documents", "originalDocuments", "aussteller", "beschreibung",
+                        "datum", "bruttobetragCent", "hauptkategorie", "unterkategorie", "wohneinheit", "propertyId", "positionen",
+                        "allocations", "bookingProposals", "rawAllocationsJson", "rawBookingProposalsJson", "pruefstatus", "freigabestatus", "exportstatus", "updatedAt", "lastSyncedAt")
+                    fields.forEach { key -> if (next.has(key)) previous.put(key, next.get(key)) }
+                    previous.put("zahlungsart", currentReceipt.zahlungsart).put("zahlungsartQuelle", currentReceipt.zahlungsartQuelle)
+                        .put("zahlungsartConfidence", currentReceipt.zahlungsartConfidence)
+                    previous.toString(4)
+                } else persistedReceipt.toJson()
+                if (source != null) DrivePendingWrites(context).rememberReceiptIndexPending(source.fileId)
+                val uploadRes = if (source != null) GoogleDriveClient.updateSyncJson(accessToken, source.fileId, updatedJson, source)
+                else managedDocumentDriveGateway.writeReceiptJson(
                     accessToken, driveMetadataFileId, config.receiptsFolderId, metadataFilename,
-                    persistedReceipt.toJson(), mapOf("appName" to DriveEnvironment.appIdentifier, "entityType" to "receiptMetadata",
+                    updatedJson, mapOf("appName" to DriveEnvironment.appIdentifier, "entityType" to "receiptMetadata",
                         "receiptInternalId" to persistedReceipt.internalId, "displayId" to persistedReceipt.displayId.orEmpty(), "schemaVersion" to "2"))
 
                 if (uploadRes.success) {
                     val finalFileId = uploadRes.fileId ?: driveMetadataFileId
                     if (!finalFileId.isNullOrEmpty()) {
                         driveMetadataFileId = finalFileId
+                        DrivePendingWrites(context).rememberReceiptIndexPending(finalFileId)
                         
                         // 5. Save the obtained metadataFileId immediately locally
                         val dbReceipt2 = localRepository.getReceiptById(currentReceipt.id) ?: currentReceipt
                         val updatedReceipt = dbReceipt2.copy(driveMetadataFileId = driveMetadataFileId)
-                        localRepository.insert(updatedReceipt)
+                        localRepository.updateDriveSyncFields(updatedReceipt)
                         DiagnosticLog.d(TAG, "Metadata successfully saved to local database")
                     }
                     driveMetadataFileId
@@ -3764,6 +4282,7 @@ class DrivePersistenceRepository(
                 }
             } catch (e: Exception) {
                 e.rethrowDriveControlFailure()
+                com.example.api.DriveSyncTrace.failure(e)
                 DiagnosticLog.e(TAG, "Exception in upsertReceiptMetadata")
                 null
             }
@@ -4187,25 +4706,46 @@ class DrivePersistenceRepository(
         val unit = localRepositoryUnitLabel(document.unitId)
         val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, document.documentDate, document.unitId, unit)
         val existingDriveId = document.driveFileId?.takeIf(String::isNotBlank)
+        if (existingDriveId != null && managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway) {
+            val metadata = GoogleDriveClient.getFileMetadataChecked(accessToken, existingDriveId)
+            val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(accessToken, existingDriveId)
+            if (document.sha256.isNotBlank() && fingerprint.sha256 == document.sha256 &&
+                fingerprint.size == document.fileSizeBytes && metadata.parentIds == listOf(document.driveFolderId) &&
+                metadata.name == document.storedFilename) {
+                val local = File(document.localUri.removePrefix("file://"))
+                if (local.isFile && getSha256(local.readBytes()) != document.sha256)
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
+                val linkedOriginal = document.migrationStatus == "IDENTISCHES_ORIGINAL_VERKNUEPFT"
+                val extension = metadata.name.substringAfterLast('.', "bin")
+                val canonicalName = DocumentFilenameGenerator.document(type, document.documentDate, document.title, extension, document.documentId)
+                if (linkedOriginal || (metadata.name == canonicalName && ensureDocumentFolder(accessToken, config,
+                        property, type, document.documentDate, document.unitId, unit) == document.driveFolderId)) {
+                    // A saved standalone hash is independent evidence too. Preserve the same
+                    // proof when an older manifest still lacks this already verified hash.
+                    rememberBackupOriginal(accessToken, config, document, fingerprint)
+                    return updateManagedDocumentIndex(accessToken, config)
+                }
+            }
+        }
         if (existingDriveId != null) {
             val metadata = managedDocumentDriveGateway.getFileMetadata(accessToken, existingDriveId)
-            val driveBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, existingDriveId)
+            val driveBytes = if (metadata != null) managedDocumentDriveGateway.downloadFileBytes(accessToken, existingDriveId) else null
             if (metadata == null || driveBytes == null) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_DATEI_NICHT_ERREICHBAR", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "DRIVE_DATEI_NICHT_ERREICHBAR"))
                 return false
             }
             val beforeHash = getSha256(driveBytes)
             if (document.sha256.isNotBlank() && !document.sha256.equals(beforeHash, ignoreCase = true)) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = DocumentReviewStatus.MIGRATION_PRUEFEN.name, updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = DocumentReviewStatus.MIGRATION_PRUEFEN.name))
                 return false
             }
             if (metadata.parentIds.size != 1) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN:AMBIGUOUS_PARENT", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "MIGRATION_PRUEFEN:AMBIGUOUS_PARENT"))
                 return false
             }
             val referenceCount = localRepository.getAllManagedDocuments().count { it.driveFileId == existingDriveId }
             if (referenceCount > 1) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN:MULTIPLE_LOCAL_REFERENCES", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "MIGRATION_PRUEFEN:MULTIPLE_LOCAL_REFERENCES"))
                 return false
             }
             val folderId = ensureDocumentFolder(accessToken, config, property, type, document.documentDate, document.unitId, unit)
@@ -4218,12 +4758,12 @@ class DrivePersistenceRepository(
                 expectedSha256 = document.sha256, actualSha256 = beforeHash, referenceCount = referenceCount
             )
             if (!plan.canApply) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "MIGRATION_PRUEFEN:${plan.reason}", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "MIGRATION_PRUEFEN:${plan.reason}"))
                 return false
             }
             if (plan.action != DocumentMigrationAction.UNVERAENDERT &&
                 !managedDocumentDriveGateway.moveAndRenameFile(accessToken, existingDriveId, folderId, metadata.parentIds, targetFilename)) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_MOVE_FEHLGESCHLAGEN", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "DRIVE_MOVE_FEHLGESCHLAGEN"))
                 return false
             }
             val afterMetadata = managedDocumentDriveGateway.getFileMetadata(accessToken, existingDriveId)
@@ -4236,19 +4776,21 @@ class DrivePersistenceRepository(
                 afterSha256 = afterHash
             ) && afterMetadata?.parentIds?.singleOrNull() == folderId && afterMetadata?.name == targetFilename
             if (!verified) {
-                localRepository.upsertManagedDocument(document.copy(migrationStatus = "DRIVE_VERIFY_FEHLGESCHLAGEN", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(document, document.copy(migrationStatus = "DRIVE_VERIFY_FEHLGESCHLAGEN"))
                 return false
             }
+            if (plan.action != DocumentMigrationAction.UNVERAENDERT && managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway)
+                GoogleDriveClient.reconfirmOriginalBinding(accessToken, existingDriveId, folderId, targetFilename, metadata.mimeType, beforeHash)
             val updated = document.copy(
                 driveFileId = existingDriveId, driveFolderId = folderId, storedFilename = targetFilename,
                 documentCategory = route.segments.drop(1).joinToString("/"), sha256 = beforeHash,
                 fileSizeBytes = afterBytes?.size?.toLong() ?: document.fileSizeBytes,
                 legacyDriveFolderId = metadata.parentIds.singleOrNull()?.takeIf { it != folderId } ?: document.legacyDriveFolderId,
-                migrationStatus = "SYNCED", updatedAt = java.time.Instant.now().toString()
+                migrationStatus = "SYNCED"
             )
-            localRepository.upsertManagedDocument(updated)
+            if (localRepository.updateManagedDocumentDriveFields(document, updated) == null) return false
             if (!updateManagedDocumentIndex(accessToken, config)) {
-                localRepository.upsertManagedDocument(updated.copy(migrationStatus = "DOCUMENT_INDEX_PRUEFEN", updatedAt = java.time.Instant.now().toString()))
+                localRepository.updateManagedDocumentDriveFields(updated, updated.copy(migrationStatus = "DOCUMENT_INDEX_PRUEFEN"))
                 return false
             }
             return true
@@ -4258,19 +4800,40 @@ class DrivePersistenceRepository(
         val bytes = localFile.readBytes()
         val hash = getSha256(bytes)
         val folderId = ensureDocumentFolder(accessToken, config, property, type, document.documentDate, document.unitId, unit) ?: return false
-        val existingByHash = localRepository.getAllManagedDocuments().firstOrNull {
+        val existingCandidates = localRepository.getAllManagedDocuments().filter {
             it.documentId != document.documentId && it.sha256 == hash && it.fileSizeBytes == bytes.size.toLong() && !it.driveFileId.isNullOrBlank()
         }
-        if (existingByHash != null) {
-            localRepository.upsertManagedDocument(document.copy(
-                driveFileId = existingByHash.driveFileId,
-                driveFolderId = existingByHash.driveFolderId,
-                sha256 = hash,
-                migrationStatus = "IDENTISCHES_ORIGINAL_VERKNUEPFT",
-                updatedAt = java.time.Instant.now().toString()
-            ))
-            return true
+        var unavailableCandidate = false
+        for (candidate in existingCandidates) {
+            val id = requireNotNull(candidate.driveFileId)
+            val metadata: com.example.api.DriveManagedFile
+            val actualHash: String
+            try {
+                if (managedDocumentDriveGateway is GoogleManagedDocumentDriveGateway) {
+                    metadata = GoogleDriveClient.getFileMetadataChecked(accessToken, id)
+                    val fingerprint = GoogleDriveClient.getOriginalFingerprintChecked(accessToken, id)
+                    actualHash = fingerprint.sha256.ifBlank { getSha256(GoogleDriveClient.downloadFileBytesChecked(accessToken, id)) }
+                    if (fingerprint.size != bytes.size.toLong()) continue
+                } else {
+                    val found = managedDocumentDriveGateway.getFileMetadata(accessToken, id)
+                    val content = if (found != null) managedDocumentDriveGateway.downloadFileBytes(accessToken, id) else null
+                    if (found == null || content == null) { unavailableCandidate = true; continue }
+                    metadata = found
+                    actualHash = getSha256(content)
+                }
+            } catch (error: Exception) {
+                error.rethrowDriveControlFailure()
+                if (DriveEnvironment.isMissingTarget(error, id)) { unavailableCandidate = true; continue }
+                throw error // An ancestor 404, permission failure or DNS error is never absence.
+            }
+            if (actualHash != hash || metadata.parentIds.size != 1) continue
+            if (localRepository.updateManagedDocumentDriveFields(document, document.copy(
+                driveFileId = id, driveFolderId = metadata.parentIds.single(), storedFilename = metadata.name,
+                mimeType = metadata.mimeType, sha256 = hash, fileSizeBytes = bytes.size.toLong(),
+                migrationStatus = "IDENTISCHES_ORIGINAL_VERKNUEPFT")) == null) return false
+            return updateManagedDocumentIndex(accessToken, config)
         }
+        if (unavailableCandidate) throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 404)
         val fileId = managedDocumentDriveGateway.uploadFile(
             accessToken, folderId, document.storedFilename, document.mimeType, bytes,
             appProperties = mapOf(
@@ -4279,13 +4842,33 @@ class DrivePersistenceRepository(
                 "contentSha256" to hash, "schemaVersion" to "1"
             )
         ) ?: return false
+        if (localRepository.updateManagedDocumentDriveFields(document, document.copy(
+            driveFileId = fileId, driveFolderId = folderId, sha256 = hash, fileSizeBytes = bytes.size.toLong())) == null) return false
         val uploaded = managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
         if (uploaded == null || getSha256(uploaded) != hash) return false
-        localRepository.upsertManagedDocument(document.copy(
+        localRepository.updateManagedDocumentDriveFields(document, document.copy(
             driveFileId = fileId, driveFolderId = folderId, sha256 = hash,
-            fileSizeBytes = bytes.size.toLong(), migrationStatus = "SYNCED", updatedAt = java.time.Instant.now().toString()
+            fileSizeBytes = bytes.size.toLong(), migrationStatus = "SYNCED"
         ))
         return updateManagedDocumentIndex(accessToken, config)
+    }
+
+    private fun rememberBackupOriginal(token: String, config: DriveAppConfig, document: ManagedDocument,
+                                       verified: com.example.api.DriveOriginalFingerprint) {
+        GoogleDriveClient.rememberBackupOriginal(token, document, verified,
+            DrivePendingWrites(context).backupOriginalPreimages(config.rootFolderId, document, verified.sha256, verified.size))
+    }
+
+    /** Called only after BOTH backup manifests acknowledged the complete current run. */
+    suspend fun acknowledgeOriginalBackupChanges(token: String, config: DriveAppConfig) {
+        val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled } ?: return
+        val pending = DrivePendingWrites(context)
+        for (document in localRepository.getAllManagedDocuments()) {
+            val proof = scope.backupOriginals[document.documentId] ?: continue
+            if (proof.ownPreimages.isNotEmpty() && document.driveFileId == proof.fileId &&
+                document.sha256 == proof.sha256 && document.fileSizeBytes == proof.size)
+                pending.completedBackupOriginal(config.rootFolderId, proof.fileId)
+        }
     }
 
     suspend fun updateManagedDocumentIndex(accessToken: String, config: DriveAppConfig): Boolean {
@@ -4478,6 +5061,8 @@ class DrivePersistenceRepository(
                 localRepository.upsertDocumentMigrationJournal(journal.copy(state = "VERIFY_FAILED", lastError = "Hashprüfung fehlgeschlagen", updatedAt = java.time.Instant.now().toString()))
                 return@map concretePlan.copy(action = DocumentMigrationAction.PRUEFEN)
             }
+            if (concretePlan.action != DocumentMigrationAction.UNVERAENDERT)
+                GoogleDriveClient.reconfirmOriginalBinding(accessToken, concrete.driveFileId, targetFolder, concrete.targetFilename, meta.mimeType, concrete.beforeSha256)
             val migratedReceipt = receipt.copy(driveFolderId = targetFolder, storedFilename = concrete.targetFilename)
             localRepository.insert(migratedReceipt)
             localRepository.getDocumentsForReceipt(receipt.internalId)

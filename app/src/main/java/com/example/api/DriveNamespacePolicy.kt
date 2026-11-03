@@ -14,6 +14,16 @@ import java.io.IOException
  */
 internal class DriveReadProof(val authorization: String) {
     val metadata = java.util.concurrent.ConcurrentHashMap<String, JSONObject>()
+    val metadataEtags = java.util.concurrent.ConcurrentHashMap<String, String>()
+    var syncCacheEnabled = false
+    val syncJson = java.util.concurrent.ConcurrentHashMap<String, DriveJsonSnapshot>()
+    val syncOriginals = java.util.concurrent.ConcurrentHashMap<String, DriveOriginalFingerprint>()
+    // Fingerprint cache entries alone are not independent evidence for backup enrichment.
+    val backupOriginals = java.util.concurrent.ConcurrentHashMap<String, com.example.data.DriveBackupConflictGuard.OriginalEvidence>()
+    // A recovered baseline authorizes no original replacement during this run.
+    val recoveredOriginals = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    // Positive lookups only, scoped to this account-bound run; never proof for a mutation.
+    val syncEntities = java.util.concurrent.ConcurrentHashMap<String, DriveFile>()
     val roots = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     val previousMetadata = java.util.concurrent.ConcurrentLinkedQueue<JSONObject>()
     val previousRoots = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
@@ -26,7 +36,15 @@ internal class DriveReadProof(val authorization: String) {
     fun clear() {
         // Invalidating a reusable proof must retain the objects already used by this result.
         previousMetadata.addAll(metadata.values); previousRoots.addAll(roots)
-        metadata.clear(); roots.clear()
+        metadata.clear(); metadataEtags.clear(); roots.clear()
+    }
+
+    /** Called only after byte and binding verification of our own same-ID document mutation.
+     * Keep every unrelated observation, root proof and sticky ownership failure. */
+    fun replaceVerifiedObservation(id: String, current: JSONObject) {
+        require(current.getString("id") == id && current.getString("mimeType") != "application/vnd.google-apps.folder")
+        previousMetadata.removeIf { it.getString("id") == id }
+        metadata[id] = JSONObject(current.toString())
     }
 }
 
@@ -54,9 +72,27 @@ internal class DriveNamespacePolicy(
             val url = request.url
             if (url.host != "www.googleapis.com" || !url.isHttps) denied()
             val path = url.encodedPath
-            val base = if (path.startsWith("/upload/")) "/upload/drive/v3/files" else "/drive/v3/files"
+            val v2 = path.startsWith("/drive/v2/") || path.startsWith("/upload/drive/v2/")
+            val api = if (v2) "v2" else "v3"
+            val base = if (path.startsWith("/upload/")) "/upload/drive/$api/files" else "/drive/$api/files"
             if (path != base && !path.startsWith("$base/")) denied()
             val id = path.removePrefix(base).removePrefix("/")
+            if (v2) {
+                // Compatibility for absent v3 ETags only. The ordinary fresh v3 ownership,
+                // ancestry and protected-container checks below still fence both requests.
+                val read = request.method == "GET" && path == "/drive/v2/files/$id" &&
+                    url.queryParameterNames == setOf("fields") &&
+                    url.queryParameterValues("fields") == listOf("id,etag,version,fileSize")
+                val write = request.method == "PUT" && path == "/upload/drive/v2/files/$id" &&
+                    url.queryParameterNames == setOf("uploadType") && url.queryParameterValues("uploadType") == listOf("media") &&
+                    isStrongDriveEtag(request.headers.values("If-Match").singleOrNull())
+                if (!Regex("[A-Za-z0-9_-]+").matches(id) || (!read && !write)) denied()
+            }
+            // Opaque unused IDs carry no account file data. Creation still passes the ordinary
+            // fresh namespace/parent fence, including when the same ID is retried after a crash.
+            if (path == "/drive/v3/files/generateIds" && request.method == "GET" &&
+                url.queryParameter("count") == "1" && url.queryParameter("space") == "drive" &&
+                url.queryParameter("type") == "files") return send(request)
             if (id.isNotEmpty()) {
                 val meta = owned(id, token, send, scope?.metadata ?: mutableMapOf(),
                     scope?.roots ?: mutableSetOf(), freshTarget = true)
@@ -111,16 +147,66 @@ internal class DriveNamespacePolicy(
         }
     }
 
+    /** One current metadata GET supplies both the ownership proof and the caller's projection. */
+    fun readOwnedMetadata(id: String, token: String, send: (Request) -> Response, readProof: DriveReadProof?): DriveOwnedMetadata {
+        val authorization = "Bearer $token"
+        val scope = readProof?.takeIf { it.authorization == authorization }
+        var etag: String? = null
+        try {
+            val metadata = owned(id, authorization, { request -> send(request).also { response ->
+                if (request.url.encodedPath.endsWith("/$id")) etag = response.header("ETag")
+            } }, scope?.metadata ?: mutableMapOf(), scope?.roots ?: mutableSetOf(), freshTarget = true)
+            return DriveOwnedMetadata(metadata, etag)
+        } catch (error: DriveAccessFailure) { scope?.recordFailure(error);throw error }
+    }
+
     /** Re-attest every observed object and its ancestry before publishing a read result. */
     fun verifyReadProof(scope: DriveReadProof, send: (Request) -> Response) {
         scope.ownershipFailure?.let { throw it }
-        val observed = scope.previousMetadata.toList() + scope.metadata.values.toList()
-        observed.forEach { previous ->
-            val current = readMetadata(previous.getString("id"), scope.authorization, send)
+        val observed = (scope.previousMetadata.toList() + scope.metadata.values.toList()).groupBy { it.getString("id") }
+        val roots = scope.previousRoots + scope.roots
+        fun compare(previous: JSONObject, current: JSONObject) {
             if (listOf("name", "mimeType").any { previous.getString(it) != current.getString(it) } ||
                 previous.getJSONArray("parents").toString() != current.getJSONArray("parents").toString()) denied()
         }
-        (scope.previousRoots + scope.roots).forEach { if (!topLevelRoot(it, scope.authorization, send)) denied() }
+        roots.forEach { id ->
+            val current = readMetadata(id, scope.authorization, send)
+            observed[id].orEmpty().forEach { compare(it, current) }
+            if (!topLevelRoot(id, scope.authorization, send)) denied()
+        }
+        // A parent-scoped FileList supplies the same current object evidence in one projection.
+        // An omitted ID, changed ancestry, shortcut/tag/role or incomplete page still fails closed.
+        val children = observed.filterKeys { it !in roots }.values.flatten()
+            .groupBy { it.getJSONArray("parents").getString(0) }
+        children.forEach { (parent, previous) ->
+            val needed = previous.map { it.getString("id") }.toSet()
+            val current = mutableMapOf<String, JSONObject>()
+            var page: String? = null
+            var complete = false
+            repeat(100) {
+                if (!complete) {
+                    val url = okhttp3.HttpUrl.Builder().scheme("https").host("www.googleapis.com").addPathSegments("drive/v3/files")
+                        .addQueryParameter("q", "'$parent' in parents and trashed = false")
+                        .addQueryParameter("fields", "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed,shortcutDetails,appProperties)")
+                        .addQueryParameter("pageSize", "1000").apply { page?.let { addQueryParameter("pageToken", it) } }.build()
+                    val json = readResponse(send(Request.Builder().url(url).header("Authorization", scope.authorization).build()))
+                    if (json.optBoolean("incompleteSearch")) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+                    val files = json.driveFileListItems()
+                    for (i in 0 until files.length()) {
+                        val file = files.getJSONObject(i)
+                        val id = file.getString("id")
+                        if (id in needed) {
+                            validateMetadata(id, file)
+                            if (current.put(id, file) != null) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+                        }
+                    }
+                    page = json.optString("nextPageToken").takeIf(String::isNotBlank)
+                    complete = current.keys.containsAll(needed) || page == null
+                }
+            }
+            if (!complete) throw DriveAccessFailure(DriveAccessFailure.Reason.INCOMPLETE_SEARCH)
+            previous.forEach { old -> compare(old, current[old.getString("id")] ?: denied()) }
+        }
     }
 
     fun validateConfig(config: DriveAppConfig, token: String, rootId: String?, systemId: String?, send: (Request) -> Response) =
@@ -164,12 +250,40 @@ internal class DriveNamespacePolicy(
     fun validateRestoreJsonReferences(json: String, token: String, send: (Request) -> Response, scope: DriveReadProof?): Set<String> =
         linkedSetOf<String>().also { validateReferences(json, token, send, it, scope) }
 
+    /** Only an already-read source may retain the same missing original at the same entity/field.
+     * This never authorizes a content/file operation on that missing ID or a new reference. */
+    fun validatePreservedJsonReferences(json: String, token: String, previous: DriveRestoreJsonRead, send: (Request) -> Response,
+                                      syncScope: DriveReadProof? = null) {
+        val root = org.json.JSONTokener(previous.json).nextValue()
+        val deleted = (root as? JSONObject)?.optJSONArray("entries")?.let { a ->
+            (0 until a.length()).mapNotNull { a.optJSONObject(it) }.filter { it.optString("syncStatus") == "DELETED" }.toSet()
+        }.orEmpty()
+        val preserved = mutableMapOf<String, String>()
+        val deletedLocations = hashSetOf<String>()
+        visitDriveReferences(root) { key, id, owner, location ->
+            if ((key in setOf("driveFileId", "mainDriveFileId") && id in previous.unavailableOriginalIds) ||
+                (owner in deleted && key in setOf("metadataFileId", "mainDriveFileId"))) {
+                if (preserved.put(location, id) != null) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+                if (owner in deleted) deletedLocations += location
+            }
+        }
+        val fence = syncScope?.takeIf { it.syncCacheEnabled && it.authorization == "Bearer $token" }?.let { existing ->
+            DriveReadProof(existing.authorization).apply {
+                // Observations identify what must be checked, never grant write authority.
+                (existing.previousMetadata.toList() + existing.metadata.values).forEach { metadata[it.getString("id")] = it }
+                roots.addAll(existing.previousRoots + existing.roots)
+                ownershipFailure = existing.ownershipFailure
+            }
+        }
+        validateReferences(json, token, send, null, fence, preserved, deletedLocations)
+        // Fresh parent-scoped projections re-attest every reused reference AND ancestor before
+        // PATCH. A move, missing ancestor, foreign tag or incomplete listing still blocks writes.
+        if (fence != null) verifyReadProof(fence, send)
+    }
+
     private fun validateReferences(json: String, token: String, send: (Request) -> Response,
-        unavailableOriginals: MutableSet<String>?, readProof: DriveReadProof?) {
-        val fields = setOf("rootFolderId", "systemFolderId", "receiptsFolderId", "paymentsFolderId", "exportsFolderId",
-            "transactionsFolderId", "backupsFolderId", "driveFileId", "driveFolderId", "driveMetadataFileId",
-            "metadataFileId", "mainDriveFileId", "previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
-        data class Reference(val id: String, val folder: Boolean, val historyOnly: Boolean, val original: Boolean)
+        unavailableOriginals: MutableSet<String>?, readProof: DriveReadProof?, preserved: Map<String, String> = emptyMap(), deletedLocations: Set<String> = emptySet()) {
+        data class Reference(val id: String, val folder: Boolean, val historyOnly: Boolean, val original: Boolean, val retainedMissing: Boolean)
         val references = mutableSetOf<Reference>()
         val historical = setOf("previousMainDriveFileId", "previousMetadataFileId", "legacyDriveFolderId")
         val root = org.json.JSONTokener(json).nextValue()
@@ -185,29 +299,21 @@ internal class DriveNamespacePolicy(
             (0 until array.length()).mapNotNull { array.optJSONObject(it) }
                 .filter { it.optString("syncStatus") == "DELETED" }.toSet()
         }.orEmpty()
-        fun walk(value: Any?) {
-            when (value) {
-                is JSONObject -> value.keys().forEach { key ->
-                    val item = value.opt(key)
-                    val optionalDiagnostic = value === diagnosticReferences && key in setOf("mainDriveFileId", "metadataFileId")
-                    if (key in fields && item is String && item.isNotBlank()) {
-                        val deletedReference = unavailableOriginals != null && value in deletedEntries &&
-                            key in setOf("metadataFileId", "mainDriveFileId")
-                        references += Reference(item, key.endsWith("FolderId"),
-                            key in historical || optionalDiagnostic || deletedReference,
-                            key in setOf("driveFileId", "mainDriveFileId"))
-                    }
-                    walk(item)
-                }
-                is org.json.JSONArray -> (0 until value.length()).forEach { walk(value.opt(it)) }
-            }
+        val locations = hashSetOf<String>()
+        visitDriveReferences(root) { key, item, owner, location ->
+            if (preserved.isNotEmpty() && !locations.add(location)) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
+            val optionalDiagnostic = owner === diagnosticReferences && key in setOf("mainDriveFileId", "metadataFileId")
+            val deletedReference = unavailableOriginals != null && owner in deletedEntries && key in setOf("metadataFileId", "mainDriveFileId")
+            references += Reference(item, key.endsWith("FolderId"),
+                key in historical || optionalDiagnostic || deletedReference,
+                key in setOf("driveFileId", "mainDriveFileId"), preserved[location] == item &&
+                    (location !in deletedLocations || owner in deletedEntries))
         }
-        walk(root)
         // A bounded read attempt may share proof; its caller re-attests all observed objects on exit.
         val scope = readProof?.takeIf { it.authorization == "Bearer $token" }
         val proof = scope?.metadata ?: mutableMapOf<String, JSONObject>()
         val rootProofs = scope?.roots ?: mutableSetOf<String>()
-        references.forEach { (id, folderExpected, historyOnly, original) ->
+        references.forEach { (id, folderExpected, historyOnly, original, retainedMissing) ->
             try {
                 val meta = owned(id, "Bearer $token", send, proof, rootProofs)
                 if ((meta.optString("mimeType") == FOLDER) != folderExpected) denied()
@@ -215,7 +321,7 @@ internal class DriveNamespacePolicy(
                 // Tombstones and optional diagnostic files may already be absent. No access is granted.
                 // An ancestor 404 is never recoverable. Ordinary reads/writes also reject current-file 404s.
                 if (missing.id != id) throw missing
-                if (!historyOnly) {
+                if (!historyOnly && !(retainedMissing && !folderExpected)) {
                     if (unavailableOriginals == null || !original || folderExpected) throw missing
                     unavailableOriginals += id
                 }
@@ -321,21 +427,26 @@ internal class DriveNamespacePolicy(
 
     private fun readMetadata(id: String, token: String, send: (Request) -> Response): JSONObject {
         if (!Regex("[A-Za-z0-9_-]+").matches(id)) throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_ID)
-        val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/$id?fields=id,name,mimeType,parents,trashed,shortcutDetails,appProperties")
+        val request = Request.Builder().url("https://www.googleapis.com/drive/v3/files/$id?fields=id,name,mimeType,size,parents,trashed,shortcutDetails,appProperties,sha256Checksum,version")
             .header("Authorization", token).build()
         val response = send(request)
         if (response.code == 404) { response.close(); throw MissingReference(id) }
-        return readResponse(response).also {
-            if (it.optString("mimeType").isBlank() || it.optString("name").isBlank() || it.optString("id").isBlank())
+        return readResponse(response).also { validateMetadata(id, it) }
+    }
+
+    private fun validateMetadata(id: String, metadata: JSONObject) {
+        with(metadata) {
+            if (optString("mimeType").isBlank() || optString("name").isBlank() || optString("id").isBlank())
                 throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
-            if (it.optBoolean("trashed") || it.has("shortcutDetails")) denied()
-            val tag = it.optJSONObject("appProperties")?.optString("appName").orEmpty()
+            if (optBoolean("trashed") || has("shortcutDetails")) denied()
+            val tag = optJSONObject("appProperties")?.optString("appName").orEmpty()
             if (tag.isNotBlank() && tag != appIdentifier) denied()
-            if (it.optString("id") != id) denied()
+            if (optString("id") != id) denied()
         }
     }
 
     private class MissingReference(val id: String) : DriveAccessFailure(DriveAccessFailure.Reason.HTTP, 404)
+    fun isMissingTarget(error: Throwable, fileId: String): Boolean = error is MissingReference && error.id == fileId
 
     private fun denied(): Nothing = throw DriveAccessFailure(DriveAccessFailure.Reason.NAMESPACE)
 

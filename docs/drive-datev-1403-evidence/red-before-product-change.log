@@ -1,0 +1,161 @@
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:276:93: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                        .code(403).message("Synthetic forbidden").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                            ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:305:69: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                    response.newBuilder().body(okhttp3.ResponseBody.create(null, json.toString())).build()
+                                                                    ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:506:44: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                .body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                           ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:829:93: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                    .code(503).message("Synthetic index failure").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                            ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:918:89: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                    .message("Synthetic server precondition").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                        ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:1238:89: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                    .message("Synthetic failed index commit").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                        ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:1268:90: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                    .message("Synthetic supplemental failure").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                         ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:1384:97: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                    .message("Synthetic interruption after original").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                                ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:1518:92: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                        .message("Synthetic index interruption").body(okhttp3.ResponseBody.create(null, "{}")).build()
+                                                                                           ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:1641:65: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                response.newBuilder().body(okhttp3.ResponseBody.create(null, json.toString())).build()
+                                                                ^^^^^^
+/tmp/datev-direct/sources/ui/Phase11ESyncRegressionTest.kt:1732:51: warning: 'fun create(contentType: MediaType?, content: String): ResponseBody' is deprecated. Moved to extension function. Put the 'content' argument first to fix Java.
+                builder.body(okhttp3.ResponseBody.create(null, json.toString()))
+                                                  ^^^^^^
+JUnit version 4.13.2
+.E...E.E.E.E.E
+Time: 7.809
+There were 6 failures:
+1) unknownRemoteDatevBusinessChangesStillBlockWithoutOverwritingEitherSide(com.example.data.DriveDatevPreimageRegressionTest)
+java.lang.AssertionError
+	at org.junit.Assert.fail(Assert.java:87)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertTrue(Assert.java:53)
+	at com.example.data.DriveDatevPreimageRegressionTest$unknownRemoteDatevBusinessChangesStillBlockWithoutOverwritingEitherSide$1.invokeSuspend(DriveDatevPreimageRegressionTest.kt:124)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.data.DriveDatevPreimageRegressionTest.unknownRemoteDatevBusinessChangesStillBlockWithoutOverwritingEitherSide(DriveDatevPreimageRegressionTest.kt:113)
+2) unknownRemoteDatevFieldsMustNotBeDiscardedAsAnUnchangedProfile(com.example.data.DriveDatevPreimageRegressionTest)
+java.lang.AssertionError: expected:<[unknownFields]> but was:<[]>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at org.junit.Assert.assertEquals(Assert.java:146)
+	at com.example.data.DriveDatevPreimageRegressionTest$unknownRemoteDatevFieldsMustNotBeDiscardedAsAnUnchangedProfile$1.invokeSuspend(DriveDatevPreimageRegressionTest.kt:144)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.data.DriveDatevPreimageRegressionTest.unknownRemoteDatevFieldsMustNotBeDiscardedAsAnUnchangedProfile(DriveDatevPreimageRegressionTest.kt:132)
+3) identicalDatevBusinessDataKeepsNewerRemoteTimestampWithoutOverwritingIt(com.example.data.DriveDatevPreimageRegressionTest)
+java.lang.AssertionError: {"outcome":"RUNNING","elapsedMs":7,"startedAt":"2026-11-02T18:15:39.760700384Z","appVersionCode":1,"receiptsTotal":0,"receiptsProcessed":0,"uploaded":0,"unchanged":0,"metadataOnly":0,"failed":0,"blocked":0,"apiCalls":21,"sentBytes":0,"receivedBytes":13459,"lastSuccessfulPhase":"COMPLETION","interrupted":0,"documents":{"total":0,"processed":0,"uploaded":0,"unchanged":0,"metadataOnly":0,"failed":0,"blocked":0,"interrupted":0},"steps":[{"phase":"PROPERTY_METADATA","internalReceiptId":null,"startMs":1,"endMs":2,"outcome":"UNCHANGED","calls":6,"list":2,"get":4,"create":0,"update":0,"generateIds":0,"sent":0,"received":2511,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"UNIT_DATA","internalReceiptId":null,"startMs":3,"endMs":3,"outcome":"UNCHANGED","calls":4,"list":1,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":1146,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"DATEV_PROFILES","internalReceiptId":null,"startMs":4,"endMs":5,"outcome":"BLOCKED","calls":4,"list":1,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":3097,"retries":0,"failure":"CONFLICT","http":null,"check":"BACKUP_PREIMAGE_CONFLICT","localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"COMPLETION","internalReceiptId":null,"startMs":5,"endMs":6,"outcome":"SUCCESS","calls":3,"list":0,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":1199,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"COMPLETION","internalReceiptId":null,"startMs":6,"endMs":7,"outcome":"SUCCESS","calls":4,"list":3,"get":1,"create":0,"update":0,"generateIds":0,"sent":0,"received":5506,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null}]}
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.data.DriveDatevPreimageRegressionTest$identicalDatevBusinessDataKeepsNewerRemoteTimestampWithoutOverwritingIt$1.invokeSuspend(DriveDatevPreimageRegressionTest.kt:107)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.internal.ScopeCoroutine.afterResume(Scopes.kt:36)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.data.DriveDatevPreimageRegressionTest.identicalDatevBusinessDataKeepsNewerRemoteTimestampWithoutOverwritingIt(DriveDatevPreimageRegressionTest.kt:100)
+4) supplementalDatevCopyIsConservedThroughNoOpAndAnUnrelatedLocalAddition(com.example.data.DriveDatevPreimageRegressionTest)
+java.lang.AssertionError: Sicherung würde einen unbekannten oder neueren Datenstand verändern
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.data.DriveDatevPreimageRegressionTest$supplementalDatevCopyIsConservedThroughNoOpAndAnUnrelatedLocalAddition$1.invokeSuspend(DriveDatevPreimageRegressionTest.kt:215)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.data.DriveDatevPreimageRegressionTest.supplementalDatevCopyIsConservedThroughNoOpAndAnUnrelatedLocalAddition(DriveDatevPreimageRegressionTest.kt:199)
+5) identicalDatevBusinessDataWithDifferentCreationTimestampIsReadOnly(com.example.data.DriveDatevPreimageRegressionTest)
+java.lang.AssertionError: {"outcome":"RUNNING","elapsedMs":7,"startedAt":"2026-11-02T18:15:40.063749825Z","appVersionCode":1,"receiptsTotal":0,"receiptsProcessed":0,"uploaded":0,"unchanged":0,"metadataOnly":0,"failed":0,"blocked":0,"apiCalls":21,"sentBytes":0,"receivedBytes":13459,"lastSuccessfulPhase":"COMPLETION","interrupted":0,"documents":{"total":0,"processed":0,"uploaded":0,"unchanged":0,"metadataOnly":0,"failed":0,"blocked":0,"interrupted":0},"steps":[{"phase":"PROPERTY_METADATA","internalReceiptId":null,"startMs":1,"endMs":2,"outcome":"UNCHANGED","calls":6,"list":2,"get":4,"create":0,"update":0,"generateIds":0,"sent":0,"received":2511,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"UNIT_DATA","internalReceiptId":null,"startMs":2,"endMs":3,"outcome":"UNCHANGED","calls":4,"list":1,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":1146,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"DATEV_PROFILES","internalReceiptId":null,"startMs":3,"endMs":5,"outcome":"BLOCKED","calls":4,"list":1,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":3097,"retries":0,"failure":"CONFLICT","http":null,"check":"BACKUP_PREIMAGE_CONFLICT","localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"COMPLETION","internalReceiptId":null,"startMs":5,"endMs":6,"outcome":"SUCCESS","calls":3,"list":0,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":1199,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"COMPLETION","internalReceiptId":null,"startMs":6,"endMs":7,"outcome":"SUCCESS","calls":4,"list":3,"get":1,"create":0,"update":0,"generateIds":0,"sent":0,"received":5506,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null}]}
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.data.DriveDatevPreimageRegressionTest$identicalDatevBusinessDataWithDifferentCreationTimestampIsReadOnly$1.invokeSuspend(DriveDatevPreimageRegressionTest.kt:92)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.data.DriveDatevPreimageRegressionTest.identicalDatevBusinessDataWithDifferentCreationTimestampIsReadOnly(DriveDatevPreimageRegressionTest.kt:86)
+6) equivalentDatevAccountMapOrderingAndWhitespaceIsReadOnly(com.example.data.DriveDatevPreimageRegressionTest)
+java.lang.AssertionError: {"outcome":"RUNNING","elapsedMs":6,"startedAt":"2026-11-02T18:15:40.195942917Z","appVersionCode":1,"receiptsTotal":0,"receiptsProcessed":0,"uploaded":0,"unchanged":0,"metadataOnly":0,"failed":0,"blocked":0,"apiCalls":21,"sentBytes":0,"receivedBytes":12567,"lastSuccessfulPhase":"COMPLETION","interrupted":0,"documents":{"total":0,"processed":0,"uploaded":0,"unchanged":0,"metadataOnly":0,"failed":0,"blocked":0,"interrupted":0},"steps":[{"phase":"PROPERTY_METADATA","internalReceiptId":null,"startMs":1,"endMs":2,"outcome":"UNCHANGED","calls":6,"list":2,"get":4,"create":0,"update":0,"generateIds":0,"sent":0,"received":2511,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"UNIT_DATA","internalReceiptId":null,"startMs":2,"endMs":3,"outcome":"UNCHANGED","calls":4,"list":1,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":1146,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"DATEV_PROFILES","internalReceiptId":null,"startMs":3,"endMs":4,"outcome":"BLOCKED","calls":4,"list":1,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":2205,"retries":0,"failure":"CONFLICT","http":null,"check":"BACKUP_PREIMAGE_CONFLICT","localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"COMPLETION","internalReceiptId":null,"startMs":4,"endMs":5,"outcome":"SUCCESS","calls":3,"list":0,"get":3,"create":0,"update":0,"generateIds":0,"sent":0,"received":1199,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null},{"phase":"COMPLETION","internalReceiptId":null,"startMs":5,"endMs":6,"outcome":"SUCCESS","calls":4,"list":3,"get":1,"create":0,"update":0,"generateIds":0,"sent":0,"received":5506,"retries":0,"failure":null,"http":null,"check":null,"localRevision":null,"driveRevision":null,"differentFields":[],"expectedBytes":null,"actualBytes":null}]}
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.data.DriveDatevPreimageRegressionTest$equivalentDatevAccountMapOrderingAndWhitespaceIsReadOnly$1.invokeSuspend(DriveDatevPreimageRegressionTest.kt:175)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.UndispatchedCoroutine.afterResume(CoroutineContext.kt:277)
+	at kotlinx.coroutines.AbstractCoroutine.resumeWith(AbstractCoroutine.kt:101)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:47)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:112)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$BuildersKt__BuildersKt(Builders.kt:85)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:53)
+	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+	at com.example.data.DriveDatevPreimageRegressionTest.equivalentDatevAccountMapOrderingAndWhitespaceIsReadOnly(DriveDatevPreimageRegressionTest.kt:165)
+
+FAILURES!!!
+Tests run: 8,  Failures: 6
+

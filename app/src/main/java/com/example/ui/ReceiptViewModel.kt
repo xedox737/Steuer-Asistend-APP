@@ -4,6 +4,7 @@ import com.example.util.DateFormatUtils
 
 import com.example.util.DiagnosticLog
 
+import com.example.data.driveAuthoredState
 import com.example.data.parseCamtV8
 import android.app.Application
 import androidx.room.withTransaction
@@ -32,6 +33,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -109,6 +111,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private var driveInitializationJob: Job? = null
     private var pendingDriveInitializationRetrySession: Long? = null
     private var driveSyncJob: Job? = null
+    private val driveMutationGate = kotlinx.coroutines.sync.Mutex()
     private val database = AppDatabase.getDatabase(application, viewModelScope)
     private val renovationStore = com.example.data.RenovationReviewStore(application)
     val renovationReview = renovationStore.snapshot
@@ -366,6 +369,15 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     private val _driveSystemFolderStatus = MutableStateFlow("Nicht eingerichtet")
     val driveSystemFolderStatus: StateFlow<String> = _driveSystemFolderStatus.asStateFlow()
+
+    private val _driveSyncReport = MutableStateFlow(com.example.api.DriveSyncReport.fromJson(sharedPrefs.getString("drive_sync_report", null))?.let { previous ->
+        if (previous.outcome == com.example.api.DriveSyncOutcome.RUNNING) previous.copy(
+            outcome = com.example.api.DriveSyncOutcome.CANCELLED,
+            steps = previous.steps.map { step -> if (step.outcome == com.example.api.DriveSyncOutcome.RUNNING)
+                step.copy(outcome = com.example.api.DriveSyncOutcome.CANCELLED, endMs = previous.elapsedMs,
+                    failure = com.example.api.DriveSyncFailure("PROCESS_RESTART")) else step }) else previous
+    })
+    val driveSyncReport: StateFlow<com.example.api.DriveSyncReport?> = _driveSyncReport.asStateFlow()
 
     private val _lastStammdatenBackupTime = MutableStateFlow(sharedPrefs.getString("last_stammdaten_backup_time", "Nie") ?: "Nie")
     val lastStammdatenBackupTime: StateFlow<String> = _lastStammdatenBackupTime.asStateFlow()
@@ -1351,7 +1363,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        val active = driveInitializationJob?.takeIf { it.isActive } ?: driveSyncJob?.takeIf { it.isActive }
+        val active = driveInitializationJob?.takeIf { !it.isCompleted } ?: driveSyncJob?.takeIf { !it.isCompleted }
         if (active != null) {
             val session = driveSession.get()
             // The failure flow may reach the UI before its producer job has completed.
@@ -1382,9 +1394,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         _driveSystemFolderStatus.value = "Gefunden"
                         _driveSyncStatus.value = "Google-Drive-Grundstruktur erfolgreich erstellt."
                         _driveSyncError.value = null
-                        val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                        _lastStammdatenBackupTime.value = nowStr
-                        sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
+                        // Reading/configuring Drive is not a completed backup.
+                        sharedPrefs.edit().remove("drive_sync_error").apply()
                     }
                     is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> {
                         _driveSystemFolderStatus.value = "Gefunden"
@@ -1404,9 +1415,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                             _driveSyncStatus.value = "Dauerhafte Datenstruktur verbunden."
                         }
                         _driveSyncError.value = null
-                        val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
-                        _lastStammdatenBackupTime.value = nowStr
-                        sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
+                        // Reading/configuring Drive is not a completed backup.
+                        sharedPrefs.edit().remove("drive_sync_error").apply()
                     }
                     is com.example.data.DriveInitializationResult.Failure -> {
                         handleDriveFailure(result.cause ?: IllegalStateException(), session)
@@ -1884,11 +1894,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         // IO/timeout and cancellation propagate unchanged; they are not login errors.
     }
 
-    private suspend fun initializeDriveWithToken(email: String, session: Long): Pair<String, com.example.data.DriveInitializationResult> {
+    private suspend fun initializeDriveWithToken(email: String, session: Long, forSync: Boolean = false): Pair<String, com.example.data.DriveInitializationResult> {
         ensureDriveSession(session)
         var token = getValidToken(email)
         ensureDriveSession(session)
-        var result = drivePersistenceRepository.initializeDriveStorage(token)
+        var result = GoogleDriveClient.withCreateRecovery(getApplication()) {
+            if (forSync) drivePersistenceRepository.initializeDriveStorageForSync(token) else drivePersistenceRepository.initializeDriveStorage(token)
+        }
         ensureDriveSession(session)
         val failure = result as? com.example.data.DriveInitializationResult.Failure
         if (failure?.cause?.let { it is com.example.api.DriveAccessFailure && it.httpStatus == 401 } == true &&
@@ -1897,7 +1909,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             com.google.android.gms.auth.GoogleAuthUtil.clearToken(getApplication(), token)
             token = getValidToken(email)
             ensureDriveSession(session)
-            result = drivePersistenceRepository.initializeDriveStorage(token)
+            result = GoogleDriveClient.withCreateRecovery(getApplication()) {
+                if (forSync) drivePersistenceRepository.initializeDriveStorageForSync(token) else drivePersistenceRepository.initializeDriveStorage(token)
+            }
             ensureDriveSession(session)
             val rejectedAgain = (result as? com.example.data.DriveInitializationResult.Failure)?.cause
             if (rejectedAgain is com.example.api.DriveAccessFailure && rejectedAgain.httpStatus == 401) {
@@ -1914,10 +1928,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             // A token can expire during a long sync. Renew and validate it before offering login.
             // Do not replay a partly completed transfer automatically.
             try {
-                val token = getValidToken(email)
-                com.google.android.gms.auth.GoogleAuthUtil.clearToken(getApplication(), token)
-                val renewed = getValidToken(email)
-                val result = drivePersistenceRepository.initializeDriveStorage(renewed)
+                val result = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.AUTH_RENEWAL,
+                    outcome = { result: com.example.data.DriveInitializationResult -> if (result is com.example.data.DriveInitializationResult.Failure)
+                        com.example.api.DriveSyncOutcome.FAILED else com.example.api.DriveSyncOutcome.SUCCESS }) {
+                    val token = getValidToken(email)
+                    com.google.android.gms.auth.GoogleAuthUtil.clearToken(getApplication(), token)
+                    val renewed = getValidToken(email)
+                    drivePersistenceRepository.initializeDriveStorageForSync(renewed)
+                }
                 ensureDriveSession(session)
                 if (result is com.example.data.DriveInitializationResult.Failure) {
                     handleDriveFailure(result.cause ?: IllegalStateException(), session)
@@ -1948,18 +1966,41 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             _driveSyncStatus.value = "Google-Anmeldung erforderlich"
             return
         }
-        if (driveSyncJob?.isActive == true) return
+        if (driveSyncJob?.isCompleted == false) return
         val session = driveSession.get()
         val initialization = driveInitializationJob
         _isDriveSyncing.value = true
         _driveSyncStatus.value = "Synchronisiere mit Google Drive..."
         driveSyncJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            var persistedReportKey: Triple<Int, com.example.api.DriveSyncOutcome, Int>? = null
+            val recorder = com.example.api.DriveSyncRecorder(onUpdate = { report ->
+                if (session == driveSession.get()) {
+                    _driveSyncReport.value = report
+                    // Persist phase boundaries, every eight receipts, and the final result.
+                    // Duration ticks and nested per-receipt checks update only live state.
+                    val key = Triple(report.steps.lastOrNull { it.internalReceiptId == null }?.phase?.ordinal ?: -1,
+                        report.outcome, report.receiptsProcessed / 8 + report.documents.processed / 8)
+                    if (key != persistedReportKey) {
+                        sharedPrefs.edit().putString("drive_sync_report", report.toJson()).apply()
+                        persistedReportKey = key
+                    }
+                }
+            })
+            var finalOutcome = com.example.api.DriveSyncOutcome.FAILED
+            val clock = launch { while (true) { kotlinx.coroutines.delay(1000); recorder.tick() } }
             try {
+                driveMutationGate.withLock {
+                com.example.api.DriveSyncTrace.run(recorder) sync@{
                 initialization?.join()
                 ensureDriveSession(session)
-                if (!_isDriveConnected.value) return@launch
+                if (!_isDriveConnected.value) return@sync
+                recorder.total(repository.allReceipts.first().size)
+                recorder.documentsTotal(repository.getAllManagedDocuments().count { it.receiptInternalId.isNullOrBlank() })
                 _driveSyncStatus.value = "Synchronisiere mit Google Drive..."
-                val (token, initResult) = initializeDriveWithToken(email, session)
+                val (token, initResult) = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.INITIALIZATION,
+                    outcome = { pair: Pair<String, com.example.data.DriveInitializationResult> ->
+                        if (pair.second is com.example.data.DriveInitializationResult.Failure) com.example.api.DriveSyncOutcome.FAILED
+                        else com.example.api.DriveSyncOutcome.SUCCESS }) { initializeDriveWithToken(email, session, forSync = true) }
                 val config = when (initResult) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> {
                         _driveSystemFolderStatus.value = "Gefunden"
@@ -1977,64 +2018,93 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                         handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
                         _driveSystemFolderStatus.value = "Prüfung fehlgeschlagen"
                         _isDriveSyncing.value = false
-                        return@launch
+                        return@sync
                     }
                 }
 
                 // A synthetic legacy test row must never make an empty profile look restored.
                 drivePersistenceRepository.retireLegacyDriveDiagnostic()
                 val list = repository.allReceipts.first()
+                recorder.total(list.size)
                 val isLocalEmpty = list.isEmpty()
                 if ((isLocalEmpty || _restorePreview.value?.success == false) &&
                     initResult is com.example.data.DriveInitializationResult.SuccessLoadedExisting) {
-                    val preview = drivePersistenceRepository.checkDriveInventoryForRestore(token, initResult.config)
+                    val preview = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.INVENTORY,
+                        outcome = { result: com.example.data.DriveRestorePreviewResult -> if (result.success) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.BLOCKED }) {
+                        drivePersistenceRepository.checkDriveInventoryForRestore(token, initResult.config) }
                     ensureDriveSession(session)
-                    if (publishIncompleteDriveInventory(preview)) return@launch
+                    if (publishIncompleteDriveInventory(preview)) return@sync
                     if (isLocalEmpty && preview.inventory.canRestore) {
                         _restorePreview.value = preview
                         _isRestoreRequired.value = true
                         _isDriveSyncing.value = false
                         _driveSyncStatus.value = "Abgebrochen: Lokaler Bestand ist leer, aber Google Drive enthält ${preview.inventory.receiptCountInIndex} Belege. Bitte zuerst Wiederherstellung ausführen."
-                        return@launch
+                        return@sync
                     }
                 }
 
-                val csvSuccess = GoogleDriveClient.uploadLedgerCsv(token, config.rootFolderId, list)
-                val documentStructureSuccess = drivePersistenceRepository.ensurePropertyDocumentStructure(token, config)
+                var csvSuccess = false
+                var successCount = 0
+                var documentSuccessCount = 0
+                var standaloneDocumentCount = 0
+                val complete = GoogleDriveClient.withCreateRecovery(getApplication()) { GoogleDriveClient.withSyncReadProof(token) {
+                com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.INVENTORY) {
+                    drivePersistenceRepository.validateSynchronizationInventory(token, config, list)
+                }
+                csvSuccess = measuredDriveSyncStep(com.example.api.DriveSyncPhase.LEDGER) { GoogleDriveClient.uploadLedgerCsv(token, config.rootFolderId, list) }
+                check(csvSuccess) { "Hauptbuch-Sicherung nicht abgeschlossen" }
+                val documentStructureSuccess = measuredDriveSyncStep(com.example.api.DriveSyncPhase.FOLDERS) { drivePersistenceRepository.ensurePropertyDocumentStructure(token, config) }
+                check(documentStructureSuccess) { "Ordnerprüfung nicht abgeschlossen" }
                 
                 // 3. Upload Wohneinheiten CSV
-                val unitsSuccess = GoogleDriveClient.uploadWohneinheitenCsv(token, config.rootFolderId, _wohneinheitenStatus.value)
+                val unitsSuccess = measuredDriveSyncStep(com.example.api.DriveSyncPhase.UNITS) { GoogleDriveClient.uploadWohneinheitenCsv(token, config.rootFolderId, _wohneinheitenStatus.value) }
+                check(unitsSuccess) { "Wohneinheiten-Sicherung nicht abgeschlossen" }
 
                 // 4. Update JSON files in _BelegApp-Daten to ensure latest changes are saved
-                val backupSuccess = drivePersistenceRepository.saveStammdatenToDrive(token, config)
+                val backupSuccess = measuredDriveSyncStep(com.example.api.DriveSyncPhase.MASTER_DATA) { drivePersistenceRepository.saveStammdatenToDrive(token, config) }
+                check(backupSuccess) { "Stammdaten-Sicherung nicht abgeschlossen" }
 
                 // 5. Upload each receipt
-                var successCount = 0
                 for (receipt in list) {
-                    val success = drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
+                    val success = measuredDriveAsset(recorder, receipt.internalId, document = false) {
+                        drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
+                    }
                     if (success) successCount++
+                    else error("Belegsicherung unterbrochen; verbleibende Belege wurden nicht versucht")
                 }
-                var documentSuccessCount = 0
                 val standaloneDocuments = repository.getAllManagedDocuments().filter { it.receiptInternalId.isNullOrBlank() }
+                standaloneDocumentCount = standaloneDocuments.size
+                recorder.documentsTotal(standaloneDocumentCount)
                 for (document in standaloneDocuments) {
-                    if (drivePersistenceRepository.syncManagedDocumentToDrive(token, config, document.documentId)) documentSuccessCount++
+                    if (measuredDriveAsset(recorder, document.documentId, document = true) { drivePersistenceRepository.syncManagedDocumentToDrive(token, config, document.documentId) }) documentSuccessCount++
+                    else error("Dokumentsicherung unterbrochen")
                 }
-                val documentIndexSuccess = drivePersistenceRepository.updateManagedDocumentIndex(token, config)
-                val supplementalBackup = com.example.data.SupplementalDriveBackup.backup(
-                    getApplication(), database, token, config.systemFolderId
-                )
+                val documentIndexSuccess = measuredDriveSyncStep(com.example.api.DriveSyncPhase.DOCUMENT_INDEX) { drivePersistenceRepository.updateManagedDocumentIndex(token, config) }
+                val supplementalBackup = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.SUPPLEMENTAL,
+                    outcome = { result: com.example.data.SupplementalDriveBackup.Result -> if(result.success) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.FAILED }) {
+                    com.example.data.SupplementalDriveBackup.backup(getApplication(), database, token, config.systemFolderId)
+                }
 
+                val allBackupsComplete = csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess &&
+                    successCount == list.size && documentSuccessCount == standaloneDocumentCount
+                if (allBackupsComplete) drivePersistenceRepository.acknowledgeOriginalBackupChanges(token, config)
+                allBackupsComplete
+                } }
                 ensureDriveSession(session)
-                _isDriveSyncing.value = false
-                if (csvSuccess && unitsSuccess && backupSuccess && supplementalBackup.success && documentStructureSuccess && documentIndexSuccess &&
-                    successCount == list.size && documentSuccessCount == standaloneDocuments.size) {
+                if (complete) {
+                    com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.COMPLETION) {
+                        val current = repository.allReceipts.first().associate { it.id to it.driveAuthoredState() }
+                        if (current != list.associate { it.id to it.driveAuthoredState() })
+                            throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.HTTP, 412)
+                    }
+                    finalOutcome = com.example.api.DriveSyncOutcome.SUCCESS
                     _driveSyncStatus.value = "Erfolgreich! Hauptbuch, Wohneinheiten, Stammdaten, $successCount Belege und $documentSuccessCount Dokumente synchronisiert."
                     _driveSyncError.value = null
                     val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
                     _lastStammdatenBackupTime.value = nowStr
                     sharedPrefs.edit().putString("last_stammdaten_backup_time", nowStr).remove("drive_sync_error").apply()
                 } else if (csvSuccess) {
-                    _driveSyncStatus.value = "Teilweise erfolgreich: $successCount/${list.size} Belege und $documentSuccessCount/${standaloneDocuments.size} Dokumente synchronisiert."
+                    _driveSyncStatus.value = "Teilweise erfolgreich: $successCount/${list.size} Belege und $documentSuccessCount/${standaloneDocumentCount} Dokumente synchronisiert."
                     _driveSyncError.value = "Sicherung unvollständig. Nicht alle Daten oder Dateien wurden gesichert."
                     sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
                 } else {
@@ -2043,17 +2113,70 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
                 }
 
+                }
+                }
             } catch (e: CancellationException) {
+                finalOutcome = com.example.api.DriveSyncOutcome.CANCELLED
                 if (session == driveSession.get()) _driveSyncStatus.value = "Drive-Synchronisierung abgebrochen. Bitte erneut versuchen."
                 throw e
             } catch (e: Exception) {
                 DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed")
-                handleDriveOperationFailure(e, email, session)
+                com.example.api.DriveSyncTrace.run(recorder) { handleDriveOperationFailure(e, email, session) }
             } finally {
+                clock.cancel()
+                if (finalOutcome == com.example.api.DriveSyncOutcome.FAILED &&
+                    recorder.snapshot().steps.any { it.outcome == com.example.api.DriveSyncOutcome.BLOCKED })
+                    finalOutcome = com.example.api.DriveSyncOutcome.BLOCKED
+                recorder.finish(finalOutcome)
+                if (finalOutcome in setOf(com.example.api.DriveSyncOutcome.FAILED, com.example.api.DriveSyncOutcome.BLOCKED) && session == driveSession.get()) {
+                    val step = recorder.snapshot().steps.lastOrNull { it.outcome in setOf(com.example.api.DriveSyncOutcome.FAILED, com.example.api.DriveSyncOutcome.BLOCKED) }
+                    if (step != null) {
+                        _driveSyncError.value = "${step.phase.label}: ${step.failure?.description ?: "Sicherungsschritt nicht abgeschlossen"}. Diagnosebericht verfügbar."
+                        sharedPrefs.edit().putString("drive_sync_error", _driveSyncError.value).apply()
+                    }
+                }
                 if (session == driveSession.get()) _isDriveSyncing.value = false
             }
         }
         driveSyncJob?.start()
+    }
+
+    private suspend fun measuredDriveAsset(recorder: com.example.api.DriveSyncRecorder, id: String,
+        document: Boolean, block: suspend () -> Boolean): Boolean {
+        var counted = false
+        fun record(outcome: com.example.api.DriveReceiptSyncOutcome) {
+            if (document) recorder.document(outcome) else recorder.receipt(outcome)
+            counted = true
+        }
+        val phase = if (document) com.example.api.DriveSyncPhase.DOCUMENTS else com.example.api.DriveSyncPhase.RECEIPTS
+        try {
+            val success = measuredDriveSyncStep(phase, id, block)
+            val step = recorder.snapshot().steps.last { it.phase == phase }
+            record(when {
+                !success && step.outcome == com.example.api.DriveSyncOutcome.BLOCKED -> com.example.api.DriveReceiptSyncOutcome.BLOCKED
+                !success -> com.example.api.DriveReceiptSyncOutcome.FAILED
+                recorder.wasOriginalWritten(id) -> com.example.api.DriveReceiptSyncOutcome.UPLOADED
+                step.createCalls == 0 && step.updateCalls == 0 -> com.example.api.DriveReceiptSyncOutcome.UNCHANGED
+                else -> com.example.api.DriveReceiptSyncOutcome.METADATA_ONLY
+            })
+            return success
+        } catch (error: Exception) {
+            if (!counted) record(when (com.example.api.DriveSyncFailure.from(error).kind) {
+                "CANCELLED" -> com.example.api.DriveReceiptSyncOutcome.INTERRUPTED
+                "SAFETY", "CONFLICT", "PRECONDITION" -> com.example.api.DriveReceiptSyncOutcome.BLOCKED
+                else -> com.example.api.DriveReceiptSyncOutcome.FAILED
+            })
+            throw error
+        }
+    }
+
+    private suspend fun measuredDriveSyncStep(phase: com.example.api.DriveSyncPhase, internalId: String? = null, block: suspend () -> Boolean): Boolean =
+        com.example.api.DriveSyncTrace.step(phase, internalId,
+            outcome = { success: Boolean -> if(success) com.example.api.DriveSyncOutcome.SUCCESS else com.example.api.DriveSyncOutcome.FAILED }, block = block)
+
+    fun cancelDriveSynchronization() {
+        _driveSyncStatus.value = "Abbruch angefordert. Laufende Übertragung wird sicher beendet."
+        driveSyncJob?.cancel()
     }
 
     private fun uploadReceiptToDriveInternal(receipt: Receipt) {
@@ -2061,24 +2184,28 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         if (!_isDriveConnected.value) return
         val session = driveSession.get()
         viewModelScope.launch(Dispatchers.IO) {
+            driveMutationGate.withLock {
+            if (!_autoDriveBackup.value || session != driveSession.get()) return@withLock
+            val currentReceipt = repository.getReceiptById(receipt.id) ?: return@withLock
             try {
-                val (token, initResult) = initializeDriveWithToken(email, session)
+                val (token, initResult) = initializeDriveWithToken(email, session, forSync = true)
                 val config = when (initResult) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> initResult.config
                     is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> initResult.config
                     is com.example.data.DriveInitializationResult.Failure -> {
                         handleDriveFailure(initResult.cause ?: IllegalStateException(), session)
-                        repository.insert(receipt.copy(syncStatus = "ERROR", syncError = "Drive-Initialisierungsfehler: ${initResult.error}"))
+                        repository.updateDriveSyncFields(currentReceipt.copy(syncStatus = "ERROR", syncError = "Drive-Initialisierungsfehler: ${initResult.error}"))
                         return@launch
                     }
                 }
-                drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
+                GoogleDriveClient.withCreateRecovery(getApplication()) { drivePersistenceRepository.syncReceiptToDrive(token, config, currentReceipt) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 DiagnosticLog.w("ReceiptViewModel", "Auto backup postponed for receipt")
                 handleDriveOperationFailure(e, email, session)
-                repository.insert(receipt.copy(syncStatus = "ERROR", syncError = DriveConnectionFailure.from(e).message))
+                repository.updateDriveSyncFields(currentReceipt.copy(syncStatus = "ERROR", syncError = DriveConnectionFailure.from(e).message))
+            }
             }
         }
     }
@@ -2086,28 +2213,34 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun syncReceiptManually(receipt: Receipt) {
         val email = _googleAccountEmail.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            driveMutationGate.withLock {
+            if (!_isDriveConnected.value) return@withLock
+            val currentReceipt = repository.getReceiptById(receipt.id) ?: return@withLock
             try {
                 val token = getValidToken(email)
-                val initResult = drivePersistenceRepository.initializeDriveStorage(token)
+                val initResult = drivePersistenceRepository.initializeDriveStorageForSync(token)
                 val config = when (initResult) {
                     is com.example.data.DriveInitializationResult.SuccessCreatedNew -> initResult.config
                     is com.example.data.DriveInitializationResult.SuccessLoadedExisting -> initResult.config
                     is com.example.data.DriveInitializationResult.Failure -> {
-                        repository.insert(receipt.copy(syncStatus = "ERROR", syncError = "Drive-Initialisierungsfehler: ${initResult.error}"))
+                        repository.updateDriveSyncFields(currentReceipt.copy(syncStatus = "ERROR", syncError = "Drive-Initialisierungsfehler: ${initResult.error}"))
                         return@launch
                     }
                 }
                 
                 // Set to PENDING first to show progress spinner
-                repository.insert(receipt.copy(syncStatus = "PENDING", syncError = null))
+                repository.getReceiptById(receipt.id)?.let { repository.updateDriveSyncFields(it.copy(syncStatus = "PENDING", syncError = null)) }
                 
-                val success = drivePersistenceRepository.syncReceiptToDrive(token, config, receipt)
+                val success = GoogleDriveClient.withCreateRecovery(getApplication()) { drivePersistenceRepository.syncReceiptToDrive(token, config, currentReceipt) }
                 if (!success) {
                     DiagnosticLog.w("ReceiptViewModel", "Manual sync failed for receipt")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 DiagnosticLog.w("ReceiptViewModel", "Manual sync failed for receipt")
-                repository.insert(receipt.copy(syncStatus = "ERROR", syncError = e.message ?: e.toString()))
+                repository.getReceiptById(receipt.id)?.let { repository.updateDriveSyncFields(it.copy(syncStatus = "ERROR", syncError = DriveConnectionFailure.from(e).message)) }
+            }
             }
         }
     }

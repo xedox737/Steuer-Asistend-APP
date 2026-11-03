@@ -20,13 +20,21 @@ object DriveEnvironment {
             try {
                 val result = block()
                 currentCoroutineContext().ensureActive()
-                policy.verifyReadProof(scope, send)
+                if (scope.syncCacheEnabled) DriveSyncTrace.stepBlocking(DriveSyncPhase.COMPLETION,
+                    outcome = { _: Unit -> DriveSyncOutcome.SUCCESS }) { policy.verifyReadProof(scope, send) }
+                else policy.verifyReadProof(scope, send)
                 result
             } finally { scope.clear() }
         }
     }
 
+    internal fun readOwnedMetadata(token: String, id: String, send: (Request) -> Response): DriveOwnedMetadata =
+        policy.readOwnedMetadata(id, token, send, readProof.get())
+
+    internal fun currentReadProof(token: String): DriveReadProof? = readProof.get()?.takeIf { it.authorization == "Bearer $token" }
+
     internal fun invalidateReadProof() { readProof.get()?.clear() }
+    internal fun isMissingTarget(error: Throwable, fileId: String): Boolean = policy.isMissingTarget(error, fileId)
     val namespaceGuardEnabled: Boolean get() = true
     const val PRODUCTION_ROOT = "Steuerassistent Belege"
     const val PRODUCTION_APP_IDENTIFIER = "ImmobilienBelegApp"
@@ -44,5 +52,8 @@ object DriveEnvironment {
         policy.validateJsonReferences(json, token, send)
     internal fun validateRestoreJsonReferences(json: String, token: String, send: (Request) -> Response): Set<String> =
         policy.validateRestoreJsonReferences(json, token, send, readProof.get())
+
+    internal fun validatePreservedJsonReferences(json: String, token: String, previous: DriveRestoreJsonRead, send: (Request) -> Response) =
+        policy.validatePreservedJsonReferences(json, token, previous, send, readProof.get())
 
 }

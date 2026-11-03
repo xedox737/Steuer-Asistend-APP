@@ -221,7 +221,7 @@ class RentOverviewComposeTest {
     @Test fun monthlyCheckTenantHistoryAndUnassignedReviewRemainReachable() {
         seed(); ui.onNodeWithTag("rent_monthly_check").performClick()
         ui.onNodeWithText("Miet-Monatscheck").assertExists()
-        repeat(5) { ui.onNodeWithText("‹").performClick() }
+        ui.selectMonthlyRentFixtureMonth(java.time.YearMonth.of(2026, 5))
         ui.onNodeWithText("Offen (1)").assertExists()
         ui.onNodeWithText("TEILZAHLUNG").assertExists()
         ui.onNodeWithText("BEZAHLT").assertDoesNotExist()

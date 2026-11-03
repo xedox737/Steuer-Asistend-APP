@@ -1,0 +1,63 @@
+{
+  "kind": "SYNTHETIC_HTTP_NO_ADDED_LATENCY",
+  "baseHead": "2d9eaf2e2f680e302b2371330a64ccb6328fb056",
+  "localSdk": 35,
+  "productionCompileSdk": 36,
+  "before": {
+    "apiCalls": 96,
+    "durationMs": 88,
+    "filesList": 15,
+    "filesGet": 81,
+    "filesGenerateIds": 0,
+    "filesCreate": 0,
+    "filesUpdate": 0,
+    "originalMediaGets": 0,
+    "originalCreates": 0,
+    "originalUpdates": 0,
+    "hasSyncError": true
+  },
+  "afterCompleteColdBackup": {
+    "apiCalls": 1295,
+    "durationMs": 575,
+    "filesList": 380,
+    "filesGet": 842,
+    "filesGenerateIds": 25,
+    "filesCreate": 25,
+    "filesUpdate": 23,
+    "originalMediaGets": 1,
+    "originalCreates": 1,
+    "originalUpdates": 0,
+    "hasSyncError": false
+  },
+  "unchangedRepeat": {
+    "apiCalls": 269,
+    "durationMs": 185,
+    "filesList": 34,
+    "filesGet": 235,
+    "filesGenerateIds": 0,
+    "filesCreate": 0,
+    "filesUpdate": 0,
+    "originalMediaGets": 0,
+    "originalCreates": 0,
+    "originalUpdates": 0,
+    "hasSyncError": false
+  },
+  "realPoco1401": {
+    "durationMs": 42300,
+    "apiCalls": 129,
+    "outcome": "BLOCKED",
+    "sentBytes": 0,
+    "receiptsNotAttempted": 23,
+    "check": "ORIGINAL_BASELINE_MISSING"
+  },
+  "realPoco1402": "NOT_TESTED",
+  "testedSourceSha256": {
+    "app/src/main/java/com/example/api/DriveNamespacePolicy.kt": "c64b01bf5cf8890efe4dfc33d582ee2e5b78e8b9c9064b741d2b351f2e26116b",
+    "app/src/main/java/com/example/api/DriveSyncTrace.kt": "9451fe62db4455cbf5bd437bf79b393f4cdc8ed118591398d21753fd1e14efa6",
+    "app/src/main/java/com/example/api/GoogleDriveClient.kt": "20d385f147c41a747bc2bb153099c2513d44c269acf64a483a70641d83fcecae",
+    "app/src/main/java/com/example/data/DocumentModels.kt": "4ba09477156f4478eee847d69273f7fef9816843beb4a2b949b8c6543f7bcb27",
+    "app/src/main/java/com/example/data/ReceiptDatabase.kt": "383d7bbc0ee5834645ac10cc509df46f3ac7cc1c38f8d932ee267806ef81f1c7",
+    "app/src/main/java/com/example/data/DrivePersistenceRepository.kt": "0fc634ff042e316fdf52b5aa48c1ed15ef42b8b10cdedd0694e33b78a9fcd94a",
+    "app/src/test/java/com/example/ui/Phase11ESyncRegressionTest.kt": "7e2c46c3de482b0e64578281281dbe28637a492c3ec4ae38df2dc0bb1b30eb39"
+  }
+}

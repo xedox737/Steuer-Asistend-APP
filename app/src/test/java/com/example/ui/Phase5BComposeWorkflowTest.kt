@@ -164,6 +164,7 @@ class Phase5BComposeWorkflowTest {
         assertTrue(vm.bankRentAssignments.value.isEmpty())
         ui.onNodeWithTag("rent_overview").performScrollToNode(hasTestTag("rent_monthly_check"))
         ui.onNodeWithTag("rent_monthly_check").performClick()
+        ui.selectMonthlyRentFixtureMonth(java.time.YearMonth.of(2026, 10))
         ui.onNodeWithTag("rent_monthly_list").performScrollToNode(hasTestTag("monthly_rent_review_payments"))
         ui.onNodeWithTag("monthly_rent_review_payments").performClick()
         ui.onNodeWithTag("rent_review_bank-open").performClick()

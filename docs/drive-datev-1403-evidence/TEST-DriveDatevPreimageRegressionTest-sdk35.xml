@@ -1,0 +1,14 @@
+<testsuite tests="12" failures="0" skipped="0">
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="unknownRemoteDatevBusinessChangesStillBlockWithoutOverwritingEitherSide"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="knownDatevPreimageStillAllowsAnIntentionalLocalProfileEdit"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="changedDatevAccountNumberIsNotAnEquivalentMapping"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="malformedDatevAccountMapMustNotBorrowAValidMapsEquivalence"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="unknownRemoteDatevFieldsMustNotBeDiscardedAsAnUnchangedProfile"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="invalidProfileTimestampsCannotAuthorizeUnknownRemoteChanges"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="differentDatevIdentityAndProfileVersionRemainConflicts"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="identicalDatevBusinessDataKeepsNewerRemoteTimestampWithoutOverwritingIt"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="supplementalDatevCopyIsConservedThroughNoOpAndAnUnrelatedLocalAddition"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="malformedOrUnidentifiedSupplementalProfilesMustNotBorrowAValidProfilesEquivalence"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="identicalDatevBusinessDataWithDifferentCreationTimestampIsReadOnly"></testcase>
+<testcase classname="com.example.data.DriveDatevPreimageRegressionTest" name="equivalentDatevAccountMapOrderingAndWhitespaceIsReadOnly"></testcase>
+</testsuite>

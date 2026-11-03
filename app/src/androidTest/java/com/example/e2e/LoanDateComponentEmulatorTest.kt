@@ -20,6 +20,14 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class LoanDateComponentEmulatorTest : EmulatorTestSupport() {
+    private fun awaitEditorStartField() {
+        // A reopened dialog can still be registering its Compose root. A premature
+        // single-node failure dumps semantics off the UI thread during layout.
+        ui.waitUntil(10_000) {
+            ui.onAllNodes(hasText("Start") and hasSetTextAction()).fetchSemanticsNodes().size == 1
+        }
+    }
+
     @Test fun productionLoanEditorShowsGermanDatesAndCalendarPersistsIso() {
         val property = seedProperty("date-loan", "Darlehensobjekt")
         val model = vm
@@ -39,6 +47,7 @@ class LoanDateComponentEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithText("2026-10-11").assertDoesNotExist()
         capture("date-loan-review-display")
         ui.onNodeWithContentDescription("Bearbeiten").performScrollTo().performClick()
+        awaitEditorStartField()
         ui.onNode(hasText("Start") and hasSetTextAction()).performScrollTo().assertTextContains("01.01.2026")
         ui.onNode(hasText("Zinsbindung bis") and hasSetTextAction()).performScrollTo().assertTextContains("31.12.2036")
         ui.onNode(hasText("Geplantes Laufzeitende") and hasSetTextAction()).performScrollTo().assertTextContains("31.12.2046")
@@ -58,6 +67,7 @@ class LoanDateComponentEmulatorTest : EmulatorTestSupport() {
         assertEquals("2036-12-31", saved.zinsbindungBis)
         assertEquals("2046-12-31", saved.laufzeitBis)
         ui.onNodeWithContentDescription("Bearbeiten").performScrollTo().performClick()
+        awaitEditorStartField()
         ui.onNode(hasText("Start") and hasSetTextAction()).performScrollTo().assertTextContains("02.01.2026")
     }
 }

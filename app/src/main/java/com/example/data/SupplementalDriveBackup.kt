@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.api.rethrowDriveControlFailure
 import com.example.api.DriveEnvironment
 
 import android.content.Context
@@ -23,15 +24,17 @@ object SupplementalDriveBackup {
     suspend fun backup(context: Context, database: AppDatabase, accessToken: String, systemFolderId: String): Result =
         try {
             val root = createPayload(context, database)
-            val existing = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE)
-            val result = if (existing != null) GoogleDriveClient.updateJson(accessToken, existing.id, root.toString(4))
-            else GoogleDriveClient.uploadJson(
+            val existing = GoogleDriveClient.findFileByAppProperty(accessToken, systemFolderId, ENTITY_TYPE, failOnError = true)
+            val result = if (existing != null) GoogleDriveClient.updateSyncJson(accessToken, existing.id, root.toString(4), conflictContext = context)
+            else GoogleDriveClient.confirmJsonBaseline(context, accessToken, GoogleDriveClient.uploadJson(
                 accessToken, systemFolderId, FILE_NAME, root.toString(4),
                 mapOf("appName" to DriveEnvironment.appIdentifier, "entityType" to ENTITY_TYPE, "schemaVersion" to SCHEMA_VERSION.toString())
-            )
+            ), root.toString(4))
             Result(result.success, result.errorMessage ?: if (result.success) "Zusatzdaten gesichert" else "Zusatzdaten-Backup fehlgeschlagen")
         } catch (e: Exception) {
-            Result(false, e.message ?: "Zusatzdaten-Backup fehlgeschlagen")
+            e.rethrowDriveControlFailure()
+            com.example.api.DriveSyncTrace.failure(e)
+            Result(false, com.example.api.DriveSyncFailure.from(e).description)
         }
 
     suspend fun restore(
@@ -56,6 +59,7 @@ object SupplementalDriveBackup {
             Result(true, if (read.unavailableOriginalIds.isEmpty()) "Zusatzdaten einschließlich Fahrtenbuch wiederhergestellt"
                 else "Zusatzdaten wiederhergestellt. ${read.unavailableOriginalIds.size} Originaldatei(en) nicht erreichbar; Dateiverweise bleiben erhalten.")
         } catch (e: Exception) {
+            e.rethrowDriveControlFailure()
             Result(false, e.message ?: "Zusatzdaten-Wiederherstellung fehlgeschlagen")
         }
 

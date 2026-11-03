@@ -18,7 +18,7 @@ android {
     applicationId = "com.aistudio.steuerassistent.vnhqkp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
+        versionCode = 1406
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
