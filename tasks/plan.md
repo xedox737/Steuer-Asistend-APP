@@ -38,6 +38,16 @@ erfolgreichem realem Sync und unveränderter Wiederholung mit dem betroffenen Be
 
 ## Grenzen
 
+Nachtrag03.11.: realer1405-Erstlauf schreibt Dokumentindex und Zusatzsicherung,
+scheitert aber bei Abschluss mit LOCAL_PRECONDITION; unveränderter Zweitlauf laut
+Nutzer erfolgreich. Tatsächliche abweichende Fingerprint-Komponente weiterhin
+unbekannt.1406 ergänzt ausschließlich getestete datensparsame Abschlussdiagnose,
+keine gelockerte Sicherheitsprüfung und keine behauptete neue Fehlerbehebung.
+Eigener Branchagent/drive1406-completion-proof, tatsächlicher ParentC0c0142.
+34 gezielte +96 bestehende Methoden lokal grün; volle neue CI/Signatur und
+Geräte-Schreiblauf bleiben gesonderte Prüfaufgaben. Details in
+docs/DRIVE_1406_COMPLETION_INVESTIGATION.md.
+
 Keine Löschung von Nutzerdaten/Drive-Dateien, kein Zurücksetzen, keine destruktive Migration,
 kein Umgehen fehlender Versionsnachweise und keine automatische Wiederherstellung.
 Auth, Bank-/DATEV-Fachlogik und Navigation erhalten. Private Sicherungsdateien liegen

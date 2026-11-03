@@ -1178,4 +1178,198 @@ class DriveDocumentIndexRegressionTest {
         assertTrue(vm.driveSyncReport.value!!.steps.any {
             it.failure?.check == DriveSyncCheck.ORIGINAL_BASELINE_REFERENCE_MISMATCH })
     }
+
+    private suspend fun prepareTwoManifestHashEnrichments(): Pair<ReceiptViewModel, ManagedDocument> {
+        val vm = establishedCloudStock()
+        val original = repo.getManagedDocument("receipt:document-index-receipt-22")!!
+        for (entity in listOf("documentIndex", "supplementalBackup")) {
+            val manifest = remote.entries.values.single { it.properties["entityType"] == entity }
+            val root = JSONObject(manifest.bytes.toString(Charsets.UTF_8))
+            val rows = root.getJSONArray(if (entity == "documentIndex") "documents" else "managedDocuments")
+            (0 until rows.length()).map { rows.getJSONObject(it) }
+                .single { it.getString("documentId") == original.documentId }.put("sha256", "")
+            manifest.bytes = root.toString().toByteArray()
+            manifest.revision++
+        }
+        File(app.noBackupFilesDir, "drive-pending-writes").deleteRecursively()
+        remote.omitV3Etags = true
+        return vm to original
+    }
+
+    /** Mutation resources may be sparse; metadata may expose version/size without a checksum. */
+    private fun sparseDriveResponses(withLateJsonChange: Boolean = false): java.util.concurrent.atomic.AtomicBoolean {
+        val supplementalId = remote.entries.values.single { it.properties["entityType"] == "supplementalBackup" }.id
+        val indexId = indexFile().id
+        val ownFinalWrite = java.util.concurrent.atomic.AtomicBoolean()
+        val changed = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            if (withLateJsonChange && ownFinalWrite.get() && request.method == "GET" &&
+                request.url.encodedPath == "/drive/v3/files/$indexId" && request.url.queryParameter("alt") != "media" &&
+                !changed.getAndSet(true)) {
+                remote.entries.getValue(indexId).apply {
+                    bytes = JSONObject(bytes.toString(Charsets.UTF_8)).put("syntheticExternalAddition", true).toString().toByteArray()
+                    revision++
+                }
+            }
+            val response = chain.proceed(request)
+            if (request.method in setOf("PATCH", "PUT") && request.url.queryParameter("uploadType") == "media") {
+                if (request.url.encodedPath.endsWith("/$supplementalId")) ownFinalWrite.set(true)
+                response.body?.close()
+                response.newBuilder().body(okhttp3.ResponseBody.create(null,
+                    JSONObject().put("id", request.url.encodedPath.substringAfterLast('/')).toString())).build()
+            } else if (request.method == "GET" && request.url.queryParameter("alt") != "media") {
+                val json = JSONObject(response.body!!.string())
+                json.remove("sha256Checksum")
+                json.optJSONArray("files")?.let { files ->
+                    for (index in 0 until files.length()) files.getJSONObject(index).remove("sha256Checksum")
+                }
+                response.newBuilder().body(okhttp3.ResponseBody.create(null, json.toString())).build()
+            } else response
+        }.addInterceptor(remote).build())
+        return changed
+    }
+
+    @Test fun sparseDriveResponsesAndMissingChecksumsCompleteAfterBothManifestWritesAndRemainNoOp() = runBlocking {
+        val (vm, original) = prepareTwoManifestHashEnrichments()
+        val originals = remote.entries.values.filter { it.mime == "image/png" }.associate { it.id to it.bytes.copyOf() }
+        val ids = remote.entries.keys.toSet()
+        sparseDriveResponses()
+        sync(vm)
+        assertNull(vm.driveSyncReport.value?.toJson(), vm.driveSyncError.value)
+        val manifestIds = remote.entries.values.filter { it.properties["entityType"] in setOf("documentIndex", "supplementalBackup") }
+            .map { it.id }.toSet()
+        val writes = mutations()
+        assertEquals(2, writes.size)
+        assertEquals(manifestIds, writes.map { it.url.encodedPath.substringAfterLast('/') }.toSet())
+        assertTrue(writes.all { it.method == "PUT" && !it.header("If-Match").isNullOrBlank() })
+        assertOriginalInBothManifests(original, originals.getValue(original.driveFileId!!))
+        assertEquals(ids, remote.entries.keys)
+        originals.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        assertEquals(24, repo.getAllManagedDocuments().size)
+        assertTrue(vm.driveSyncReport.value!!.steps.any { it.phase == DriveSyncPhase.COMPLETION && it.outcome == DriveSyncOutcome.SUCCESS })
+        val finalRemote = remote.entries.mapValues { it.value.bytes.copyOf() }
+        val finalLocal = repo.getAllManagedDocuments()
+        sync(vm)
+        assertNull(vm.driveSyncReport.value?.toJson(), vm.driveSyncError.value)
+        assertTrue(mutations().isEmpty())
+        assertEquals(finalLocal, repo.getAllManagedDocuments())
+        assertEquals(finalRemote.keys, remote.entries.keys)
+        finalRemote.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+    }
+
+    @Test fun concurrentJsonMutationAfterBothManifestWritesStillBlocksCompletionWithSparseDriveResponses() = runBlocking {
+        val (vm, original) = prepareTwoManifestHashEnrichments()
+        val originals = remote.entries.values.filter { it.mime == "image/png" }.associate { it.id to it.bytes.copyOf() }
+        val ids = remote.entries.keys.toSet()
+        val stamp = prefs.getString("last_stammdaten_backup_time", null)
+        val changed = sparseDriveResponses(withLateJsonChange = true)
+        sync(vm)
+        assertTrue("The external mutation must occur after the final own manifest write", changed.get())
+        assertNotNull(vm.driveSyncError.value)
+        assertTrue(vm.driveSyncReport.value!!.steps.any { it.phase == DriveSyncPhase.COMPLETION &&
+            it.failure?.check == DriveSyncCheck.LOCAL_PRECONDITION })
+        assertEquals(stamp, prefs.getString("last_stammdaten_backup_time", null))
+        assertTrue(JSONObject(indexFile().bytes.toString(Charsets.UTF_8)).getBoolean("syntheticExternalAddition"))
+        assertEquals(ids, remote.entries.keys)
+        assertEquals(original.sha256, repo.getManagedDocument(original.documentId)!!.sha256)
+        originals.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        assertEquals(2, mutations().size)
+    }
+
+    private suspend fun verifyPrivacySafeCompletionMismatchDiagnostics(
+        entity: String, versionOnly: Boolean, hostileRole: Boolean = false
+    ) {
+        val (vm, _) = prepareTwoManifestHashEnrichments()
+        val target = if (entity == "receiptMetadata") remote.entries.getValue(repo.getReceiptById(22)!!.driveMetadataFileId!!)
+            else remote.entries.values.single { it.properties["entityType"] == entity }
+        val supplementalId = remote.entries.values.single { it.properties["entityType"] == "supplementalBackup" }.id
+        val localBefore = repo.getAllManagedDocuments()
+        val stamp = prefs.getString("last_stammdaten_backup_time", null)
+        val armed = java.util.concurrent.atomic.AtomicBoolean()
+        val changed = java.util.concurrent.atomic.AtomicBoolean()
+        val expectedVersion = java.util.concurrent.atomic.AtomicLong()
+        val currentVersion = java.util.concurrent.atomic.AtomicLong()
+        val expectedSize = java.util.concurrent.atomic.AtomicLong()
+        val currentSize = java.util.concurrent.atomic.AtomicLong()
+        val hashes = java.util.concurrent.atomic.AtomicReference<List<String>>()
+        val finalRemote = java.util.concurrent.atomic.AtomicReference<Map<String, ByteArray>>()
+        val hostile = "private-person@example.invalid-sensitive-account"
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val targetMetadata = request.method == "GET" && request.url.encodedPath == "/drive/v3/files/${target.id}" &&
+                request.url.queryParameter("alt") != "media"
+            if (targetMetadata && armed.get() && vm.driveSyncReport.value?.currentPhase == DriveSyncPhase.COMPLETION &&
+                !changed.getAndSet(true)) {
+                expectedVersion.set(target.revision.toLong())
+                expectedSize.set(target.bytes.size.toLong())
+                val beforeHash = StableDocumentIdentity.sha256(target.bytes)
+                if (!versionOnly) target.bytes = JSONObject(target.bytes.toString(Charsets.UTF_8))
+                    .put("syntheticCompletionMutation", true).toString().toByteArray()
+                target.revision++
+                currentVersion.set(target.revision.toLong())
+                currentSize.set(target.bytes.size.toLong())
+                hashes.set(listOf(beforeHash, StableDocumentIdentity.sha256(target.bytes)))
+                finalRemote.set(remote.entries.mapValues { it.value.bytes.copyOf() })
+            }
+            val response = chain.proceed(request)
+            if (request.method in setOf("PATCH", "PUT") && request.url.encodedPath.endsWith("/$supplementalId") &&
+                request.url.queryParameter("uploadType") == "media") armed.set(true)
+            if (hostileRole && targetMetadata) {
+                val json = JSONObject(response.body!!.string())
+                json.getJSONObject("appProperties").put("entityType", hostile)
+                response.newBuilder().body(okhttp3.ResponseBody.create(null, json.toString())).build()
+            } else response
+        }.addInterceptor(remote).build())
+        sync(vm)
+        assertTrue("The mismatch must be introduced after both own manifest writes", changed.get())
+        assertNotNull(vm.driveSyncError.value)
+        val report = requireNotNull(vm.driveSyncReport.value)
+        val failure = report.steps.firstNotNullOfOrNull { step ->
+            step.failure?.takeIf { step.phase == DriveSyncPhase.COMPLETION && it.check == DriveSyncCheck.LOCAL_PRECONDITION }
+        } ?: error("Completion must retain its existing LOCAL_PRECONDITION classification")
+        val role = if (hostileRole) "unknownFile" else entity
+        val fields = if (versionOnly) setOf("${role}_version")
+            else setOf("${role}_version", "${role}_fileSizeBytes", "${role}_sha256")
+        assertEquals("Only compiled role/schema paths may explain the mismatch", fields, failure.differentFields.toSet())
+        assertEquals(expectedVersion.get(), failure.localRevision)
+        assertEquals(currentVersion.get(), failure.driveRevision)
+        assertEquals(expectedSize.get(), failure.expectedBytes)
+        assertEquals(currentSize.get(), failure.actualBytes)
+        val serialized = report.toJson()
+        val readable = report.germanText()
+        assertTrue(readable.contains("nachgewiesene Dateiversion=${expectedVersion.get()}"))
+        assertTrue(readable.contains("aktuelle Drive-Dateiversion=${currentVersion.get()}"))
+        for (value in listOf(hostile, target.id, target.name) + hashes.get()) {
+            assertFalse("No raw file label, identity, content digest or hostile role may enter diagnostics", serialized.contains(value))
+            assertFalse("No raw file label, identity, content digest or hostile role may enter diagnostics", readable.contains(value))
+        }
+        val restored = requireNotNull(com.example.api.DriveSyncReport.fromJson(serialized))
+        val restoredFailure = restored.steps.firstNotNullOfOrNull { step ->
+            step.failure?.takeIf { step.phase == DriveSyncPhase.COMPLETION && it.check == DriveSyncCheck.LOCAL_PRECONDITION }
+        }!!
+        assertEquals(failure, restoredFailure)
+        assertTrue(restored.germanText().contains("nachgewiesene Dateiversion=${expectedVersion.get()}"))
+        assertEquals(stamp, prefs.getString("last_stammdaten_backup_time", null))
+        assertEquals(localBefore, repo.getAllManagedDocuments())
+        assertEquals(finalRemote.get().keys, remote.entries.keys)
+        finalRemote.get().forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        assertEquals("The final safety check must never attempt another write", 2, mutations().size)
+    }
+
+    @Test fun changedDocumentIndexCompletionReportsOnlyFixedRoleFieldsAndNumericEvidence() = runBlocking {
+        verifyPrivacySafeCompletionMismatchDiagnostics("documentIndex", versionOnly = false)
+    }
+
+    @Test fun unchangedBytesWithAdvancedSupplementalVersionRemainBlockedWithNumericEvidence() = runBlocking {
+        verifyPrivacySafeCompletionMismatchDiagnostics("supplementalBackup", versionOnly = true)
+    }
+
+    @Test fun changedReceiptMetadataCompletionReportsOnlyFixedRoleFieldsAndNumericEvidence() = runBlocking {
+        verifyPrivacySafeCompletionMismatchDiagnostics("receiptMetadata", versionOnly = false)
+    }
+
+    @Test fun hostileCompletionEntityTypeIsRedactedToTheFixedUnknownRole() = runBlocking {
+        verifyPrivacySafeCompletionMismatchDiagnostics("documentIndex", versionOnly = false, hostileRole = true)
+    }
 }

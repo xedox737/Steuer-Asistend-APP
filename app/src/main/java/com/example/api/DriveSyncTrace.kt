@@ -161,6 +161,9 @@ data class DriveSyncReport(
                     append("; Quelle=lokale Sicherheitsprüfung; Prüfcode=${check.name}")
                     if (check == DriveSyncCheck.RECEIPT_REVISION_MISMATCH)
                         append("; lokale Revision=${it.localRevision ?: "unbekannt"}; Drive-Revision=${it.driveRevision ?: "unbekannt"}")
+                    if (check == DriveSyncCheck.LOCAL_PRECONDITION && (it.localRevision != null || it.driveRevision != null ||
+                            it.differentFields.any { field -> field.endsWith("_version") }))
+                        append("; nachgewiesene Dateiversion=${it.localRevision ?: "unbekannt"}; aktuelle Drive-Dateiversion=${it.driveRevision ?: "unbekannt"}")
                 }
                 if (it.differentFields.isNotEmpty()) append("; abweichende Feldnamen=${it.differentFields.joinToString(",")}")
                 it.expectedBytes?.let { size -> append("; nachgewiesene Bytes=$size") }

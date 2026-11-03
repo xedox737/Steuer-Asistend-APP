@@ -250,8 +250,24 @@ object GoogleDriveClient {
                             kotlinx.coroutines.currentCoroutineContext().ensureActive()
                             val current = fetchOriginalFingerprintChecked(token, id)
                             if (before.version.isBlank() || current.version != before.version ||
-                                current.size != before.size || (before.sha256.isNotBlank() && current.sha256.isNotBlank() && current.sha256 != before.sha256))
-                                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION)
+                                current.size != before.size || (before.sha256.isNotBlank() && current.sha256.isNotBlank() && current.sha256 != before.sha256)) {
+                                // Only fixed schema labels and numeric evidence, never an ID, filename,
+                                // hash value or untrusted appProperty. Keep the existing guard intact.
+                                val entity = scope.metadata[id]?.optJSONObject("appProperties")?.optString("entityType")
+                                val role = entity?.takeIf { it in setOf("appConfig", "propertyMetadata", "units",
+                                    "datevProfiles", "aiLearnedRules", "categories", "categoryFolderMappings",
+                                    "receiptMetadata", "receiptIndex", "documentIndex", "supplementalBackup",
+                                    "managedDocument", "receiptOriginal") } ?: "unknownFile"
+                                val fields = buildList {
+                                    if (before.version.isBlank() || current.version != before.version) add("${role}_version")
+                                    if (current.size != before.size) add("${role}_fileSizeBytes")
+                                    if (before.sha256.isNotBlank() && current.sha256.isNotBlank() && current.sha256 != before.sha256)
+                                        add("${role}_sha256")
+                                }
+                                throw DriveSyncConflict(DriveSyncCheck.LOCAL_PRECONDITION,
+                                    localRevision = before.version.toLongOrNull(), driveRevision = current.version.toLongOrNull(),
+                                    differentFields = fields, expectedBytes = before.size, actualBytes = current.size)
+                            }
                         }
                     } }.awaitAll()
                 }
