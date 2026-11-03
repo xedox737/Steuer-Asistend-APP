@@ -758,6 +758,199 @@ class DriveDocumentIndexRegressionTest {
         assertTrue(mutations().isEmpty())
     }
 
+    private suspend fun verifySecondInterruptedMediaUpdatePreservesEveryUnacknowledgedManifestPreimage(
+        commitThenLoseAcknowledgement: Boolean
+    ) {
+        val (vm, original, firstReplacement) = prepareColdOriginalEdit()
+        val supplemental = remote.entries.values.single { it.properties["entityType"] == "supplementalBackup" }
+        val oldSupplemental = supplemental.bytes.copyOf()
+        val firstInterrupted = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            if (request.method in setOf("PATCH", "PUT") &&
+                request.url.encodedPath.endsWith("/${supplemental.id}") &&
+                request.url.queryParameter("uploadType") == "media" && !firstInterrupted.getAndSet(true))
+                throw java.net.SocketTimeoutException("Synthetic first supplemental interruption")
+            chain.proceed(request)
+        }.addInterceptor(remote).build())
+        sync(vm)
+        assertTrue("First media and document index must commit before supplemental interruption", firstInterrupted.get())
+        assertNotNull(vm.driveSyncError.value)
+        assertArrayEquals(firstReplacement, remote.entries.getValue(original.driveFileId!!).bytes)
+        assertArrayEquals(oldSupplemental, supplemental.bytes)
+        val ids = remote.entries.keys.toSet()
+        val otherOriginals = remote.entries.values.filter { it.mime == "image/png" && it.id != original.driveFileId }
+            .associate { it.id to it.bytes.copyOf() }
+        val secondReplacement = firstReplacement + byteArrayOf(78)
+        File(app.filesDir, "synthetic-cold-original-replacement.png").writeBytes(secondReplacement)
+        forgetJsonBaselinesOnly()
+        val secondInterrupted = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val selected = request.method in setOf("PATCH", "PUT") &&
+                request.url.encodedPath.endsWith("/${original.driveFileId}") &&
+                request.url.queryParameter("uploadType") == "media" && !secondInterrupted.getAndSet(true)
+            if (!selected) chain.proceed(request) else {
+                assertNotNull("Every media update remains conditional", request.header("If-Match"))
+                if (commitThenLoseAcknowledgement) chain.proceed(request).close()
+                throw java.net.SocketTimeoutException("Synthetic second media interruption")
+            }
+        }.addInterceptor(remote).build())
+        GoogleDriveClient.clearFolderCache()
+        val secondProcess = connectedModel()
+        sync(secondProcess)
+        assertTrue("The second edit must reach its conditional media update", secondInterrupted.get())
+        assertNotNull(secondProcess.driveSyncError.value)
+        assertArrayEquals(if (commitThenLoseAcknowledgement) secondReplacement else firstReplacement,
+            remote.entries.getValue(original.driveFileId!!).bytes)
+        assertEquals(StableDocumentIdentity.sha256(firstReplacement), repo.getManagedDocument(original.documentId)!!.sha256)
+        assertArrayEquals(oldSupplemental, supplemental.bytes)
+        assertEquals(ids, remote.entries.keys)
+        forgetJsonBaselinesOnly()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor(remote).build())
+        GoogleDriveClient.clearFolderCache()
+        val thirdProcess = connectedModel()
+        sync(thirdProcess)
+        assertNull(thirdProcess.driveSyncReport.value?.toJson(), thirdProcess.driveSyncError.value)
+        assertArrayEquals(secondReplacement, remote.entries.getValue(original.driveFileId!!).bytes)
+        assertOriginalInBothManifests(original, secondReplacement)
+        assertEquals(ids, remote.entries.keys)
+        val originalUpdates = remote.requests.filter { it.method in setOf("PATCH", "PUT") &&
+            it.url.encodedPath.endsWith("/${original.driveFileId}") && it.url.queryParameter("uploadType") == "media" }
+        assertEquals("Committed uncertain writes must not be replayed", if (commitThenLoseAcknowledgement) 0 else 1,
+            originalUpdates.size)
+        assertTrue(originalUpdates.all { !it.header("If-Match").isNullOrBlank() })
+        assertFalse(remote.requests.any { it.method == "POST" })
+        otherOriginals.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        sync(thirdProcess)
+        assertNull(thirdProcess.driveSyncReport.value?.toJson(), thirdProcess.driveSyncError.value)
+        assertTrue(mutations().isEmpty())
+    }
+
+    @Test fun failedSecondMediaBeforeCommitRetainsTheOlderSupplementalPreimageAcrossProcessRestart() = runBlocking {
+        verifySecondInterruptedMediaUpdatePreservesEveryUnacknowledgedManifestPreimage(false)
+    }
+
+    @Test fun lostSecondMediaAcknowledgementRetainsBothManifestPreimagesWithoutReuploadAfterProcessRestart() = runBlocking {
+        verifySecondInterruptedMediaUpdatePreservesEveryUnacknowledgedManifestPreimage(true)
+    }
+
+    @Test fun failedSecondMediaRetainsTheEarlierCommittedOriginalForReceiptMetadataRecoveryAfterProcessRestart() = runBlocking {
+        val (vm, original, firstReplacement) = prepareColdOriginalEdit()
+        val receipt = repo.getReceiptById(22)!!
+        val metadata = remote.entries.getValue(receipt.driveMetadataFileId!!)
+        val oldMetadata = metadata.bytes.copyOf()
+        val oldIndex = indexFile().bytes.copyOf()
+        val supplemental = remote.entries.values.single { it.properties["entityType"] == "supplementalBackup" }
+        val oldSupplemental = supplemental.bytes.copyOf()
+        val firstInterrupted = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            if (request.method in setOf("PATCH", "PUT") && request.url.encodedPath.endsWith("/${metadata.id}") &&
+                request.url.queryParameter("uploadType") == "media" && !firstInterrupted.getAndSet(true))
+                throw java.net.SocketTimeoutException("Synthetic interruption before first receipt-metadata acknowledgement")
+            chain.proceed(request)
+        }.addInterceptor(remote).build())
+        sync(vm)
+        assertTrue("The first media must commit before its receipt metadata is interrupted", firstInterrupted.get())
+        assertNotNull(vm.driveSyncError.value)
+        assertArrayEquals(firstReplacement, remote.entries.getValue(original.driveFileId!!).bytes)
+        assertArrayEquals(oldMetadata, metadata.bytes)
+        assertEquals(StableDocumentIdentity.sha256(firstReplacement), repo.getManagedDocument(original.documentId)!!.sha256)
+        val ids = remote.entries.keys.toSet()
+        val otherOriginals = remote.entries.values.filter { it.mime == "image/png" && it.id != original.driveFileId }
+            .associate { it.id to it.bytes.copyOf() }
+        val secondReplacement = firstReplacement + byteArrayOf(79)
+        File(app.filesDir, "synthetic-cold-original-replacement.png").writeBytes(secondReplacement)
+        val secondInterrupted = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            if (request.method in setOf("PATCH", "PUT") && request.url.encodedPath.endsWith("/${original.driveFileId}") &&
+                request.url.queryParameter("uploadType") == "media" && !secondInterrupted.getAndSet(true)) {
+                assertNotNull(request.header("If-Match"))
+                throw java.net.SocketTimeoutException("Synthetic interruption before second media commit")
+            }
+            chain.proceed(request)
+        }.addInterceptor(remote).build())
+        GoogleDriveClient.clearFolderCache()
+        val secondProcess = connectedModel()
+        sync(secondProcess)
+        assertTrue("The prior committed media must be recoverable before attempting the second edit", secondInterrupted.get())
+        assertNotNull(secondProcess.driveSyncError.value)
+        assertArrayEquals(firstReplacement, remote.entries.getValue(original.driveFileId!!).bytes)
+        assertArrayEquals(oldMetadata, metadata.bytes)
+        assertArrayEquals(oldIndex, indexFile().bytes)
+        assertArrayEquals(oldSupplemental, supplemental.bytes)
+        assertEquals(ids, remote.entries.keys)
+        forgetJsonBaselinesOnly()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor(remote).build())
+        GoogleDriveClient.clearFolderCache()
+        val thirdProcess = connectedModel()
+        sync(thirdProcess)
+        assertNull(thirdProcess.driveSyncReport.value?.toJson(), thirdProcess.driveSyncError.value)
+        assertArrayEquals(secondReplacement, remote.entries.getValue(original.driveFileId!!).bytes)
+        assertOriginalInBothManifests(original, secondReplacement)
+        assertEquals(ids, remote.entries.keys)
+        val sourceUpdates = remote.requests.filter { it.method in setOf("PATCH", "PUT") &&
+            it.url.encodedPath.endsWith("/${original.driveFileId}") && it.url.queryParameter("uploadType") == "media" }
+        assertEquals(1, sourceUpdates.size)
+        assertTrue(sourceUpdates.all { !it.header("If-Match").isNullOrBlank() })
+        assertFalse(remote.requests.any { it.method == "POST" })
+        otherOriginals.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        sync(thirdProcess)
+        assertNull(thirdProcess.driveSyncReport.value?.toJson(), thirdProcess.driveSyncError.value)
+        assertTrue(mutations().isEmpty())
+    }
+
+    @Test fun newerCommittedReceiptMetadataCannotAcceptAnExternalRollbackToAHistoricalOriginal() = runBlocking {
+        val (vm, original, firstReplacement) = prepareColdOriginalEdit()
+        sync(vm)
+        assertNull(vm.driveSyncReport.value?.toJson(), vm.driveSyncError.value)
+        assertOriginalInBothManifests(original, firstReplacement)
+        val receipt = repo.getReceiptById(22)!!
+        val metadata = remote.entries.getValue(receipt.driveMetadataFileId!!)
+        val secondReplacement = firstReplacement + byteArrayOf(80)
+        val authoritativeLocalPath = ReceiptOriginalChain.paths(receipt.imageUrl).single()
+        assertEquals(File(app.filesDir, "synthetic-cold-original-replacement.png").absolutePath, authoritativeLocalPath)
+        File(authoritativeLocalPath).writeBytes(secondReplacement)
+        val interrupted = java.util.concurrent.atomic.AtomicBoolean()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            if (request.method in setOf("PATCH", "PUT") && request.url.encodedPath.endsWith("/${metadata.id}") &&
+                request.url.queryParameter("uploadType") == "media" && !interrupted.getAndSet(true)) {
+                response.close()
+                throw java.net.SocketTimeoutException("Synthetic lost acknowledgement after newer receipt metadata committed")
+            }
+            response
+        }.addInterceptor(remote).build())
+        // Original-only edits need not change the receipt-index summary. Lose the metadata
+        // response itself, after its guaranteed changed content committed, to retain the intent.
+        val secondProcess = vm
+        sync(secondProcess)
+        assertTrue("The newer original and receipt metadata must commit before retaining the journal: ${secondProcess.driveSyncReport.value?.toJson()}", interrupted.get())
+        assertNotNull(secondProcess.driveSyncError.value)
+        assertArrayEquals(secondReplacement, remote.entries.getValue(original.driveFileId!!).bytes)
+        val committed = JSONObject(metadata.bytes.toString(Charsets.UTF_8)).getJSONArray("originalDocuments")
+        assertEquals(StableDocumentIdentity.sha256(secondReplacement), committed.getJSONObject(0).getString("sha256"))
+        val localBefore = repo.getAllManagedDocuments()
+        assertEquals(StableDocumentIdentity.sha256(secondReplacement), repo.getManagedDocument(original.documentId)!!.sha256)
+        remote.entries.getValue(original.driveFileId!!).apply { bytes = firstReplacement; revision++ }
+        val remoteBefore = remote.entries.mapValues { it.value.bytes.copyOf() }
+        forgetJsonBaselinesOnly()
+        transport.set(null, OkHttpClient.Builder().retryOnConnectionFailure(false).addInterceptor(remote).build())
+        GoogleDriveClient.clearFolderCache()
+        val restarted = connectedModel()
+        sync(restarted)
+        assertNotNull("A historical own preimage cannot override later committed receipt metadata", restarted.driveSyncError.value)
+        assertTrue(restarted.driveSyncReport.value!!.steps.any {
+            it.failure?.check == DriveSyncCheck.ORIGINAL_CHECKSUM_MISMATCH })
+        assertEquals(localBefore, repo.getAllManagedDocuments())
+        assertEquals(remoteBefore.keys, remote.entries.keys)
+        remoteBefore.forEach { (id, bytes) -> assertArrayEquals(id, bytes, remote.entries.getValue(id).bytes) }
+        assertTrue(mutations().isEmpty())
+    }
+
     @Test fun lateExternalOriginalChangeCannotUseTheEarlierOwnWriteProofToPublishStaleManifests() = runBlocking {
         val (vm, original, replacement) = prepareColdOriginalEdit()
         val receiptIndex = remote.entries.values.single { it.properties["entityType"] == "receiptIndex" }

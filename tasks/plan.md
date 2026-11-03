@@ -13,6 +13,12 @@ erfolgreichem realem Sync und unveränderter Wiederholung mit dem betroffenen Be
   GitHub-Connector für Veröffentlichung/CI/gewählten Codex-Review autorisiert.
 - Realbericht 02.11.2026 21:20:12Z:22Belege abgeglichen,24beleggebundene Dokumente,
   danach Dokumentindex BACKUP_PREIMAGE_CONFLICT; kein Index-Schreibzugriff.
+- Zwischenstand1404: öffentlicher Head6b0d5cebfefea47a75c29c31883c0663811566af,
+  vollständig grüne CI41572586823 mit1372 Unit-/70 Emulatormethoden, aber Codex-P1
+  zum verlorenen bestätigten Zwischenstand nach fehlgeschlagenem Medienversuch.
+  Separat vor Korrektur reproduziert (27 Methoden/2 Fehler), gemeinsame minimale
+  Journal-Korrektur und28 neue +96 bestehende lokale Methoden grün. Nächster
+  tatsächlicher Commit-Parent ist6b0d5ce; neue eindeutige Kandidatenversion1405.
 
 ## Vorgehen
 

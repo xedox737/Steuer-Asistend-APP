@@ -9,7 +9,14 @@ import java.io.File
  * account names or credentials. A root ID and file ID bind a fact to one owned cloud object. */
 internal class DrivePendingWrites(context: Context) {
     private val directory = File(context.noBackupFilesDir, "drive-pending-writes")
-    data class OriginalChange(val beforeSha256: String, val afterSha256: String)
+    data class OriginalChange(val beforeSha256: String, val afterSha256: String,
+                              val observedBeforeSha256: String? = null) {
+        /** A write intent is not a committed outcome. Keep the independently observed current
+         * state when a later attempt fails, without accepting a rollback behind that state. */
+        fun matches(expected: String, actual: String): Boolean =
+            (beforeSha256.equals(expected, true) || observedBeforeSha256?.equals(expected, true) == true) &&
+                (afterSha256.equals(actual, true) || observedBeforeSha256?.equals(actual, true) == true)
+    }
 
     private fun record(root: String, id: String): AtomicFile {
         require(root.isNotBlank() && id.isNotBlank())
@@ -23,16 +30,20 @@ internal class DrivePendingWrites(context: Context) {
         val bytes = try { file.openRead().use { it.readBytes() } } catch (_: java.io.FileNotFoundException) { return@synchronized null }
         val json = JSONObject(bytes.toString(Charsets.UTF_8))
         check(json.getString("root") == root && json.getString("file") == id && json.getInt("version") == 1)
-        OriginalChange(json.getString("before"), json.getString("after")).also {
-            check(it.beforeSha256.matches(SHA) && it.afterSha256.matches(SHA))
+        OriginalChange(json.getString("before"), json.getString("after"),
+            json.optString("observedBefore").takeIf { it.isNotBlank() }).also {
+            check(it.beforeSha256.matches(SHA) && it.afterSha256.matches(SHA) &&
+                (it.observedBeforeSha256 == null || it.observedBeforeSha256.matches(SHA)))
         }
     }
 
-    fun rememberOriginalChange(root: String, id: String, before: String, after: String) = synchronized(lock) {
-        require(before.matches(SHA) && after.matches(SHA))
+    fun rememberOriginalChange(root: String, id: String, before: String, after: String,
+                               observedBefore: String) = synchronized(lock) {
+        require(before.matches(SHA) && after.matches(SHA) && observedBefore.matches(SHA))
         val file = record(root, id)
         val bytes = JSONObject().put("version", 1).put("root", root).put("file", id)
-            .put("before", before).put("after", after).toString().toByteArray(Charsets.UTF_8)
+            .put("before", before).put("after", after).put("observedBefore", observedBefore)
+            .toString().toByteArray(Charsets.UTF_8)
         val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) }
         catch (error: Throwable) { file.failWrite(stream); throw error }
@@ -55,12 +66,16 @@ internal class DrivePendingWrites(context: Context) {
         val json = try { file.openRead().use { JSONObject(it.readBytes().toString(Charsets.UTF_8)) } }
             catch (_: java.io.FileNotFoundException) { return@synchronized emptySet() }
         check(json.getInt("version") == 1 && json.getString("root") == root && json.getString("file") == id)
-        if (json.getString("binding") != backupBinding(document) || json.getString("after") != hash ||
-            json.getLong("afterSize") != size) return@synchronized emptySet()
+        if (json.getString("binding") != backupBinding(document)) return@synchronized emptySet()
         val preimages = json.getJSONArray("preimages")
-        (0 until preimages.length()).map { index -> preimages.getJSONObject(index).let {
+        val confirmed = (0 until preimages.length()).map { index -> preimages.getJSONObject(index).let {
             DriveBackupConflictGuard.OriginalPreimage(it.getString("sha256"), it.getLong("size"))
         } }.toSet().also { values -> check(values.isNotEmpty() && values.all { it.sha256.matches(SHA) && it.size > 0 }) }
+        // The after endpoint is only an attempt until observed. An interrupted B→C must
+        // retain the committed H→B preimages when the freshly verified original is still B.
+        if ((json.getString("after") != hash || json.getLong("afterSize") != size) &&
+            confirmed.none { it.sha256 == hash && it.size == size }) return@synchronized emptySet()
+        confirmed
     }
 
     fun rememberBackupOriginalChange(root: String, document: ManagedDocument, beforeHash: String, beforeSize: Long,

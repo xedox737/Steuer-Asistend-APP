@@ -1713,8 +1713,7 @@ class DrivePersistenceRepository(
                     }
                     val hash = fingerprint.sha256.ifBlank { getSha256(GoogleDriveClient.downloadFileBytesChecked(token, id)) }
                     val pending = DrivePendingWrites(context).originalChange(config.rootFolderId, id)
-                    val committedByThisApp = pending != null && pending.beforeSha256.equals(document.sha256, ignoreCase = true) &&
-                        pending.afterSha256.equals(hash, ignoreCase = true)
+                    val committedByThisApp = pending?.matches(document.sha256, hash) == true
                     if (fingerprint.size <= 0)
                         throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.ORIGINAL_SIZE_INVALID)
                     if (document.sha256.isBlank())
@@ -1930,8 +1929,7 @@ class DrivePersistenceRepository(
                     }
                     if (!expected.equals(actual, ignoreCase = true)) {
                         val known = pending.originalChange(config.rootFolderId, id)
-                        if (known == null || !known.beforeSha256.equals(expected, ignoreCase = true) ||
-                            !known.afterSha256.equals(actual, ignoreCase = true))
+                        if (known?.matches(expected, actual) != true)
                             throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_PRECONDITION)
                         reconciled += document to fingerprint.copy(sha256 = actual)
                     }
@@ -1981,7 +1979,7 @@ class DrivePersistenceRepository(
                 pending.rememberBackupOriginalChange(config.rootFolderId, document,
                     fingerprint.sha256, fingerprint.size, getSha256(bytes), bytes.size.toLong())
                 pending.rememberOriginalChange(config.rootFolderId, fileId,
-                    old?.beforeSha256 ?: fingerprint.sha256, getSha256(bytes))
+                    old?.beforeSha256 ?: fingerprint.sha256, getSha256(bytes), fingerprint.sha256)
                 com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.ORIGINAL, receipt.internalId) {
                     GoogleDriveClient.updateOriginalChecked(accessToken, fingerprint, bytes, document.mimeType)
                 }

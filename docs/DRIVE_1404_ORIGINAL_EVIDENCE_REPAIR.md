@@ -16,7 +16,8 @@ Der reale Lauf vom 02.11.2026 21:20:12Z mit Version1403 war **nicht erfolgreich*
 DATEV und weitere Stammdaten waren unverändert; Zusatzsicherung und Abschluss wurden
 nicht erreicht. Die bisherige grüne CI beweist keine erfolgreiche Gerätesynchronisation.
 
-Neue Kandidatenversion:1404, unverändertes Paket und dauerhaftes Produktzertifikat.
+Zwischenkandidat1404 wurde im Review wegen eines weiteren Wiederaufnahmefehlers gesperrt.
+Überarbeitete Kandidatenversion:1405, unverändertes Paket und dauerhaftes Produktzertifikat.
 Freigabe erst nach vollständigem realem POCO-/Drive-Sync und unverändertem Zweitlauf.
 Keine Deinstallation, Rücksetzung, Löschung oder automatischer Merge.
 
@@ -55,6 +56,35 @@ legitimen Originaländerung H→B, einschließlich Größe40→41: Original, Bel
 Belegindex werden korrekt aktualisiert, anschließend blockieren beide Sicherungsmanifeste
 bei unverändertem fachlichem Zeitstempel. `syncKnownReceipt` entfernte den ursprünglichen
 Änderungsnachweis bereits nach dem Belegindex und damit vor den abhängigen Sicherungen.
+
+## Nachtrag zum Codex-P1-Review von1404
+
+Der veröffentlichte Zwischenstand `6b0d5cebfefea47a75c29c31883c0663811566af`
+bestand CI41572586823 einschließlich1372 echter Unitmethoden und Emulatorjob. Der
+unabhängige Review fand trotzdem einen konkreten Wiederaufnahmefehler: H→B ist
+bestätigt, eine Sicherung enthält nochH; ein folgender B→C-Versuch scheitert vor
+dem Mediencommit. Der Journal-Lookup berücksichtigte nur das versuchte ZielC,
+verwarf beim weiterhin vorhandenen B die bestätigten H/B-Vorstände und verlorH
+beim nächsten Schreiben. Supplemental blockierte nach dem Wiederholungsupload.
+
+Ein separater roter Test bewies denselben Verlust im älteren Beleg-Medienjournal:
+Nach bestätigtem B, noch ungesicherten BelegmetadatenH und fehlgeschlagenem C-Versuch
+wurde das tatsächlich vorhandene B nicht mehr anerkannt; schon die Bestandsprüfung
+blockierte. Deshalb werden beide Journal-Lookups gezielt korrigiert:
+
+- Das Manifestjournal bewahrt die unveränderlichen, zuvor unabhängig bestätigten
+  Hash-/Größenpaare getrennt vom versuchten Ziel. Ein erneut frisch geprüftes B
+  erhält die ganze bestätigte Historie, auch wenn das unbestätigte ZielC abweicht.
+- Das Belegjournal speichert den aktuell beobachteten Vorzustand separat vom
+  beabsichtigten Nachzustand. Der Nachzustand darf nicht selbst als frühere
+  Metadaten-Baseline dienen. Alte Journaldateien bleiben lesbar; ihre fehlenden
+  Beobachtungen werden nicht erfunden.
+
+Rote Nachweise:26 Methoden/1 Fehler, danach27 Methoden/2 Fehler. Eine verlorene
+Antwort nach bereits bestätigtem C blieb bereits zuvor ohne erneuten Medienupload
+wiederaufnehmbar. Ein zusätzlicher Gegenfall schützt MetadatenC vor einem echten
+externen Rücksprung des Originals auf das historische B. Die neue CI muss den
+überarbeiteten Head erneut vollständig prüfen; der alte grüne Lauf genügt nicht.
 
 ## Gezielte Korrektur
 
@@ -105,7 +135,7 @@ geänderte Originalversion/Bindung, eigene H→B→C-Übergänge sowie externe O
 IDs, vollständige Inhalte, Originalbytes, Datensatzanzahl und ausbleibende Dubletten
 werden überprüft. Bestehende Phase11E- und DATEV-Tests bleiben unverändert aktiv.
 
-Endgültiger lokaler Stand:24 neue +84 bestehende Phase11E +12 DATEV-Methoden,
+Endgültiger lokaler Stand einschließlich P1-Nachtrag:28 neue +84 bestehende Phase11E +12 DATEV-Methoden,
 null Fehler/Skips;16 Python-Prüfungen und Diff-Prüfung bestanden.
 [Rot-/Grün-Zähler, tatsächliche Methodennamen und Quellhash](drive-1404-evidence/local-regression.json).
 
