@@ -1,0 +1,1 @@
+Nutze $immopilot-prompt-master und erstelle einen Merge-Readiness-Prüfauftrag. Prüfe Base/Head, Branch-Protection, Reviews, verify, android-emulator-e2e und relevante Regressionen. Berichte GO/NO-GO; ohne gesonderte ausdrückliche Merge-Freigabe kein Merge.
