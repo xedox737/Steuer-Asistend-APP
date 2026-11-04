@@ -126,7 +126,7 @@ Bei reinen Dokumentationsänderungen statische Text-, Link-, Diff- und Scope-Pr�
 
 ## 9. Codex Prompt Master (optional)
 
-Der ergänzende Prompt-Generator befindet sich in dem **separaten, derzeit offenen PR #162** unter `.agents/skills/immopilot-prompt-master/SKILL.md`. Erst wenn er tatsächlich im Arbeitsbranch verfügbar ist, kann Codex ihn verwenden. Der Skill dient zur **Erstellung strukturierter Aufträge**, nicht als selbständige zusätzliche Berechtigung zur Änderung oder Veröffentlichung. Er ersetzt weder diese Anleitung noch `AGENTS.md`.
+Der ergänzende Prompt-Generator wurde über **PR #162 nach `main` übernommen** und befindet sich unter `.agents/skills/immopilot-prompt-master/SKILL.md`. Erst wenn er tatsächlich im Arbeitsbranch verfügbar ist, kann Codex ihn verwenden. Der Skill dient zur **Erstellung strukturierter Aufträge**, nicht als selbständige zusätzliche Berechtigung zur Änderung oder Veröffentlichung. Er ersetzt weder diese Anleitung noch `AGENTS.md`.
 
 Bei bereits verfügbarem Skill kann der Nutzer z. B. sagen:
 
