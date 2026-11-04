@@ -1,0 +1,1 @@
+Nutze $immopilot-prompt-master und erstelle einen vollständig nachprüfbaren Codex-Auditprompt für xedox737/Steuer-Asistend-APP. Prüfe Datenverlust, Navigation, Bank/Miete, DATEV, Room, Backup/Restore sowie Tests. Nur lesender Audit, keine Commits oder PRs.

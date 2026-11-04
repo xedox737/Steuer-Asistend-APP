@@ -1,0 +1,1 @@
+Nutze $immopilot-prompt-master und erstelle einen Bugfix-Auftrag für einen reproduzierbaren Fehler bei der Bank-Mietzuordnung. Fordere einen zunächst fehlschlagenden Regressionstest und einen minimalen Fix. Commit, Push, PR und Merge sind nicht freigegeben.

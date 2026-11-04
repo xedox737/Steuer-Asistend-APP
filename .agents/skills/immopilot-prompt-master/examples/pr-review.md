@@ -1,0 +1,1 @@
+Nutze $immopilot-prompt-master und erstelle einen PR-Review-Auftrag. Prüfe Diff, Betroffenheit, Datenintegrität und GitHub-CI anhand konkreter Belege. Ändere nichts und merge nicht.
