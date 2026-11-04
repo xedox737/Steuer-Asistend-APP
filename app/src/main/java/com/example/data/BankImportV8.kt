@@ -395,7 +395,9 @@ data class BankZipParsedImport(
 
 object BankZipImportLimits {
     const val MAX_ZIP_BYTES: Long = 20L * 1024 * 1024
-    const val MAX_ENTRIES = 50
+    // Sparkasse ZIP exports can contain many XML statements and companion entries.
+    // Keep a strict finite entry cap alongside the byte and decompression limits.
+    const val MAX_ENTRIES = 500
     const val MAX_TOTAL_UNCOMPRESSED_BYTES: Long = 50L * 1024 * 1024
     const val MAX_XML_BYTES: Long = 10L * 1024 * 1024
     const val MAX_COMPRESSION_RATIO = 200.0

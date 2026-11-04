@@ -156,7 +156,7 @@ class BankCamtZipV8AcceptanceTest {
         assertTrue(runCatching { BankZipImportParser.parse(empty, "empty.zip") }.isFailure)
         assertTrue(runCatching { BankZipImportParser.parse(byteArrayOf(0x50, 0x4b, 0x03, 0x04, 1, 2, 3), "broken.zip") }.isFailure)
         val many = (1..51).associate { "f$it.txt" to byteArrayOf(1) }
-        assertTrue(runCatching { BankZipImportParser.parse(zipOf(*many.toList().toTypedArray()), "many.zip") }.isFailure)
+        assertTrue(runCatching { BankZipImportParser.parse(zipOf(*many.toList().toTypedArray()), "many.zip", limits = BankZipSafetyLimits(maxEntries = 50)) }.isFailure)
     }
 
     @Test fun sameTransactionsFromDirectAndZipKeepSameIds() {
