@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Dedicated, synthetic before/after workload; the regular E2E suite still runs separately.
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/bank-profile-artifact.sh"
 artifact_dir=app/build/bank-performance
 device_artifact_dir=/sdcard/Download/immopilot-emulator-e2e
 package=com.aistudio.steuerassistent.vnhqkp
@@ -84,12 +85,15 @@ PY_CHECK
     # the three unprofiled cold first-frame measurements above.
     startup_trace="/data/local/tmp/bank-startup-$count.trace"
     adb shell am force-stop "$package"
+    adb shell rm -f "$startup_trace"
     adb shell am start -W --start-profiler "$startup_trace" --sampling 1000 \
       -n "$package/com.example.MainActivity" > "$artifact_dir/cold-start-profile-$count.txt"
     adb shell uiautomator dump /sdcard/bank-profile-start.xml > /dev/null
     adb shell am profile stop "$package"
-    adb pull "$startup_trace" "$artifact_dir/bank-startup-$count.trace"
-    test -s "$artifact_dir/bank-startup-$count.trace"
+    if ! bank_pull_flushed_profile "$startup_trace" "$artifact_dir/bank-startup-$count.trace"; then
+      # Preserve the measurement failure and still exercise the other data size.
+      overall_result=1
+    fi
   else
     # No validated fixture: report missing measurements rather than timing empty data.
     overall_result=1

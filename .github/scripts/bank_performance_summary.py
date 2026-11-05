@@ -150,6 +150,12 @@ def build_summary(root, revision, processor=None):
         case['workloads'] = {op: select_numbers(values, ('wall_ms', 'cpu_ms'))
                              for op, values in read_json(workloads).items()
                              if op in OPERATIONS and isinstance(values, dict)} if workloads else {}
+        case['trace_bytes'] = {}
+        for kind, name in [('scheduler', f'bank-performance-{count}.pftrace'),
+                           ('startup', f'bank-startup-{count}.trace'), ('methods', f'bank-profile-{count}.trace')]:
+            path = next(root.rglob(name), None)
+            if path:
+                case['trace_bytes'][kind] = path.stat().st_size
         case['profiles'] = []
         if processor:
             trace = root / f'bank-performance-{count}.pftrace'
