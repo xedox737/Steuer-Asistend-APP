@@ -1,4 +1,21 @@
 #!/usr/bin/env bash
+# Perfetto's official recorder reads the numeric stdout line, not the last line.
+bank_recorder_pid() {
+  local line recorder_pid= matches=0
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    if [[ "$line" =~ ^[0-9]+$ ]] && [ "$line" -gt 1 ] && [ "$line" -le 4194304 ]; then
+      recorder_pid=$line
+      matches=$((matches+1))
+    fi
+  done
+  if [ "$matches" -ne 1 ]; then
+    printf '%s\n' 'Perfetto did not report exactly one recorder PID.' >&2
+    return 1
+  fi
+  printf '%s\n' "$recorder_pid"
+}
+
 # am profile stop schedules work in the app; its return does not mean ART flushed.
 bank_pull_flushed_profile() {
   local remote=$1 destination=$2 attempts=${3:-20} interval=${4:-0.25}

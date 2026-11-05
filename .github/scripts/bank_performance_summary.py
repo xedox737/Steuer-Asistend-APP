@@ -100,6 +100,47 @@ def scheduler_rows(text):
     return result
 
 
+def fault_values(text):
+    # Counts describe the whole device log for this test, not proven app causes.
+    return {'device_oom_mentions': text.count('java.lang.OutOfMemoryError'),
+            'device_sigsegv_mentions': text.count('Fatal signal 11'),
+            'device_sigabrt_mentions': text.count('Fatal signal 6'),
+            'device_art_frame_mentions': text.count('libart.so'),
+            'device_gpu_frame_mentions': sum(text.count(name) for name in ('libGLES', 'libEGL', 'libvulkan', 'libhwui')),
+            'app_lmk_mentions': len(re.findall(r'lmkd.*Kill.*com\.aistudio\.steuerassistent\.vnhqkp', text)),
+            'recorder_lmk_mentions': len(re.findall(r'lmkd.*Kill.*perfetto', text))}
+
+
+def recorder_values(root, count):
+    values = {}
+    start = root / f'recorder-{count}.start-exit'
+    if start.exists() and start.read_text().strip().isdigit():
+        values['start_exit'] = int(start.read_text())
+    output = root / f'recorder-{count}.stdout'
+    if output.exists():
+        values['pid_line_count'] = sum(bool(re.fullmatch(r'[0-9]+', line.strip())) for line in output.read_text().splitlines())
+    states = []
+    for phase in ('start', 'after_test', 'before_stop'):
+        prefix = root / f'recorder-{count}-{phase}'
+        def read(suffix):
+            path = Path(str(prefix) + suffix)
+            return path.read_text() if path.exists() else ''
+        status = read('.status')
+        if not any(read(suffix) for suffix in ('.comm', '.status', '.kill-exit')):
+            continue
+        state = re.search(r'^State:\s*([A-Z])', status, re.M)
+        uid = re.search(r'^Uid:\s*(\d+)', status, re.M)
+        row = {'phase': phase, 'is_perfetto': read('.comm').strip() == 'perfetto',
+               'uid_is_shell': bool(uid and uid[1] == '2000'),
+               'state': {'R': 'running', 'S': 'sleeping', 'D': 'io_wait', 'Z': 'zombie'}.get(state[1] if state else '', 'unavailable'),
+               'kill_permission_error': any(term in read('.kill-error') for term in ('Operation not permitted', 'Permission denied'))}
+        if read('.kill-exit').strip().isdigit():
+            row['kill_exit'] = int(read('.kill-exit'))
+        states.append(row)
+    values['states'] = states
+    return values
+
+
 def read_json(path):
     try:
         return json.loads(path.read_text())
@@ -118,6 +159,10 @@ def build_summary(root, revision, processor=None):
         complete = (len(runs) == 3 and {row.get('run') for row in runs} == {1, 2, 3}
                     and all(set(RUN_FIELDS) <= row.keys() for row in runs))
         case = {'count': count, 'status': 'complete' if complete else 'incomplete' if source else 'unavailable', 'runs': runs}
+        case['recorder_control'] = recorder_values(root, count)
+        device_log = root / f'logcat-{count}.txt'
+        if device_log.exists():
+            case['fault_mentions'] = fault_values(device_log.read_text())
         plan = next(root.rglob(f'bank-query-plans-{count}.txt'), None)
         if plan:
             text = plan.read_text()
@@ -176,6 +221,10 @@ def build_summary(root, revision, processor=None):
                     case['profiles'].append(entry)
         cases.append(case)
     result = {'revision': revision, 'cases': cases}
+    result['recorder_smoke'] = recorder_values(root, 'smoke')
+    smoke_trace = root / 'bank-performance-smoke.pftrace'
+    if smoke_trace.exists():
+        result['recorder_smoke']['trace_bytes'] = smoke_trace.stat().st_size
     version = root / 'perfetto-version.txt'
     if version.exists():
         match = re.search(r'v(\d+)\.(\d+)', version.read_text())
