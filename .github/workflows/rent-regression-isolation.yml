@@ -1,0 +1,75 @@
+name: Rent regression isolation
+'on':
+  push:
+    branches:
+    - diagnostics/bank-performance-164
+permissions:
+  contents: read
+jobs:
+  rent-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 9.3.1
+    - name: Prepare disposable test signing and compile
+      run: 'keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname
+        ''CN=Android Debug,O=Android,C=US'' -keyalg RSA -keysize 2048 -validity 10000
+
+        gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+
+        '
+    - name: Enable KVM
+      run: 'echo ''KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"'' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+
+        sudo udevadm control --reload-rules
+
+        sudo timeout 15s udevadm trigger --name-match=kvm --settle
+
+        test -r /dev/kvm && test -w /dev/kvm
+
+        '
+    - name: Select the isolated existing rent regression
+      run: 'python3 - <<''PY_DRIVER''
+
+        from pathlib import Path
+
+        s=Path(''.github/scripts/run-android-emulator-e2e.sh'').read_text()
+
+        s=s.replace(''gradle connectedDebugAndroidTest '', ''gradle connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.example.e2e.Phase7BBatch15EmulatorTest
+        '')
+
+        Path(''/tmp/bank-suggestion-diagnostic.sh'').write_text(s)
+
+        PY_DRIVER'
+    - name: Run isolated rent dialog regression with unchanged assertions
+      uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+      with:
+        api-level: 35
+        target: google_apis
+        arch: x86_64
+        profile: pixel_5
+        cores: 2
+        ram-size: 2048M
+        heap-size: 512M
+        disable-animations: true
+        emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front
+          none -accel on
+        script: bash /tmp/bank-suggestion-diagnostic.sh
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - label: main
+          ref: a4fd2982e76915f69e72a2f21295a971a8beb2ec
+        - label: original-pr
+          ref: 43dd3c582963b77993b9aef22c120f020262a265
+    name: rent-dialog-isolation (${{ matrix.label }})
