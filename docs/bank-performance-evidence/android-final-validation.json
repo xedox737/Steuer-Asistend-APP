@@ -1,0 +1,14 @@
+{
+  "command": "gradle lintDebug assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon --console=plain",
+  "java": 21,
+  "duration": "6m23s",
+  "result": "BUILD SUCCESSFUL",
+  "lintIssues": {
+    "Warning": 128
+  },
+  "source_commit": "9b064792bf4fc937ec40b7af69d94efd723d5cd4",
+  "app_apk_bytes": 38024222,
+  "instrumentation_apk_bytes": 1273517,
+  "localEmulatorExecuted": false,
+  "reason": "No /dev/kvm; required emulator tests run on GitHub"
+}

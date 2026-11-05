@@ -30,6 +30,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class BankPerformanceEmulatorTest : EmulatorTestSupport() {
     private val baseline get() = InstrumentationRegistry.getArguments().getString("immopilotBankBaseline") == "true"
+    private val profiling get() = InstrumentationRegistry.getArguments().getString("immopilotBankProfile") == "true"
     private val listMatcher = SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollToIndex)
 
     @Test fun imported1250RowsStayResponsiveAndPreserveAllData() = exerciseImport(1_250)
@@ -86,6 +87,8 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
         val initialModel = vm
         ui.waitUntil(10_000) { initialModel.bankTransactions.value.size == count && initialModel.receipts.value.size == 40 }
         val before = snapshot()
+        if (profiling) saveArtifact("bank-fixture-$count.json", JSONObject()
+            .put("transactions", before.transactions.size).put("receipts", before.receipts.size).toString().toByteArray())
         val queryPlans = runBlocking(Dispatchers.IO) {
             listOf(
                 "SELECT * FROM bank_transactions ORDER BY bookingDate DESC, transactionId DESC",
@@ -99,7 +102,7 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
                 }
             }
         }
-        saveArtifact("bank-query-plans-$count.txt", queryPlans.toByteArray())
+        if (profiling) saveArtifact("bank-query-plans-$count.txt", queryPlans.toByteArray())
         val results = JSONArray()
         val report = JSONObject().put("count", count).put("baseline", baseline)
             .put("startup_kind", "warm_process_activity_relaunch").put("runs", results)
@@ -140,7 +143,7 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
                 }
                 saveArtifact("bank-perf-$count-run-${run + 1}-meminfo.txt", shell("dumpsys meminfo ${context.packageName}").toByteArray())
                 saveArtifact("bank-perf-$count-run-${run + 1}-gfxinfo.txt", shell("dumpsys gfxinfo ${context.packageName} framestats").toByteArray())
-                if (run == 0) capture("bank-performance-$count-list")
+                if (profiling && run == 0) capture("bank-performance-$count-list")
                 val detailHeartbeat = Heartbeat().apply { start() }
                 val detailAt = SystemClock.uptimeMillis()
                 try {
@@ -152,7 +155,7 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
                     detailHeartbeats += gap
                 }
                 saveArtifact("bank-perf-$count-run-${run + 1}-detail-meminfo.txt", shell("dumpsys meminfo ${context.packageName}").toByteArray())
-                if (run == 0) capture("bank-performance-$count-detail")
+                if (profiling && run == 0) capture("bank-performance-$count-detail")
                 systemBack()
                 // Indexed keys exercise the final imported ID without scanning thousands of viewports.
                 if (!baseline) {
@@ -178,7 +181,7 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
                 assertTrue("Opening details and computing suggestions must remain responsive: $detailHeartbeats",
                     detailHeartbeats.sorted()[1] < 2_000L)
             }
-            recordProfile(count, transactions, property, unit)
+            if (profiling) recordProfile(count, transactions, property, unit)
             assertEquals(before, snapshot())
         } finally {
             saveArtifact("bank-performance-$count.json", report.toString(2).toByteArray())
@@ -197,11 +200,30 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithText(firstCounterparty).assertIsDisplayed()
     }
 
-    private fun openDetailsAndAwaitSuggestions(counterparty: String) {
-        ui.onNodeWithText(counterparty).performClick()
-        ui.onNodeWithText("Buchungsdetails").assertIsDisplayed()
-        val model = vm
-        ui.waitUntil(10_000) { model.bankMatchSuggestions.value.isNotEmpty() && model.bankRentSuggestions.value.isNotEmpty() }
+    private fun openDetailsAndAwaitSuggestions(counterparty: String, profileAlreadyActive: Boolean = false) {
+        val diagnostic = !profileAlreadyActive && InstrumentationRegistry.getArguments()
+            .getString("immopilotBankDiagnosticProfile") == "true"
+        val count = vm.bankTransactions.value.size
+        val trace = File(context.cacheDir, "bank-suggestion-diagnostic-$count.trace")
+        if (diagnostic) Debug.startMethodTracingSampling(trace.absolutePath, 8 * 1024 * 1024, 1_000)
+        try {
+            ui.onNodeWithText(counterparty).performClick()
+            ui.onNodeWithText("Buchungsdetails").assertIsDisplayed()
+            val model = vm
+            try {
+                ui.waitUntil(10_000) { model.bankMatchSuggestions.value.isNotEmpty() && model.bankRentSuggestions.value.isNotEmpty() }
+            } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+                throw AssertionError("Suggestion readiness: transactions=${model.bankTransactions.value.size}, " +
+                    "receipts=${model.receipts.value.size}, properties=${model.properties.value.size}, " +
+                    "receiptSuggestions=${model.bankMatchSuggestions.value.size}, " +
+                    "rentSuggestions=${model.bankRentSuggestions.value.size}", failure)
+            }
+        } finally {
+            if (diagnostic) {
+                Debug.stopMethodTracing()
+                saveArtifact("bank-suggestion-diagnostic-$count.trace", trace.readBytes())
+            }
+        }
     }
 
     private fun recordProfile(count: Int, transactions: List<BankTransaction>, property: PropertyMetadata, unit: WohneinheitStatus) {
@@ -218,7 +240,7 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
         Debug.startMethodTracingSampling(trace.absolutePath, 16 * 1024 * 1024, 1_000)
         try {
             openBank(transactions.last().counterparty)
-            openDetailsAndAwaitSuggestions(transactions.last().counterparty)
+            openDetailsAndAwaitSuggestions(transactions.last().counterparty, profileAlreadyActive = true)
             val data = snapshot()
             fun workload(name: String, compute: () -> Unit) {
                 val wall = SystemClock.elapsedRealtimeNanos()
@@ -233,9 +255,21 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
             workload("dao_transactions") { runBlocking(Dispatchers.IO) { assertEquals(count, db.bankDao().getAllTransactions().size) } }
             workload("dao_links_and_rent") { runBlocking(Dispatchers.IO) { db.bankDao().getAllLinks(); db.bankRentAssignmentDao().getAll() } }
             workload("counts") { BankCompactUiPolicy.counts(transactions) }
+            workload("filter") { BankCompactUiPolicy.filter(transactions, BankCompactFilter.OPEN) }
+            workload("summary") { BankCompactUiPolicy.summary(transactions) }
             workload("group") { BankCompactUiPolicy.group(transactions) }
             workload("search") { BankCompactUiPolicy.search(transactions, "Miete") }
             workload("matcher") { BankReceiptMatcher.bestSuggestions(transactions, data.receipts, data.links) }
+            workload("reverse_matcher") {
+                data.receipts.take(30).forEach { BankReceiptMatcher.bestForReceipt(it, transactions, data.links) }
+            }
+            workload("transaction_picker") {
+                BankReceiptMatcher.rankTransactionsForReceipt(data.receipts.first(), transactions, data.links)
+            }
+            workload("last_month_assignment") {
+                BankLastMonthAssignmentPolicy.suggest(transactions.last(), transactions, data.links, data.receipts)
+            }
+            workload("transfer_matcher") { BankTransferMatcher.suggestions(transactions.last(), transactions) }
             workload("rent") {
                 // The same checked-in harness also runs on the unoptimized base commit.
                 // Only absence is optional; a broken new API must fail this test.

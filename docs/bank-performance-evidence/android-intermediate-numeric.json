@@ -1,0 +1,52 @@
+{
+  "commit": "43dd3c582963b77993b9aef22c120f020262a265",
+  "runtime": "Android API 35 emulator; incomplete first run, not three-run success",
+  "comparison_run": 41968950382,
+  "baseline": {
+    "1250": "process_crash",
+    "5000": "out_of_memory",
+    "app_heap_growth_limit_bytes": 201326592
+  },
+  "after_intermediate": [
+    {
+      "count": 1250,
+      "activity_relaunch_ms": 2038,
+      "bank_ready_ms": 1726,
+      "composed_rows": 4,
+      "bank_main_max_gap_ms": 528,
+      "detail_main_max_gap_ms": 407,
+      "total_pss_kb": 286645,
+      "java_heap_kb": 21832,
+      "native_heap_kb": 18036
+    },
+    {
+      "count": 5000,
+      "activity_relaunch_ms": 1704,
+      "bank_ready_ms": 1080,
+      "composed_rows": 4,
+      "bank_main_max_gap_ms": 373,
+      "detail_main_max_gap_ms": 290,
+      "total_pss_kb": 306179,
+      "java_heap_kb": 49576,
+      "native_heap_kb": 23200
+    }
+  ],
+  "diagnostic_run": 41971658799,
+  "suggestions_at_timeout": [
+    {
+      "count": 1250,
+      "receipt_suggestions": 0,
+      "rent_suggestions": 250
+    },
+    {
+      "count": 5000,
+      "receipt_suggestions": 0,
+      "rent_suggestions": 1000
+    }
+  ],
+  "rent_dialog_isolation": {
+    "run": 41974221540,
+    "main": "success",
+    "original_pr": "success"
+  }
+}

@@ -1,6 +1,6 @@
 # Bankimport: Listen- und Berechnungsperformance
 
-Ausgangsstand: `a4fd2982e76915f69e72a2f21295a971a8beb2ec` (`main`, am 04.11.2026 frisch abgerufen).
+Ausgangsstand: `a4fd2982e76915f69e72a2f21295a971a8beb2ec` (`main`, am 05.11.2026 erneut unverändert abgerufen).
 Nur synthetische Fixtures; keine Echtdaten. Keine Änderung an Room-Schema, Migrationen,
 Importformaten, IDs oder schreibenden Bank-/Beleg-/Mietzuordnungspfaden.
 
@@ -62,20 +62,23 @@ je zwei Warmups und drei gemessene Wiederholungen. JVM-Werte, keine Android-Late
 
 | Operation bei 5.000 Buchungen | Median vorher → nachher | Allokation pro Lauf vorher → nachher |
 |---|---:|---:|
-| Gruppierung | 17,27 → 1,54 ms | 30.697.240 → 124.720 B |
-| Belegmatching (40 Belege) | 893,93 → 784,38 ms | 1.818.793.728 → 932.774.568 B |
-| Mietkandidaten, kompletter Batch | 357,53 → 107,87 ms | 463.128.192 → 128.031.328 B |
-| Suche | 26,80 → 22,33 ms | 13.873.272 → 6.723.888 B |
+| Gruppierung | 17,27 → 1,67 ms | 30.697.240 → 125.168 B |
+| Belegmatching (40 Belege) | 893,93 → 61,38 ms | 1.818.793.728 → 33.947.608 B |
+| Mietkandidaten, kompletter Batch | 357,53 → 114,54 ms | 463.128.192 → 128.180.000 B |
+| Suche | 26,80 → 19,49 ms | 13.873.272 → 6.723.944 B |
 
 Die Zeitintervalle für Gruppierung, Matching und Mietkandidaten trennen sich bei 5.000
-Buchungen (Min/Max stehen im XML). Bei 1.250 überlappen Such-/Matching-Zeitintervalle;
+Buchungen (Min/Max stehen im XML). Bei 1.250 überlappen die Such-Zeitintervalle;
 es wird dafür kein belastbarer Geschwindigkeitsgewinn behauptet. Die Suchänderung bleibt
 wegen der deterministischen Allokationsreduktion von rund 52 % bei 5.000 Buchungen erhalten.
 Die unveränderten Zähler dienen als Kontrolle; JIT/GC-Ausreißer verbieten den Vergleich
 kleiner Unterschiede allein über Mittelwerte. Keine Timer-Assertions auf JVM-Mikrobenchmarks.
 
-[Nachher-XML](bank-performance-evidence/computation-after.xml),
-[JFR nachher](bank-performance-evidence/jfr-after-summary.json).
+[Finales Nachher-XML](bank-performance-evidence/computation-prepared.xml),
+[JFR nachher](bank-performance-evidence/jfr-prepared-summary.json).
+Der erste Zwischenstand mit reiner Regex-Wiederverwendung ist weiterhin in
+[computation-after.xml](bank-performance-evidence/computation-after.xml) dokumentiert;
+er genügte dem nativen Detail-Budget noch nicht.
 Beibehalten wurden Virtualisierung, bedarfsgesteuerte Worker-Berechnung,
 Regex-/Formatter-Wiederverwendung, Datumsgruppierung und Miet-Batch.
 Keine neuen SQL-Indizes, TTL-Caches oder Poolvergrößerungen wurden versuchsweise eingeführt.
@@ -89,9 +92,18 @@ Keine neuen SQL-Indizes, TTL-Caches oder Poolvergrößerungen wurden versuchswei
 - Vorschlagsabonnements starten in den Buchungsdetails; das Mietwerkzeug abonniert weiterhin selbst.
   Belegmatching und Regelauswertung arbeiten auf `Dispatchers.Default`.
 - Die nachgelagerte Regelanreicherung verwendet ID-Indizes statt wiederholter linearer Suchen.
+- Der umgekehrte Belegabgleich berechnete bei jedem UI-Neuaufbau bis zu 30 vollständige
+  Bankrankings auf Main. Ein separater JVM-Lauf misst bei 5.000 Buchungen 250 ms Median
+  und 322.996.208 B Allokationen für diese 30 Abgleiche (2 Warmups, 5 Messungen).
+  Dieser Lauf und das Buchungs-Picker-Ranking (14,85 ms, 18.322.752 B) werden nun einmal
+  pro Eingabestand auf Default berechnet; Quellenwechsel verwerfen alte Ergebnisse.
+  Beleg-Picker bei 40 Belegen: 0,225 ms, unverändert. Siehe
+  [Messbeleg](bank-performance-evidence/reverse-computation.xml).
 - Mietkandidaten verwenden eine `Batch` **pro Quell-Emission**. Indizes sowie Cache-Schlüssel
   enthalten stabile Objekt-/Einheiten-IDs und Mietmonat. Bei neuen Quellen wird die komplette
   Batch verworfen. Kein globaler Cache, kein TTL, kein persistierter Vorschlagszustand.
+- Normalisierte Textmerkmale, Tokens, Monatsnamen, Zahlungsarten und Datumswerte werden
+  einmal je Buchung/Beleg innerhalb eines Matching-Aufrufs vorbereitet. Kein globaler Cache.
 - Matching-Scores, Schwellen, Tie-Breaks, Zuordnungssummen und die Ausnahme der eigenen
   Transaktion beim Zahlungsrhythmus bleiben erhalten. Regex-Patterns werden wiederverwendet;
   `DecimalFormat` bleibt lokal pro Suchaufruf, also nicht zwischen Threads geteilt.
@@ -112,6 +124,20 @@ eingeführt. Der Android-Harness sichert Querypläne und separate DAO-Zeiten.
   vollständige Transaktions-/Kontoobjekte nach Laden und Scrollen.
 - `BankComputationPerformanceTest`: eingefrorene Gruppierungs-/Suchreferenz inklusive
   ungültiger Datumswerte, DE-/US-Locale, Umlaute, Komma, Filterzähler und Matching-Ergebnisse.
+- `BankReceiptPreparedMatchingTest`: eingefrorene ursprüngliche Score-/Payment-Referenz,
+  beide Suchrichtungen, Links, Klassifikationen, Gleichstände, Gründe, Umlaute, ungültige
+  Daten und Betrags-/Datumsschwellen; `BankDeviceFixtureFlowTest` prüft beide Vorschlags-Flows
+  mit genau den finanziellen Fixtures des nativen Tests.
+- `BankReverseMatchingComposeTest`: echter BankScreen, Tool und Bank-Picker mit 1.250/5.000
+  Buchungen und 30 Belegen. Eine Test-Liste verbietet Matching-Iteration auf Main unabhängig
+  von Timer/JIT. Beide RED-Fälle scheiterten genau an diesem Threadvertrag; Treffer, Score,
+  höchste Tie-ID, erste/50. Pickerposition sowie vollständiger DB-Snapshot werden geprüft.
+  Der finale Test verlangt genau 31 Matching-Iterationen (30 Belege + ein Picker), auch nach
+  einer Listensuche. Der native Robolectric-Dialog erhält wie bestehende Repository-Tests
+  eine feste Fenstergröße. Die Diagnose zeigte davor bereits wartende Worker und
+  `RobolectricIdlingStrategy.requestLayoutIfNeeded`, keine Matching-Schleife;
+  [Diagnose](bank-performance-evidence/reverse-ui-diagnostic.json),
+  [RED](bank-performance-evidence/reverse-ui-red.xml), [GREEN](bank-performance-evidence/reverse-ui-green.xml).
 - `BankRentCandidateBatchTest`: eingefrorene bisherige Factory als Referenz, mehrere Monate,
   Objekt-/Einheitenscope, History, Self-exclusion und eine neue Batch nach Quellenänderungen.
 - `BankPerformanceEmulatorTest`: 1.250/5.000 synthetische Buchungen, 40 Belege, Links,
@@ -123,16 +149,29 @@ eingeführt. Der Android-Harness sichert Querypläne und separate DAO-Zeiten.
 
 Die dedizierte [Workflow-Datei](../.github/workflows/bank-performance.yml) kopiert **denselben**
 Harness auf Base und Head des PR und verwendet API 35, Pixel 5, 2 Kerne, 2 GiB RAM,
-512 MiB Heap, SwiftShader und deaktivierte Animationen. Die Baseline zeichnet die alten
+512 MiB konfiguriertem AVD-Heap, SwiftShader und deaktivierte Animationen. Die Baseline zeichnet die alten
 Zeilenmengen auf, ohne die neue Lazy-Obergrenze zu verlangen. Produktfehler bleiben Fehler;
 beide Datengrößen werden versucht und der Gesamtjob bleibt bei Fehler rot.
 
-Artefakte pro Revision: JSON-Messungen, `meminfo`, `gfxinfo`/Framestats, Method-Traces,
-ein Perfetto-Trace pro Datengröße, Querypläne, Logcat, JUnit und drei echte Prozess-Kaltstarts
-pro Größe (`am start -W`: **erste Activity-Frame**, nicht vollständige Bankbereitschaft).
-Ein zusätzlicher Prozessstart wird separat mit `--start-profiler --sampling 1000` aufgezeichnet,
-um auch ViewModel-/App-Initialisierung auf dem Hauptthread zu untersuchen. Dieser profilierte
-Start fließt nicht in die drei normalen Startzeiten ein.
+Auf dem temporären Runner werden JSON-Messungen, `meminfo`, `gfxinfo`, ART-/Perfetto-Traces,
+Querypläne und drei echte Prozess-Kaltstarts pro Größe erfasst (`am start -W`: **erste
+Activity-Frame**, nicht vollständige Bankbereitschaft). Ein zusätzlicher Prozessstart wird
+separat gesampelt. Zusätzliche Workloads umfassen Filter, Summen, umgekehrten Abgleich, Bank-Picker,
+Vormonatszuordnung und Transferabgleich. Profiling ist nur im dedizierten Vergleich aktiv und belastet die normale
+E2E-Suite nicht. Veröffentlicht wird ausschließlich `public/summary.json`: feste numerische
+Felder für Zeiten, PSS/Heap, Frames und aggregierte Klassen-/Threadrollen. Rohprofile,
+UI-Inhalte und Querypläne bleiben auf dem temporären Runner. Sieben Regressionstests prüfen
+Auslassung privater Felder und fehlender/nichtnumerischer Messungen. Fehlende Werte werden
+nicht als Nullzeiten oder Erfolg ausgegeben; der ursprüngliche Job-Exitcode bleibt erhalten.
+`status=complete` bezeichnet vollständige Messfelder, keinen bestandenen Test: Auch nach
+späterer Budget-/Profilingverletzung bleibt der Instrumentation-Exitcode ungleich null erhalten.
+Profil-Slice-Wallzeiten sind inklusive, können überlappen und sind keine aufsummierbare CPU-Zeit.
+Separat liefert Perfetto echte Scheduler-CPU-Zeiten für Main/Worker/Instrumentation/Other.
+Der Filter berücksichtigt vollständige Cmdlines und den gekürzten Android-Prozessnamen;
+fehlende passende Slices werden als fehlende Abdeckung ausgewiesen. Diese CPU-Summen
+umfassen den gesamten Fall einschließlich Test-/Profilingarbeit, also unterschiedlich weit
+abgeschlossene Baseline/Head-Abläufe; sie sind kein gleich langer UI-Vorher/Nachher-Benchmark.
+Die fairen UI-Zeiten stammen aus den getrennten unprofilierten Drei-Lauf-Intervallen.
 Die Activity-Relaunch-Metrik im Test läuft im warmen Prozess und wird separat benannt.
 Die CI-Emulatoren sind vergleichbar, aber getrennte VMs; absolute Werte sind durch
 Scheduling/JIT/GC beeinflusst. Keine Aussage über das konkrete Nutzergerät ohne dortige Messung.
@@ -154,7 +193,8 @@ Die lokale JFR-Konfiguration muss vor/nach identisch bleiben.
 
 Lokaler Prüfstand:
 
-- 311 fokussierte Bank-/Miettests in 44 Klassen: bestanden, keine Fehler/Skips.
+- Zunächst 311 fokussierte Bank-/Miettests; nach der Matcher-Vorbereitung 321 Bank-/Navigations-
+  tests: bestanden, keine Fehler/Skips. Frozen Matcher-Referenz lief vor der Änderung grün.
 - Der vollständige Java-21-Lauf führte 1.392 Methoden in 205 Klassen aus: 1.391 bestanden,
   eine Navigationstest-Methode griff vor Abschluss der neuen Hintergrundberechnung auf eine
   Bankzeile zu. Der tatsächliche Methodenausführungsprüfer bestätigt die SDK-34/35/36-Ausführung
@@ -166,13 +206,42 @@ Lokaler Prüfstand:
   Zeile. [RED](bank-performance-evidence/navigation-async-red.xml),
   [GREEN](bank-performance-evidence/navigation-async-green.xml),
   [Zusammenfassung](bank-performance-evidence/navigation-green-summary.json).
-- 16 Python-Tests der Repository-Skripte sowie Bash-Syntax und `git diff --check`: bestanden.
+- 23 Python-Tests der Repository-Skripte sowie Bash-Syntax und `git diff --check`: bestanden.
 - Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden, Dauer 9m19s.
   [Lokaler Android-Prüfbeleg](bank-performance-evidence/android-local-validation.json).
   Der vollständige Unit-Lauf wird in `verify` auf dem finalen PR-Commit erneut ausgeführt;
   der lokale erste Vollsuite-Lauf wird ausdrücklich nicht als vollständig grün ausgewiesen.
+- Finale lokale Java-21-Buildprüfung: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest`
+  bestanden (6m23s), keine Lint-Fehler.
+  [Finaler Android-Prüfbeleg](bank-performance-evidence/android-final-validation.json).
+- Finale lokale Vollsuite auf Produktions-/Unit-Stand `9b06479`: 1.403 Methoden in 209 Klassen,
+  keine Fehler/Skips, 23m17s; tatsächliche SDK-34/35/36-Ausführung ohne Suite-Platzhalter bestätigt.
+  [Vollständiger Prüfbeleg](bank-performance-evidence/full-final-result.json).
 
 Die GitHub-Läufe `verify`, `android-emulator-e2e` und `Bank performance comparison` werden
 mit Commit-SHAs, Run-IDs und tatsächlichen Ergebnissen im PR dokumentiert.
 Lokal fehlt `/dev/kvm`; Android-Instrumentation wird gemäß `AGENTS.md` auf GitHub ausgeführt.
 Es wird nicht automatisch gemergt.
+
+## Native Zwischenmessung und Fehlerklassifikation
+
+Commit `43dd3c5`, Vergleichslauf [41968950382](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/41968950382):
+Baseline 1.250: Prozessabbruch; 5.000: echter `OutOfMemoryError` mit 192 MiB App-Growth-Limit,
+trotz 512-MiB-AVD-Einstellung. Keine vollständigen drei Baseline-Läufe, keine erfundene Startzeit.
+Zwischenstand nach Virtualisierung: je vier komponierte Zeilen, erste Liste 1.726/1.080 ms
+(1.250/5.000), Main-Lücke 528/373 ms, PSS 286.645/306.179 KiB. Nur der erste Lauf kam bis zu
+diesen Werten; beide Detailprüfungen scheiterten nach unveränderten 10 s am Belegmatching.
+Diese Zahlen sind keine bestandene Drei-Lauf-Messung.
+
+Das zusätzliche native Sampling [41971658799](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/41971658799)
+zeigte bei beiden Größen fertige Mietvorschläge (250/1.000), aber noch null Belegvorschläge.
+Receipt-Matcher-/Regex-Samples auf Worker-Threads bestätigten wiederholte paarweise Textarbeit.
+Darauf beruht die Vorbereitung von Features pro Eingabe. Der identische JVM-Workload sinkt damit
+bei 5.000 × 40 von 894 auf 61 ms und von 1.819 auf 34 MB Allokationen; native Endwerte folgen im PR.
+
+Android-CI [41968950299](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/41968950299):
+`verify` bestanden einschließlich kompletter Units/Lint/APKs; E2E 70/72 bestanden, kein Skip.
+Neben dem 5.000er Detail-Timeout scheiterte ein bestehender Mietdialog-Test im Gesamtlauf.
+[Isolationslauf 41974221540](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/41974221540)
+bestand unverändert auf `main` und `43dd3c5`. Keine Assertion oder Zeitgrenze dafür geändert;
+Ursache im Gesamtlauf noch nicht bewiesen. Die vollständige Suite wird erneut geprüft.

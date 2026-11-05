@@ -10,6 +10,7 @@ on:
       - 'app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt'
       - '.github/workflows/bank-performance.yml'
       - '.github/scripts/run-bank-performance.sh'
+      - '.github/scripts/bank_performance_summary.py'
 
 permissions:
   contents: read
@@ -38,10 +39,12 @@ jobs:
           sparse-checkout: |
             app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt
             .github/scripts/run-bank-performance.sh
+            .github/scripts/bank_performance_summary.py
           sparse-checkout-cone-mode: false
       - run: |
           cp benchmark-harness/app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt app/src/androidTest/java/com/example/e2e/
           cp benchmark-harness/.github/scripts/run-bank-performance.sh .github/scripts/
+          cp benchmark-harness/.github/scripts/bank_performance_summary.py .github/scripts/
           mkdir -p app/build/bank-performance
           git rev-parse HEAD > app/build/bank-performance/revision.txt
       - uses: actions/setup-java@v4
@@ -76,12 +79,19 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel on
           script: bash .github/scripts/run-bank-performance.sh
+      - name: Prepare pinned trace reader
+        if: always()
+        run: |
+          curl -fLsS https://github.com/google/perfetto/releases/download/v51.1/linux-amd64.zip -o /tmp/perfetto.zip
+          echo '0327bb7240f17dfcfdaf75c00164e2f0a150ff54b5a3888a6cfd92815e008b84  /tmp/perfetto.zip' | sha256sum -c -
+          unzip -q /tmp/perfetto.zip -d /tmp/perfetto
+          chmod u+x /tmp/perfetto/linux-amd64/trace_processor_shell
+      - name: Publish allowlisted numeric measurements
+        if: always()
+        run: python3 .github/scripts/bank_performance_summary.py --root app/build/bank-performance --revision ${{ matrix.revision }} --trace-processor /tmp/perfetto/linux-amd64/trace_processor_shell
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bank-performance-${{ matrix.revision }}
-          path: |
-            app/build/bank-performance/**
-            app/build/outputs/androidTest-results/**
-            app/build/reports/androidTests/**
+          path: app/build/bank-performance/public/**
           if-no-files-found: error

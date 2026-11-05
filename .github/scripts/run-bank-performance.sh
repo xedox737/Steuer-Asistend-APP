@@ -46,12 +46,26 @@ for count in 1250 5000; do
   # One trace per size, bounded even if instrumentation hangs. Stop/flush below.
   trace_file="/data/misc/perfetto-traces/bank-performance-$count.pftrace"
   trace_pid=$(adb shell perfetto --background-wait -o "$trace_file" -t 600s --app "$package" sched freq idle am wm gfx view binder_driver dalvik | tr -d '\r' | tail -n 1)
+  adb shell rm -f "$device_artifact_dir/bank-fixture-$count.json"
   if gradle connectedDebugAndroidTest \
     -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
     -Pandroid.testInstrumentationRunnerArguments.class="com.example.e2e.BankPerformanceEmulatorTest#imported${count}RowsStayResponsiveAndPreserveAllData" \
     -Pandroid.testInstrumentationRunnerArguments.immopilotDisposableEmulator=true \
+    -Pandroid.testInstrumentationRunnerArguments.immopilotBankProfile=true \
     -Pandroid.testInstrumentationRunnerArguments.immopilotBankBaseline="${BANK_PERFORMANCE_BASELINE:-false}" \
     --stacktrace --no-daemon; then
+    : # Assertions passed; baseline failures below remain failures.
+  else
+    overall_result=1
+  fi
+  # A completed, count-checked seed permits cold starts even after baseline UI OOM.
+  # Keep the instrumentation failure; do not turn a failed bank test green.
+  if adb shell test -f "$device_artifact_dir/bank-fixture-$count.json"; then
+    adb pull "$device_artifact_dir/bank-fixture-$count.json" "$artifact_dir/bank-fixture-$count.json"
+    python3 - "$artifact_dir/bank-fixture-$count.json" "$count" <<'PY_FIXTURE'
+import json, pathlib, sys
+assert json.loads(pathlib.Path(sys.argv[1]).read_text()) == {'transactions': int(sys.argv[2]), 'receipts': 40}
+PY_FIXTURE
     # Fixture survives the test. Process-cold first-frame timing is distinct
     # from the harness's Activity relaunch and full bank-ready metrics.
     for run in 1 2 3; do
@@ -77,8 +91,7 @@ PY_CHECK
     adb pull "$startup_trace" "$artifact_dir/bank-startup-$count.trace"
     test -s "$artifact_dir/bank-startup-$count.trace"
   else
-    # Preserve a failing baseline and still attempt the other size. The job
-    # remains red; no assertions are disabled and this is not a retry.
+    # No validated fixture: report missing measurements rather than timing empty data.
     overall_result=1
   fi
   stop_trace
