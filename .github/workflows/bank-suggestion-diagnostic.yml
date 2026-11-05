@@ -1,0 +1,96 @@
+name: Bank suggestion diagnostic
+'on':
+  push:
+    branches:
+    - diagnostics/bank-performance-164
+permissions:
+  contents: read
+jobs:
+  profile-suggestions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: diagnostics/bank-performance-164
+    - uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 9.3.1
+    - name: Prepare disposable test signing and compile
+      run: 'keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname
+        ''CN=Android Debug,O=Android,C=US'' -keyalg RSA -keysize 2048 -validity 10000
+
+        gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+
+        '
+    - name: Enable KVM
+      run: 'echo ''KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"'' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+
+        sudo udevadm control --reload-rules
+
+        sudo timeout 15s udevadm trigger --name-match=kvm --settle
+
+        test -r /dev/kvm && test -w /dev/kvm
+
+        '
+    - name: Enable separate synthetic suggestion sampling
+      run: 'python3 - <<''PY_DRIVER''
+
+        from pathlib import Path
+
+        s=Path(''.github/scripts/run-bank-performance.sh'').read_text()
+
+        s=s.replace(''  if gradle connectedDebugAndroidTest '', ''  if gradle connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.immopilotBankDiagnosticProfile=true
+        '')
+
+        Path(''/tmp/bank-suggestion-diagnostic.sh'').write_text(s)
+
+        PY_DRIVER'
+    - name: Measure bank startup, list, input and memory
+      uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+      env:
+        BANK_PERFORMANCE_BASELINE: 'false'
+      with:
+        api-level: 35
+        target: google_apis
+        arch: x86_64
+        profile: pixel_5
+        cores: 2
+        ram-size: 2048M
+        heap-size: 512M
+        disable-animations: true
+        emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front
+          none -accel on
+        script: bash /tmp/bank-suggestion-diagnostic.sh
+    - name: Prepare pinned trace reader
+      shell: bash
+      run: 'set -euo pipefail
+
+        curl -fLsS https://github.com/google/perfetto/releases/download/v51.1/linux-amd64.zip -o /tmp/perfetto.zip
+
+        echo ''0327bb7240f17dfcfdaf75c00164e2f0a150ff54b5a3888a6cfd92815e008b84  /tmp/perfetto.zip'' | sha256sum -c -
+
+        unzip -q /tmp/perfetto.zip -d /tmp/perfetto
+
+        chmod u+x /tmp/perfetto/linux-amd64/trace_processor_shell
+
+        '
+      if: always()
+    - name: Report only approved numeric synthetic profiling measurements
+      if: always()
+      run: "python3 - <<'PY_METRICS'\nfrom pathlib import Path\nimport csv,io,json,math,re,subprocess\nprocessor='/tmp/perfetto/linux-amd64/trace_processor_shell'\n\
+        query=\"\"\"SELECT CASE WHEN t.name='main' THEN 'main' WHEN t.name LIKE 'Default%' THEN 'worker' WHEN t.name LIKE\
+        \ 'Instr%' THEN 'instrumentation' ELSE 'other' END AS role,CASE WHEN s.name LIKE '%RentMonthParser%' THEN 'rent_month_parser'\
+        \ WHEN s.name LIKE '%BankReceiptMatcher%' THEN 'receipt_matcher' WHEN s.name LIKE '%BankRentCandidateFactory%' THEN\
+        \ 'rent_candidates' WHEN s.name LIKE '%BankRentMatcher%' THEN 'rent_matcher' WHEN s.name LIKE '%Pattern%' THEN 'regex_pattern'\
+        \ ELSE 'regex_helper' END AS calculation,count(*) AS calls,round(max(s.dur)/1e6,2) AS max_wall_ms,round(sum(s.dur)/1e6,2)\
+        \ AS inclusive_wall_ms FROM slice s JOIN thread_track tt ON tt.id=s.track_id JOIN thread t ON t.utid=tt.utid WHERE\
+        \ s.dur>=0 AND (s.name LIKE '%BankReceiptMatcher%' OR s.name LIKE '%RentMonthParser%' OR s.name LIKE '%BankRentCandidateFactory%'\
+        \ OR s.name LIKE '%BankRentMatcher%' OR s.name LIKE '%Pattern%' OR s.name LIKE '%kotlin.text.Regex%') GROUP BY role,calculation;\"\
+        \"\"\nfor p in Path('app/build/bank-performance').rglob('bank-suggestion-diagnostic-*.trace'):\n    count=int(re.search(r'(1250|5000)',p.name)[1])\n\
+        \    r=subprocess.run([processor,'-Q',query,str(p)],capture_output=True,text=True)\n    if r.returncode:\n       \
+        \ print('BANK_METHOD_STATUS',json.dumps({'count':count,'parsed':False}),flush=True);continue\n    for row in csv.DictReader(io.StringIO(r.stdout)):\n\
+        \        assert row['role'] in {'main','worker','instrumentation','other'}\n        assert row['calculation'] in {'rent_month_parser','receipt_matcher','rent_candidates','rent_matcher','regex_pattern','regex_helper'}\n\
+        \        metrics={key:float(row[key]) for key in ['calls','max_wall_ms','inclusive_wall_ms']}\n        assert all(math.isfinite(v)\
+        \ and 0<=v<1e12 for v in metrics.values())\n        print('BANK_METHOD_NUMERIC',json.dumps({'count':count,'role':row['role'],'calculation':row['calculation'],**metrics}),flush=True)\n\
+        PY_METRICS"
