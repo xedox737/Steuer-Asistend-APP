@@ -176,6 +176,11 @@ def build_summary(root, revision, processor=None):
                     case['profiles'].append(entry)
         cases.append(case)
     result = {'revision': revision, 'cases': cases}
+    version = root / 'perfetto-version.txt'
+    if version.exists():
+        match = re.search(r'v(\d+)\.(\d+)', version.read_text())
+        if match:
+            result['recorder_version'] = {'major': int(match[1]), 'minor': int(match[2])}
     exit_code = root / 'exit-code.txt'
     if exit_code.exists() and re.fullmatch(r'\d+\s*', exit_code.read_text()):
         result['instrumentation_exit_code'] = int(exit_code.read_text())

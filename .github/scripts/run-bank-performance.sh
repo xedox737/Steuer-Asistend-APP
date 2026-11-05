@@ -12,17 +12,14 @@ case "$(adb shell getprop ro.hardware | tr -d '\r')" in
   *) echo 'Bank performance tests require a disposable emulator.' >&2; exit 1 ;;
 esac
 stop_trace() {
-  if [ -n "${trace_pid:-}" ]; then
-    adb shell kill -TERM "$trace_pid" || true
-    # Allow Perfetto to flush before copying its output.
-    for attempt in 1 2 3 4 5; do
-      adb shell kill -0 "$trace_pid" >/dev/null 2>&1 || break
-      sleep 1
-    done
-    adb pull "$trace_file" "$artifact_dir/bank-performance-$count.pftrace"
-  fi
+  local recorder_pid=${trace_pid:-}
+  # Clear first: EXIT cleanup must never signal this recorder a second time.
   trace_pid=
+  if [ -n "$recorder_pid" ]; then
+    bank_stop_perfetto_and_pull "$recorder_pid" "$trace_file" "$artifact_dir/bank-performance-$count.pftrace"
+  fi
 }
+
 collect() {
   result=$?
   trap - EXIT
@@ -42,6 +39,7 @@ adb shell settings put system font_scale 1.0
 adb shell am force-stop com.google.android.apps.nexuslauncher
 adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME > "$artifact_dir/home.txt"
 adb shell getprop > "$artifact_dir/device.txt"
+adb shell perfetto --version > "$artifact_dir/perfetto-version.txt"
 overall_result=0
 for count in 1250 5000; do
   # One trace per size, bounded even if instrumentation hangs. Stop/flush below.
@@ -98,7 +96,7 @@ PY_CHECK
     # No validated fixture: report missing measurements rather than timing empty data.
     overall_result=1
   fi
-  stop_trace
+  if ! stop_trace; then overall_result=1; fi
   cp -r app/build/outputs/androidTest-results "$artifact_dir/results-$count"
   adb logcat -d -v threadtime > "$artifact_dir/logcat-$count.txt"
 done
