@@ -11,6 +11,7 @@ on:
       - '.github/workflows/bank-performance.yml'
       - '.github/scripts/run-bank-performance.sh'
       - '.github/scripts/bank_performance_summary.py'
+      - '.github/scripts/bank-profile-artifact.sh'
 
 permissions:
   contents: read
@@ -40,11 +41,13 @@ jobs:
             app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt
             .github/scripts/run-bank-performance.sh
             .github/scripts/bank_performance_summary.py
+            .github/scripts/bank-profile-artifact.sh
           sparse-checkout-cone-mode: false
       - run: |
           cp benchmark-harness/app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt app/src/androidTest/java/com/example/e2e/
           cp benchmark-harness/.github/scripts/run-bank-performance.sh .github/scripts/
           cp benchmark-harness/.github/scripts/bank_performance_summary.py .github/scripts/
+          cp benchmark-harness/.github/scripts/bank-profile-artifact.sh .github/scripts/
           mkdir -p app/build/bank-performance
           git rev-parse HEAD > app/build/bank-performance/revision.txt
       - uses: actions/setup-java@v4

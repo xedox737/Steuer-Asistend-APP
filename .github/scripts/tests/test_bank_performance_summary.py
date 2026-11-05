@@ -57,6 +57,16 @@ class BankPerformanceSummaryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             summary.scheduler_rows('role,processes,slices,cpu_ms,max_slice_ms\nPRIVATE-SENTINEL,1,2,3,4\n')
 
+    def test_fault_report_contains_only_known_counts(self):
+        values = summary.fault_values('java.lang.OutOfMemoryError PRIVATE-SENTINEL\n'
+            'Fatal signal 11 (SIGSEGV)\nbacktrace libart.so\n'
+            "lmkd: Kill 'perfetto'\nlmkd: Kill 'com.aistudio.steuerassistent.vnhqkp'\n")
+        self.assertEqual(1, values['device_oom_mentions'])
+        self.assertEqual(1, values['device_sigsegv_mentions'])
+        self.assertEqual(1, values['recorder_lmk_mentions'])
+        self.assertEqual(1, values['app_lmk_mentions'])
+        self.assertNotIn('PRIVATE-SENTINEL', json.dumps(values))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Dedicated, synthetic before/after workload; the regular E2E suite still runs separately.
 set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/bank-profile-artifact.sh"
 artifact_dir=app/build/bank-performance
 device_artifact_dir=/sdcard/Download/immopilot-emulator-e2e
 package=com.aistudio.steuerassistent.vnhqkp
@@ -10,18 +11,45 @@ case "$(adb shell getprop ro.hardware | tr -d '\r')" in
   ranchu|goldfish) ;;
   *) echo 'Bank performance tests require a disposable emulator.' >&2; exit 1 ;;
 esac
-stop_trace() {
-  if [ -n "${trace_pid:-}" ]; then
-    adb shell kill -TERM "$trace_pid" || true
-    # Allow Perfetto to flush before copying its output.
-    for attempt in 1 2 3 4 5; do
-      adb shell kill -0 "$trace_pid" >/dev/null 2>&1 || break
-      sleep 1
-    done
-    adb pull "$trace_file" "$artifact_dir/bank-performance-$count.pftrace"
-  fi
-  trace_pid=
+recorder_state() {
+  [ -n "${trace_pid:-}" ] || return 0
+  local prefix="$artifact_dir/recorder-$count-$1"
+  if adb shell cat "/proc/$trace_pid/comm" > "$prefix.comm" 2> "$prefix.comm-error"; then
+    printf '0\n' > "$prefix.comm-exit"
+  else printf '%s\n' "$?" > "$prefix.comm-exit"; fi
+  if adb shell cat "/proc/$trace_pid/status" > "$prefix.status" 2> "$prefix.status-error"; then
+    printf '0\n' > "$prefix.status-exit"
+  else printf '%s\n' "$?" > "$prefix.status-exit"; fi
+  if adb shell kill -0 "$trace_pid" > "$prefix.kill-output" 2> "$prefix.kill-error"; then
+    printf '0\n' > "$prefix.kill-exit"
+  else printf '%s\n' "$?" > "$prefix.kill-exit"; fi
 }
+start_trace() {
+  local duration=$1
+  trace_file="/data/misc/perfetto-traces/bank-performance-$count.pftrace"
+  trace_pid=
+  local app_args=(--app "$package")
+  if [ "$count" = smoke ]; then app_args=(); fi
+  if adb shell perfetto --background-wait -o "$trace_file" -t "$duration" "${app_args[@]}" sched freq idle am wm gfx view binder_driver dalvik \
+      > "$artifact_dir/recorder-$count.stdout" 2> "$artifact_dir/recorder-$count.stderr"; then
+    printf '0\n' > "$artifact_dir/recorder-$count.start-exit"
+    if ! trace_pid=$(bank_recorder_pid < "$artifact_dir/recorder-$count.stdout"); then overall_result=1; fi
+  else
+    printf '%s\n' "$?" > "$artifact_dir/recorder-$count.start-exit"
+    overall_result=1
+  fi
+  recorder_state start
+}
+stop_trace() {
+  local recorder_pid=${trace_pid:-}
+  recorder_state before_stop
+  # Clear first: EXIT cleanup must never signal this recorder a second time.
+  trace_pid=
+  if [ -n "$recorder_pid" ]; then
+    bank_stop_perfetto_and_pull "$recorder_pid" "$trace_file" "$artifact_dir/bank-performance-$count.pftrace"
+  fi
+}
+
 collect() {
   result=$?
   trap - EXIT
@@ -41,11 +69,17 @@ adb shell settings put system font_scale 1.0
 adb shell am force-stop com.google.android.apps.nexuslauncher
 adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.HOME > "$artifact_dir/home.txt"
 adb shell getprop > "$artifact_dir/device.txt"
+adb shell perfetto --version > "$artifact_dir/perfetto-version.txt"
 overall_result=0
+# Small recorder-only control separates capture startup from app/test lifecycle.
+count=smoke
+start_trace 2s
+sleep 3
+if ! stop_trace; then overall_result=1; fi
+if [ "${BANK_PERFORMANCE_RECORDER_ONLY:-false}" = true ]; then exit "$overall_result"; fi
 for count in 1250 5000; do
   # One trace per size, bounded even if instrumentation hangs. Stop/flush below.
-  trace_file="/data/misc/perfetto-traces/bank-performance-$count.pftrace"
-  trace_pid=$(adb shell perfetto --background-wait -o "$trace_file" -t 600s --app "$package" sched freq idle am wm gfx view binder_driver dalvik | tr -d '\r' | tail -n 1)
+  start_trace 600s
   adb shell rm -f "$device_artifact_dir/bank-fixture-$count.json"
   if gradle connectedDebugAndroidTest \
     -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true \
@@ -58,6 +92,7 @@ for count in 1250 5000; do
   else
     overall_result=1
   fi
+  recorder_state after_test
   # A completed, count-checked seed permits cold starts even after baseline UI OOM.
   # Keep the instrumentation failure; do not turn a failed bank test green.
   if adb shell test -f "$device_artifact_dir/bank-fixture-$count.json"; then
@@ -84,17 +119,20 @@ PY_CHECK
     # the three unprofiled cold first-frame measurements above.
     startup_trace="/data/local/tmp/bank-startup-$count.trace"
     adb shell am force-stop "$package"
+    adb shell rm -f "$startup_trace"
     adb shell am start -W --start-profiler "$startup_trace" --sampling 1000 \
       -n "$package/com.example.MainActivity" > "$artifact_dir/cold-start-profile-$count.txt"
     adb shell uiautomator dump /sdcard/bank-profile-start.xml > /dev/null
     adb shell am profile stop "$package"
-    adb pull "$startup_trace" "$artifact_dir/bank-startup-$count.trace"
-    test -s "$artifact_dir/bank-startup-$count.trace"
+    if ! bank_pull_flushed_profile "$startup_trace" "$artifact_dir/bank-startup-$count.trace"; then
+      # Preserve the measurement failure and still exercise the other data size.
+      overall_result=1
+    fi
   else
     # No validated fixture: report missing measurements rather than timing empty data.
     overall_result=1
   fi
-  stop_trace
+  if ! stop_trace; then overall_result=1; fi
   cp -r app/build/outputs/androidTest-results "$artifact_dir/results-$count"
   adb logcat -d -v threadtime > "$artifact_dir/logcat-$count.txt"
 done

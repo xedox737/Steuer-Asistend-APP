@@ -206,7 +206,7 @@ Lokaler Prüfstand:
   Zeile. [RED](bank-performance-evidence/navigation-async-red.xml),
   [GREEN](bank-performance-evidence/navigation-async-green.xml),
   [Zusammenfassung](bank-performance-evidence/navigation-green-summary.json).
-- 23 Python-Tests der Repository-Skripte sowie Bash-Syntax und `git diff --check`: bestanden.
+- 33 Python-Tests der Repository-Skripte sowie Bash-Syntax und `git diff --check`: bestanden.
 - Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden, Dauer 9m19s.
   [Lokaler Android-Prüfbeleg](bank-performance-evidence/android-local-validation.json).
   Der vollständige Unit-Lauf wird in `verify` auf dem finalen PR-Commit erneut ausgeführt;
@@ -245,3 +245,51 @@ Neben dem 5.000er Detail-Timeout scheiterte ein bestehender Mietdialog-Test im G
 [Isolationslauf 41974221540](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/41974221540)
 bestand unverändert auf `main` und `43dd3c5`. Keine Assertion oder Zeitgrenze dafür geändert;
 Ursache im Gesamtlauf noch nicht bewiesen. Die vollständige Suite wird erneut geprüft.
+
+## Vollständige native Funktionsmessung und Recorder-Synchronisierung
+
+Produktionsstand `ea42c6f`, [Android-CI 42016703536](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/42016703536):
+`verify` mit tatsächlich 1.403 Unit-Methoden ohne Suite-Platzhalter erfolgreich; alle **72**
+Emulatortests bestanden, keine Fehler/Skips. Auch der zuvor im Gesamtlauf gescheiterte
+Mietdialog-Test besteht ohne Änderungen an Assertions oder Zeitgrenzen.
+
+Im separaten [Vergleich 42019394483](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/42019394483)
+bestehen beide Größen jeweils drei vollständige Aktivitäts-/Listen-/Detailläufe einschließlich
+DB-Snapshots, aller Zuordnungen und Originaldatei-Bytes. API35/Pixel5/2Kerne/2GiB,
+identischer Produktionscode wie `ea42c6f`; Methodenprofile separat nach den Zeitläufen.
+
+| Buchungen | Bank bereit, Median | Zeilen | Max. Main-Lücke je Lauf, Median | Details bereit, Median | Listen-PSS, Median |
+|---:|---:|---:|---:|---:|---:|
+| 1.250 | 383 ms | 4 | 97 ms | 1.195 ms | 302.419 KiB |
+| 5.000 | 256 ms | 4 | 80 ms | 2.061 ms | 323.763 KiB |
+
+Prozess-Kaltstart bis zum ersten Activity-Frame: Median 4.120/2.732 ms; dies ist keine
+vollständige Bankbereitschaft. Die Start-Methodenprofile zeigen Main-ViewModel-Abschnitte
+bis 543/507 ms und Main-Listenpolicy bis 19/40 ms. In den separat gesampelten Workloads
+benötigt die 5.000er DAO-Abfrage 59 ms Wallzeit, Vormonatszuordnung 9 ms CPU,
+Belegmatching 830 ms CPU und umgekehrter Abgleich für 30 Belege 8.605 ms CPU.
+Diese profilierten CPU-Werte sind keine unprofilierten UI-Ladezeiten; Matching und
+umgekehrter Abgleich liegen im Produktionsfluss auf Workern.
+[Alle numerischen Zwischenmessungen](bank-performance-evidence/android-after-functional.json).
+
+Der anfängliche finale Vergleich [42016703199](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/42016703199)
+bestand den 1.250er Funktionsfall, brach aber anschließend am noch leeren Startprofil ab.
+`am profile stop` kehrt vor dem Schreibabschluss zurück. Der Reader wartet nun begrenzt
+auf eine stabile positive Dateigröße; dauerhaft leere Profile bleiben ein Fehler.
+Zusätzlich verweigert Android dem laufenden Shell-Recorder `kill -0` (`signull`).
+Der [isolierte Protokolltest 42025285480](https://github.com/xedox737/Steuer-Asistend-APP/actions/runs/42025285480)
+belegt gleichzeitig `is_perfetto=true`, Shell-UID, Permissionfehler bei `kill -0` und eine
+korrekte natürlich abgeschlossene Trace-Datei mit 734.288 Bytes. Die Prozessüberwachung
+verwendet deshalb wie das [offizielle v46-Hilfsskript](https://github.com/google/perfetto/blob/v46.0/tools/record_android_trace#L602)
+`/proc/PID`, genau ein Stoppsignal und echten Prozessabschluss vor dem Kopieren.
+Die Recorder-PID wird aus der numerischen stdout-Zeile gelesen. Ein zweites TERM während
+des Flushs wird verhindert. Fehler bleiben rot, beide Datengrößen werden dennoch versucht.
+Alle zusätzlichen Recorder-/Fehlerdiagnosen veröffentlichen nur feste Kategorien und Zahlen.
+
+Der unveränderte Baseline-1.250er Test wurde im Lauf 42016703199 nach dem 40-Minuten-Joblimit
+von CI abgebrochen; kein abgeschlossener Durchlauf und kein Erfolg. Der frühere identische
+5.000er Baseline-Funktionsfall in 41968950382 scheiterte nachweislich an OOM. Es werden keine
+fehlenden Baseline-Zeiten oder CPU-Werte als Null eingesetzt. Ein zusätzlicher instrumentierter
+Diagnoselauf 42021882268 meldete einen Prozessabbruch bei 1.250, ohne vollständigen Report;
+5.000 bestanden. Die Ursache dieses Profiling-Prozessabbruchs ist aus diesem Lauf nicht belegt.
+Die reguläre 72er Suite und der vorangegangene vollständige Profilinglauf bestanden beide Größen.
