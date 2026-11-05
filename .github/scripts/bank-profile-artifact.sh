@@ -13,6 +13,27 @@ bank_pull_flushed_profile() {
     previous_size=$profile_size
     sleep "$interval"
   done
-  printf '%s\n' 'Startup method profile did not flush to a stable nonempty file.' >&2
+  printf '%s\n' 'Profiling trace did not flush to a stable nonempty file.' >&2
   return 1
+}
+
+# Perfetto handles TERM by flushing, disabling producers, then reading buffers.
+# Those phases can each wait for acknowledgements; wait for actual process exit.
+bank_stop_perfetto_and_pull() {
+  local recorder_pid=$1 remote=$2 destination=$3 attempts=${4:-30} interval=${5:-1}
+  local attempt
+  if adb shell kill -0 "$recorder_pid" >/dev/null 2>&1; then
+    # A second TERM can hard-kill its reset signal handler during the flush.
+    adb shell kill -TERM "$recorder_pid" || return 1
+    for ((attempt=0; attempt<attempts; attempt++)); do
+      if ! adb shell kill -0 "$recorder_pid" >/dev/null 2>&1; then
+        bank_pull_flushed_profile "$remote" "$destination"
+        return
+      fi
+      sleep "$interval"
+    done
+    printf '%s\n' 'Perfetto did not finish flushing within the bounded stop wait.' >&2
+    return 1
+  fi
+  bank_pull_flushed_profile "$remote" "$destination"
 }
