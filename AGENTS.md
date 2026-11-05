@@ -1,6 +1,6 @@
 # Immopilot / Steuer-Assistent – Arbeitsregeln
 
-Diese Datei ist der schnelle Einstieg für Arbeiten am Repository. Für Details siehe `docs/PROJECT_STATUS.md`, `docs/CODE_MAP.md` und `docs/VERIFY_CHANGES.md`.
+Diese Datei ist der verbindliche Kurzeinstieg. Weitere Dokumente **gezielt nach Aufgabenbezug** lesen: `docs/CODE_MAP.md` bei unklaren Dateien/Abhängigkeiten, `docs/VERIFY_CHANGES.md` für die verbindlichen Prüfungen, `docs/PROJECT_STATUS.md` nur als möglicherweise veralteten Hintergrund. Aktuellen GitHub-Stand stets selbst verifizieren.
 
 ## Vor jeder Änderung
 
@@ -24,7 +24,15 @@ Diese Datei ist der schnelle Einstieg für Arbeiten am Repository. Für Details 
 
 ## Besonders mitprüfen
 
-Navigation/Backstack, Room/Migrationen, ViewModels/StateFlow/Coroutines, Google Drive/Backup/Restore, Belege/Dokumente, Bank, Immobilien/Einheiten/Mietverhältnisse, AfA, Fahrtenbuch, DATEV, Einstellungen und KI-Funktionen.
+Betroffene Wechselwirkungen **risikobasiert** prüfen: Navigation/Backstack, Room/Migrationen, ViewModels/StateFlow/Coroutines, Google Drive/Backup/Restore, Belege/Dokumente, Bank, Immobilien/Einheiten/Mietverhältnisse, AfA, Fahrtenbuch, DATEV, Einstellungen und KI-Funktionen. Fachfremde Bereiche nur bei begründetem Zusammenhang vertieft prüfen; Daten- und Sicherheitsrisiken niemals auslassen.
+
+## Effizienter, nachweisbarer Kontextaufbau
+
+- Erst relevante Dateipfade, Symbole und Tests suchen; große Dateien nur an betroffenen Stellen lesen und bei Bedarf ausweiten.
+- Keine unbetroffenen Projekt- oder Architekturdateien pauschal vollständig laden. `docs/COMMERCIAL_WEB_READINESS_ARCHITECTURE.md` nur bei Architektur-/Web-/Schnittstellenfragen lesen.
+- `.agents/skills/immopilot-prompt-master/SKILL.md` für die Erstellung oder Verbesserung von Codex-Aufträgen verwenden, nicht für jede Codekorrektur.
+- Vorhandene Zwischenergebnisse wiederverwenden, unveränderte Dateien und komplette CI-Logs nicht mehrfach einlesen. Fehlerlogs gezielt auswerten und bei Bedarf vertiefen.
+- Vollständige vorgeschriebene Tests weiterhin ausführen und nur die Ergebnisse sowie relevante Fehlstellen knapp berichten. Keine Sicherheitsregel, Testpflicht oder Freigabe aus Tokenersparnis schwächen.
 
 ## Fertig-Kriterium
 
