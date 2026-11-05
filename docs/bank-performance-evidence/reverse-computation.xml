@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.data.BankReverseMatchingPerformanceTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-05T05:47:57.980Z" hostname="0948d7775e33" time="3.714">
+  <properties/>
+  <testcase name="reportReversePanelAndPickerCostsFor1250And5000Rows" classname="com.example.data.BankReverseMatchingPerformanceTest" time="3.71"/>
+  <system-out><![CDATA[BANK_REVERSE runtime=jvm count=1250 operation=reverse_panel_30_receipts warmups=2 runs=5 median_wall_ms=110.396385 min_wall_ms=96.945186 max_wall_ms=245.740718 median_cpu_ms=71.563993 median_allocated_bytes=78918800
+BANK_REVERSE runtime=jvm count=1250 operation=transaction_picker_rank warmups=2 runs=5 median_wall_ms=4.962831 min_wall_ms=4.387209 max_wall_ms=12.619517 median_cpu_ms=4.653573 median_allocated_bytes=4521248
+BANK_REVERSE runtime=jvm count=1250 operation=receipt_picker_rank warmups=2 runs=5 median_wall_ms=0.225851 min_wall_ms=0.186879 max_wall_ms=0.299417 median_cpu_ms=0.238364 median_allocated_bytes=96688
+BANK_REVERSE runtime=jvm count=5000 operation=reverse_panel_30_receipts warmups=2 runs=5 median_wall_ms=250.193513 min_wall_ms=243.334874 max_wall_ms=256.638564 median_cpu_ms=243.547016 median_allocated_bytes=322996208
+BANK_REVERSE runtime=jvm count=5000 operation=transaction_picker_rank warmups=2 runs=5 median_wall_ms=14.85019 min_wall_ms=14.022188 max_wall_ms=18.500076 median_cpu_ms=14.436473 median_allocated_bytes=18322752
+BANK_REVERSE runtime=jvm count=5000 operation=receipt_picker_rank warmups=2 runs=5 median_wall_ms=0.224819 min_wall_ms=0.185996 max_wall_ms=0.250076 median_cpu_ms=0.218097 median_allocated_bytes=95408
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

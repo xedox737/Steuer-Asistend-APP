@@ -72,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
@@ -1339,10 +1340,20 @@ private fun BankReverseReceiptPanel(
     onChooseOther: (Receipt) -> Unit,
     onUnlink: (BankReceiptLink) -> Unit
 ) {
+    val suggestions by key(transactions, receipts, links) {
+        produceState<Map<Int, BankMatchSuggestion>?>(null) {
+            value = withContext(Dispatchers.Default) {
+                receipts.take(30).mapNotNull { receipt ->
+                    BankReceiptMatcher.bestForReceipt(receipt, transactions, links)?.let { receipt.id to it }
+                }.toMap()
+            }
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        if (suggestions == null) Text("Zuordnungsvorschläge werden gesucht …", color = SlateGray)
         receipts.take(30).forEach { receipt ->
             val receiptLinks = links.filter { it.receiptId == receipt.id || (receipt.internalId.isNotBlank() && it.receiptInternalId == receipt.internalId) }
-            val suggestion = BankReceiptMatcher.bestForReceipt(receipt, transactions, links)
+            val suggestion = suggestions?.get(receipt.id)
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = BorderStroke(1.dp, BorderColor)) {
                 Column(Modifier.fillMaxWidth().padding(8.dp)) {
                     Text(receipt.aussteller.ifBlank { receipt.getEffectiveDisplayId() }, fontWeight = FontWeight.SemiBold, color = DarkNavy)
@@ -1488,12 +1499,19 @@ private fun BankTransactionPickerDialog(
     onDismiss: () -> Unit,
     onSelect: (Set<String>) -> Unit
 ) {
-    val ranked = remember(receipt.id, transactions, links) { BankReceiptMatcher.rankTransactionsForReceipt(receipt, transactions, links) }
+    val ranked by key(receipt, transactions, links) {
+        produceState<List<BankMatchSuggestion>?>(null) {
+            value = withContext(Dispatchers.Default) {
+                BankReceiptMatcher.rankTransactionsForReceipt(receipt, transactions, links)
+            }
+        }
+    }
     var query by remember(receipt.id) { mutableStateOf("") }
     var selectedIds by remember(receipt.id) { mutableStateOf<Set<String>>(emptySet()) }
     val visible = remember(ranked, query, transactions) {
         val needle = query.trim().lowercase(Locale.GERMANY)
-        if (needle.isBlank()) ranked else ranked.filter { suggestion ->
+        val candidates = ranked.orEmpty()
+        if (needle.isBlank()) candidates else candidates.filter { suggestion ->
             transactions.firstOrNull { it.transactionId == suggestion.transactionId }?.let { transaction ->
                 listOf(transaction.bookingDate, transaction.counterparty, transaction.purpose, transaction.bankReference, transaction.amount.toString())
                     .any { it.lowercase(Locale.GERMANY).contains(needle) }
@@ -1511,7 +1529,8 @@ private fun BankTransactionPickerDialog(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Offene Bankbuchungen durchsuchen") })
                 LazyColumn(modifier = Modifier.heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (visible.isEmpty()) item { Text(if (query.isBlank()) "Keine offene Bankbuchung ist für diesen Beleg verfügbar." else "Keine Buchung passt zur Suche.") }
+                    if (ranked == null) item { Text("Zuordnungsvorschläge werden gesucht …") }
+                    else if (visible.isEmpty()) item { Text(if (query.isBlank()) "Keine offene Bankbuchung ist für diesen Beleg verfügbar." else "Keine Buchung passt zur Suche.") }
                     else items(visible, key = { it.transactionId }) { suggestion ->
                         val transaction = transactions.firstOrNull { it.transactionId == suggestion.transactionId }
                         if (transaction != null) {
@@ -1535,7 +1554,7 @@ private fun BankTransactionPickerDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onSelect(selectedIds) }, enabled = selectedIds.isNotEmpty()) {
+            Button(onClick = { onSelect(selectedIds) }, enabled = ranked != null && selectedIds.isNotEmpty()) {
                 Text("${selectedIds.size} verknüpfen • ${NumberFormatter.format(transactions.filter { it.transactionId in selectedIds }.sumOf { it.absoluteAmount })}")
             }
         },
