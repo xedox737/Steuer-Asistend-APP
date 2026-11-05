@@ -1,0 +1,74 @@
+name: Bank numeric performance report
+on:
+  push:
+    branches: [diagnostics/bank-performance-164]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # These are the disposable, explicitly synthetic fixtures requested in PR164.
+      # Publish only numeric performance measurements, never raw artifact text,
+      # UI snapshots, SQL, bank fields, environment data or arbitrary trace names.
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 41968950382
+          pattern: bank-performance-*
+          path: evidence
+      - name: Prepare pinned trace reader
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS https://github.com/google/perfetto/releases/download/v51.1/linux-amd64.zip -o /tmp/perfetto.zip
+          echo '0327bb7240f17dfcfdaf75c00164e2f0a150ff54b5a3888a6cfd92815e008b84  /tmp/perfetto.zip' | sha256sum -c -
+          unzip -q /tmp/perfetto.zip -d /tmp/perfetto
+          chmod u+x /tmp/perfetto/linux-amd64/trace_processor_shell
+      - name: Report allowlisted numeric performance measurements
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import csv, io, json, math, re, subprocess
+          root=Path('evidence')
+          fields={'run','activity_relaunch_ms','startup_main_max_gap_ms','bank_ready_ms','composed_rows','bank_main_max_gap_ms','detail_ready_ms','detail_main_max_gap_ms','activity_recreate_ms'}
+          def number(value):
+              return type(value) in (int,float) and math.isfinite(value) and 0<=value<1e12
+          def revision(path):
+              for part in path.parts:
+                  if part=='bank-performance-before': return 'before'
+                  if part=='bank-performance-after': return 'after'
+              return None
+          for p in sorted(root.rglob('bank-performance-*.json')):
+              match=re.fullmatch(r'bank-performance-(1250|5000)\.json',p.name)
+              if not match or revision(p) is None: continue
+              data=json.loads(p.read_text())
+              assert data['count']==int(match[1])
+              rows=[{key:val for key,val in row.items() if key in fields and number(val)} for row in data.get('runs',[])]
+              print('BANK_NUMERIC',json.dumps({'revision':revision(p),'count':int(match[1]),'runs':rows}),flush=True)
+          for p in sorted(root.rglob('*meminfo*.txt')):
+              if revision(p) is None: continue
+              match=re.search(r'(1250|5000)',p.name)
+              if not match: continue
+              values={}
+              for label,pattern in [('total_pss_kb',r'TOTAL PSS:\s*(\d+)'),('java_heap_kb',r'^\s*Java Heap:\s*(\d+)'),('native_heap_kb',r'^\s*Native Heap:\s*(\d+)')]:
+                  hit=re.search(pattern,p.read_text(errors='replace'),re.M)
+                  if hit: values[label]=int(hit[1])
+              print('BANK_MEMORY_NUMERIC',json.dumps({'revision':revision(p),'count':int(match[1]),'values':values}),flush=True)
+          processor='/tmp/perfetto/linux-amd64/trace_processor_shell'
+          query="""SELECT CASE WHEN t.tid=p.pid THEN 'main' WHEN t.name LIKE 'Default%' THEN 'worker' ELSE 'other' END AS role,round(sum(s.dur)/1e6,2) AS cpu_ms FROM sched s JOIN thread t ON t.utid=s.utid JOIN process p ON p.upid=t.upid WHERE p.name LIKE '%steuerassistent%' OR p.cmdline LIKE '%steuerassistent%' GROUP BY role;"""
+          for p in sorted(root.rglob('*.pftrace')):
+              match=re.search(r'(1250|5000)',p.name)
+              if not match or revision(p) is None: continue
+              result=subprocess.run([processor,'-Q',query,str(p)],text=True,capture_output=True)
+              if result.returncode:
+                  print('BANK_TRACE_STATUS',json.dumps({'revision':revision(p),'count':int(match[1]),'parsed':False}),flush=True)
+                  continue
+              for row in csv.DictReader(io.StringIO(result.stdout)):
+                  assert set(row)=={'role','cpu_ms'} and row['role'] in {'main','worker','other'}
+                  value=float(row['cpu_ms']);assert number(value)
+                  print('BANK_CPU_NUMERIC',json.dumps({'revision':revision(p),'count':int(match[1]),'role':row['role'],'cpu_ms':value}),flush=True)
+          PY
