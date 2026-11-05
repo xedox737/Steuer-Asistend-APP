@@ -606,18 +606,81 @@ object BankImportParser {
 
 object BankReceiptMatcher {
     private val nonAlphanumeric = Regex("[^a-z0-9]+")
+    private val monthNames = listOf("januar", "februar", "maerz", "april", "mai", "juni",
+        "juli", "august", "september", "oktober", "november", "dezember")
+
+    // One immutable preparation per source record, scoped to this matching call.
+    // No global cache: edited receipts, links and transactions are always read afresh.
+    private data class PreparedTransaction(
+        val transaction: BankTransaction,
+        val date: LocalDate?,
+        val partyTokens: Set<String>,
+        val purpose: String,
+        val purposeTokens: Set<String>,
+        val monthHints: Set<String>,
+        val paymentText: String
+    )
+
+    private data class PreparedReceipt(
+        val receipt: Receipt,
+        val date: LocalDate?,
+        val income: Boolean,
+        val partyTokens: Set<String>,
+        val receiptTokens: Set<String>,
+        val tenantTokens: Set<String>,
+        val displayId: String?,
+        val unit: String,
+        val monthHints: Set<String>,
+        val paymentMethod: String
+    )
+
+    private fun prepare(transaction: BankTransaction, date: LocalDate? = parseDate(transaction.bookingDate)): PreparedTransaction {
+        val purpose = normalize(transaction.purpose)
+        return PreparedTransaction(transaction, date, tokens(transaction.counterparty, 3), purpose,
+            purpose.split(' ').filter { it.length >= 4 }.toSet(),
+            if (transaction.isIncome) monthNames.filter { it in purpose }.toSet() else emptySet(),
+            BankPaymentMatchScore.prepareBankText(transaction))
+    }
+
+    private fun prepare(receipt: Receipt, date: LocalDate? = parseDate(receipt.datum)): PreparedReceipt {
+        val income = isIncomeReceipt(receipt)
+        val description = if (income) normalize(receipt.beschreibung) else ""
+        return PreparedReceipt(receipt, date, income, tokens(receipt.aussteller, 3),
+            tokens(listOf(receipt.beschreibung, receipt.aussteller, receipt.displayId.orEmpty(), receipt.internalId).joinToString(" "), 4),
+            if (income) tokens(receipt.mieter.ifBlank { receipt.aussteller }, 3) else emptySet(),
+            // Preserve the legacy empty-normalized-ID bonus for punctuation-only IDs.
+            receipt.displayId?.takeIf { it.isNotBlank() }?.let(::normalize),
+            if (income) normalize(receipt.wohneinheit) else "",
+            if (income) monthNames.filter { it in description }.toSet() else emptySet(),
+            BankPaymentMatchScore.prepareMethod(receipt))
+    }
+
     fun bestSuggestions(
         transactions: List<BankTransaction>,
         receipts: List<Receipt>,
         links: List<BankReceiptLink>
     ): Map<String, BankMatchSuggestion> {
+        if (receipts.isEmpty()) return emptyMap()
+        val dates = (transactions.map { it.bookingDate } + receipts.map { it.datum }).distinct().associateWith(::parseDate)
+        val preparedReceipts = receipts.map { prepare(it, dates[it.datum]) }
         val linkedTransactionIds = links.filter { it.status == BankLinkStatus.CONFIRMED }.map { it.transactionId }.toSet()
+        val receiptIdsByTransaction = links.groupBy { it.transactionId }.mapValues { (_, rows) -> rows.map { it.receiptId }.toSet() }
         return transactions.asSequence()
             .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
             .filterNot { it.transactionId in linkedTransactionIds && it.reconciliationStatus == BankReconciliationStatus.MATCHED }
-            .mapNotNull { transaction -> bestForTransaction(transaction, receipts, links)?.let { transaction.transactionId to it } }
-            .toMap()
+            .mapNotNull { transaction ->
+                bestForPrepared(prepare(transaction, dates[transaction.bookingDate]), preparedReceipts,
+                    receiptIdsByTransaction[transaction.transactionId].orEmpty())?.let { transaction.transactionId to it }
+            }.toMap()
     }
+
+    private fun bestForPrepared(transaction: PreparedTransaction, receipts: List<PreparedReceipt>, linkedReceiptIds: Set<Int>): BankMatchSuggestion? =
+        receipts.asSequence()
+            .filterNot { it.receipt.id in linkedReceiptIds }
+            .filter { it.income == transaction.transaction.isIncome }
+            .map { score(transaction, it) }
+            .filter { it.score >= 45 }
+            .maxWithOrNull(compareBy<BankMatchSuggestion> { it.score }.thenByDescending { it.receiptId })
 
     fun bestForTransaction(
         transaction: BankTransaction,
@@ -626,12 +689,7 @@ object BankReceiptMatcher {
     ): BankMatchSuggestion? {
         if (!BankClassificationPolicy.decision(transaction).eligibleForReceiptMatching) return null
         val linkedReceiptIds = links.filter { it.transactionId == transaction.transactionId }.map { it.receiptId }.toSet()
-        return receipts.asSequence()
-            .filterNot { it.id in linkedReceiptIds }
-            .filter { receiptDirectionMatches(transaction, it) }
-            .map { score(transaction, it) }
-            .filter { it.score >= 45 }
-            .maxWithOrNull(compareBy<BankMatchSuggestion> { it.score }.thenByDescending { it.receiptId })
+        return bestForPrepared(prepare(transaction), receipts.map { prepare(it) }, linkedReceiptIds)
     }
 
     fun bestForReceipt(
@@ -639,40 +697,51 @@ object BankReceiptMatcher {
         transactions: List<BankTransaction>,
         links: List<BankReceiptLink> = emptyList()
     ): BankMatchSuggestion? {
+        val doc = prepare(receipt)
         val linkedTxIds = links.filter { it.receiptId == receipt.id || (receipt.internalId.isNotBlank() && it.receiptInternalId == receipt.internalId) }
             .map { it.transactionId }.toSet()
         return transactions.asSequence()
             .filterNot { it.transactionId in linkedTxIds }
             .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
-            .filter { receiptDirectionMatches(it, receipt) }
-            .map { score(it, receipt) }
+            .filter { it.isIncome == doc.income }
+            .map { score(prepare(it), doc) }
             .filter { it.score >= 45 }
             .maxWithOrNull(compareBy<BankMatchSuggestion> { it.score }.thenBy { it.transactionId })
     }
 
-    fun rankReceipts(transaction: BankTransaction, receipts: List<Receipt>, links: List<BankReceiptLink>): List<BankMatchSuggestion> =
-        if (!BankClassificationPolicy.decision(transaction).eligibleForReceiptMatching) emptyList() else receipts.asSequence()
+    fun rankReceipts(transaction: BankTransaction, receipts: List<Receipt>, links: List<BankReceiptLink>): List<BankMatchSuggestion> {
+        if (!BankClassificationPolicy.decision(transaction).eligibleForReceiptMatching) return emptyList()
+        val tx = prepare(transaction)
+        return receipts.asSequence()
             .filter { receiptDirectionMatches(transaction, it) }
             .filter { BankLinkPolicy.propose(transaction, it, links).allowed }
-            .map { score(transaction, it) }
+            .map { score(tx, prepare(it)) }
             .sortedByDescending { it.score }
             .take(30)
             .toList()
+    }
 
     fun rankTransactionsForReceipt(
         receipt: Receipt,
         transactions: List<BankTransaction>,
         links: List<BankReceiptLink>
-    ): List<BankMatchSuggestion> = transactions.asSequence()
-        .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
-        .filter { receiptDirectionMatches(it, receipt) }
-        .filter { BankLinkPolicy.propose(it, receipt, links).allowed }
-        .map { score(it, receipt) }
-        .sortedWith(compareByDescending<BankMatchSuggestion> { it.score }.thenBy { it.transactionId })
-        .take(50)
-        .toList()
+    ): List<BankMatchSuggestion> {
+        val doc = prepare(receipt)
+        return transactions.asSequence()
+            .filter { BankClassificationPolicy.decision(it).eligibleForReceiptMatching }
+            .filter { it.isIncome == doc.income }
+            .filter { BankLinkPolicy.propose(it, receipt, links).allowed }
+            .map { score(prepare(it), doc) }
+            .sortedWith(compareByDescending<BankMatchSuggestion> { it.score }.thenBy { it.transactionId })
+            .take(50)
+            .toList()
+    }
 
-    fun score(transaction: BankTransaction, receipt: Receipt): BankMatchSuggestion {
+    fun score(transaction: BankTransaction, receipt: Receipt): BankMatchSuggestion = score(prepare(transaction), prepare(receipt))
+
+    private fun score(tx: PreparedTransaction, doc: PreparedReceipt): BankMatchSuggestion {
+        val transaction = tx.transaction
+        val receipt = doc.receipt
         var score = 0
         val reasons = mutableListOf<String>()
         val amountDiff = kotlin.math.abs(transaction.absoluteAmount - receipt.bruttobetrag)
@@ -681,32 +750,29 @@ object BankReceiptMatcher {
             amountDiff <= 1.0 -> { score += 35; reasons += "Betrag nahezu gleich" }
             transaction.absoluteAmount > 0 && amountDiff / transaction.absoluteAmount <= 0.05 -> { score += 15; reasons += "Betrag ähnlich" }
         }
-        val dayDiff = dateDistance(transaction.bookingDate, receipt.datum)
+        val dayDiff = if (tx.date != null && doc.date != null) {
+            kotlin.math.abs(ChronoUnit.DAYS.between(tx.date, doc.date))
+        } else null
         when {
             dayDiff == 0L -> { score += 20; reasons += "gleiches Datum" }
             dayDiff != null && dayDiff <= 2 -> { score += 16; reasons += "Datum ±2 Tage" }
             dayDiff != null && dayDiff <= 5 -> { score += 9; reasons += "Datum ±5 Tage" }
             dayDiff != null && dayDiff <= 14 -> score += 3
         }
-        val partyScore = tokenSimilarity(transaction.counterparty, receipt.aussteller)
+        val partyScore = tokenSimilarity(tx.partyTokens, doc.partyTokens)
         if (partyScore >= 0.75) { score += 18; reasons += "Zahlungspartner passt" }
         else if (partyScore >= 0.45) { score += 10; reasons += "Zahlungspartner ähnlich" }
-        val purposeNorm = normalize(transaction.purpose)
-        val receiptTokens = normalize(listOf(receipt.beschreibung, receipt.aussteller, receipt.displayId.orEmpty(), receipt.internalId).joinToString(" "))
-            .split(" ").filter { it.length >= 4 }.toSet()
-        val purposeTokens = purposeNorm.split(" ").filter { it.length >= 4 }.toSet()
-        val purposeOverlap = purposeTokens.intersect(receiptTokens).size
+        val purposeOverlap = tx.purposeTokens.count { it in doc.receiptTokens }
         if (purposeOverlap >= 2) { score += 7; reasons += "Verwendungszweck passt" }
         if (transaction.counterparty.isNotBlank() && receipt.aussteller.isNotBlank() && partyScore < 0.25 && purposeOverlap == 0) {
             score -= 35
             reasons += "Zahlungspartner weicht ab"
         }
-        if (receipt.displayId?.takeIf { it.isNotBlank() }?.let { normalize(transaction.purpose).contains(normalize(it)) } == true) {
+        if (doc.displayId?.let { tx.purpose.contains(it) } == true) {
             score += 10; reasons += "Belegnummer im Verwendungszweck"
         }
-        if (transaction.isIncome && isIncomeReceipt(receipt)) {
-            val tenant = receipt.mieter.ifBlank { receipt.aussteller }
-            val tenantSimilarity = tokenSimilarity(transaction.counterparty, tenant)
+        if (transaction.isIncome && doc.income) {
+            val tenantSimilarity = tokenSimilarity(tx.partyTokens, doc.tenantTokens)
             if (tenantSimilarity >= 0.75) {
                 score += 12
                 reasons += "Mietername passt"
@@ -714,9 +780,7 @@ object BankReceiptMatcher {
                 score += 6
                 reasons += "Mietername ähnlich"
             }
-            val normalizedPurpose = normalize(transaction.purpose)
-            val normalizedUnit = normalize(receipt.wohneinheit)
-            if (normalizedUnit.isNotBlank() && normalizedPurpose.contains(normalizedUnit)) {
+            if (doc.unit.isNotBlank() && tx.purpose.contains(doc.unit)) {
                 score += 8
                 reasons += "Wohneinheit im Verwendungszweck"
             }
@@ -724,12 +788,12 @@ object BankReceiptMatcher {
                 score += 5
                 reasons += "Immobilie passt"
             }
-            if (rentPeriodMatches(transaction.purpose, receipt.beschreibung, transaction.bookingDate, receipt.datum)) {
+            if (tx.monthHints.any { it in doc.monthHints } || (tx.date != null && tx.date.monthValue == doc.date?.monthValue)) {
                 score += 5
                 reasons += "Mietmonat passt"
             }
         }
-        val paymentAdjustment = BankPaymentMatchScore.adjustment(transaction, receipt)
+        val paymentAdjustment = BankPaymentMatchScore.adjustmentPrepared(doc.paymentMethod, tx.paymentText)
         score += paymentAdjustment.points
         reasons += paymentAdjustment.reasons
         val confidence = when {
@@ -740,38 +804,20 @@ object BankReceiptMatcher {
         return BankMatchSuggestion(transaction.transactionId, receipt.id, score.coerceIn(0, 100), confidence, reasons)
     }
 
-    private fun receiptDirectionMatches(transaction: BankTransaction, receipt: Receipt): Boolean {
-        val incomeReceipt = isIncomeReceipt(receipt)
-        return if (transaction.isIncome) incomeReceipt else !incomeReceipt
-    }
+    private fun receiptDirectionMatches(transaction: BankTransaction, receipt: Receipt): Boolean =
+        transaction.isIncome == isIncomeReceipt(receipt)
 
     private fun isIncomeReceipt(receipt: Receipt): Boolean =
         receipt.hauptkategorie.equals("Miete, Nebenkosten & Kaution", true) ||
             receipt.hauptkategorie.equals("Sonstige Einnahmen", true)
 
-    private fun rentPeriodMatches(purpose: String, description: String, bookingDate: String, receiptDate: String): Boolean {
-        val monthTokens = listOf(
-            "januar", "februar", "maerz", "märz", "april", "mai", "juni",
-            "juli", "august", "september", "oktober", "november", "dezember"
-        )
-        val left = normalize(purpose)
-        val right = normalize(description)
-        if (monthTokens.any { token -> normalize(token).let { it in left && it in right } }) return true
-        val bookingMonth = runCatching { LocalDate.parse(bookingDate).monthValue }.getOrNull()
-        val receiptMonth = runCatching { LocalDate.parse(receiptDate).monthValue }.getOrNull()
-        return bookingMonth != null && bookingMonth == receiptMonth
-    }
+    private fun parseDate(value: String): LocalDate? = runCatching { LocalDate.parse(value) }.getOrNull()
 
-    private fun dateDistance(a: String, b: String): Long? = runCatching {
-        kotlin.math.abs(ChronoUnit.DAYS.between(LocalDate.parse(a), LocalDate.parse(b)))
-    }.getOrNull()
+    private fun tokens(value: String, minLength: Int): Set<String> =
+        normalize(value).split(' ').filter { it.length >= minLength }.toSet()
 
-    private fun tokenSimilarity(a: String, b: String): Double {
-        val aa = normalize(a).split(" ").filter { it.length >= 3 }.toSet()
-        val bb = normalize(b).split(" ").filter { it.length >= 3 }.toSet()
-        if (aa.isEmpty() || bb.isEmpty()) return 0.0
-        return aa.intersect(bb).size.toDouble() / minOf(aa.size, bb.size).toDouble()
-    }
+    private fun tokenSimilarity(a: Set<String>, b: Set<String>): Double =
+        if (a.isEmpty() || b.isEmpty()) 0.0 else a.count { it in b }.toDouble() / minOf(a.size, b.size).toDouble()
 
     private fun normalize(value: String): String = value.lowercase(java.util.Locale.GERMANY)
         .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")

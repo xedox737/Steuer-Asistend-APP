@@ -10,9 +10,16 @@ data class PaymentMatchAdjustment(val points: Int, val reasons: List<String>)
 
 object BankPaymentMatchScore {
     private val nonAlphanumeric = Regex("[^a-z0-9]+")
-    fun adjustment(transaction: BankTransaction, receipt: Receipt): PaymentMatchAdjustment {
-        val method = normalize(receipt.zahlungsart)
-        val bankText = normalize("${transaction.purpose} ${transaction.counterparty} ${transaction.bankReference}")
+    fun adjustment(transaction: BankTransaction, receipt: Receipt): PaymentMatchAdjustment =
+        adjustmentPrepared(prepareMethod(receipt), prepareBankText(transaction))
+
+    internal fun prepareMethod(receipt: Receipt): String = normalize(receipt.zahlungsart)
+
+    internal fun prepareBankText(transaction: BankTransaction): String =
+        normalize("${transaction.purpose} ${transaction.counterparty} ${transaction.bankReference}")
+
+    // Inputs come from the canonical helpers above, prepared once per source record.
+    internal fun adjustmentPrepared(method: String, bankText: String): PaymentMatchAdjustment {
         return when {
             method == "bar" -> PaymentMatchAdjustment(-35, listOf("Zahlungsart Bar spricht gegen Bankmatch"))
             method == "ueberweisung" -> {
