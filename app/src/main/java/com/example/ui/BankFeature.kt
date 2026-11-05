@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -72,6 +74,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,6 +82,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,8 +102,20 @@ import com.example.data.Receipt
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private enum class BankToolsMode { NONE, RULES, RENT, LOAN_RECURRING, REVIEW_COMBINATIONS, REVERSE_RECEIPT, DATEV_PRECHECK }
+
+private data class BankAccountListState(
+    val transactions: List<BankTransaction>,
+    val counts: BankCompactCounts,
+    val summary: BankCompactSummary
+)
+
+private fun LazyListScope.bankSpacedItem(content: @Composable () -> Unit) {
+    item { Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) { content() } }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -109,10 +125,8 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
     val properties by viewModel.properties.collectAsStateWithLifecycle()
-    val suggestions by viewModel.bankMatchSuggestions.collectAsStateWithLifecycle()
     val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
-    val rentSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
     val importStatus by viewModel.bankImportStatus.collectAsStateWithLifecycle()
     val pendingAccountImports by viewModel.pendingBankAccountImports.collectAsStateWithLifecycle()
     val learningRules by viewModel.bankLearningRules.collectAsStateWithLifecycle()
@@ -167,15 +181,27 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         )
     }
 
-    val accountTransactions = remember(transactions, selectedAccountId) {
-        BankCompactUiPolicy.account(transactions, selectedAccountId)
+    val accountData by produceState(
+        initialValue = BankAccountListState(emptyList(), BankCompactUiPolicy.counts(emptyList()), BankCompactUiPolicy.summary(emptyList())),
+        transactions, selectedAccountId
+    ) {
+        value = withContext(Dispatchers.Default) {
+            val rows = BankCompactUiPolicy.account(transactions, selectedAccountId)
+            BankAccountListState(rows, BankCompactUiPolicy.counts(rows), BankCompactUiPolicy.summary(rows))
+        }
     }
-    val counts = remember(accountTransactions) { BankCompactUiPolicy.counts(accountTransactions) }
-    val summary = remember(accountTransactions) { BankCompactUiPolicy.summary(accountTransactions) }
-    val shown = remember(accountTransactions, filter, searchText) {
-        BankCompactUiPolicy.search(BankCompactUiPolicy.filter(accountTransactions, filter), searchText)
+    val accountTransactions = accountData.transactions
+    val counts = accountData.counts
+    val summary = accountData.summary
+    val today = LocalDate.now()
+    val groups by produceState(emptyList<BankDateGroup>(), accountTransactions, filter, searchText, today) {
+        // A superseded search cannot publish results after its replacement.
+        value = withContext(Dispatchers.Default) {
+            BankCompactUiPolicy.group(
+                BankCompactUiPolicy.search(BankCompactUiPolicy.filter(accountTransactions, filter), searchText), today
+            )
+        }
     }
-    val groups = remember(shown) { BankCompactUiPolicy.group(shown) }
     val selectedTransactions = remember(transactions, selectedTransactionIds) { transactions.filter { it.transactionId in selectedTransactionIds } }
     val linksByTransaction = remember(links) { links.groupBy { it.transactionId } }
     val assignmentsByTransaction = remember(assignments) { assignments.groupBy { it.transactionId } }
@@ -220,6 +246,9 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     BackHandler(enabled = selectedTransaction != null) { closeDetails() }
 
     if (selectedTransaction != null) {
+        // Suggestions are used by details; the rental tools subscribe independently.
+        val suggestions by viewModel.bankMatchSuggestions.collectAsStateWithLifecycle()
+        val rentSuggestions by viewModel.bankRentSuggestions.collectAsStateWithLifecycle()
         BankTransactionDetailsScreen(
             viewModel = viewModel,
             transaction = selectedTransaction,
@@ -247,10 +276,10 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
         )
     } else {
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp).testTag("bank_transaction_list"),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            item {
+            bankSpacedItem {
                 Spacer(Modifier.height(2.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedTextField(
@@ -295,7 +324,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             }
 
             if (selectedTransactionIds.isNotEmpty()) {
-                item {
+                bankSpacedItem {
                     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)), border = BorderStroke(1.dp, AccentBlue)) {
                         Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -320,7 +349,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 }
             }
 
-            item {
+            bankSpacedItem {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     BankCompactFilter.entries.forEach { item ->
                         FilterChip(
@@ -338,7 +367,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 }
             }
 
-            item {
+            bankSpacedItem {
                 Box {
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable { accountMenuOpen = true },
@@ -368,7 +397,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 }
             }
 
-            item {
+            bankSpacedItem {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BankMoneySummaryCard("Eingänge", summary.incoming, true, Modifier.weight(1f))
                     BankMoneySummaryCard("Ausgänge", summary.outgoing, false, Modifier.weight(1f))
@@ -377,12 +406,12 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             }
 
             when (toolsMode) {
-                BankToolsMode.RULES -> item { ToolContainer("Bankregeln", onClose = { toolsMode = BankToolsMode.NONE }) { BankRulesPanel(viewModel, learningRules) } }
-                BankToolsMode.RENT -> item { ToolContainer("Mietabgleich", onClose = { toolsMode = BankToolsMode.NONE }) { BankRentPanel(viewModel) } }
-                BankToolsMode.LOAN_RECURRING -> item { ToolContainer("Darlehen & Wiederkehrend", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2CPanel(viewModel) } }
-                BankToolsMode.REVIEW_COMBINATIONS -> item { ToolContainer("Prüfwarteschlange & Sammelzahlungen", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2DReviewPanel(viewModel) } }
-                BankToolsMode.DATEV_PRECHECK -> item { ToolContainer("DATEV-Vorprüfung", onClose = { toolsMode = BankToolsMode.NONE }) { BankDatevPrecheckPanel(accountTransactions) } }
-                BankToolsMode.REVERSE_RECEIPT -> item {
+                BankToolsMode.RULES -> bankSpacedItem { ToolContainer("Bankregeln", onClose = { toolsMode = BankToolsMode.NONE }) { BankRulesPanel(viewModel, learningRules) } }
+                BankToolsMode.RENT -> bankSpacedItem { ToolContainer("Mietabgleich", onClose = { toolsMode = BankToolsMode.NONE }) { BankRentPanel(viewModel) } }
+                BankToolsMode.LOAN_RECURRING -> bankSpacedItem { ToolContainer("Darlehen & Wiederkehrend", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2CPanel(viewModel) } }
+                BankToolsMode.REVIEW_COMBINATIONS -> bankSpacedItem { ToolContainer("Prüfwarteschlange & Sammelzahlungen", onClose = { toolsMode = BankToolsMode.NONE }) { BankPhase2DReviewPanel(viewModel) } }
+                BankToolsMode.DATEV_PRECHECK -> bankSpacedItem { ToolContainer("DATEV-Vorprüfung", onClose = { toolsMode = BankToolsMode.NONE }) { BankDatevPrecheckPanel(accountTransactions) } }
+                BankToolsMode.REVERSE_RECEIPT -> bankSpacedItem {
                     ToolContainer("Beleg → Bank-Zuordnung", onClose = { toolsMode = BankToolsMode.NONE }) {
                         BankReverseReceiptPanel(
                             transactions = accountTransactions,
@@ -410,30 +439,36 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
             } else {
                 groups.forEach { group ->
                     item(key = "date-${group.key}") {
-                        Text(group.label, fontWeight = FontWeight.Bold, color = SlateGray, fontSize = 13.sp, modifier = Modifier.padding(top = 7.dp, bottom = 2.dp))
+                        Text(group.label, fontWeight = FontWeight.Bold, color = SlateGray, fontSize = 13.sp, modifier = Modifier.padding(top = 15.dp, bottom = 10.dp))
                     }
-                    item(key = "group-${group.key}") {
+                    itemsIndexed(
+                        items = group.transactions,
+                        key = { _, transaction -> "transaction-${transaction.transactionId}" },
+                        contentType = { _, _ -> "bank-transaction" }
+                    ) { index, transaction ->
+                        val first = index == 0
+                        val last = index == group.transactions.lastIndex
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             border = BorderStroke(1.dp, BorderColor),
-                            shape = Ui2.shape
+                            shape = RoundedCornerShape(
+                                topStart = if (first) Ui2.cardRadius else 0.dp,
+                                topEnd = if (first) Ui2.cardRadius else 0.dp,
+                                bottomStart = if (last) Ui2.cardRadius else 0.dp,
+                                bottomEnd = if (last) Ui2.cardRadius else 0.dp
+                            )
                         ) {
-                            Column {
-                                group.transactions.forEachIndexed { index, transaction ->
-                                    BankCompactTransactionRow(
-                                        transaction = transaction,
-                                        selected = transaction.transactionId in selectedTransactionIds,
-                                        selectionMode = selectedTransactionIds.isNotEmpty(),
-                                        onClick = {
-                                            if (selectedTransactionIds.isEmpty()) selectedTransactionId = transaction.transactionId
-                                            else selectedTransactionIds = selectedTransactionIds.toggle(transaction.transactionId)
-                                        },
-                                        onLongClick = { selectedTransactionIds = selectedTransactionIds.toggle(transaction.transactionId) }
-                                    )
-                                    if (index < group.transactions.lastIndex) HorizontalDivider(color = BorderColor)
-                                }
-                            }
+                            BankCompactTransactionRow(
+                                transaction = transaction,
+                                selected = transaction.transactionId in selectedTransactionIds,
+                                selectionMode = selectedTransactionIds.isNotEmpty(),
+                                onClick = {
+                                    if (selectedTransactionIds.isEmpty()) selectedTransactionId = transaction.transactionId
+                                    else selectedTransactionIds = selectedTransactionIds.toggle(transaction.transactionId)
+                                },
+                                onLongClick = { selectedTransactionIds = selectedTransactionIds.toggle(transaction.transactionId) }
+                            )
                         }
                     }
                 }
