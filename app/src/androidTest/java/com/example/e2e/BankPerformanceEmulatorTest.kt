@@ -197,11 +197,30 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
         ui.onNodeWithText(firstCounterparty).assertIsDisplayed()
     }
 
-    private fun openDetailsAndAwaitSuggestions(counterparty: String) {
-        ui.onNodeWithText(counterparty).performClick()
-        ui.onNodeWithText("Buchungsdetails").assertIsDisplayed()
-        val model = vm
-        ui.waitUntil(10_000) { model.bankMatchSuggestions.value.isNotEmpty() && model.bankRentSuggestions.value.isNotEmpty() }
+    private fun openDetailsAndAwaitSuggestions(counterparty: String, profileAlreadyActive: Boolean = false) {
+        val diagnostic = !profileAlreadyActive && InstrumentationRegistry.getArguments()
+            .getString("immopilotBankDiagnosticProfile") == "true"
+        val count = vm.bankTransactions.value.size
+        val trace = File(context.cacheDir, "bank-suggestion-diagnostic-$count.trace")
+        if (diagnostic) Debug.startMethodTracingSampling(trace.absolutePath, 8 * 1024 * 1024, 1_000)
+        try {
+            ui.onNodeWithText(counterparty).performClick()
+            ui.onNodeWithText("Buchungsdetails").assertIsDisplayed()
+            val model = vm
+            try {
+                ui.waitUntil(10_000) { model.bankMatchSuggestions.value.isNotEmpty() && model.bankRentSuggestions.value.isNotEmpty() }
+            } catch (failure: androidx.compose.ui.test.ComposeTimeoutException) {
+                throw AssertionError("Suggestion readiness: transactions=${model.bankTransactions.value.size}, " +
+                    "receipts=${model.receipts.value.size}, properties=${model.properties.value.size}, " +
+                    "receiptSuggestions=${model.bankMatchSuggestions.value.size}, " +
+                    "rentSuggestions=${model.bankRentSuggestions.value.size}", failure)
+            }
+        } finally {
+            if (diagnostic) {
+                Debug.stopMethodTracing()
+                saveArtifact("bank-suggestion-diagnostic-$count.trace", trace.readBytes())
+            }
+        }
     }
 
     private fun recordProfile(count: Int, transactions: List<BankTransaction>, property: PropertyMetadata, unit: WohneinheitStatus) {
@@ -218,7 +237,7 @@ class BankPerformanceEmulatorTest : EmulatorTestSupport() {
         Debug.startMethodTracingSampling(trace.absolutePath, 16 * 1024 * 1024, 1_000)
         try {
             openBank(transactions.last().counterparty)
-            openDetailsAndAwaitSuggestions(transactions.last().counterparty)
+            openDetailsAndAwaitSuggestions(transactions.last().counterparty, profileAlreadyActive = true)
             val data = snapshot()
             fun workload(name: String, compute: () -> Unit) {
                 val wall = SystemClock.elapsedRealtimeNanos()
