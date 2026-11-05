@@ -201,4 +201,3 @@ private object LegacyBankRentCandidateFactory {
         return abs(actual - known)
     }
 }
-

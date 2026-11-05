@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.ui.PrimaryNavigationComposeTest" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-11-05T04:24:42.212Z" hostname="0948d7775e33" time="49.141">
+  <properties/>
+  <testcase name="afaToEveryPrimaryRootIncludingActiveMore" classname="com.example.ui.PrimaryNavigationComposeTest" time="20.023"/>
+  <testcase name="repeatedPrimarySwitchesDoNotAccumulateHistory" classname="com.example.ui.PrimaryNavigationComposeTest" time="3.001"/>
+  <testcase name="datevToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="1.803"/>
+  <testcase name="localUnitBackStillReturnsToUnitsThenProperty" classname="com.example.ui.PrimaryNavigationComposeTest" time="1.069"/>
+  <testcase name="documentDetailToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="2.188"/>
+  <testcase name="primaryResetLeavesSettingsPageAndDoesNotReopenIt" classname="com.example.ui.PrimaryNavigationComposeTest" time="4.36"/>
+  <testcase name="receiptInlineEditorToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="1.401"/>
+  <testcase name="monitorToEveryPrimaryRootIncludingActiveMore" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.854"/>
+  <testcase name="receiptDetailToEveryPrimaryRootIncludingActiveReceipts" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.796"/>
+  <testcase name="rulesToEveryPrimaryRootIncludingActiveMore" classname="com.example.ui.PrimaryNavigationComposeTest" time="3.805"/>
+  <testcase name="rentOverviewToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="1.116"/>
+  <testcase name="ledgerToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.865"/>
+  <testcase name="logbookToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.551"/>
+  <testcase name="committedSaveFinishesWithoutOverridingANewerPrimaryDestination" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.239"/>
+  <testcase name="propertyUnitToEveryPrimaryRootIncludingActiveProperties" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.783"/>
+  <testcase name="createTwentyFiveUnitsThroughViewModelKeepsAllIdsAndAreas" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.25"/>
+  <testcase name="scanReselectLeavesBankPrefillAndReturnsToFreshScanRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.317"/>
+  <testcase name="backupToEveryPrimaryRootIncludingActiveMore" classname="com.example.ui.PrimaryNavigationComposeTest" time="3.814"/>
+  <testcase name="bankDetailToEveryPrimaryRoot" classname="com.example.ui.PrimaryNavigationComposeTest" time="0.844"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

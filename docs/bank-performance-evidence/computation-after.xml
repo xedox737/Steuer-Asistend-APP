@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.ui.BankComputationPerformanceTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-11-04T23:54:07.299Z" hostname="0948d7775e33" time="12.593">
+  <properties/>
+  <testcase name="report1250And5000ComputationAndAllocationBaselines" classname="com.example.ui.BankComputationPerformanceTest" time="11.282"/>
+  <testcase name="receiptBatchMatchingRetainsSingleTransactionResultsAndReadOnlyInputs" classname="com.example.ui.BankComputationPerformanceTest" time="0.479"/>
+  <testcase name="searchAndStatusCountsRetainGermanNormalizationAndLocaleBehavior" classname="com.example.ui.BankComputationPerformanceTest" time="0.288"/>
+  <testcase name="groupingPreservesLegacyOrderLabelsInvalidDatesAndEveryIdentity" classname="com.example.ui.BankComputationPerformanceTest" time="0.123"/>
+  <testcase name="rentalCandidateRetainsConfirmedAmountsMonthLinkAndRhythmWithoutUsingItsOwnHistory" classname="com.example.ui.BankComputationPerformanceTest" time="0.055"/>
+  <system-out><![CDATA[BANK_COMPUTATION runtime=robolectric-jvm count=1250 operation=counts runs=3 median_ms=1.929112 min_ms=1.847319 max_ms=2.560056 median_allocated_bytes=554144
+BANK_COMPUTATION runtime=robolectric-jvm count=1250 operation=search runs=3 median_ms=10.160468 min_ms=8.493265 max_ms=16.366926 median_allocated_bytes=1681056
+BANK_COMPUTATION runtime=robolectric-jvm count=1250 operation=group runs=3 median_ms=1.034416 min_ms=0.985054 max_ms=1.078679 median_allocated_bytes=40448
+BANK_COMPUTATION runtime=robolectric-jvm count=1250 operation=receipt_matching runs=3 median_ms=193.50191 min_ms=182.519843 max_ms=282.403266 median_allocated_bytes=232497192
+BANK_COMPUTATION runtime=robolectric-jvm count=1250 operation=rent_candidates runs=3 median_ms=34.506281 min_ms=33.02344 max_ms=59.130441 median_allocated_bytes=33168936
+BANK_COMPUTATION runtime=robolectric-jvm count=5000 operation=counts runs=3 median_ms=1.597805 min_ms=1.556799 max_ms=21.569442 median_allocated_bytes=2150768
+BANK_COMPUTATION runtime=robolectric-jvm count=5000 operation=search runs=3 median_ms=22.329948 min_ms=18.384693 max_ms=23.726478 median_allocated_bytes=6723888
+BANK_COMPUTATION runtime=robolectric-jvm count=5000 operation=group runs=3 median_ms=1.544235 min_ms=1.539747 max_ms=1.87444 median_allocated_bytes=124720
+BANK_COMPUTATION runtime=robolectric-jvm count=5000 operation=receipt_matching runs=3 median_ms=784.377831 min_ms=762.198733 max_ms=791.01641 median_allocated_bytes=932774568
+BANK_COMPUTATION runtime=robolectric-jvm count=5000 operation=rent_candidates runs=3 median_ms=107.867595 min_ms=104.815242 max_ms=148.027003 median_allocated_bytes=128031328
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

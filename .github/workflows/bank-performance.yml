@@ -1,0 +1,87 @@
+name: Bank performance comparison
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'app/src/main/java/com/example/ui/Bank*'
+      - 'app/src/main/java/com/example/ui/ReceiptViewModel.kt'
+      - 'app/src/main/java/com/example/data/Bank*'
+      - 'app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt'
+      - '.github/workflows/bank-performance.yml'
+      - '.github/scripts/run-bank-performance.sh'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bank-performance-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  bank-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [before, after]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.revision == 'before' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
+      - name: Copy the identical benchmark harness from the PR
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: benchmark-harness
+          sparse-checkout: |
+            app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt
+            .github/scripts/run-bank-performance.sh
+          sparse-checkout-cone-mode: false
+      - run: |
+          cp benchmark-harness/app/src/androidTest/java/com/example/e2e/BankPerformanceEmulatorTest.kt app/src/androidTest/java/com/example/e2e/
+          cp benchmark-harness/.github/scripts/run-bank-performance.sh .github/scripts/
+          mkdir -p app/build/bank-performance
+          git rev-parse HEAD > app/build/bank-performance/revision.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+      - name: Prepare disposable test signing and compile
+        run: |
+          keytool -genkeypair -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -dname 'CN=Android Debug,O=Android,C=US' -keyalg RSA -keysize 2048 -validity 10000
+          gradle assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo timeout 15s udevadm trigger --name-match=kvm --settle
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Measure bank startup, list, input and memory
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        env:
+          BANK_PERFORMANCE_BASELINE: ${{ matrix.revision == 'before' }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -accel on
+          script: bash .github/scripts/run-bank-performance.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bank-performance-${{ matrix.revision }}
+          path: |
+            app/build/bank-performance/**
+            app/build/outputs/androidTest-results/**
+            app/build/reports/androidTests/**
+          if-no-files-found: error
