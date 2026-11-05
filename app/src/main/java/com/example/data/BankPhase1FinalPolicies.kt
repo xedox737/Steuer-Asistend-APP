@@ -9,6 +9,7 @@ import kotlin.math.abs
 data class PaymentMatchAdjustment(val points: Int, val reasons: List<String>)
 
 object BankPaymentMatchScore {
+    private val nonAlphanumeric = Regex("[^a-z0-9]+")
     fun adjustment(transaction: BankTransaction, receipt: Receipt): PaymentMatchAdjustment {
         val method = normalize(receipt.zahlungsart)
         val bankText = normalize("${transaction.purpose} ${transaction.counterparty} ${transaction.bankReference}")
@@ -29,7 +30,7 @@ object BankPaymentMatchScore {
 
     private fun normalize(value: String): String = value.lowercase(java.util.Locale.GERMANY)
         .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
-        .replace(Regex("[^a-z0-9]+"), " ").trim()
+        .replace(nonAlphanumeric, " ").trim()
 }
 
 object BankLoanPaymentType {

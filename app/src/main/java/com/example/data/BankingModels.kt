@@ -605,6 +605,7 @@ object BankImportParser {
 }
 
 object BankReceiptMatcher {
+    private val nonAlphanumeric = Regex("[^a-z0-9]+")
     fun bestSuggestions(
         transactions: List<BankTransaction>,
         receipts: List<Receipt>,
@@ -774,7 +775,7 @@ object BankReceiptMatcher {
 
     private fun normalize(value: String): String = value.lowercase(java.util.Locale.GERMANY)
         .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
-        .replace(Regex("[^a-z0-9]+"), " ").trim()
+        .replace(nonAlphanumeric, " ").trim()
 }
 
 object BankPaymentMethodPolicy {
