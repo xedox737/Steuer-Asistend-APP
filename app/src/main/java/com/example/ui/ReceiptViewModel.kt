@@ -4067,10 +4067,26 @@ data class AiSearchUiState(
         }
     }
 
-    fun importManagedDocument(uri: android.net.Uri, unitId: String? = null) {
+    internal suspend fun prepareManagedDocumentBooking(documentId: String): Int? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        try {
+            com.example.data.ManagedDocumentBookingPreparation(getApplication(), database, repository).prepare(documentId).id
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e
+        } catch (e: Exception) {
+            _documentOperationStatus.value = e.message ?: "Der Buchungsbeleg konnte nicht vorbereitet werden."
+            null
+        }
+    }
+
+    fun importManagedDocument(uri: android.net.Uri, unitId: String? = null, propertyId: String? = null) {
+        // Freeze the chosen scope before asynchronous IO; a later global selection must not move the import.
+        val targetPropertyId = propertyId ?: propertyMetadata.value?.propertyId.orEmpty()
         viewModelScope.launch(Dispatchers.IO) {
             _documentOperationStatus.value = "Dokument wird geprüft …"
-            val property = propertyMetadata.value ?: com.example.data.PropertyMetadata()
+            val property = database.propertyDao().getPropertyByPropertyId(targetPropertyId)
+            if (property == null || (unitId != null && getWohneinheitenForProperty(property).none { it.unitId == unitId })) {
+                _documentOperationStatus.value = "Bitte eine vorhandene Immobilie und eine zugehörige Wohneinheit auswählen."
+                return@launch
+            }
             when (val result = managedDocumentService.prepareImport(uri, property, unitId)) {
                 is com.example.data.ManagedDocumentImportResult.Imported -> {
                     _documentOperationStatus.value = "Dokument importiert. OCR und KI-Zuordnung laufen …"
