@@ -637,7 +637,7 @@ private fun ReceiptReferenceRow(label: String, value: String, icon: ImageVector,
 }
 
 @Composable
-private fun ReceiptAssignmentBadge(assigned: Boolean) {
+internal fun ReceiptAssignmentBadge(assigned: Boolean) {
     Surface(color = if (assigned) Color(0xFFE5F9ED) else Color(0xFFEAF3FF), shape = RoundedCornerShape(6.dp)) {
         Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {

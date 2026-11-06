@@ -1817,7 +1817,8 @@ fun ReceiptGridCard(
     onItemClick: () -> Unit,
     onDeleteClick: () -> Unit,
     onZoomClick: (Bitmap) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isBankAssigned: Boolean = false
 ) {
     val categoryColor = when (receipt.hauptkategorie) {
         "Anschaffungskosten" -> AccentBlue
@@ -1900,6 +1901,8 @@ fun ReceiptGridCard(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                if (isBankAssigned) ReceiptAssignmentBadge(assigned = true)
+
                 // Description
                 val desc = receipt.beschreibung.ifEmpty { receipt.unterkategorie }
                 if (desc.isNotEmpty()) {
@@ -1972,6 +1975,8 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
     val query by viewModel.searchQuery.collectAsStateWithLifecycle()
     val filter by viewModel.selectedCategoryFilter.collectAsStateWithLifecycle()
     val receipts by viewModel.filteredReceipts.collectAsStateWithLifecycle()
+    val bankLinks by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
+    val bankAssignments = remember(bankLinks) { ReceiptBankAssignmentIndex(bankLinks) }
     var fullScreenPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     
     // Toggle for View Modes: "grid", "list", "table"
@@ -2258,6 +2263,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                             ) {
                                 ReceiptGridCard(
                                     receipt = pair[0],
+                                    isBankAssigned = bankAssignments.isAssigned(pair[0]),
                                     onItemClick = { viewModel.openReceiptDetail(pair[0].id, AppScreen.RECEIPTS_LIST) },
                                     onDeleteClick = { receiptToDelete = pair[0] },
                                     onZoomClick = { bmp -> fullScreenPreviewBitmap = bmp },
@@ -2272,6 +2278,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                                 ) {
                                     ReceiptGridCard(
                                         receipt = pair[1],
+                                        isBankAssigned = bankAssignments.isAssigned(pair[1]),
                                         onItemClick = { viewModel.openReceiptDetail(pair[1].id, AppScreen.RECEIPTS_LIST) },
                                         onDeleteClick = { receiptToDelete = pair[1] },
                                         onZoomClick = { bmp -> fullScreenPreviewBitmap = bmp },
@@ -2316,6 +2323,7 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                     receipts.forEach { receipt ->
                         ReceiptRowItem(
                             receipt = receipt,
+                            isBankAssigned = bankAssignments.isAssigned(receipt),
                             onItemClick = { viewModel.openReceiptDetail(receipt.id, AppScreen.RECEIPTS_LIST) },
                             onDeleteClick = { receiptToDelete = receipt },
                             onZoomClick = { bmp -> fullScreenPreviewBitmap = bmp }
@@ -2557,15 +2565,17 @@ fun ReceiptsListScreen(viewModel: ReceiptViewModel) {
                                             modifier = Modifier.width(105.dp)
                                         )
                                         
-                                        Text(
-                                            text = receipt.aussteller,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = DarkNavy,
-                                            modifier = Modifier.width(150.dp),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Column(Modifier.width(150.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(
+                                                text = receipt.aussteller,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DarkNavy,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            if (bankAssignments.isAssigned(receipt)) ReceiptAssignmentBadge(assigned = true)
+                                        }
                                         
                                         val categoryColor = when (receipt.hauptkategorie) {
                                             "Anschaffungskosten" -> AccentBlue
@@ -2776,7 +2786,8 @@ fun ReceiptRowItem(
     receipt: Receipt,
     onItemClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onZoomClick: ((Bitmap) -> Unit)? = null
+    onZoomClick: ((Bitmap) -> Unit)? = null,
+    isBankAssigned: Boolean = false
 ) {
     val categoryColor = when (receipt.hauptkategorie) {
         "Anschaffungskosten" -> AccentBlue
@@ -2847,6 +2858,10 @@ fun ReceiptRowItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    if (isBankAssigned) {
+                        Spacer(Modifier.height(4.dp))
+                        ReceiptAssignmentBadge(assigned = true)
+                    }
                 }
             }
 
