@@ -1145,6 +1145,11 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                     }
                     else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und 15-%-Prüfung verwenden danach unverändert die bestehende Steuerlogik.", fontSize = 10.sp, color = SlateGray) }
                 }
+                if (step == 3 || step == 4) {
+                    PropertyWizardUnitAreaNotice.message(livingArea, unitAreas.toList())?.let { notice ->
+                        Text(notice, color = SlateGray, fontSize = 12.sp)
+                    }
+                }
                 wizardMessage?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
         },
