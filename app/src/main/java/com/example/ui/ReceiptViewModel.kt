@@ -1484,6 +1484,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    internal fun offlineBackupServiceForUi() = com.example.data.OfflineBackupService(getApplication(), database)
+
     internal suspend fun refreshPreferencesAfterRestore() {
         val application = getApplication<Application>()
         renovationStore.refresh()
