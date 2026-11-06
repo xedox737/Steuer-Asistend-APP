@@ -110,6 +110,23 @@ class DocumentReviewWorkflowComposeTest {
         ui.onNodeWithText("Erkannte Daten prüfen").assertIsDisplayed()
     }
 
+    @Test fun globalListUsesEachDocumentsPropertyAndNoResultsIsNotEmptyInventory() {
+        runBlocking(Dispatchers.IO) {
+            database.managedDocumentDao().upsert(documentA.copy(ocrText = ""))
+            database.managedDocumentDao().upsert(documentB.copy(ocrText = ""))
+        }
+        waitForModel { vm.managedDocuments.value.count { it.ocrText.isEmpty() } == 2 }
+        ui.onNodeWithText("Dokument A").assertExists()
+        ui.onNodeWithText("Dokument für Objekt B.").assertExists()
+        ui.onNodeWithText("Dokument für Objekt A.").assertExists()
+        ui.onNodeWithTag("document_search_query").performTextInput("no-such-document")
+        ui.onNodeWithText("Keine Dokumente für diese Suche oder diesen Filter gefunden.").assertExists()
+        ui.onNodeWithText("Noch keine Dokumente vorhanden.").assertDoesNotExist()
+        ui.onNodeWithText("Suche und Filter zurücksetzen").performClick()
+        ui.onNodeWithText("Dokument A").assertExists()
+        ui.onNodeWithText("Dokument B").assertExists()
+    }
+
     @Test fun confirmingInDetailUpdatesDocumentPropertyAndKeepsOtherPendingReviewAndBothLocalBackPaths() {
         openReviewA()
         ui.onNode(isToggleable()).performScrollTo().performClick()
