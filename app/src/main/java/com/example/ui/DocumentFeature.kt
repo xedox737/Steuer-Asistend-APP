@@ -464,6 +464,15 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                     Card(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), shape = Ui2.shape) {
                         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
                             Text(proposal.label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            if (DocumentConfidenceReviewPolicy.requiresSpecialReview(proposal.confidence)) {
+                                Text(
+                                    "Unsicherer KI-Vorschlag – bitte Wert und Original besonders sorgfältig vergleichen.",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = CrimsonRed,
+                                    modifier = Modifier.testTag("document_low_confidence_${index}")
+                                )
+                            }
                             Text("Erkannt: ${com.example.util.DateFormatUtils.displayText(proposal.detectedValue)} • ${(proposal.confidence * 100).toInt()} %${proposal.sourcePage.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", fontSize = 10.sp)
                             if (proposal.currentValue.isNotBlank()) Text("Aktuell: ${com.example.util.DateFormatUtils.displayText(proposal.currentValue)}", fontSize = 10.sp, color = SlateGray)
                             if (proposal.key in setOf("kaufvertragsdatum", "nutzen_lasten", "vertragsbeginn", "vertragsende")) {
