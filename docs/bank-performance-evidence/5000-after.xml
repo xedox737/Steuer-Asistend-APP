@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.ui.BankLargeListComposeTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-11-04T23:55:42.233Z" hostname="0948d7775e33" time="10.861">
+  <properties/>
+  <testcase name="sameDayImportOf5000RowsComposesOnlyViewportAndKeepsLastRowReachable" classname="com.example.ui.BankLargeListComposeTest" time="10.424"/>
+  <system-out><![CDATA[BANK_LARGE_LIST count=5000 first_visible_ms=2478.482997 composed_rows=6 jvm_used_heap_before=139154496 jvm_used_heap_after=161830704
+BANK_LARGE_LIST count=5000 scroll_to_end_ms=169.613982
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

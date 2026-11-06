@@ -200,6 +200,7 @@ class PrimaryNavigationComposeTest {
         clickTab(AppScreen.MORE)
         clickMore("Bank & Kontoauszüge")
         ui.waitUntilAndroidState(10000) { vm.bankTransactions.value.any { it.transactionId == "primary-transaction" } }
+        ui.waitUntil(10_000) { ui.onAllNodes(hasText("Primär-Buchung")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Primär-Buchung").performScrollTo().performClick()
         ui.onNodeWithText("Buchungsdetails").assertExists()
     }

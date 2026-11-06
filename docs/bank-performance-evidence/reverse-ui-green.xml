@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.ui.BankReverseMatchingComposeTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-11-05T10:48:40.124Z" hostname="0948d7775e33" time="56.672">
+  <properties/>
+  <testcase name="reverseToolAndBankPickerKeep5000MatchesOffMainAndPreserveAllIds" classname="com.example.ui.BankReverseMatchingComposeTest" time="39.843"/>
+  <testcase name="reverseToolAndBankPickerKeep1250MatchesOffMainAndPreserveAllIds" classname="com.example.ui.BankReverseMatchingComposeTest" time="16.292"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

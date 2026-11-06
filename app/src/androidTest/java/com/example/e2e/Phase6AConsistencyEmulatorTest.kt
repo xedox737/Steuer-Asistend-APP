@@ -128,6 +128,7 @@ class Phase6AConsistencyEmulatorTest : EmulatorTestSupport() {
         clickMore("Einnahmen & Ausgaben")
         metric("Ausgaben", "119,00 €"); metric("Buchungen", "1")
         clickMore("Bank & Kontoauszüge")
+        ui.waitUntil(10_000) { ui.onAllNodes(hasText("MW Testhandwerk")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("MW Testhandwerk"))
         ui.onNodeWithText("MW Testhandwerk").performClick()
         ui.onNodeWithText("Buchungsdetails").assertIsDisplayed()
@@ -144,6 +145,7 @@ class Phase6AConsistencyEmulatorTest : EmulatorTestSupport() {
             .assertTextEquals("Bankzuordnung prüfen: Mit privater/ignorierter Bankbuchung verknüpft – kein DATEV-Export.")
         capture("mw04-receipt-bank-classification-conflict")
         clickMore("Bank & Kontoauszüge")
+        ui.waitUntil(10_000) { ui.onAllNodes(hasText("MW Testhandwerk")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("MW Testhandwerk"))
         ui.onNodeWithText("MW Testhandwerk").performClick()
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Privat aufheben"))

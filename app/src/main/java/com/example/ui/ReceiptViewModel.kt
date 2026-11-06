@@ -555,17 +555,19 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val bankRuleEvaluations: StateFlow<Map<String, com.example.data.BankRuleEvaluation>> =
         combine(bankTransactions, bankLearningRules) { transactions, rules ->
             transactions.associate { it.transactionId to com.example.data.BankRuleEngine.evaluate(it, rules) }
-        }.stateIn(scope=viewModelScope, started=SharingStarted.WhileSubscribed(5_000), initialValue=emptyMap())
+        }.flowOn(Dispatchers.Default).stateIn(scope=viewModelScope, started=SharingStarted.WhileSubscribed(5_000), initialValue=emptyMap())
 
     val bankMatchSuggestions: StateFlow<Map<String, com.example.data.BankMatchSuggestion>> =
         combine(bankTransactions, receipts, bankReceiptLinks, bankLearningRules) { transactions, currentReceipts, links, rules ->
             val base = com.example.data.BankReceiptMatcher.bestSuggestions(transactions, currentReceipts, links)
+            val transactionsById = transactions.associateBy { it.transactionId }
+            val receiptsById = currentReceipts.associateBy { it.id }
             base.mapValues { (transactionId, suggestion) ->
-                val tx = transactions.firstOrNull { it.transactionId == transactionId }
-                val receipt = currentReceipts.firstOrNull { it.id == suggestion.receiptId }
+                val tx = transactionsById[transactionId]
+                val receipt = receiptsById[suggestion.receiptId]
                 if (tx != null && receipt != null) com.example.data.BankRuleScoring.enhance(suggestion, tx, receipt, rules) else suggestion
             }
-        }.stateIn(
+        }.flowOn(Dispatchers.Default).stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptyMap()
@@ -680,15 +682,15 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             val unitsByProperty = allProperties.associate { property ->
                 property.propertyId to getWohneinheitenForProperty(property)
             }
+            val candidateBatch = BankRentCandidateFactory.Batch(
+                context = getApplication(), properties = allProperties, unitsByProperty = unitsByProperty,
+                receipts = currentReceipts, assignments = assignments,
+                allTransactions = transactions, receiptLinks = links
+            )
             transactions.asSequence()
                 .filter { it.isIncome && it.transactionId !in dismissed }
                 .mapNotNull { transaction ->
-                    val candidates = BankRentCandidateFactory.build(
-                        context = getApplication(), transaction = transaction,
-                        properties = allProperties, unitsByProperty = unitsByProperty,
-                        receipts = currentReceipts, assignments = assignments,
-                        allTransactions = transactions, receiptLinks = links
-                    )
+                    val candidates = candidateBatch.build(transaction)
                     BankRentMatcher.match(transaction, candidates, rules)
                         .takeIf { it.isNotEmpty() }
                         ?.let { transaction.transactionId to it }
