@@ -56,6 +56,18 @@ import java.text.NumberFormat
 import java.util.Locale
 import kotlinx.coroutines.launch
 
+/** Filter the complete receipt inventory before limiting the visible menu rows. */
+internal fun searchableSplitReceipts(receipts: List<Receipt>, query: String): List<Receipt> {
+    val text = query.trim()
+    if (text.isEmpty()) return receipts
+    return receipts.filter { receipt ->
+        receipt.aussteller.contains(text, ignoreCase = true) ||
+            receipt.datum.contains(text, ignoreCase = true) ||
+            receipt.bruttobetrag.toString().replace('.', ',').contains(text) ||
+            receipt.id.toString() == text
+    }
+}
+
 private data class BankSplitDraft(
     val amount: String = "",
     val paymentType: String = BankSplitPaymentType.RENT,
@@ -208,6 +220,7 @@ private fun BankTransactionSplitDialog(
     var categoryMenu by remember { mutableStateOf<Int?>(null) }
     var unitMenu by remember { mutableStateOf<Int?>(null) }
     var receiptMenu by remember { mutableStateOf<Int?>(null) }
+    var receiptQuery by remember { mutableStateOf("") }
     val euro = remember { NumberFormat.getCurrencyInstance(Locale.GERMANY) }
 
     fun positions(): List<BankManualSplitPosition> = drafts.map { d ->
@@ -275,12 +288,34 @@ private fun BankTransactionSplitDialog(
                             }
                             if (draft.paymentType == BankSplitPaymentType.RECEIPT) {
                                 val selected = receipts.firstOrNull { it.id == draft.receiptId }
-                                OutlinedButton(onClick = { if (!previewMode) receiptMenu = index }, enabled = !previewMode) { Text("Beleg: ${selected?.let { "${DateFormatUtils.safeFormat(it.datum)} • ${it.aussteller} • ${euro.format(it.bruttobetrag)}" } ?: "auswählen"}") }
+                                OutlinedButton(onClick = {
+                                    if (!previewMode) {
+                                        receiptQuery = ""
+                                        receiptMenu = index
+                                    }
+                                }, enabled = !previewMode) { Text("Beleg: ${selected?.let { "${DateFormatUtils.safeFormat(it.datum)} • ${it.aussteller} • ${euro.format(it.bruttobetrag)}" } ?: "auswählen"}") }
                                 DropdownMenu(expanded = receiptMenu == index, onDismissRequest = { receiptMenu = null }) {
-                                    receipts.take(30).forEach { receipt -> DropdownMenuItem(text = { Text("${DateFormatUtils.safeFormat(receipt.datum)} • ${receipt.aussteller} • ${euro.format(receipt.bruttobetrag)}") }, onClick = {
-                                        drafts = drafts.toMutableList().also { it[index] = draft.copy(receiptId = receipt.id, propertyId = draft.propertyId.ifBlank { receipt.propertyId }) }
-                                        receiptMenu = null
-                                    }) }
+                                    OutlinedTextField(
+                                        value = receiptQuery,
+                                        onValueChange = { receiptQuery = it },
+                                        label = { Text("Alle Belege durchsuchen") },
+                                        singleLine = true,
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
+                                    val matches = searchableSplitReceipts(receipts, receiptQuery)
+                                    if (matches.isEmpty()) {
+                                        DropdownMenuItem(text = { Text("Keine Belege gefunden") }, enabled = false, onClick = {})
+                                    } else {
+                                        matches.take(30).forEach { receipt -> DropdownMenuItem(text = { Text("${DateFormatUtils.safeFormat(receipt.datum)} • ${receipt.aussteller} • ${euro.format(receipt.bruttobetrag)}") }, onClick = {
+                                            drafts = drafts.toMutableList().also { it[index] = draft.copy(receiptId = receipt.id, propertyId = draft.propertyId.ifBlank { receipt.propertyId }) }
+                                            receiptMenu = null
+                                        }) }
+                                        if (matches.size > 30) DropdownMenuItem(
+                                            text = { Text("${matches.size} Treffer – Suche eingrenzen, um weitere Belege zu sehen") },
+                                            enabled = false,
+                                            onClick = {}
+                                        )
+                                    }
                                 }
                             }
                             OutlinedTextField(value = draft.note, onValueChange = { value -> drafts = drafts.toMutableList().also { it[index] = draft.copy(note = value) } }, label = { Text("Notiz (optional)") }, enabled = !previewMode)
