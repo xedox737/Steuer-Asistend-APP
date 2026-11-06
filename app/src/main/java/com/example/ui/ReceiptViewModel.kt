@@ -121,7 +121,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     val receiptCreationPropertyId = _receiptCreationPropertyId.asStateFlow()
     init { viewModelScope.launch { renovationStore.refresh() } }
 
-    internal fun bankPhase2DServiceForUi(): com.example.data.BankPhase2DService = com.example.data.BankPhase2DService(database)
+    internal fun bankPhase2DServiceForUi(): com.example.data.BankPhase2DService = com.example.data.BankPhase2DService(
+        database, getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+    )
     private val repository = ReceiptRepository(
         database.receiptDao(),
         database.propertyDao(),
