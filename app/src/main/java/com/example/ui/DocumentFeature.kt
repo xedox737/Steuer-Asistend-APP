@@ -89,6 +89,15 @@ fun DocumentManagementScreen(
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf("Alle") }
     var importUnitId by remember { mutableStateOf("") }
+    var importPropertyId by remember { mutableStateOf("") }
+    var importPropertyMenuOpen by remember { mutableStateOf(false) }
+    var pendingImportPropertyId by remember { mutableStateOf("") }
+    var pendingImportUnitId by remember { mutableStateOf("") }
+    val importProperty = properties.firstOrNull { it.propertyId == importPropertyId }
+        ?: property?.takeIf { it.propertyId == importPropertyId }
+    val importUnits = importProperty?.let {
+        if (it.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(it)
+    }.orEmpty()
     var importUnitMenuOpen by remember { mutableStateOf(false) }
     var assignmentRequest by remember { mutableStateOf<String?>(null) }
     var selectedDocumentId by remember { mutableStateOf<String?>(null) }
@@ -96,7 +105,7 @@ fun DocumentManagementScreen(
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             runCatching { context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            viewModel.importManagedDocument(it, importUnitId.ifBlank { null })
+            viewModel.importManagedDocument(it, pendingImportUnitId.ifBlank { null }, pendingImportPropertyId)
         }
     }
     val mlKitScannerLauncher = rememberLauncherForActivityResult(
@@ -108,7 +117,7 @@ fun DocumentManagementScreen(
             if (pageUris.isEmpty()) {
                 viewModel.setDocumentOperationStatus("Der Scan wurde ohne Dokument abgeschlossen.")
             } else {
-                pageUris.forEach { pageUri -> viewModel.importManagedDocument(pageUri, importUnitId.ifBlank { null }) }
+                pageUris.forEach { pageUri -> viewModel.importManagedDocument(pageUri, pendingImportUnitId.ifBlank { null }, pendingImportPropertyId) }
             }
         }
     }
@@ -228,12 +237,12 @@ fun DocumentManagementScreen(
                     horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)
                 ) {
                     OutlinedButton(
-                        onClick = { assignmentRequest = "import" },
+                        onClick = { importPropertyId = if (propertyScoped) property?.propertyId.orEmpty() else ""; importUnitId = ""; assignmentRequest = "import" },
                         modifier = Modifier.weight(1f).testTag("document_import_button"),
                         shape = Ui2.controlShape
                     ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
                     Button(
-                        onClick = { assignmentRequest = "scan" },
+                        onClick = { importPropertyId = if (propertyScoped) property?.propertyId.orEmpty() else ""; importUnitId = ""; assignmentRequest = "scan" },
                         modifier = Modifier.weight(1f).testTag("document_scan_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                         shape = Ui2.controlShape
@@ -298,14 +307,26 @@ fun DocumentManagementScreen(
             title = { Text("Dokument zuordnen") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Wähle, ob das Dokument zum Gesamtobjekt oder zu einer Wohnung gehört.", fontSize = 12.sp, color = SlateGray)
-                    OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
-                        Text(if (importUnitId.isBlank()) "Gesamtobjekt" else units.firstOrNull { PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), it) == importUnitId }?.label ?: "Wohneinheit")
+                    Text("Wähle zuerst die Immobilie und danach Gesamtobjekt oder Wohneinheit.", fontSize = 12.sp, color = SlateGray)
+                    OutlinedButton(onClick = { importPropertyMenuOpen = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
+                        Text("Immobilie: ${importProperty?.name ?: "auswählen"}")
+                    }
+                    DropdownMenu(expanded = importPropertyMenuOpen, onDismissRequest = { importPropertyMenuOpen = false }) {
+                        (if (propertyScoped) listOfNotNull(property) else properties).forEach { candidate ->
+                            DropdownMenuItem(text = { Text(candidate.name) }, onClick = {
+                                importPropertyId = candidate.propertyId
+                                importUnitId = ""
+                                importPropertyMenuOpen = false
+                            })
+                        }
+                    }
+                    OutlinedButton(onClick = { importUnitMenuOpen = true }, enabled = importProperty != null, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
+                        Text(if (importUnitId.isBlank()) "Gesamtobjekt" else importUnits.firstOrNull { PropertyUnitScopedData.stableUnitId(importPropertyId, it) == importUnitId }?.label ?: "Wohneinheit")
                     }
                     DropdownMenu(expanded = importUnitMenuOpen, onDismissRequest = { importUnitMenuOpen = false }) {
                         DropdownMenuItem(text = { Text("Gesamtobjekt") }, onClick = { importUnitId = ""; importUnitMenuOpen = false })
-                        units.forEach { unit ->
-                            val stableId = PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), unit)
+                        importUnits.forEach { unit ->
+                            val stableId = PropertyUnitScopedData.stableUnitId(importPropertyId, unit)
                             DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = { importUnitId = stableId; importUnitMenuOpen = false })
                         }
                     }
@@ -313,13 +334,15 @@ fun DocumentManagementScreen(
             },
             confirmButton = {
                 Button(onClick = {
+                    pendingImportPropertyId = importPropertyId
+                    pendingImportUnitId = importUnitId
                     assignmentRequest = null
                     if (request == "import") {
                         launcher.launch(arrayOf("*/*"))
                     } else {
                         startDocumentScanner()
                     }
-                }, shape = Ui2.controlShape) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
+                }, enabled = importProperty != null, shape = Ui2.controlShape) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
             },
             dismissButton = { TextButton(onClick = { assignmentRequest = null }) { Text("Abbrechen") } }
         )

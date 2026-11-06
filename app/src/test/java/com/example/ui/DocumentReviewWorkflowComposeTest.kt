@@ -110,6 +110,21 @@ class DocumentReviewWorkflowComposeTest {
         ui.onNodeWithText("Erkannte Daten prüfen").assertIsDisplayed()
     }
 
+    @Test fun globalDocumentImportRequiresExplicitPropertyAndUsesSelectedPropertyUnits() {
+        ui.onNodeWithTag("document_import_button").performClick()
+        ui.onNodeWithText("Immobilie: auswählen").assertExists()
+        ui.onNodeWithText("Datei auswählen").assertIsNotEnabled()
+        ui.onNodeWithText("Immobilie: auswählen").performClick()
+        ui.onNodeWithText("Objekt B").performClick()
+        ui.onNodeWithText("Immobilie: Objekt B").assertExists()
+        ui.onNodeWithText("Datei auswählen").assertIsEnabled()
+        ui.onNodeWithText("Gesamtobjekt").performClick()
+        ui.onNodeWithText("WE 01").performClick()
+        ui.onNodeWithText("WE 01").assertExists()
+        ui.onNodeWithText("Abbrechen").performClick()
+        assertEquals("review-property-a", vm.propertyMetadata.value?.propertyId)
+    }
+
     @Test fun confirmingInDetailUpdatesDocumentPropertyAndKeepsOtherPendingReviewAndBothLocalBackPaths() {
         openReviewA()
         ui.onNode(isToggleable()).performScrollTo().performClick()

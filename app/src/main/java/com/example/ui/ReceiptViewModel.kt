@@ -4067,10 +4067,18 @@ data class AiSearchUiState(
         }
     }
 
-    fun importManagedDocument(uri: android.net.Uri, unitId: String? = null) {
+    fun importManagedDocument(uri: android.net.Uri, unitId: String? = null, targetPropertyId: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             _documentOperationStatus.value = "Dokument wird geprüft …"
-            val property = propertyMetadata.value ?: com.example.data.PropertyMetadata()
+            val property = if (targetPropertyId != null) {
+                database.propertyDao().getPropertyByPropertyId(targetPropertyId)
+            } else {
+                propertyMetadata.value
+            }
+            if (property == null) {
+                _documentOperationStatus.value = "Die gewählte Immobilie ist nicht mehr verfügbar. Import abgebrochen."
+                return@launch
+            }
             when (val result = managedDocumentService.prepareImport(uri, property, unitId)) {
                 is com.example.data.ManagedDocumentImportResult.Imported -> {
                     _documentOperationStatus.value = "Dokument importiert. OCR und KI-Zuordnung laufen …"
