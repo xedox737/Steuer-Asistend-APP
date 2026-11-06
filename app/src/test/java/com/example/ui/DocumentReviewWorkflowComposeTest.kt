@@ -111,6 +111,11 @@ class DocumentReviewWorkflowComposeTest {
     }
 
     @Test fun globalListUsesEachDocumentsPropertyAndNoResultsIsNotEmptyInventory() {
+        runBlocking(Dispatchers.IO) {
+            database.managedDocumentDao().upsert(documentA.copy(ocrText = ""))
+            database.managedDocumentDao().upsert(documentB.copy(ocrText = ""))
+        }
+        waitForModel { vm.managedDocuments.value.count { it.ocrText.isEmpty() } == 2 }
         ui.onNodeWithText("Dokument A").assertExists()
         ui.onNodeWithText("Dokument für Objekt B.").assertExists()
         ui.onNodeWithText("Dokument für Objekt A.").assertExists()
