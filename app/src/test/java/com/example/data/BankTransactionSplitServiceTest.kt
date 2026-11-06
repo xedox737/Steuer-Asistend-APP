@@ -22,6 +22,16 @@ class BankTransactionSplitServiceTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         service = BankPhase2DService(db) { "2026-09-10T18:00:00Z" }
+        kotlinx.coroutines.runBlocking {
+            db.propertyDao().insertPropertyMetadata(
+                PropertyMetadata(
+                    id = 1,
+                    propertyId = "p1",
+                    name = "Testimmobilie",
+                    wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("u1", "WE 01")))
+                )
+            )
+        }
     }
     @After fun tearDown() = db.close()
 
@@ -93,6 +103,23 @@ class BankTransactionSplitServiceTest {
         assertTrue(service.unlinkManualSplitAssignment(id).success)
         assertEquals(BankReconciliationStatus.OPEN, db.bankDao().getTransaction("t")!!.reconciliationStatus)
         assertEquals(1500.0, db.bankDao().getTransaction("t")!!.absoluteAmount, 0.0)
+    }
+
+    @Test fun unknownPropertyOrForeignUnitNeverMarksSplitAsMatched() = runTest {
+        db.bankDao().insertTransactions(listOf(tx(property = "")))
+        val unknownProperty = service.confirmManualSplit(
+            listOf(split(1500.0, BankSplitPaymentType.RENT, property = "nicht-vorhanden")), true
+        )
+        assertFalse(unknownProperty.success)
+        assertTrue(db.bankRentAssignmentDao().getForTransaction("t").isEmpty())
+        assertEquals(BankReconciliationStatus.OPEN, db.bankDao().getTransaction("t")!!.reconciliationStatus)
+
+        val wrongUnit = service.confirmManualSplit(
+            listOf(split(1500.0, BankSplitPaymentType.RENT, property = "p1", unit = "fremde-einheit")), true
+        )
+        assertFalse(wrongUnit.success)
+        assertTrue(db.bankRentAssignmentDao().getForTransaction("t").isEmpty())
+        assertEquals(BankReconciliationStatus.OPEN, db.bankDao().getTransaction("t")!!.reconciliationStatus)
     }
 
     @Test fun propertyConflictIsBlocked() = runTest {
