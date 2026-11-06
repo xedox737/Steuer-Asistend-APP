@@ -191,6 +191,21 @@ internal object PropertyWizardInput {
     }
 }
 
+internal object PropertyWizardUnitAreaNotice {
+    fun message(totalAreaInput: String, areaInputs: List<String>): String? {
+        val totalArea = GermanNumberInput.parse(totalAreaInput) ?: return null
+        val areas = areaInputs.map { PropertyWizardInput.unitArea(it) ?: return null }
+        val missing = areaInputs.count { it.isBlank() }
+        val unitSum = areas.sum()
+        return when {
+            missing > 0 -> "$missing Einheitsfläche(n) fehlen noch. Die Gesamtwohnfläche ist ${GermanNumberInput.formatQuantity(totalArea)} m². Du kannst trotzdem speichern und die Flächen später ergänzen."
+            totalArea > 0 && kotlin.math.abs(unitSum - totalArea) > 0.1 ->
+                "Die Summe der Einheitsflächen (${GermanNumberInput.formatQuantity(unitSum)} m²) weicht von der Gesamtwohnfläche (${GermanNumberInput.formatQuantity(totalArea)} m²) ab. Bitte prüfen."
+            else -> null
+        }
+    }
+}
+
 internal object PropertyFormInput {
     // The previous four-digit control allowed 9,999. Keep that range while bounding
     // allocation of per-unit preference keys and backup snapshots at a creation batch.
