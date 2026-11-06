@@ -1071,6 +1071,17 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
     val unitAreas = remember { mutableStateListOf<String>().apply { add("") } }
     var fieldErrors by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var wizardMessage by remember { mutableStateOf<String?>(null) }
+    var showDiscardConfirmation by remember { mutableStateOf(false) }
+    val hasDraft = name.isNotBlank() || street.isNotBlank() || zip.isNotBlank() || city.isNotBlank() ||
+        purchaseDate.isNotBlank() || purchasePrice.isNotBlank() || livingArea.isNotBlank() ||
+        landArea.isNotBlank() || unitNames.any { it != "WE 01" } || step > 0
+    val requestWizardBack: () -> Unit = {
+        when (PropertyWizardBackPolicy.action(step, hasDraft)) {
+            PropertyWizardBackPolicy.Action.PREVIOUS -> step--
+            PropertyWizardBackPolicy.Action.CONFIRM_DISCARD -> showDiscardConfirmation = true
+            PropertyWizardBackPolicy.Action.EXIT -> onDismiss()
+        }
+    }
     val field: @Composable (String, String, (String) -> Unit) -> Unit = { value, label, change ->
         val message = fieldErrors[label]
         OutlinedTextField(
@@ -1089,7 +1100,7 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
         )
     }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestWizardBack,
         title = { Text("Immobilie anlegen · ${step + 1}/5", fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1274,7 +1285,19 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                 Text(if (preparingUnits) "Einheiten vorbereiten …" else if (step == 4) "Immobilie anlegen" else "Weiter")
             }
         },
-        dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }, enabled = !preparingUnits) { Text("Zurück") }; TextButton(onClick = onDismiss) { Text("Abbrechen") } } }
+        dismissButton = { Row {
+            if (step > 0) TextButton(onClick = { step-- }, enabled = !preparingUnits) { Text("Zurück") }
+            TextButton(onClick = { if (hasDraft) showDiscardConfirmation = true else onDismiss() }) { Text("Abbrechen") }
+        } }
     )
+    if (showDiscardConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirmation = false },
+            title = { Text("Immobilienentwurf verwerfen?") },
+            text = { Text("Die bisherigen Eingaben sind noch nicht gespeichert und gehen beim Verlassen verloren.") },
+            confirmButton = { TextButton(onClick = { showDiscardConfirmation = false; onDismiss() }) { Text("Entwurf verwerfen") } },
+            dismissButton = { TextButton(onClick = { showDiscardConfirmation = false }) { Text("Weiter bearbeiten") } }
+        )
+    }
 }
 
