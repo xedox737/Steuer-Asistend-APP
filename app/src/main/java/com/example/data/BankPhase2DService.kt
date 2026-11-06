@@ -12,11 +12,11 @@ data class BankCombinationApplyResult(
 
 class BankPhase2DService(
     private val database: AppDatabase,
-    private val now: () -> String = { Instant.now().toString() },
     private val unitIdsForProperty: (PropertyMetadata) -> Set<String> = { property ->
         runCatching { UnitIdentity.decode(property.wohneinheiten).map { it.unitId }.toSet() }
             .getOrDefault(emptySet())
-    }
+    },
+    private val now: () -> String = { Instant.now().toString() }
 ) {
     suspend fun confirmCombination(
         suggestion: BankCombinationSuggestion,
