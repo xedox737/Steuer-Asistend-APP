@@ -12,7 +12,11 @@ data class BankCombinationApplyResult(
 
 class BankPhase2DService(
     private val database: AppDatabase,
-    private val now: () -> String = { Instant.now().toString() }
+    private val now: () -> String = { Instant.now().toString() },
+    private val unitIdsForProperty: (PropertyMetadata) -> Set<String> = { property ->
+        runCatching { UnitIdentity.decode(property.wohneinheiten).map { it.unitId }.toSet() }
+            .getOrDefault(emptySet())
+    }
 ) {
     suspend fun confirmCombination(
         suggestion: BankCombinationSuggestion,
@@ -59,6 +63,16 @@ class BankPhase2DService(
                 val validated = BankTransactionSplitPolicy.validatePosition(transaction, raw)
                 if (!validated.allowed) return@withTransaction BankCombinationApplyResult(false, message = validated.reason)
                 val position = raw.copy(amount = validated.amount, rentMonth = raw.rentMonth.ifBlank { transaction.bookingDate.take(7) })
+                val targetProperty = position.propertyId.takeIf { it.isNotBlank() }?.let {
+                    database.propertyDao().getPropertyByPropertyId(it)
+                }
+                if (position.propertyId.isNotBlank() && targetProperty == null) {
+                    return@withTransaction BankCombinationApplyResult(false, message = "Die gewählte Immobilie existiert nicht mehr. Bitte eine vorhandene Immobilie wählen.")
+                }
+                if (position.paymentType in BankSplitPaymentType.rentScoped &&
+                    (targetProperty == null || position.unitId !in unitIdsForProperty(targetProperty))) {
+                    return@withTransaction BankCombinationApplyResult(false, message = "Die gewählte Wohneinheit gehört nicht zur Immobilie. Bitte Zuordnung korrigieren.")
+                }
                 if (position.paymentType == BankSplitPaymentType.RECEIPT) {
                     val receiptId = position.receiptId ?: return@withTransaction BankCombinationApplyResult(false, message = "Für 'Beleg zuordnen' muss ein Beleg gewählt werden.")
                     val receipt = database.receiptDao().getReceiptById(receiptId)
