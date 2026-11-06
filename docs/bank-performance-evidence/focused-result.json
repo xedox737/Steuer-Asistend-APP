@@ -1,0 +1,9 @@
+{
+  "runtime": "local JDK21 / Robolectric",
+  "command": "gradle testDebugUnitTest --tests 'com.example.ui.Bank*' --tests 'com.example.data.Bank*' --tests 'com.example.ui.RentBankWorkflowRegressionTest' --tests 'com.example.ui.PropertyScopedRentIsolationTest' --no-daemon --console=plain",
+  "classes": 44,
+  "tests": 311,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0
+}

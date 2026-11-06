@@ -1,0 +1,16 @@
+{
+  "command": "gradle lintDebug assembleDebug assembleDebugAndroidTest --stacktrace --no-daemon --console=plain",
+  "java": 17,
+  "result": "BUILD SUCCESSFUL",
+  "duration": "9m19s",
+  "lintIssues": {
+    "Fatal": 0,
+    "Error": 0,
+    "Warning": 128,
+    "Information": 0
+  },
+  "appApkBuilt": true,
+  "instrumentationApkBuilt": true,
+  "localEmulatorExecuted": false,
+  "localEmulatorReason": "/dev/kvm unavailable; use GitHub Actions per AGENTS.md"
+}

@@ -48,6 +48,7 @@ internal data class BankDateGroup(
 )
 
 internal object BankCompactUiPolicy {
+    private val whitespace = Regex("\\s+")
     fun counts(transactions: List<BankTransaction>): BankCompactCounts = BankCompactCounts(
         all = transactions.size,
         toReview = transactions.count(BankDatevPrecheckPolicy::needsReviewInbox),
@@ -77,6 +78,7 @@ internal object BankCompactUiPolicy {
     fun search(transactions: List<BankTransaction>, query: String): List<BankTransaction> {
         val needle = normalize(query)
         if (needle.isBlank()) return transactions
+        val amountFormat = java.text.DecimalFormat("0.00")
         return transactions.filter { transaction ->
             val haystack = normalize(
                 listOf(
@@ -84,7 +86,7 @@ internal object BankCompactUiPolicy {
                     transaction.purpose,
                     transaction.bankReference,
                     transaction.amount.toString(),
-                    moneySearchText(transaction.amount)
+                    amountFormat.format(transaction.amount)
                 ).joinToString(" ")
             )
             needle in haystack
@@ -100,22 +102,25 @@ internal object BankCompactUiPolicy {
         return BankCompactSummary(incoming = incoming, outgoing = outgoing, balance = incoming + outgoing)
     }
 
-    fun group(transactions: List<BankTransaction>, today: LocalDate = LocalDate.now()): List<BankDateGroup> =
-        transactions.sortedWith(
-            compareByDescending<BankTransaction> { parseDate(it.bookingDate) ?: LocalDate.MIN }
-                .thenByDescending { it.transactionId }
-        ).groupBy { it.bookingDate }
-            .map { (dateText, values) ->
-                val date = parseDate(dateText)
-                val label = when (date) {
-                    today -> "Heute, ${formatGerman(date)}"
-                    today.minusDays(1) -> "Gestern, ${formatGerman(date)}"
-                    null -> dateText.ifBlank { "Datum unbekannt" }
-                    else -> formatGerman(date)
-                }
-                BankDateGroup(dateText, label, values)
+    fun group(transactions: List<BankTransaction>, today: LocalDate = LocalDate.now()): List<BankDateGroup> {
+        // Parse each distinct date once, rather than at every sort comparison.
+        val byDate = transactions.groupBy { it.bookingDate }
+        val dates = byDate.keys.associateWith(::parseDate)
+        return byDate.map { (dateText, values) ->
+            val date = dates[dateText]
+            val label = when (date) {
+                today -> "Heute, ${formatGerman(date)}"
+                today.minusDays(1) -> "Gestern, ${formatGerman(date)}"
+                null -> dateText.ifBlank { "Datum unbekannt" }
+                else -> formatGerman(date)
             }
-            .sortedByDescending { parseDate(it.key) ?: LocalDate.MIN }
+            BankDateGroup(dateText, label, values.sortedByDescending { it.transactionId })
+        }.sortedWith(
+            compareByDescending<BankDateGroup> { dates[it.key] ?: LocalDate.MIN }
+                // The legacy global row sort also orders equally dated/invalid groups by their first ID.
+                .thenByDescending { it.transactions.first().transactionId }
+        )
+    }
 
     fun compactSubtitle(transaction: BankTransaction): String =
         transaction.purpose.ifBlank { transaction.bankReference.ifBlank { "Keine Beschreibung" } }
@@ -158,14 +163,12 @@ internal object BankCompactUiPolicy {
 
     private fun formatGerman(date: LocalDate): String = "%02d.%02d.%04d".format(date.dayOfMonth, date.monthValue, date.year)
 
-    private fun moneySearchText(amount: Double): String = java.text.DecimalFormat("0.00").format(amount)
-
     private fun normalize(value: String): String = value.lowercase(Locale.GERMANY)
         .replace("ä", "ae")
         .replace("ö", "oe")
         .replace("ü", "ue")
         .replace("ß", "ss")
         .replace(',', '.')
-        .replace(Regex("\\s+"), " ")
+        .replace(whitespace, " ")
         .trim()
 }

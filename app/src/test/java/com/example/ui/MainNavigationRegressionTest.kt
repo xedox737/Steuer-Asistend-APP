@@ -61,11 +61,13 @@ class MainNavigationRegressionTest {
         }
         ui.runOnIdle { vm.setScreen(AppScreen.BANK) }
         ui.waitUntil(10000) { vm.bankTransactions.value.any { it.transactionId == "nav-transaction" } }
+        ui.waitUntil(10_000) { ui.onAllNodes(hasText("Navigationstest-Buchung")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Navigationstest-Buchung").performScrollTo().performClick()
         ui.onNodeWithText("Buchungsdetails").assertExists()
         systemBack()
         ui.onNodeWithText("Buchungsdetails").assertDoesNotExist()
         assertEquals(AppScreen.BANK, vm.currentScreen.value)
+        ui.waitUntil(10_000) { ui.onAllNodes(hasText("Navigationstest-Buchung")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Navigationstest-Buchung").performScrollTo().performClick()
         ui.onNodeWithContentDescription("Zurück").performClick()
         ui.onNodeWithText("Buchungsdetails").assertDoesNotExist()

@@ -1,0 +1,62 @@
+{
+  "classes": [
+    {
+      "name": "com.example.ExampleRobolectricTest",
+      "sdk": 36,
+      "expected": 1,
+      "executed": 1,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "placeholders": 0,
+      "ok": true
+    },
+    {
+      "name": "com.example.GreetingScreenshotTest",
+      "sdk": 36,
+      "expected": 1,
+      "executed": 1,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "placeholders": 0,
+      "ok": true
+    },
+    {
+      "name": "com.example.RestoreSafetyTest",
+      "sdk": 36,
+      "expected": 2,
+      "executed": 2,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "placeholders": 0,
+      "ok": true
+    },
+    {
+      "name": "com.example.ui.AdvisorAnnualSummaryIntegrationTest",
+      "sdk": 34,
+      "expected": 11,
+      "executed": 11,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "placeholders": 0,
+      "ok": true
+    },
+    {
+      "name": "com.example.ui.SyntheticTaxExportE2eTest",
+      "sdk": 34,
+      "expected": 3,
+      "executed": 3,
+      "failures": 0,
+      "errors": 0,
+      "skips": 0,
+      "placeholders": 0,
+      "ok": true
+    }
+  ],
+  "actualMethods": 1392,
+  "suitePlaceholders": 0,
+  "ok": true
+}

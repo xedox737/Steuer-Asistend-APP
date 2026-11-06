@@ -1,0 +1,10 @@
+{
+  "runtime": "native Robolectric SDK35, not Android",
+  "count": 1250,
+  "matching_iterations": 31,
+  "workers": "parked",
+  "main_location": "RobolectricIdlingStrategy.requestLayoutIfNeeded",
+  "result": "AppNotIdleException after 60 seconds",
+  "classification": "native dialog window layout, existing repository workaround in RentOverviewComposeTest",
+  "test_fix": "bound dialog window to360x700dp; unchanged guards/assertions/timeouts"
+}

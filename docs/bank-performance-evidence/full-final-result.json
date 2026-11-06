@@ -1,0 +1,75 @@
+{
+  "command": "gradle testDebugUnitTest -Proborazzi.test.record=true --init-script /tmp/bank-full-progress.gradle --stacktrace --no-daemon --console=plain",
+  "java": 21,
+  "duration": "23m17s",
+  "result": "BUILD SUCCESSFUL",
+  "classes": 209,
+  "tests": 1403,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "execution_verifier": {
+    "classes": [
+      {
+        "name": "com.example.ExampleRobolectricTest",
+        "sdk": 36,
+        "expected": 1,
+        "executed": 1,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "placeholders": 0,
+        "ok": true
+      },
+      {
+        "name": "com.example.GreetingScreenshotTest",
+        "sdk": 36,
+        "expected": 1,
+        "executed": 1,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "placeholders": 0,
+        "ok": true
+      },
+      {
+        "name": "com.example.RestoreSafetyTest",
+        "sdk": 36,
+        "expected": 2,
+        "executed": 2,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "placeholders": 0,
+        "ok": true
+      },
+      {
+        "name": "com.example.ui.AdvisorAnnualSummaryIntegrationTest",
+        "sdk": 34,
+        "expected": 11,
+        "executed": 11,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "placeholders": 0,
+        "ok": true
+      },
+      {
+        "name": "com.example.ui.SyntheticTaxExportE2eTest",
+        "sdk": 34,
+        "expected": 3,
+        "executed": 3,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "placeholders": 0,
+        "ok": true
+      }
+    ],
+    "actualMethods": 1403,
+    "suitePlaceholders": 0,
+    "ok": true
+  },
+  "source_commit": "9b064792bf4fc937ec40b7af69d94efd723d5cd4",
+  "init_script_scope": "Test progress logging only"
+}

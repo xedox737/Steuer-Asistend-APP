@@ -1,0 +1,710 @@
+{
+  "run": 42019394483,
+  "production_source": "ea42c6f41c743f0170aef42be9600d2b661b9a9d",
+  "measurement_fix": "startup trace flush synchronization",
+  "kernel_trace_coverage": "unavailable in this intermediate run",
+  "revision": "after",
+  "cases": [
+    {
+      "count": 1250,
+      "status": "complete",
+      "runs": [
+        {
+          "run": 1,
+          "activity_relaunch_ms": 1274,
+          "startup_main_max_gap_ms": 412,
+          "bank_ready_ms": 1055,
+          "composed_rows": 4,
+          "bank_main_max_gap_ms": 428,
+          "detail_ready_ms": 1977,
+          "detail_main_max_gap_ms": 252,
+          "activity_recreate_ms": 407
+        },
+        {
+          "run": 2,
+          "activity_relaunch_ms": 1808,
+          "startup_main_max_gap_ms": 742,
+          "bank_ready_ms": 383,
+          "composed_rows": 4,
+          "bank_main_max_gap_ms": 97,
+          "detail_ready_ms": 1195,
+          "detail_main_max_gap_ms": 113,
+          "activity_recreate_ms": 356
+        },
+        {
+          "run": 3,
+          "activity_relaunch_ms": 943,
+          "startup_main_max_gap_ms": 502,
+          "bank_ready_ms": 269,
+          "composed_rows": 4,
+          "bank_main_max_gap_ms": 89,
+          "detail_ready_ms": 1023,
+          "detail_main_max_gap_ms": 85,
+          "activity_recreate_ms": 211
+        }
+      ],
+      "query_plans": {
+        "scans": 1,
+        "index_uses": 3,
+        "temporary_sorts": 1
+      },
+      "memory": [
+        {
+          "run": 1,
+          "total_pss_kb": 285424,
+          "java_heap_kb": 24708,
+          "native_heap_kb": 18300
+        },
+        {
+          "run": 2,
+          "total_pss_kb": 302419,
+          "java_heap_kb": 26552,
+          "native_heap_kb": 29192
+        },
+        {
+          "run": 3,
+          "total_pss_kb": 313779,
+          "java_heap_kb": 40084,
+          "native_heap_kb": 29748
+        }
+      ],
+      "frames": [
+        {
+          "run": 1,
+          "p50_ms": 300,
+          "p90_ms": 550,
+          "p95_ms": 550,
+          "p99_ms": 550
+        },
+        {
+          "run": 2,
+          "p50_ms": 61,
+          "p90_ms": 81,
+          "p95_ms": 81,
+          "p99_ms": 81
+        },
+        {
+          "run": 3,
+          "p50_ms": 57,
+          "p90_ms": 69,
+          "p95_ms": 69,
+          "p99_ms": 69
+        }
+      ],
+      "cold_start": [
+        {
+          "run": 1,
+          "total_time_ms": 4643,
+          "total_pss_kb": 180142,
+          "java_heap_kb": 35544,
+          "native_heap_kb": 13852
+        },
+        {
+          "run": 2,
+          "total_time_ms": 4120,
+          "total_pss_kb": 181274,
+          "java_heap_kb": 35476,
+          "native_heap_kb": 13716
+        },
+        {
+          "run": 3,
+          "total_time_ms": 3816,
+          "total_pss_kb": 181165,
+          "java_heap_kb": 35344,
+          "native_heap_kb": 13788
+        }
+      ],
+      "workloads": {
+        "dao_transactions": {
+          "wall_ms": 21.258994,
+          "cpu_ms": 0.168058
+        },
+        "dao_links_and_rent": {
+          "wall_ms": 4.386331,
+          "cpu_ms": 0.144677
+        },
+        "counts": {
+          "wall_ms": 1.568243,
+          "cpu_ms": 1.312594
+        },
+        "filter": {
+          "wall_ms": 4.089482,
+          "cpu_ms": 1.209922
+        },
+        "summary": {
+          "wall_ms": 1.413425,
+          "cpu_ms": 1.295947
+        },
+        "group": {
+          "wall_ms": 0.979168,
+          "cpu_ms": 0.872478
+        },
+        "search": {
+          "wall_ms": 215.78244,
+          "cpu_ms": 96.686509
+        },
+        "matcher": {
+          "wall_ms": 484.896926,
+          "cpu_ms": 233.574161
+        },
+        "reverse_matcher": {
+          "wall_ms": 4982.227308,
+          "cpu_ms": 2525.072052
+        },
+        "transaction_picker": {
+          "wall_ms": 58.772195,
+          "cpu_ms": 43.76139
+        },
+        "last_month_assignment": {
+          "wall_ms": 11.88729,
+          "cpu_ms": 5.026935
+        },
+        "transfer_matcher": {
+          "wall_ms": 4.351981,
+          "cpu_ms": 2.026971
+        },
+        "rent": {
+          "wall_ms": 1509.07362,
+          "cpu_ms": 533.585199
+        }
+      },
+      "trace_bytes": {
+        "scheduler": 0,
+        "startup": 880617,
+        "methods": 953251
+      },
+      "profiles": [
+        {
+          "kind": "profile",
+          "parsed": true,
+          "measurements": [
+            {
+              "role": "instrumentation",
+              "calculation": "bank_list",
+              "calls": 29,
+              "max_wall_ms": 216.82,
+              "inclusive_wall_ms": 394.18
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "last_month_assignment",
+              "calls": 7,
+              "max_wall_ms": 12.18,
+              "inclusive_wall_ms": 26.6
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "receipt_matcher",
+              "calls": 1477,
+              "max_wall_ms": 4981.83,
+              "inclusive_wall_ms": 29034.8
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "regex_helper",
+              "calls": 3974,
+              "max_wall_ms": 709.63,
+              "inclusive_wall_ms": 21401.36
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "regex_pattern",
+              "calls": 551,
+              "max_wall_ms": 598.76,
+              "inclusive_wall_ms": 2171.05
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "rent_candidates",
+              "calls": 121,
+              "max_wall_ms": 27.5,
+              "inclusive_wall_ms": 501.15
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "rent_matcher",
+              "calls": 251,
+              "max_wall_ms": 598.76,
+              "inclusive_wall_ms": 2403.4
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "rent_month_parser",
+              "calls": 221,
+              "max_wall_ms": 598.76,
+              "inclusive_wall_ms": 1429.41
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "view_model",
+              "calls": 2,
+              "max_wall_ms": 1.35,
+              "inclusive_wall_ms": 2.62
+            },
+            {
+              "role": "main",
+              "calculation": "last_month_assignment",
+              "calls": 5,
+              "max_wall_ms": 33.55,
+              "inclusive_wall_ms": 112.57
+            },
+            {
+              "role": "main",
+              "calculation": "regex_helper",
+              "calls": 3,
+              "max_wall_ms": 1.86,
+              "inclusive_wall_ms": 5.57
+            },
+            {
+              "role": "main",
+              "calculation": "regex_pattern",
+              "calls": 1,
+              "max_wall_ms": 1.86,
+              "inclusive_wall_ms": 1.86
+            },
+            {
+              "role": "main",
+              "calculation": "view_model",
+              "calls": 3,
+              "max_wall_ms": 38.8,
+              "inclusive_wall_ms": 82.86
+            },
+            {
+              "role": "worker",
+              "calculation": "bank_list",
+              "calls": 2,
+              "max_wall_ms": 1.88,
+              "inclusive_wall_ms": 3.77
+            },
+            {
+              "role": "worker",
+              "calculation": "receipt_matcher",
+              "calls": 436,
+              "max_wall_ms": 1310.07,
+              "inclusive_wall_ms": 6859.28
+            },
+            {
+              "role": "worker",
+              "calculation": "regex_helper",
+              "calls": 1295,
+              "max_wall_ms": 371.79,
+              "inclusive_wall_ms": 6054.84
+            },
+            {
+              "role": "worker",
+              "calculation": "regex_pattern",
+              "calls": 556,
+              "max_wall_ms": 371.78,
+              "inclusive_wall_ms": 1967.46
+            },
+            {
+              "role": "worker",
+              "calculation": "rent_candidates",
+              "calls": 177,
+              "max_wall_ms": 1623.47,
+              "inclusive_wall_ms": 2832.01
+            },
+            {
+              "role": "worker",
+              "calculation": "rent_matcher",
+              "calls": 188,
+              "max_wall_ms": 18.85,
+              "inclusive_wall_ms": 770.03
+            },
+            {
+              "role": "worker",
+              "calculation": "rent_month_parser",
+              "calls": 275,
+              "max_wall_ms": 378.24,
+              "inclusive_wall_ms": 1343.88
+            },
+            {
+              "role": "worker",
+              "calculation": "view_model",
+              "calls": 7,
+              "max_wall_ms": 1630.48,
+              "inclusive_wall_ms": 10445.11
+            }
+          ]
+        },
+        {
+          "kind": "startup",
+          "parsed": true,
+          "measurements": [
+            {
+              "role": "main",
+              "calculation": "bank_list",
+              "calls": 1,
+              "max_wall_ms": 18.63,
+              "inclusive_wall_ms": 18.63
+            },
+            {
+              "role": "main",
+              "calculation": "regex_helper",
+              "calls": 6,
+              "max_wall_ms": 4.56,
+              "inclusive_wall_ms": 26.78
+            },
+            {
+              "role": "main",
+              "calculation": "regex_pattern",
+              "calls": 4,
+              "max_wall_ms": 4.56,
+              "inclusive_wall_ms": 18.12
+            },
+            {
+              "role": "main",
+              "calculation": "view_model",
+              "calls": 26,
+              "max_wall_ms": 542.71,
+              "inclusive_wall_ms": 1235.11
+            }
+          ]
+        }
+      ],
+      "scheduler": {
+        "parsed": true,
+        "scope": "entire_case_including_instrumentation_and_profiles",
+        "measurements": [],
+        "matched_cpu_slices": false
+      }
+    },
+    {
+      "count": 5000,
+      "status": "complete",
+      "runs": [
+        {
+          "run": 1,
+          "activity_relaunch_ms": 1155,
+          "startup_main_max_gap_ms": 315,
+          "bank_ready_ms": 678,
+          "composed_rows": 4,
+          "bank_main_max_gap_ms": 186,
+          "detail_ready_ms": 2381,
+          "detail_main_max_gap_ms": 213,
+          "activity_recreate_ms": 259
+        },
+        {
+          "run": 2,
+          "activity_relaunch_ms": 754,
+          "startup_main_max_gap_ms": 313,
+          "bank_ready_ms": 256,
+          "composed_rows": 4,
+          "bank_main_max_gap_ms": 80,
+          "detail_ready_ms": 2061,
+          "detail_main_max_gap_ms": 69,
+          "activity_recreate_ms": 243
+        },
+        {
+          "run": 3,
+          "activity_relaunch_ms": 1154,
+          "startup_main_max_gap_ms": 575,
+          "bank_ready_ms": 233,
+          "composed_rows": 4,
+          "bank_main_max_gap_ms": 61,
+          "detail_ready_ms": 2004,
+          "detail_main_max_gap_ms": 54,
+          "activity_recreate_ms": 173
+        }
+      ],
+      "query_plans": {
+        "scans": 1,
+        "index_uses": 3,
+        "temporary_sorts": 1
+      },
+      "memory": [
+        {
+          "run": 1,
+          "total_pss_kb": 309174,
+          "java_heap_kb": 51020,
+          "native_heap_kb": 23156
+        },
+        {
+          "run": 2,
+          "total_pss_kb": 323763,
+          "java_heap_kb": 47396,
+          "native_heap_kb": 33436
+        },
+        {
+          "run": 3,
+          "total_pss_kb": 325354,
+          "java_heap_kb": 47280,
+          "native_heap_kb": 34388
+        }
+      ],
+      "frames": [
+        {
+          "run": 1,
+          "p50_ms": 69,
+          "p90_ms": 250,
+          "p95_ms": 250,
+          "p99_ms": 250
+        },
+        {
+          "run": 2,
+          "p50_ms": 42,
+          "p90_ms": 61,
+          "p95_ms": 61,
+          "p99_ms": 61
+        },
+        {
+          "run": 3,
+          "p50_ms": 48,
+          "p90_ms": 57,
+          "p95_ms": 57,
+          "p99_ms": 57
+        }
+      ],
+      "cold_start": [
+        {
+          "run": 1,
+          "total_time_ms": 2682,
+          "total_pss_kb": 182521,
+          "java_heap_kb": 40012,
+          "native_heap_kb": 14732
+        },
+        {
+          "run": 2,
+          "total_time_ms": 2732,
+          "total_pss_kb": 183852,
+          "java_heap_kb": 40020,
+          "native_heap_kb": 16412
+        },
+        {
+          "run": 3,
+          "total_time_ms": 2812,
+          "total_pss_kb": 184229,
+          "java_heap_kb": 40028,
+          "native_heap_kb": 16356
+        }
+      ],
+      "workloads": {
+        "dao_transactions": {
+          "wall_ms": 59.445041,
+          "cpu_ms": 0.205304
+        },
+        "dao_links_and_rent": {
+          "wall_ms": 1.313023,
+          "cpu_ms": 0.201206
+        },
+        "counts": {
+          "wall_ms": 5.30307,
+          "cpu_ms": 4.694861
+        },
+        "filter": {
+          "wall_ms": 4.842191,
+          "cpu_ms": 4.420419
+        },
+        "summary": {
+          "wall_ms": 1.545148,
+          "cpu_ms": 1.451729
+        },
+        "group": {
+          "wall_ms": 0.682228,
+          "cpu_ms": 0.571911
+        },
+        "search": {
+          "wall_ms": 396.687986,
+          "cpu_ms": 352.318198
+        },
+        "matcher": {
+          "wall_ms": 928.282921,
+          "cpu_ms": 829.72528
+        },
+        "reverse_matcher": {
+          "wall_ms": 9641.715689,
+          "cpu_ms": 8604.623795
+        },
+        "transaction_picker": {
+          "wall_ms": 159.479218,
+          "cpu_ms": 142.553228
+        },
+        "last_month_assignment": {
+          "wall_ms": 9.678824,
+          "cpu_ms": 8.754336
+        },
+        "transfer_matcher": {
+          "wall_ms": 4.779939,
+          "cpu_ms": 4.283929
+        },
+        "rent": {
+          "wall_ms": 1742.151975,
+          "cpu_ms": 1555.66102
+        }
+      },
+      "trace_bytes": {
+        "scheduler": 0,
+        "startup": 974569,
+        "methods": 2723475
+      },
+      "profiles": [
+        {
+          "kind": "profile",
+          "parsed": true,
+          "measurements": [
+            {
+              "role": "instrumentation",
+              "calculation": "bank_list",
+              "calls": 44,
+              "max_wall_ms": 395.81,
+              "inclusive_wall_ms": 755.35
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "last_month_assignment",
+              "calls": 4,
+              "max_wall_ms": 9.74,
+              "inclusive_wall_ms": 35.31
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "receipt_matcher",
+              "calls": 6126,
+              "max_wall_ms": 9642.18,
+              "inclusive_wall_ms": 58698.07
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "regex_helper",
+              "calls": 19275,
+              "max_wall_ms": 99.99,
+              "inclusive_wall_ms": 36794.82
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "regex_pattern",
+              "calls": 2048,
+              "max_wall_ms": 93.72,
+              "inclusive_wall_ms": 3667.36
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "rent_candidates",
+              "calls": 398,
+              "max_wall_ms": 93.72,
+              "inclusive_wall_ms": 917.07
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "rent_matcher",
+              "calls": 752,
+              "max_wall_ms": 86.27,
+              "inclusive_wall_ms": 2062.51
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "rent_month_parser",
+              "calls": 698,
+              "max_wall_ms": 93.72,
+              "inclusive_wall_ms": 1570.25
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "transfer_matcher",
+              "calls": 3,
+              "max_wall_ms": 3.63,
+              "inclusive_wall_ms": 10.89
+            },
+            {
+              "role": "instrumentation",
+              "calculation": "view_model",
+              "calls": 2,
+              "max_wall_ms": 3.69,
+              "inclusive_wall_ms": 4.89
+            },
+            {
+              "role": "main",
+              "calculation": "last_month_assignment",
+              "calls": 16,
+              "max_wall_ms": 19.69,
+              "inclusive_wall_ms": 55.5
+            },
+            {
+              "role": "main",
+              "calculation": "view_model",
+              "calls": 10,
+              "max_wall_ms": 19.69,
+              "inclusive_wall_ms": 55.46
+            },
+            {
+              "role": "worker",
+              "calculation": "receipt_matcher",
+              "calls": 832,
+              "max_wall_ms": 1197.65,
+              "inclusive_wall_ms": 5893.63
+            },
+            {
+              "role": "worker",
+              "calculation": "regex_helper",
+              "calls": 3290,
+              "max_wall_ms": 268.89,
+              "inclusive_wall_ms": 7750.16
+            },
+            {
+              "role": "worker",
+              "calculation": "regex_pattern",
+              "calls": 1400,
+              "max_wall_ms": 268.89,
+              "inclusive_wall_ms": 2564.31
+            },
+            {
+              "role": "worker",
+              "calculation": "rent_candidates",
+              "calls": 414,
+              "max_wall_ms": 1511.04,
+              "inclusive_wall_ms": 3496.59
+            },
+            {
+              "role": "worker",
+              "calculation": "rent_matcher",
+              "calls": 456,
+              "max_wall_ms": 158.03,
+              "inclusive_wall_ms": 1221.89
+            },
+            {
+              "role": "worker",
+              "calculation": "rent_month_parser",
+              "calls": 724,
+              "max_wall_ms": 272.03,
+              "inclusive_wall_ms": 1820.34
+            },
+            {
+              "role": "worker",
+              "calculation": "view_model",
+              "calls": 9,
+              "max_wall_ms": 2155.38,
+              "inclusive_wall_ms": 12237.68
+            }
+          ]
+        },
+        {
+          "kind": "startup",
+          "parsed": true,
+          "measurements": [
+            {
+              "role": "main",
+              "calculation": "bank_list",
+              "calls": 1,
+              "max_wall_ms": 39.85,
+              "inclusive_wall_ms": 39.85
+            },
+            {
+              "role": "main",
+              "calculation": "view_model",
+              "calls": 26,
+              "max_wall_ms": 506.93,
+              "inclusive_wall_ms": 1170.43
+            }
+          ]
+        }
+      ],
+      "scheduler": {
+        "parsed": true,
+        "scope": "entire_case_including_instrumentation_and_profiles",
+        "measurements": [],
+        "matched_cpu_slices": false
+      }
+    }
+  ],
+  "instrumentation_exit_code": 0
+}

@@ -208,6 +208,7 @@ class Phase7AIncomeEmulatorTest : EmulatorTestSupport() {
         val model = vm
         ui.waitUntil(10_000) { model.bankTransactions.value.size == 3 }
         clickMore("Bank & Kontoauszüge")
+        ui.waitUntil(10_000) { ui.onAllNodes(hasText("Erstattung refund-b")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Erstattung refund-a"))
         ui.onNodeWithText("Erstattung refund-a").performClick()
         ui.onNodeWithText("Buchungsdetails").assertIsDisplayed()
