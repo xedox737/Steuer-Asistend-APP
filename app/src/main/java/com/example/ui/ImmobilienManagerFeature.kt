@@ -519,7 +519,7 @@ private fun PropertyDashboard(
             Triple(PropertySection.RENOVATIONS, "Sanierungen", Icons.Default.Build),
             Triple(PropertySection.DOCUMENTS, "Dokumente", Icons.Default.Description),
             Triple(PropertySection.TASKS, "Aufgaben & Fristen", Icons.Default.CalendarMonth),
-            Triple(PropertySection.UTILITIES_PREP, "Nebenkosten", Icons.Default.Payments),
+            Triple(PropertySection.UTILITIES_PREP, "Nebenkosten (Vorbereitung)", Icons.Default.Payments),
             Triple(PropertySection.TAX, "Steuer & AfA", Icons.Default.Assessment),
             Triple(PropertySection.DATA, "Objektdaten", Icons.Default.HomeWork)
         )
@@ -837,7 +837,7 @@ private fun PropertyRentYearMatrix(property: PropertyMetadata, units: List<Wohne
         item {
             Card(colors = CardDefaults.cardColors(containerColor = Color.White), border = BorderStroke(1.dp, BorderColor)) {
                 Column(Modifier.padding(14.dp), Arrangement.spacedBy(6.dp)) {
-                    Text("Für spätere Erweiterung vorbereitet", fontWeight = FontWeight.Bold)
+                    Text("Noch keine Nebenkostenabrechnung verfügbar", fontWeight = FontWeight.Bold)
                     Text("In dieser Phase wird bewusst keine Nebenkostenabrechnung, kein Umlageschlüssel und keine Heizkostenberechnung erzeugt. Bestehende Beleg- und Mietlogik bleibt unverändert.", fontSize = 10.sp, color = SlateGray)
                 }
             }
@@ -1143,7 +1143,7 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                             }) { Text("+ Einheit hinzufügen") }
                         }
                     }
-                    else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und 15-%-Prüfung verwenden danach unverändert die bestehende Steuerlogik.", fontSize = 10.sp, color = SlateGray) }
+                    else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und Sanierungsprüfung findest du anschließend am Objekt.", fontSize = 10.sp, color = SlateGray) }
                 }
                 wizardMessage?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
