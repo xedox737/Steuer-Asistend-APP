@@ -278,13 +278,28 @@ fun DocumentManagementScreen(
             item { Text(status, fontSize = 11.sp, color = SlateGray) }
         }
         if (shown.isEmpty()) {
-            item { Text("Noch keine Dokumente vorhanden.", color = SlateGray) }
+            item {
+                if (propertyDocuments.isEmpty()) {
+                    Text("Noch keine Dokumente vorhanden.", color = SlateGray)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Keine Dokumente für diese Suche oder diesen Filter gefunden.", color = SlateGray)
+                        TextButton(onClick = { query = ""; activeFilter = "Alle" }) {
+                            Text("Suche und Filter zurücksetzen")
+                        }
+                    }
+                }
+            }
         } else {
             items(shown, key = { it.documentId }) { document ->
+                val documentProperty = DocumentReviewPresentation.propertyFor(document, properties, property)
+                val documentUnits = documentProperty?.let { selected ->
+                    if (selected.propertyId == property?.propertyId) units else viewModel.getWohneinheitenForProperty(selected)
+                }.orEmpty()
                 ManagedDocumentCard(
                     document = document,
-                    property = property,
-                    units = units,
+                    property = documentProperty,
+                    units = documentUnits,
                     onClick = { selectedDocumentId = document.documentId }
                 )
             }
