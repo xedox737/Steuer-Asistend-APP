@@ -956,7 +956,10 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                 Text("Zurück zu Mehr")
             } }
-            if (page == "backup") item { GoogleDriveSyncCard(viewModel) }
+            if (page == "backup") {
+                item { OfflineBackupCard(viewModel) }
+                item { GoogleDriveSyncCard(viewModel) }
+            }
             if (page == "rules") {
                 item { Ui2Section("Regeln") {
                     Ui2Destination("Gelerntes KI-Wissen", "Händler-Zuordnungen verwalten", Icons.Default.Settings) { showLearnedRules = true }
