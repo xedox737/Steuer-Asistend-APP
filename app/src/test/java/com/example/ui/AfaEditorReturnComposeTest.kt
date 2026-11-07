@@ -22,8 +22,7 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 @RunWith(RobolectricTestRunner::class)
-// Match the existing property-editor workflow: native Robolectric StaticLayout loops in this large form.
-// The complete Compose interaction, return path and persistence assertions still execute.
+// Match the existing property-editor workflow's renderer and bounded test window.
 @GraphicsMode(GraphicsMode.Mode.LEGACY)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class AfaEditorReturnComposeTest {
@@ -50,13 +49,7 @@ class AfaEditorReturnComposeTest {
         ui.waitUntilAndroidState(10_000) { model.properties.value.size == 2 }
         ui.onNodeWithTag("afa_property_${target.propertyId}").performScrollTo().performClick()
         ui.onNodeWithText("Immobilien-Stammdaten bearbeiten").performScrollTo().performClick()
-        ui.mainClock.advanceTimeByFrame()
-        ui.runOnUiThread {
-            val dialog = ShadowDialog.getLatestDialog()
-            assertTrue(dialog.isShowing)
-            val density = ui.activity.resources.displayMetrics.density
-            dialog.window!!.setLayout((360 * density).toInt(), (700 * density).toInt())
-        }
+        boundEditorWindow()
         ui.onNodeWithText("Objekt-Stammdaten bearbeiten").assertIsDisplayed()
         ui.onNodeWithTag("edit_property_name").performScrollTo().assertTextContains(target.name)
         ui.onNodeWithTag("edit_property_adresse").performScrollTo().assertTextContains(target.adresse)
@@ -67,6 +60,7 @@ class AfaEditorReturnComposeTest {
         ui.onNodeWithTag("afa_property_${target.propertyId}").assertDoesNotExist()
         ui.onNodeWithText(target.name).performScrollTo().assertIsDisplayed()
         ui.onNodeWithText("Immobilien-Stammdaten bearbeiten").performScrollTo().performClick()
+        boundEditorWindow()
         ui.runOnIdle {
             val dialog = ShadowDialog.getLatestDialog() as ComponentDialog
             assertTrue(dialog.isShowing)
@@ -81,6 +75,16 @@ class AfaEditorReturnComposeTest {
         runBlocking(Dispatchers.IO) {
             assertEquals(target, database.propertyDao().getPropertyByPropertyId(target.propertyId))
             assertEquals(other, database.propertyDao().getPropertyByPropertyId(other.propertyId))
+        }
+    }
+
+    private fun boundEditorWindow() {
+        ui.mainClock.advanceTimeByFrame()
+        ui.runOnUiThread {
+            val dialog = ShadowDialog.getLatestDialog()
+            assertTrue(dialog.isShowing)
+            val density = ui.activity.resources.displayMetrics.density
+            dialog.window!!.setLayout((360 * density).toInt(), (700 * density).toInt())
         }
     }
 }

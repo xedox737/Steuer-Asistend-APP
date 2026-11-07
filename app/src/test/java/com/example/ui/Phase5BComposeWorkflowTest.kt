@@ -284,7 +284,7 @@ class Phase5BComposeWorkflowTest {
         ui.runOnIdle { vm.performAiSearch("Unpassender Suchbegriff") }
         ui.waitUntilAndroidState(10000) { vm.aiSearchState.value.query == "Unpassender Suchbegriff" && !vm.aiSearchState.value.isLoading }
         ui.onNodeWithText("Keine passenden Belege für 'Unpassender Suchbegriff' gefunden.").assertExists()
-        // The database rule installs a fresh Room instance before Activity/ViewModel startup.
+        runBlocking(Dispatchers.IO) { db.clearAllTables() }
         ui.waitUntilAndroidState(10000) { vm.receipts.value.isEmpty() }
         ui.runOnIdle { vm.performAiSearch("Reparatur") }
         ui.waitUntilAndroidState(10000) { vm.aiSearchState.value.error != null }

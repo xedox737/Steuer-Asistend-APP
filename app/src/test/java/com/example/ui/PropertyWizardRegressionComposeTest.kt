@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.activity.ComponentActivity
 import androidx.activity.ComponentDialog
+import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
@@ -27,7 +28,9 @@ class PropertyWizardRegressionComposeTest {
 
     private fun openWizard() {
         val visible = mutableStateOf(true)
-        ui.setContent {
+        // Install without the rule's initial idle wait so the Robolectric dialog
+        // receives its viewport bounds before the first wrap-content measurement.
+        ui.runOnUiThread { ui.activity.setContent {
             MaterialTheme {
                 if (visible.value) PropertyCreationWizard(
                     onDismiss = { dismissals++; visible.value = false },
@@ -38,7 +41,7 @@ class PropertyWizardRegressionComposeTest {
                     }
                 )
             }
-        }
+        } }
         settleWindow()
     }
 
