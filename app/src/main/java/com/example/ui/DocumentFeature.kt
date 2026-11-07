@@ -52,6 +52,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +80,8 @@ fun DocumentManagementScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val scope = rememberCoroutineScope()
+    var preparedReceiptId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Int?>(null) }
     val documents by viewModel.managedDocuments.collectAsStateWithLifecycle()
     val operationStatus by viewModel.documentOperationStatus.collectAsStateWithLifecycle()
     val duplicate by viewModel.pendingDocumentDuplicate.collectAsStateWithLifecycle()
@@ -88,7 +92,11 @@ fun DocumentManagementScreen(
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     var query by remember { mutableStateOf("") }
     var activeFilter by remember { mutableStateOf("Alle") }
-    var importUnitId by remember { mutableStateOf("") }
+    var importPropertyId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var importPropertyMenuOpen by remember { mutableStateOf(false) }
+    val importProperty = properties.firstOrNull { it.propertyId == importPropertyId }
+    val importUnits = importProperty?.let(viewModel::getWohneinheitenForProperty).orEmpty()
+    var importUnitId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     var importUnitMenuOpen by remember { mutableStateOf(false) }
     var assignmentRequest by remember { mutableStateOf<String?>(null) }
     var selectedDocumentId by remember { mutableStateOf<String?>(null) }
@@ -96,7 +104,7 @@ fun DocumentManagementScreen(
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let {
             runCatching { context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            viewModel.importManagedDocument(it, importUnitId.ifBlank { null })
+            viewModel.importManagedDocument(it, importUnitId.ifBlank { null }, importPropertyId)
         }
     }
     val mlKitScannerLauncher = rememberLauncherForActivityResult(
@@ -108,7 +116,7 @@ fun DocumentManagementScreen(
             if (pageUris.isEmpty()) {
                 viewModel.setDocumentOperationStatus("Der Scan wurde ohne Dokument abgeschlossen.")
             } else {
-                pageUris.forEach { pageUri -> viewModel.importManagedDocument(pageUri, importUnitId.ifBlank { null }) }
+                pageUris.forEach { pageUri -> viewModel.importManagedDocument(pageUri, importUnitId.ifBlank { null }, importPropertyId) }
             }
         }
     }
@@ -148,6 +156,10 @@ fun DocumentManagementScreen(
         matchesQuery && matchesFilter
     }
 
+    preparedReceiptId?.let { id ->
+        ReceiptDetailScreen(viewModel, id, onBack = { preparedReceiptId = null })
+        return
+    }
     val selectedDocument = selectedDocumentId?.let { id -> documents.firstOrNull { it.documentId == id } }
     if (selectedDocument != null) {
         LaunchedEffect(selectedDocument.documentId) {
@@ -171,7 +183,8 @@ fun DocumentManagementScreen(
             },
             hasPendingReview = selectedReview != null,
             onReviewPending = { viewModel.showDocumentAiReview(selectedDocument.documentId) },
-            operationStatus = reviewState.messages[selectedDocument.documentId]
+            operationStatus = reviewState.messages[selectedDocument.documentId] ?: operationStatus,
+            onPrepareBooking = { scope.launch { preparedReceiptId = viewModel.prepareManagedDocumentBooking(selectedDocument.documentId) } }
         )
         selectedReview?.let { review ->
             if (selectedDocument.documentId !in reviewState.dismissed) {
@@ -228,12 +241,12 @@ fun DocumentManagementScreen(
                     horizontalArrangement = Arrangement.spacedBy(Ui2.spacing)
                 ) {
                     OutlinedButton(
-                        onClick = { assignmentRequest = "import" },
+                        onClick = { importPropertyId = property?.propertyId.orEmpty(); importUnitId = ""; assignmentRequest = "import" },
                         modifier = Modifier.weight(1f).testTag("document_import_button"),
                         shape = Ui2.controlShape
                     ) { Icon(Icons.Default.UploadFile, null); Text(" Importieren") }
                     Button(
-                        onClick = { assignmentRequest = "scan" },
+                        onClick = { importPropertyId = property?.propertyId.orEmpty(); importUnitId = ""; assignmentRequest = "scan" },
                         modifier = Modifier.weight(1f).testTag("document_scan_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
                         shape = Ui2.controlShape
@@ -278,13 +291,17 @@ fun DocumentManagementScreen(
             item { Text(status, fontSize = 11.sp, color = SlateGray) }
         }
         if (shown.isEmpty()) {
-            item { Text("Noch keine Dokumente vorhanden.", color = SlateGray) }
+            item {
+                Text(if (propertyDocuments.isEmpty()) "Noch keine Dokumente vorhanden." else "Keine Dokumente für diese Suche oder Filter.", color = SlateGray)
+                if (query.isNotBlank() || activeFilter != "Alle") TextButton(onClick = { query = ""; activeFilter = "Alle" }) { Text("Suche/Filter zurücksetzen") }
+            }
         } else {
             items(shown, key = { it.documentId }) { document ->
+                val cardProperty = DocumentReviewPresentation.propertyFor(document, properties, property)
                 ManagedDocumentCard(
                     document = document,
-                    property = property,
-                    units = units,
+                    property = cardProperty,
+                    units = cardProperty?.let(viewModel::getWohneinheitenForProperty).orEmpty(),
                     onClick = { selectedDocumentId = document.documentId }
                 )
             }
@@ -298,14 +315,24 @@ fun DocumentManagementScreen(
             title = { Text("Dokument zuordnen") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { importPropertyMenuOpen = true }, modifier = Modifier.fillMaxWidth().testTag("document_import_property"), shape = Ui2.controlShape) {
+                        Text("Immobilie: ${importProperty?.name ?: "auswählen"}")
+                    }
+                    DropdownMenu(expanded = importPropertyMenuOpen, onDismissRequest = { importPropertyMenuOpen = false }) {
+                        properties.filter { !propertyScoped || it.propertyId == property?.propertyId }.forEach { target ->
+                            DropdownMenuItem(text = { Text(target.name.ifBlank { target.adresse }) }, onClick = {
+                                importPropertyId = target.propertyId; importUnitId = ""; importPropertyMenuOpen = false
+                            })
+                        }
+                    }
                     Text("Wähle, ob das Dokument zum Gesamtobjekt oder zu einer Wohnung gehört.", fontSize = 12.sp, color = SlateGray)
                     OutlinedButton(onClick = { importUnitMenuOpen = true }, modifier = Modifier.fillMaxWidth(), shape = Ui2.controlShape) {
-                        Text(if (importUnitId.isBlank()) "Gesamtobjekt" else units.firstOrNull { PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), it) == importUnitId }?.label ?: "Wohneinheit")
+                        Text(if (importUnitId.isBlank()) "Gesamtobjekt" else importUnits.firstOrNull { PropertyUnitScopedData.stableUnitId(importPropertyId, it) == importUnitId }?.label ?: "Wohneinheit")
                     }
                     DropdownMenu(expanded = importUnitMenuOpen, onDismissRequest = { importUnitMenuOpen = false }) {
                         DropdownMenuItem(text = { Text("Gesamtobjekt") }, onClick = { importUnitId = ""; importUnitMenuOpen = false })
-                        units.forEach { unit ->
-                            val stableId = PropertyUnitScopedData.stableUnitId(property?.propertyId.orEmpty(), unit)
+                        importUnits.forEach { unit ->
+                            val stableId = PropertyUnitScopedData.stableUnitId(importPropertyId, unit)
                             DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = { importUnitId = stableId; importUnitMenuOpen = false })
                         }
                     }
@@ -319,7 +346,7 @@ fun DocumentManagementScreen(
                     } else {
                         startDocumentScanner()
                     }
-                }, shape = Ui2.controlShape) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
+                }, enabled = importProperty != null, shape = Ui2.controlShape) { Text(if (request == "import") "Datei auswählen" else "Scanner starten") }
             },
             dismissButton = { TextButton(onClick = { assignmentRequest = null }) { Text("Abbrechen") } }
         )
@@ -463,6 +490,9 @@ internal fun DocumentAiReviewDialog(document: ManagedDocument, review: PendingDo
                 proposals.forEachIndexed { index, proposal ->
                     Card(Modifier.fillMaxWidth(), border = BorderStroke(1.dp, BorderColor), shape = Ui2.shape) {
                         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(Ui2.spacing)) {
+                            if (!proposal.confidence.isFinite() || proposal.confidence < 0.8) {
+                                Text("Bitte besonders prüfen: unsicherer Vorschlag", color = CrimsonRed, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                             Text(proposal.label, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             Text("Erkannt: ${com.example.util.DateFormatUtils.displayText(proposal.detectedValue)} • ${(proposal.confidence * 100).toInt()} %${proposal.sourcePage.takeIf(String::isNotBlank)?.let { " • $it" }.orEmpty()}", fontSize = 10.sp)
                             if (proposal.currentValue.isNotBlank()) Text("Aktuell: ${com.example.util.DateFormatUtils.displayText(proposal.currentValue)}", fontSize = 10.sp, color = SlateGray)
