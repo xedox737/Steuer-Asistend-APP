@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +23,16 @@ class BankTransactionSplitServiceTest {
         val context: Context = ApplicationProvider.getApplicationContext()
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         service = BankPhase2DService(db) { "2026-09-10T18:00:00Z" }
+        runBlocking {
+            db.propertyDao().insertPropertyMetadata(PropertyMetadata(
+                id = 1, propertyId = "p1", name = "Synthetic property 1",
+                wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("u1", "EG links")))
+            ))
+            db.propertyDao().insertPropertyMetadata(PropertyMetadata(
+                id = 2, propertyId = "p2", name = "Synthetic property 2",
+                wohneinheiten = UnitIdentity.encode(listOf(UnitIdentity.Entry("u2", "EG links")))
+            ))
+        }
     }
     @After fun tearDown() = db.close()
 
