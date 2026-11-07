@@ -112,24 +112,6 @@ internal fun LedgerOverview(
                 else "Ausdrücklich freigegebene Belegbuchungen", fontSize = 11.sp, color = SlateGray)
         }
         ledgerSection {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LedgerMetric("Einnahmen", LedgerPresentation.money(totals.income), Icons.Default.NorthEast,
-                        EmeraldGreen, LedgerPresentation.comparison(totals.income, previous.income, selectedYear - 1) ?: "Kein Vorjahresvergleich", Modifier.weight(1f))
-                    LedgerMetric("Ausgaben", LedgerPresentation.money(totals.expense), Icons.Default.SouthEast,
-                        CrimsonRed, LedgerPresentation.comparison(totals.expense, previous.expense, selectedYear - 1) ?: "Kein Vorjahresvergleich", Modifier.weight(1f))
-                }
-                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    LedgerMetric("Ergebnis", LedgerPresentation.money(totals.result), Icons.Default.BarChart,
-                        if (totals.result >= 0) EmeraldGreen else CrimsonRed, "Einnahmen − Ausgaben", Modifier.weight(1f), AccentBlue)
-                    LedgerMetric("Buchungen", totals.count.toString(), Icons.AutoMirrored.Filled.ReceiptLong,
-                        DarkNavy, "Mit den gewählten Filtern", Modifier.weight(1f), AccentBlue)
-                }
-            }
-        }
-        ledgerSection { LedgerYearChart(filtered, selectedYear) }
-        ledgerSection { LedgerCategorySummary(filtered) }
-        ledgerSection {
             Surface(Modifier.fillMaxWidth(), shape = Ui2.shape, color = Color.White, border = BorderStroke(0.5.dp, BorderColor)) {
                 Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     LedgerKind.entries.forEach { option ->
@@ -177,6 +159,24 @@ internal fun LedgerOverview(
                 }
             }
         }
+        ledgerSection {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LedgerMetric("Einnahmen", LedgerPresentation.money(totals.income), Icons.Default.NorthEast,
+                        EmeraldGreen, LedgerPresentation.comparison(totals.income, previous.income, selectedYear - 1) ?: "Kein Vorjahresvergleich", Modifier.weight(1f))
+                    LedgerMetric("Ausgaben", LedgerPresentation.money(totals.expense), Icons.Default.SouthEast,
+                        CrimsonRed, LedgerPresentation.comparison(totals.expense, previous.expense, selectedYear - 1) ?: "Kein Vorjahresvergleich", Modifier.weight(1f))
+                }
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LedgerMetric("Ergebnis", LedgerPresentation.money(totals.result), Icons.Default.BarChart,
+                        if (totals.result >= 0) EmeraldGreen else CrimsonRed, "Einnahmen − Ausgaben", Modifier.weight(1f), AccentBlue)
+                    LedgerMetric("Buchungen", totals.count.toString(), Icons.AutoMirrored.Filled.ReceiptLong,
+                        DarkNavy, "Mit den gewählten Filtern", Modifier.weight(1f), AccentBlue)
+                }
+            }
+        }
+        ledgerSection { LedgerYearChart(filtered, selectedYear) }
+        ledgerSection { LedgerCategorySummary(filtered) }
         item {
             Surface(Modifier.fillMaxWidth().testTag("ledger_bookings"), color = Color.White,
                 shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)) {

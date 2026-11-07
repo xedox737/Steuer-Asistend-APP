@@ -135,6 +135,7 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
     val scope = rememberCoroutineScope()
     var action by remember { mutableStateOf<String?>(null) }
     var date by remember(trip.updatedAt) { mutableStateOf(trip.date) }
+    var time by remember(trip.updatedAt) { mutableStateOf(trip.time) }
     var purpose by remember(trip.updatedAt) { mutableStateOf(trip.purpose) }
     var km by remember(trip.updatedAt) { mutableStateOf(NumberFieldInput.prefill(trip.taxDistanceKm)) }
     var reason by remember { mutableStateOf("") }
@@ -159,6 +160,7 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (currentAction == "Korrigieren") {
                     AppDateField(value = date, onValueChange = { date = it }, label = "Datum", required = true, onValidityChange = { dateFields.update("date", it) })
+                    OutlinedTextField(time, { time = it }, label = { Text("Fahrtzeit (optional, HH:mm)") }, singleLine = true)
                     OutlinedTextField(purpose, { purpose = it }, label = { Text("Zweck") })
                     OutlinedTextField(km, { km = it }, label = { Text("Geprüfte Gesamtstrecke (km)") }, singleLine = true)
                 }
@@ -174,7 +176,7 @@ internal fun LogbookManageActions(trip: LogbookTrip, viewModel: ReceiptViewModel
                 busy = true
                 scope.launch {
                     val result = if (currentAction == "Stornieren") viewModel.cancelLogbookTrip(trip.id, reason.trim())
-                        else viewModel.correctLogbookTrip(trip.id, date.trim(), purpose.trim(), NumberFieldInput.nonNegative(km, positive = true).value ?: Double.NaN, reason.trim())
+                        else viewModel.correctLogbookTrip(trip.id, date.trim(), purpose.trim(), NumberFieldInput.nonNegative(km, positive = true).value ?: Double.NaN, reason.trim(), time.trim())
                     busy = false
                     result.fold({ message = null; action = null }, { message = it.message ?: "Änderung fehlgeschlagen." })
                 }

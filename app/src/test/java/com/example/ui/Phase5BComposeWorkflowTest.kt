@@ -312,7 +312,12 @@ class Phase5BComposeWorkflowTest {
         ui.onNode(hasText("Baujahr") and hasSetTextAction()).assertTextContains("9999")
         ui.onNodeWithText("Bitte ein gültiges Baujahr eingeben.").assertExists()
         assertTrue(vm.properties.value.isEmpty())
-        back(); ui.onNodeWithTag("properties_overview").assertExists()
+        back()
+        ui.onNodeWithText("Immobilie anlegen · 1/5").assertExists()
+        back()
+        ui.onNodeWithText("Entwurf verwerfen?").assertExists()
+        ui.onNodeWithText("Verwerfen").performClick()
+        ui.onNodeWithTag("properties_overview").assertExists()
     }
 
     @Test fun csvChoiceInWizardExportsAndSharesActualCsvAndAuditsBookingCount() {

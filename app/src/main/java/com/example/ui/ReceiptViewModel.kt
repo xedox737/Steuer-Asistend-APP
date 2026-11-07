@@ -5762,13 +5762,14 @@ data class AiSearchUiState(
         note: String = "",
         tripDate: String = originalReceipt.datum,
         propertyId: String = originalReceipt.propertyId,
-        bookingKey: String = ""
+        bookingKey: String = "",
+        tripTime: String = ""
     ): Result<Long> = logbookBookingStore.saveLogbookTrip(originalReceipt, purpose, startAddress, destinationAddress,
         stops, routeMode, sameReturnRoute, evidence, routeResult, standardRouteId, correctionReason, correctionNote,
-        note, tripDate, propertyId, bookingKey)
+        note, tripDate, propertyId, bookingKey, tripTime)
 
-    suspend fun correctLogbookTrip(id: Long, date: String, purpose: String, km: Double, reason: String) =
-        logbookBookingStore.correct(id, date, purpose, km, reason)
+    suspend fun correctLogbookTrip(id: Long, date: String, purpose: String, km: Double, reason: String, time: String? = null) =
+        logbookBookingStore.correct(id, date, purpose, km, reason, time)
     suspend fun cancelLogbookTrip(id: Long, reason: String) = logbookBookingStore.cancel(id, reason)
 
     private val logbookDraftPrefs = getApplication<Application>().getSharedPreferences("logbook_drafts", Context.MODE_PRIVATE)
