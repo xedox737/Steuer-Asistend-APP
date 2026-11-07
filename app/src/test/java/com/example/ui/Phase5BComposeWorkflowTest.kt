@@ -24,7 +24,8 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class Phase5BComposeWorkflowTest {
     @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
-    @get:Rule(order = 1) val ui = createAndroidComposeRule<MainActivity>()
+    @get:Rule(order = 1) val databaseIsolation = IsolatedAppDatabaseRule()
+    @get:Rule(order = 2) val ui = createAndroidComposeRule<MainActivity>()
     private val vm get() = ViewModelProvider(ui.activity)[ReceiptViewModel::class.java]
     private lateinit var db: AppDatabase
     private val property = PropertyMetadata(id = 74, propertyId = "phase5b-a", name = "Phase5B Haus A",
@@ -37,9 +38,9 @@ class Phase5BComposeWorkflowTest {
             .apply { isAccessible = true }.get(null) as MutableMap<*, *>
         providerCache.clear()
         db = AppDatabase.getDatabase(ui.activity.application as Application, CoroutineScope(Dispatchers.IO))
-        runBlocking(Dispatchers.IO) { db.clearAllTables() }
+        // The database rule installs a fresh Room instance before Activity/ViewModel startup.
         PersistentPreferenceInventory.stores.forEach { ui.activity.getSharedPreferences(it.name, 0).edit().clear().commit() }
-        ui.waitUntil(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.isEmpty() && vm.properties.value.isEmpty() }
         ui.waitForIdle()
     }
 
@@ -55,9 +56,9 @@ class Phase5BComposeWorkflowTest {
                 .putString("property_phase5b-a_unitid_${unit}_start", if (rented) "2021-04-01" else "").commit()
         }
         runBlocking(Dispatchers.IO) { db.propertyDao().insertPropertyMetadata(property) }
-        ui.waitUntil(10000) { vm.properties.value.any { it.propertyId == property.propertyId } }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.propertyId == property.propertyId } }
         ui.runOnIdle { vm.selectProperty(property.propertyId); vm.setScreen(AppScreen.PROPERTIES) }
-        ui.waitUntil(10000) { vm.propertyMetadata.value?.propertyId == property.propertyId &&
+        ui.waitUntilAndroidState(10000) { vm.propertyMetadata.value?.propertyId == property.propertyId &&
             vm.wohneinheitenStatus.value.map { it.unitId } == listOf("u-1", "u-2") }
         ui.onNodeWithText(property.name).performClick()
     }
@@ -120,7 +121,7 @@ class Phase5BComposeWorkflowTest {
         try {
             // Room publishes these independent flows separately. Expenses/assignments
             // alone do not mean the bank-backed ledger row exists yet.
-            ui.waitUntil(10000) {
+            ui.waitUntilAndroidState(10000) {
                 vm.receipts.value.map { it.id }.toSet() == setOf(901, 902) &&
                     vm.bankRentAssignments.value.singleOrNull()?.assignmentId == "a" &&
                     vm.bankTransactions.value.singleOrNull()?.transactionId == "tx"
@@ -140,7 +141,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNode(hasText(LedgerPresentation.money(1000.0)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
         capture("filtered-finances-393")
         ledgerScroll("ledger_bank_bank-a"); ui.onNodeWithTag("ledger_bank_bank-a").performClick()
-        ui.waitUntil(10000) { vm.currentScreen.value == AppScreen.BANK }
+        ui.waitUntilAndroidState(10000) { vm.currentScreen.value == AppScreen.BANK }
         ui.onNodeWithText("Buchungsdetails").assertExists()
         back()
         assertEquals(AppScreen.LEDGER, vm.currentScreen.value)
@@ -152,12 +153,12 @@ class Phase5BComposeWorkflowTest {
         seed()
         runBlocking(Dispatchers.IO) { db.bankDao().upsertTransaction(BankTransaction("open", "account", "2026-10-03",
             amount = 1020.0, purpose = "Miete Oktober", counterparty = "Unklarer Mieter")) }
-        ui.waitUntil(10000) { vm.bankTransactions.value.size == 1 }
+        ui.waitUntilAndroidState(10000) { vm.bankTransactions.value.size == 1 }
         ui.runOnIdle { vm.setScreen(AppScreen.RENT_OVERVIEW) }
         ui.onNodeWithTag("rent_overview").performScrollToNode(hasTestTag("rent_review_payments"))
         ui.onNodeWithTag("rent_review_payments").performClick()
         ui.onNodeWithTag("rent_review_bank-open").assertExists().performClick()
-        ui.waitUntil(10000) { vm.currentScreen.value == AppScreen.BANK }
+        ui.waitUntilAndroidState(10000) { vm.currentScreen.value == AppScreen.BANK }
         ui.onNodeWithText("Buchungsdetails").assertExists()
         ui.onNodeWithContentDescription("Zurück").performClick()
         assertEquals(AppScreen.RENT_OVERVIEW, vm.currentScreen.value)
@@ -168,7 +169,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("rent_monthly_list").performScrollToNode(hasTestTag("monthly_rent_review_payments"))
         ui.onNodeWithTag("monthly_rent_review_payments").performClick()
         ui.onNodeWithTag("rent_review_bank-open").performClick()
-        ui.waitUntil(10000) { vm.currentScreen.value == AppScreen.BANK }
+        ui.waitUntilAndroidState(10000) { vm.currentScreen.value == AppScreen.BANK }
         back()
         ui.onNodeWithText("Miet-Monatscheck").assertExists()
         back()
@@ -193,7 +194,7 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithTag("edit_property_notes").performScrollTo().performTextReplacement("Notiz am Objekt")
         capture("object-metadata-393")
         ui.onNodeWithTag("save_property_metadata_button").performClick()
-        ui.waitUntil(10000) { vm.properties.value.any { it.notizen == "Notiz am Objekt" } }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.notizen == "Notiz am Objekt" } }
         val saved = vm.properties.value.single { it.propertyId == property.propertyId }
         assertEquals(property.id, saved.id)
         assertEquals("Eigentumswohnung", saved.objektart)
@@ -252,13 +253,13 @@ class Phase5BComposeWorkflowTest {
         ui.onNode(hasText("WE 02") and hasAnyAncestor(hasTestTag("rent_batch_rows"))).assertExists()
         capture("initial-rent-preview-393")
         ui.onNodeWithTag("rent_batch_confirm").performClick()
-        ui.waitUntil(10000) { vm.wohneinheitenStatus.value.any { it.mieter == "Müller" } }
+        ui.waitUntilAndroidState(10000) { vm.wohneinheitenStatus.value.any { it.mieter == "Müller" } }
         assertEquals("Leerstand", vm.wohneinheitenStatus.value.single { it.unitId == "u-2" }.status)
     }
 
     @Test fun receiptSearchUsesUserLanguageAndDashboardShowsLiveReviewCount() {
         runBlocking(Dispatchers.IO) { db.receiptDao().insertReceipt(expense(901, 100.0, "").copy(pruefstatus = "UNGEPRUEFT")) }
-        ui.waitUntil(10000) { vm.receipts.value.size == 1 }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.size == 1 }
         ui.runOnIdle { vm.setScreen(AppScreen.DASHBOARD) }
         ui.onNodeWithText("Belege prüfen").assertExists()
         ui.onNodeWithText("Offene Belege").assertDoesNotExist()
@@ -277,16 +278,16 @@ class Phase5BComposeWorkflowTest {
         ui.onNodeWithText("🎯 1 passende Belege werden unten angezeigt.").assertExists()
         ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
         ui.runOnIdle { vm.clearAiSearch(); vm.deleteGeminiKey(); vm.performAiSearch("Reparatur") }
-        ui.waitUntil(10000) { vm.aiSearchState.value.result?.matchingReceiptIds == listOf(901L) }
+        ui.waitUntilAndroidState(10000) { vm.aiSearchState.value.result?.matchingReceiptIds == listOf(901L) }
         ui.onNodeWithText("Auswertung für 'Reparatur': Insgesamt 100,00 € verteilt auf 1 Belege.").assertExists()
         ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
         ui.runOnIdle { vm.performAiSearch("Unpassender Suchbegriff") }
-        ui.waitUntil(10000) { vm.aiSearchState.value.query == "Unpassender Suchbegriff" && !vm.aiSearchState.value.isLoading }
+        ui.waitUntilAndroidState(10000) { vm.aiSearchState.value.query == "Unpassender Suchbegriff" && !vm.aiSearchState.value.isLoading }
         ui.onNodeWithText("Keine passenden Belege für 'Unpassender Suchbegriff' gefunden.").assertExists()
         runBlocking(Dispatchers.IO) { db.clearAllTables() }
-        ui.waitUntil(10000) { vm.receipts.value.isEmpty() }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.isEmpty() }
         ui.runOnIdle { vm.performAiSearch("Reparatur") }
-        ui.waitUntil(10000) { vm.aiSearchState.value.error != null }
+        ui.waitUntilAndroidState(10000) { vm.aiSearchState.value.error != null }
         ui.onNodeWithText("Noch keine Belege vorhanden.").assertExists()
         ui.onAllNodes(hasText("Room", substring = true)).assertCountEquals(0)
     }
@@ -312,7 +313,12 @@ class Phase5BComposeWorkflowTest {
         ui.onNode(hasText("Baujahr") and hasSetTextAction()).assertTextContains("9999")
         ui.onNodeWithText("Bitte ein gültiges Baujahr eingeben.").assertExists()
         assertTrue(vm.properties.value.isEmpty())
-        back(); ui.onNodeWithTag("properties_overview").assertExists()
+        back()
+        ui.onNodeWithText("Immobilie anlegen · 1/5").assertExists()
+        back()
+        ui.onNodeWithText("Entwurf verwerfen?").assertExists()
+        ui.onNodeWithText("Verwerfen").performClick()
+        ui.onNodeWithTag("properties_overview").assertExists()
     }
 
     @Test fun csvChoiceInWizardExportsAndSharesActualCsvAndAuditsBookingCount() {
@@ -326,7 +332,7 @@ class Phase5BComposeWorkflowTest {
                 ))
             }
         }
-        ui.waitUntil(10000) { vm.receipts.value.size == 2 }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.size == 2 }
         ui.runOnIdle {
             vm.updateActiveDatevProfile(DatevProfile.createDefaultSkr03().copy(beraterNummer = "1111111", mandantenNummer = "11111"))
             vm.setWizardFilters(year = "2026", targetFormat = "FULL_ZIP")
@@ -335,7 +341,7 @@ class Phase5BComposeWorkflowTest {
         }
         ui.onNodeWithText("Reiner EXTF Buchungsstapel (.csv)").performScrollTo().performClick()
         ui.onNodeWithText("Buchungsstapel jetzt erzeugen").performScrollTo().assertIsEnabled().performClick()
-        ui.waitUntil(10000) { vm.lastExportResult.value != null && vm.allAuditRuns.value.isNotEmpty() }
+        ui.waitUntilAndroidState(10000) { vm.lastExportResult.value != null && vm.allAuditRuns.value.isNotEmpty() }
         val result = vm.lastExportResult.value!!
         assertEquals("csv", result.outputFile.extension)
         assertEquals("text/csv", result.mimeType)

@@ -7323,7 +7323,7 @@ fun GoogleDriveSyncCard(viewModel: ReceiptViewModel) {
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Restore-Test ausführen (Dry Run)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("Wiederherstellung prüfen – ohne Daten zu ändern", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))

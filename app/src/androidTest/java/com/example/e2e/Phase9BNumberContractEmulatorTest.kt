@@ -128,7 +128,12 @@ abstract class Phase9BNumberContractMatrix : EmulatorTestSupport() {
         ui.onNodeWithText("Immobilie anlegen · 4/5").assertIsDisplayed()
         capture("9b-wizard-float-error-font-$fontScale", ui.onAllNodes(isDialog()).onLast())
         ui.onNode(hasText("Abbrechen") and hasAnyAncestor(isDialog())).performClick()
+        ui.onNodeWithText("Entwurf verwerfen?").assertIsDisplayed()
+        ui.onNodeWithText("Immobilie anlegen · 4/5").assertExists()
+        assertFalse(created)
+        ui.onNodeWithText("Verwerfen").performClick()
         ui.onNode(isDialog()).assertDoesNotExist()
+        assertFalse(created)
 
         val property = seedProperty("9b-document", "Dokumenthaus")
         val doc = ManagedDocument("9b-raw-doc", property.propertyId, title = "9B Dokument", documentDate = "2026-10-14",

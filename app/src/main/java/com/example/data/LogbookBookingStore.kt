@@ -22,7 +22,8 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
         note: String = "",
         tripDate: String = originalReceipt.datum,
         propertyId: String = originalReceipt.propertyId,
-        bookingKey: String = ""
+        bookingKey: String = "",
+        tripTime: String = ""
     ): Result<Long> = runCatching { database.withTransaction {
         val effectiveKey = bookingKey.ifBlank { if (originalReceipt.id > 0) "receipt:${originalReceipt.id}" else "" }
         if (effectiveKey.isNotBlank()) database.logbookDao().getByBookingKey(effectiveKey)?.let { return@withTransaction it.id }
@@ -41,6 +42,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             evidence.gpsMeasuredKm, evidence.odometerStartKm, evidence.odometerEndKm, evidence.standardRouteKm)
             .all { it.isFinite() && it >= 0.0 }) { "Bitte gültige Kilometerquellen eingeben." }
         java.time.LocalDate.parse(tripDate)
+        require(validTime(tripTime)) { "Bitte die Fahrtzeit im Format HH:mm eingeben oder leer lassen." }
         require(propertyId.isNotBlank()) { "Immobilie erforderlich." }
         require(evidence.manuallyConfirmed) { "Route, Fahrtzweck und Kilometer müssen vor dem Einbuchen bestätigt werden." }
         val normalized = com.example.data.TripRouteNormalizer.normalize(
@@ -67,7 +69,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             Receipt(
                 aussteller = "Fahrtkosten: ${originalReceipt.aussteller}",
                 datum = tripDate,
-                uhrzeit = originalReceipt.uhrzeit,
+                uhrzeit = tripTime,
                 bruttobetrag = distance * 0.30,
                 hauptkategorie = "Sonstige Ausgaben",
                 unterkategorie = "Fahrtkosten",
@@ -82,7 +84,7 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
         val tripId = database.logbookDao().upsertTrip(
             com.example.data.LogbookTrip(
                 date = tripDate,
-                time = originalReceipt.uhrzeit,
+                time = tripTime,
                 purpose = purpose,
                 propertyReference = originalReceipt.wohneinheit,
                 startAddress = startAddress,
@@ -118,9 +120,10 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
         tripId
     } }
 
-    suspend fun correct(id: Long, date: String, purpose: String, km: Double, reason: String): Result<Unit> = runCatching {
+    suspend fun correct(id: Long, date: String, purpose: String, km: Double, reason: String, time: String? = null): Result<Unit> = runCatching {
         database.withTransaction {
             java.time.LocalDate.parse(date)
+            require(time == null || validTime(time)) { "Bitte die Fahrtzeit im Format HH:mm eingeben oder leer lassen." }
             require(purpose.isNotBlank() && reason.isNotBlank() && km.isFinite() && km > 0) { "Datum, Zweck, positive Kilometer und Änderungsgrund erforderlich." }
             ReceiptMoney.toCent(km * 0.30)
             val trip = requireNotNull(database.logbookDao().getTrip(id))
@@ -128,12 +131,12 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             val expense = editableExpense(trip)
             val now = java.time.Instant.now().toString()
             val history = history(trip, "Korrektur", reason, now)
-            val updatedExpense = expense.copy(datum = date, bruttobetrag = km * 0.30,
+            val updatedExpense = expense.copy(datum = date, uhrzeit = time ?: expense.uhrzeit, bruttobetrag = km * 0.30,
                 beschreibung = "Fahrtenbuch: ${trip.startAddress} → ${trip.destinationAddress} | Zweck: $purpose | $km km | Korrektur: $reason",
                 freigabestatus = "OFFEN", allocationsJson = "", bookingProposalsJson = "", pruefstatus = "ZU_PRUEFEN",
                 exportStatus = "ZU_PRUEFEN", exportlaufId = "", syncStatus = "PENDING", isArchivedToDrive = false)
             repository.insert(updatedExpense)
-            database.logbookDao().upsertTrip(trip.copy(date = date, purpose = purpose, taxDistanceKm = km,
+            database.logbookDao().upsertTrip(trip.copy(date = date, time = time ?: trip.time, purpose = purpose, taxDistanceKm = km,
                 kilometerSource = KilometerSource.MANUELL.name, manualKm = km, manuallyConfirmed = true,
                 correctionReason = "Sonstiges", correctionNote = reason, historyJson = history, updatedAt = now))
         }
@@ -150,6 +153,9 @@ class LogbookBookingStore(private val database: AppDatabase, private val reposit
             database.logbookDao().upsertTrip(trip.copy(cancelledAt = now, historyJson = history(trip, "Storno", reason, now), updatedAt = now))
         }
     }
+
+    private fun validTime(value: String): Boolean = value.isEmpty() ||
+        (Regex("[0-2][0-9]:[0-5][0-9]").matches(value) && runCatching { java.time.LocalTime.parse(value) }.isSuccess)
 
     private suspend fun editableExpense(trip: LogbookTrip): Receipt {
         val expense = requireNotNull(trip.expenseReceiptId?.let { repository.getReceiptById(it) }) { "Fahrtkostenbeleg fehlt." }
