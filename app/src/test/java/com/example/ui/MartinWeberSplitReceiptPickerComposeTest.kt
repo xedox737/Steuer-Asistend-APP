@@ -83,7 +83,7 @@ class MartinWeberSplitReceiptPickerComposeTest {
                 ViewModelProvider.AndroidViewModelFactory(ui.activity.application))[ReceiptViewModel::class.java]
         }
         ui.setContent { MaterialTheme { BankTransactionSplitActions(model, transaction) } }
-        ui.waitUntil(10_000) { model.receipts.value.size == 55 && model.properties.value.isNotEmpty() }
+        ui.waitUntil(10_000) { ui.waitForIdle(); model.receipts.value.size == 55 && model.properties.value.isNotEmpty() }
         // Verify the target really falls outside the previous first-30 picker boundary.
         assertEquals(41, model.receipts.value[40].id)
         ui.onNodeWithText("Buchung aufteilen").performClick()
@@ -97,7 +97,12 @@ class MartinWeberSplitReceiptPickerComposeTest {
         ui.onNode(hasText(" • MW invoice 41 • ", substring = true) and hasClickAction()).performClick()
         ui.onNodeWithText("Aufteilung prüfen").assertIsEnabled().performClick()
         ui.onNodeWithText("Aufteilung bestätigen").assertIsEnabled().performClick()
-        ui.waitUntil(10_000) { model.bankReceiptLinks.value.any { it.receiptId == 41 } }
+        try {
+            ui.waitUntil(10_000) { ui.waitForIdle(); model.bankReceiptLinks.value.any { it.receiptId == 41 } }
+        } catch (error: ComposeTimeoutException) {
+            val stored = runBlocking(Dispatchers.IO) { database.bankDao().getLinksForTransaction(transaction.transactionId) }
+            throw AssertionError("Confirmation did not publish receipt 41; persisted links=$stored\n${ui.onRoot().printToString()}", error)
+        }
         runBlocking(Dispatchers.IO) {
             val link = database.bankDao().getLinksForTransaction(transaction.transactionId).single()
             assertEquals(41, link.receiptId)
