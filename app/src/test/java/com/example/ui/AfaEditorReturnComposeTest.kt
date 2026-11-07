@@ -22,7 +22,9 @@ import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowDialog
 
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
+// Match the existing property-editor workflow: native Robolectric StaticLayout loops in this large form.
+// The complete Compose interaction, return path and persistence assertions still execute.
+@GraphicsMode(GraphicsMode.Mode.LEGACY)
 @Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
 class AfaEditorReturnComposeTest {
     @get:Rule(order = 0) val applicationIsolation = IsolatedAndroidApplicationRule()
