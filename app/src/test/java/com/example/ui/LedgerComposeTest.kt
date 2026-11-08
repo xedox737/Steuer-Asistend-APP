@@ -112,27 +112,33 @@ class LedgerComposeTest {
         ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_metric_Ausgaben"))).assertExists()
         ui.onNode(hasText(LedgerPresentation.money(531.6)) and hasAnyAncestor(hasTestTag("ledger_metric_Ergebnis"))).assertExists()
         ui.onNode(hasText("3") and hasAnyAncestor(hasTestTag("ledger_metric_Buchungen"))).assertExists()
+        scroll("ledger_categories")
         ui.onNodeWithText("Ausgaben nach Kategorie").assertExists()
         ui.onNodeWithTag("ledger_categories").assertExists()
         ui.onNode(hasText(LedgerPresentation.money(668.4)) and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
         ui.onNode(hasText(LedgerPresentation.money(256.4)) and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
         ui.onNode(hasText("38 %") and hasAnyAncestor(hasTestTag("ledger_categories"))).assertExists()
+        scroll("ledger_chart")
         val incomeBar = ui.onNodeWithTag("ledger_bar_INCOME_5").fetchSemanticsNode().boundsInRoot
         val expenseBar = ui.onNodeWithTag("ledger_bar_EXPENSE_4").fetchSemanticsNode().boundsInRoot
         assertTrue(incomeBar.height > expenseBar.height && expenseBar.height > 0)
         assertEquals("Monthly bars must represent actual April expenses and May income",
             (668.4 / 1200.0).toFloat(), expenseBar.height / incomeBar.height, .01f)
         assertEquals(0f, ui.onNodeWithTag("ledger_bar_INCOME_1").fetchSemanticsNode().boundsInRoot.height, 0.01f)
+        // The chart scroll above keeps both chart and category cards in the same viewport.
         val chartOrder = ui.onNodeWithTag("ledger_chart").fetchSemanticsNode().boundsInRoot
         val categoriesOrder = ui.onNodeWithTag("ledger_categories").fetchSemanticsNode().boundsInRoot
         assertTrue("Year chart must precede categories", chartOrder.bottom <= categoriesOrder.top)
         // Density regression: metrics stay under 104 dp, chart under 120 dp and bookings under 80 dp.
         val density = ui.activity.resources.displayMetrics.density
+        scroll("ledger_metric_Einnahmen")
         val metric = ui.onNodeWithTag("ledger_metric_Einnahmen").fetchSemanticsNode().boundsInRoot
         assertTrue("Metrics must remain compact", metric.height / density <= 104f)
+        scroll("ledger_chart")
         val chart = ui.onNodeWithTag("ledger_chart").fetchSemanticsNode().boundsInRoot
         assertTrue("Chart must remain compact", chart.height / density <= 120f)
         assertNoAccountingActions()
+        scroll("ledger_title")
         shell(); capture("393-overview")
         scroll("ledger_receipt_901")
         ui.onNodeWithText(LedgerPresentation.signedMoney(vm.receipts.value.first { it.id == 901 })).assertExists()
@@ -232,12 +238,13 @@ class LedgerComposeTest {
         capture("$name-overview")
         scroll("ledger_receipt_901"); shell(); capture("$name-bookings")
         scroll("ledger_end"); shell()
+        capture("$name-end")
+        scroll("ledger_kind_ALL")
         val incomeLabel = ui.onNode(hasText("Einnahmen") and hasAnyAncestor(hasTestTag("ledger_kind_INCOME")),
             useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val expenseLabel = ui.onNode(hasText("Ausgaben") and hasAnyAncestor(hasTestTag("ledger_kind_EXPENSE")),
             useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertTrue("Inactive filter labels must stay separate after scrolling", incomeLabel.right < expenseLabel.left)
-        capture("$name-end")
         assertNoAccountingActions()
         val frame = ui.onNodeWithTag("ledger_overview").fetchSemanticsNode().boundsInRoot
         listOf("ledger_chart", "ledger_categories", "ledger_bookings").forEach { tag ->

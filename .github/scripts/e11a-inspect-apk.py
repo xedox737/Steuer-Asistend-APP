@@ -36,7 +36,7 @@ def main():
         r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging).groups()
     label = re.search(r"^application-label:'(.*)'$", badging, re.M)[1]
     assert package == args.package, (package, args.package)
-    assert label == ("ImmoPilot Test" if package == TEST else "Steuer-Assistent Anlage V"), label
+    assert label == ("ImmoPilot Test" if package == TEST else "ImmoPilot"), label
     assert "android:sharedUserId" not in manifest, "sharedUserId breaks sandbox isolation"
     authorities = [item for value in re.findall(r'android:authorities[^\n]*?="([^"]+)"', manifest)
                    for item in value.split(";")]

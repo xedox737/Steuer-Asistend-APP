@@ -500,6 +500,7 @@ private fun LogbookSuggestionCard(
     }
     BackHandler(onBack = ::goBack)
     var tripDate by rememberSaveable(receipt.id, receipt.aussteller) { mutableStateOf(draft.optString("date", receipt.datum)) }
+    var tripTime by rememberSaveable(receipt.id, receipt.aussteller) { mutableStateOf(draft.optString("time", "")) }
     var editTarget by remember { mutableStateOf<String?>(null) }
     var editValue by remember { mutableStateOf("") }
 
@@ -540,7 +541,7 @@ private fun LogbookSuggestionCard(
     val stops = normalizedRoute?.stops.orEmpty()
     val draftJson = JSONObject().put("bookingKey", bookingKey).put("linkedReceiptId", linkedReceiptId)
         .put("propertyId", propertyId).put("unit", unit).put("start", start).put("destination", destination)
-        .put("stops", JSONArray(intermediateStops)).put("purpose", purpose).put("date", tripDate)
+        .put("stops", JSONArray(intermediateStops)).put("purpose", purpose).put("date", tripDate).put("time", tripTime)
         .put("mode", mode.name).put("sameReturnRoute", sameReturnRoute).put("manualKmText", manualKmText)
         .put("odometerStartText", odometerStartText).put("odometerEndText", odometerEndText)
         .put("correctionReason", correctionReason).put("correctionNote", correctionNote)
@@ -633,6 +634,9 @@ private fun LogbookSuggestionCard(
                     }
                     LogbookPanel("Fahrtdetails") {
                         LogbookValueRow(Icons.Default.CalendarMonth, "Datum", tripDate.logbookDate()) { edit("date", tripDate) }
+                        OutlinedTextField(tripTime, { tripTime = it; confirmed = false }, label = { Text("Fahrtzeit (optional, HH:mm)") },
+                            supportingText = { Text("Zeitpunkt der Fahrt – unabhängig von der Belegzeit") }, singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("logbook_trip_time"))
                         LogbookValueRow(Icons.Default.LocationOn, "Immobilie", allProperties.firstOrNull { it.propertyId == propertyId }?.adresse ?: metadata.adresse) { selectProperty = true }
                         HorizontalDivider(color = BorderColor)
                         LogbookValueRow(Icons.Default.Work, "Zweck der Fahrt", purpose) { edit("purpose", purpose) }
@@ -771,6 +775,7 @@ private fun LogbookSuggestionCard(
                     LogbookRouteStatus(decision.source?.name, confirmed, decision.taxDistanceKm)
                     LogbookPanel("Fahrtdaten") {
                         LogbookSummaryRow(Icons.Default.CalendarMonth, "Datum", tripDate.logbookDate()) { openStep(0) }
+                        LogbookSummaryRow(Icons.Default.CalendarMonth, "Fahrtzeit", tripTime.ifBlank { "Nicht angegeben" }) { openStep(0) }
                         HorizontalDivider(color = BorderColor)
                         LogbookSummaryRow(Icons.Default.SwapHoriz, "Strecke",
                             (decision.taxDistanceKm?.germanKm() ?: "Noch nicht bestätigt") +
@@ -809,7 +814,7 @@ private fun LogbookSuggestionCard(
                         scope.launch {
                             val result = viewModel.saveLogbookTrip(
                                 originalReceipt = (linkedReceipt ?: manualTripReceipt()).copy(wohneinheit = unit, propertyId = propertyId),
-                                tripDate = tripDate, propertyId = propertyId, bookingKey = bookingKey, purpose = purpose.trim(),
+                                tripDate = tripDate, tripTime = tripTime.trim(), propertyId = propertyId, bookingKey = bookingKey, purpose = purpose.trim(),
                                 startAddress = start.trim(), destinationAddress = destination.trim(),
                                 stops = stops, routeMode = mode, sameReturnRoute = sameReturnRoute,
                                 evidence = evidence.copy(manuallyConfirmed = true), routeResult = routeResult,
