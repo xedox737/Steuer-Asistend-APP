@@ -145,6 +145,7 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     var toolsMenuOpen by remember { mutableStateOf(false) }
     var toolsMode by remember { mutableStateOf(BankToolsMode.NONE) }
     var showImportDetails by remember { mutableStateOf(false) }
+    var importFileSelected by remember { mutableStateOf(false) }
     var selectedTransactionIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingBatchAction by remember { mutableStateOf<String?>(null) }
     var pendingPropertyChoice by remember { mutableStateOf(false) }
@@ -152,7 +153,10 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
     var pendingCategoryAssignment by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) viewModel.importBankFile(uri)
+        if (uri != null) {
+            importFileSelected = true
+            viewModel.importBankFile(uri)
+        }
     }
 
     if (pendingAccountImports.isNotEmpty()) {
@@ -321,6 +325,15 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                             })
                         }
                     }
+                }
+            }
+
+            if (importFileSelected) {
+                item {
+                    BankImportFeedback(
+                        status = importStatus ?: "Kontoauszug wird eingelesen …",
+                        onDetails = { showImportDetails = true }
+                    )
                 }
             }
 
@@ -619,6 +632,30 @@ fun BankScreen(viewModel: ReceiptViewModel, onDetailVisibilityChanged: (Boolean)
                 modifier = Modifier.padding(12.dp),
                 action = { TextButton(onClick = viewModel::undoLastBankBatchAction) { Text("Rückgängig") } }
             ) { Text(undoNotice.message) }
+        }
+    }
+}
+
+@Composable
+internal fun BankImportFeedback(status: String, onDetails: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, if (status.startsWith("Import fehlgeschlagen")) MaterialTheme.colorScheme.error else BorderColor),
+        shape = Ui2.shape
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                status.lineSequence().firstOrNull().orEmpty(),
+                modifier = Modifier.weight(1f),
+                color = if (status.startsWith("Import fehlgeschlagen")) MaterialTheme.colorScheme.error else DarkNavy,
+                maxLines = 3
+            )
+            TextButton(onClick = onDetails) { Text("Details") }
         }
     }
 }
