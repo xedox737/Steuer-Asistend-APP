@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.OfflineBackupService
+import com.example.data.OfflineBackupValidationException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,7 +52,8 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
                 }
                 status = "Vollständige lokale Sicherung gespeichert."
             } catch (error: CancellationException) { throw error
-            } catch (error: Exception) { status = error.message ?: "Die lokale Sicherung konnte nicht gespeichert werden."
+            } catch (error: OfflineBackupValidationException) { status = error.message
+            } catch (error: Exception) { status = "Die lokale Sicherung konnte nicht gespeichert werden. Bitte prüfe den Speicherort und versuche es erneut."
             } finally { busy = false }
         }
     }
@@ -65,7 +67,8 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
                 }
                 status = null
             } catch (error: CancellationException) { throw error
-            } catch (error: Exception) { status = error.message ?: "Die Sicherung ist nicht lesbar. Es wurden keine Daten übernommen."
+            } catch (error: OfflineBackupValidationException) { status = error.message
+            } catch (error: Exception) { status = "Die Sicherung konnte nicht gelesen werden. Bitte wähle eine vollständige ImmoPilot-Vollsicherung als ZIP-Datei. Es wurden keine Daten übernommen."
             } finally { busy = false }
         }
     }
@@ -94,7 +97,8 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
                         status = "Lokale Sicherung wiederhergestellt. Vorhandene identische Daten wurden nicht doppelt angelegt."
                         snapshot.close(); prepared = null
                     } catch (error: CancellationException) { throw error
-                    } catch (error: Exception) { status = error.message ?: "Wiederherstellung fehlgeschlagen."
+                    } catch (error: OfflineBackupValidationException) { status = error.message
+                    } catch (error: Exception) { status = "Die Wiederherstellung konnte nicht abgeschlossen werden. Bitte prüfe die Sicherungsdatei und versuche es erneut."
                     } finally { busy = false }
                 }
             }) { Text("Wiederherstellen") } },

@@ -87,6 +87,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Cold compilation must not consume the test execution budget.
+      - name: Compile unit test sources
+        timeout-minutes: 10
+        run: gradle compileDebugUnitTestKotlin compileDebugUnitTestJavaWithJavac --stacktrace --no-daemon
+
       # Each class now gets an isolated JVM; allow for measured startup work,
       # rather than masking an individual test failure or adding retries.
       - name: Run unit tests

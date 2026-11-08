@@ -14,8 +14,17 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+/** Expected validation failures with messages intended for the user. */
+internal class OfflineBackupValidationException(message: String) : IllegalArgumentException(message)
+
 /** Versioned offline transport. Conflicting existing rows are never overwritten. */
 internal class OfflineBackupService(private val context: Context, private val database: AppDatabase) {
+    private inline fun requireBackup(condition: Boolean, message: () -> String = { "Die Sicherung ist unvollständig oder beschädigt." }) {
+        if (!condition) throw OfflineBackupValidationException(message())
+    }
+    private inline fun <T : Any> requireBackupValue(value: T?, message: () -> String): T =
+        value ?: throw OfflineBackupValidationException(message())
+
     internal class Prepared internal constructor(internal val root: JSONObject, internal val staging: File) : AutoCloseable {
         val receiptCount: Int get() = root.getJSONObject("tables").getJSONObject("receipts").getJSONArray("rows").length()
         val propertyCount: Int get() = root.getJSONObject("tables").getJSONObject("property_metadata").getJSONArray("rows").length()
@@ -29,7 +38,7 @@ internal class OfflineBackupService(private val context: Context, private val da
             buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
         }.filterNot { it.startsWith("sqlite_") || it.startsWith("document_search_fts") || it in setOf("room_master_table", "android_metadata") }
         return names.associateWith { name ->
-            require(Regex("[a-z_]+").matches(name)) { "Unbekannte Datenbankstruktur." }
+            requireBackup(Regex("[a-z_]+").matches(name)) { "Unbekannte Datenbankstruktur." }
             db.query("PRAGMA table_info(`$name`)").use { cursor -> buildList {
                 while (cursor.moveToNext()) add(Column(cursor.getString(1), cursor.getString(2), cursor.getInt(5), cursor.getInt(3) != 0))
             } }
@@ -83,11 +92,11 @@ internal class OfflineBackupService(private val context: Context, private val da
             val files = JSONArray()
             paths.forEachIndexed { index, path ->
                 val source = File(path.removePrefix("file://"))
-                require(source.isFile && source.length() > 0 && source.length() <= 1024L * 1024 * 1024) { "Eine Originaldatei fehlt lokal. Bitte zuerst die Originale wiederherstellen." }
+                requireBackup(source.isFile && source.length() > 0 && source.length() <= 1024L * 1024 * 1024) { "Eine Originaldatei fehlt lokal. Bitte zuerst die Originale wiederherstellen." }
                 val copied = File(directory, index.toString())
                 source.copyTo(copied)
                 val sha = com.example.util.ReceiptManifestService.calculateSha256(copied)
-                require(sha == com.example.util.ReceiptManifestService.calculateSha256(source)) { "Eine Datei wurde während der Sicherung geändert. Bitte erneut versuchen." }
+                requireBackup(sha == com.example.util.ReceiptManifestService.calculateSha256(source)) { "Eine Datei wurde während der Sicherung geändert. Bitte erneut versuchen." }
                 files.put(JSONObject().put("path", path).put("entry", "files/$index").put("sha256", sha).put("size", copied.length()))
             }
             val originalsByPath = (0 until files.length()).associate {
@@ -100,13 +109,13 @@ internal class OfflineBackupService(private val context: Context, private val da
             for (index in 0 until documentRows.length()) {
                 val row = documentRows.getJSONArray(index)
                 val path = row.optString(column("localUri"), "")
-                require(path.isNotBlank() || (row.optString(column("receiptInternalId"), "").isNotBlank() &&
+                requireBackup(path.isNotBlank() || (row.optString(column("receiptInternalId"), "").isNotBlank() &&
                     row.optString(column("sha256"), "").isBlank() && row.optLong(column("fileSizeBytes"), 0) == 0L &&
                     row.optString(column("driveFileId"), "").isBlank())) {
                     "Ein Dokumentoriginal fehlt lokal. Bitte zuerst die Originale herunterladen."
                 }
                 val expected = row.optString(column("sha256"), "")
-                require(path.isBlank() || expected.isBlank() || originalsByPath[path] == expected) {
+                requireBackup(path.isBlank() || expected.isBlank() || originalsByPath[path] == expected) {
                     "Ein Original stimmt nicht mit seiner gespeicherten Prüfsumme überein. Bitte zuerst die Datei prüfen."
                 }
             }
@@ -114,19 +123,19 @@ internal class OfflineBackupService(private val context: Context, private val da
             val receiptValues = tableRows(root, "receipts")
             receiptValues.forEach { receipt ->
                 val claimsOriginal = text(receipt["driveFileId"]).isNotBlank() || text(receipt["originalMimeType"]).isNotBlank() || (receipt["fileSizeBytes"] as? Number)?.toLong()?.let { it > 0 } == true
-                require(!claimsOriginal || text(receipt["imageUrl"]).isNotBlank() || documentValues.any {
+                requireBackup(!claimsOriginal || text(receipt["imageUrl"]).isNotBlank() || documentValues.any {
                     text(it["receiptInternalId"]) == text(receipt["internalId"]) && text(it["localUri"]).isNotBlank()
                 }) { "Ein Belegoriginal liegt nur in der Cloud. Bitte zuerst lokal herunterladen." }
             }
             val availableDriveIds = documentValues.filter { text(it["localUri"]).isNotBlank() }.map { text(it["driveFileId"]) }.toSet() +
                 receiptValues.filter { text(it["imageUrl"]).isNotBlank() }.map { text(it["driveFileId"]) }
-            require(tableRows(root, "receipt_documents").all { text(it["driveFileId"]).isBlank() || text(it["driveFileId"]) in availableDriveIds }) {
+            requireBackup(tableRows(root, "receipt_documents").all { text(it["driveFileId"]).isBlank() || text(it["driveFileId"]) in availableDriveIds }) {
                 "Ein zusätzlicher Beleganhang fehlt lokal. Bitte zuerst die Originale herunterladen."
             }
-            require(files.length() <= 10000 && dataSize(files) <= 2L * 1024 * 1024 * 1024 - 64L * 1024 * 1024) { "Die Sicherung ist zu groß für dieses Format." }
+            requireBackup(files.length() <= 10000 && dataSize(files) <= 2L * 1024 * 1024 * 1024 - 64L * 1024 * 1024) { "Die Sicherung ist zu groß für dieses Format." }
             root.put("files", files)
             val data = root.toString().toByteArray(Charsets.UTF_8)
-            require(data.size <= 64 * 1024 * 1024) { "Die Sicherungsdaten sind zu groß für dieses Format." }
+            requireBackup(data.size <= 64 * 1024 * 1024) { "Die Sicherungsdaten sind zu groß für dieses Format." }
             ZipOutputStream(output).use { zip ->
                 zip.putNextEntry(ZipEntry("snapshot.json")); zip.write(data); zip.closeEntry()
                 zip.putNextEntry(ZipEntry("snapshot.sha256")); zip.write(StableDocumentIdentity.sha256(data).toByteArray()); zip.closeEntry()
@@ -144,35 +153,38 @@ internal class OfflineBackupService(private val context: Context, private val da
             ZipInputStream(input).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
-                    require(!entry.isDirectory && (entry.name in setOf("snapshot.json", "snapshot.sha256") || Regex("files/[0-9]+").matches(entry.name)) && names.add(entry.name)) { "Ungültiges oder doppeltes Element im Sicherungspaket." }
+                    requireBackup(!entry.isDirectory && (entry.name in setOf("snapshot.json", "snapshot.sha256") || Regex("files/[0-9]+").matches(entry.name)) && names.add(entry.name)) { "Ungültiges oder doppeltes Element im Sicherungspaket." }
                     val file = File(directory, entry.name.replace('/', '_'))
                     file.outputStream().use { out ->
                         val buffer = ByteArray(8192)
                         while (true) {
                             val count = zip.read(buffer); if (count < 0) break
                             total += count
-                            require(total <= 2L * 1024 * 1024 * 1024 && file.length() + count <= if (entry.name == "snapshot.json") 64L * 1024 * 1024 else 1024L * 1024 * 1024) { "Das Sicherungspaket ist zu groß." }
+                            requireBackup(total <= 2L * 1024 * 1024 * 1024 && file.length() + count <= if (entry.name == "snapshot.json") 64L * 1024 * 1024 else 1024L * 1024 * 1024) { "Das Sicherungspaket ist zu groß." }
                             out.write(buffer, 0, count)
                         }
                     }
-                    require(names.size <= 10002) { "Zu viele Dateien im Sicherungspaket." }
+                    requireBackup(names.size <= 10002) { "Zu viele Dateien im Sicherungspaket." }
                 }
             }
+            requireBackup(names.containsAll(setOf("snapshot.json", "snapshot.sha256"))) {
+                "Die Datei enthält keine vollständige ImmoPilot-Vollsicherung. Bitte wähle die ZIP-Datei aus „Vollsicherung speichern“."
+            }
             val data = File(directory, "snapshot.json").readBytes()
-            require(StableDocumentIdentity.sha256(data) == File(directory, "snapshot.sha256").readText().trim()) { "Die Sicherung ist beschädigt." }
+            requireBackup(StableDocumentIdentity.sha256(data) == File(directory, "snapshot.sha256").readText().trim()) { "Die Sicherung ist beschädigt." }
             val root = JSONObject(String(data, Charsets.UTF_8))
-            require(root.getString("format") == "ImmoPilotOfflineBackup" && root.getInt("version") == 1) { "Dieses Sicherungsformat wird nicht unterstützt." }
+            requireBackup(root.getString("format") == "ImmoPilotOfflineBackup" && root.getInt("version") == 1) { "Dieses Sicherungsformat wird nicht unterstützt." }
             val db = database.openHelper.writableDatabase
-            require(root.getInt("databaseVersion") == db.version) { "Die Sicherung benötigt dieselbe Datenbankversion. Bitte zuerst die App-Versionen abgleichen." }
+            requireBackup(root.getInt("databaseVersion") == db.version) { "Die Sicherung benötigt dieselbe Datenbankversion. Bitte zuerst die App-Versionen abgleichen." }
             validateTables(root, db)
             PersistentPreferenceInventory.validatePayload(root.getJSONObject("preferences"))
             val files = root.getJSONArray("files"); val paths = mutableSetOf<String>()
-            require(names == setOf("snapshot.json", "snapshot.sha256") + (0 until files.length()).map { "files/$it" }) { "Die Dateiliste ist unvollständig." }
+            requireBackup(names == setOf("snapshot.json", "snapshot.sha256") + (0 until files.length()).map { "files/$it" }) { "Die Dateiliste ist unvollständig." }
             for (index in 0 until files.length()) {
                 val item = files.getJSONObject(index)
-                require(item.getString("entry") == "files/$index" && paths.add(item.getString("path"))) { "Ungültige Originaldateiliste." }
+                requireBackup(item.getString("entry") == "files/$index" && paths.add(item.getString("path"))) { "Ungültige Originaldateiliste." }
                 val file = File(directory, "files_$index")
-                require(file.length() == item.getLong("size") && file.length() > 0 && com.example.util.ReceiptManifestService.calculateSha256(file) == item.getString("sha256")) { "Eine Originaldatei ist beschädigt oder fehlt." }
+                requireBackup(file.length() == item.getLong("size") && file.length() > 0 && com.example.util.ReceiptManifestService.calculateSha256(file) == item.getString("sha256")) { "Eine Originaldatei ist beschädigt oder fehlt." }
             }
             return Prepared(root, directory)
         } catch (error: Exception) { directory.deleteRecursively(); throw error }
@@ -188,72 +200,72 @@ internal class OfflineBackupService(private val context: Context, private val da
 
     private suspend fun validateRelationships() {
         val properties = database.propertyDao().getAllProperties()
-        require(properties.map { it.propertyId }.distinct().size == properties.size) { "Doppelte stabile Immobilien-ID in der Sicherung." }
+        requireBackup(properties.map { it.propertyId }.distinct().size == properties.size) { "Doppelte stabile Immobilien-ID in der Sicherung." }
         val prefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
         val units = properties.associate { property -> property.propertyId to UnitIdentity.read(property.wohneinheiten, property.propertyId, prefs).also {
-            require(it.error == null) { UnitIdentity.ERROR }
+            requireBackup(it.error == null) { UnitIdentity.ERROR }
         }.entries.map { it.unitId }.toSet() }
         fun scope(propertyId: String, unitId: String, optional: Boolean = false) {
             if (optional && propertyId.isBlank() && unitId.isBlank()) return
-            require(propertyId in units && (unitId.isBlank() || unitId in units.getValue(propertyId))) { "Objekt- oder Einheitenbeziehung in der Sicherung ist ungültig." }
+            requireBackup(propertyId in units && (unitId.isBlank() || unitId in units.getValue(propertyId))) { "Objekt- oder Einheitenbeziehung in der Sicherung ist ungültig." }
         }
         val receipts = database.receiptDao().getAllReceiptsIncludingDeletedList()
         val stableIds = receipts.filter { it.internalId.isNotBlank() }.map { it.internalId }
-        require(stableIds.distinct().size == stableIds.size) { "Doppelte stabile Beleg-ID. Es wurden keine Daten übernommen." }
+        requireBackup(stableIds.distinct().size == stableIds.size) { "Doppelte stabile Beleg-ID. Es wurden keine Daten übernommen." }
         val byId = receipts.associateBy { it.id }; val byStableId = receipts.associateBy { it.internalId }
         receipts.forEach {
-            require(it.id > 0 && it.internalId.isNotBlank()) { "Belegidentität fehlt in der Sicherung." }
+            requireBackup(it.id > 0 && it.internalId.isNotBlank()) { "Belegidentität fehlt in der Sicherung." }
             scope(it.propertyId, it.unitId)
         }
         database.managedDocumentDao().getAll().forEach { doc ->
             scope(doc.propertyId, doc.unitId.orEmpty())
             if (doc.localUri.isNotBlank()) {
                 val original = File(doc.localUri)
-                require(original.isFile && (doc.sha256.isBlank() || com.example.util.ReceiptManifestService.calculateSha256(original) == doc.sha256)) { "Dokumentoriginal und gespeicherte Prüfsumme stimmen nicht überein." }
+                requireBackup(original.isFile && (doc.sha256.isBlank() || com.example.util.ReceiptManifestService.calculateSha256(original) == doc.sha256)) { "Dokumentoriginal und gespeicherte Prüfsumme stimmen nicht überein." }
             }
             doc.receiptInternalId?.takeIf(String::isNotBlank)?.let { id ->
-                val receipt = requireNotNull(byStableId[id]) { "Dokument verweist auf einen fehlenden Beleg." }
-                require(receipt.propertyId == doc.propertyId && receipt.unitId == doc.unitId.orEmpty()) { "Dokument und Beleg haben unterschiedliche Objektzuordnungen." }
+                val receipt = requireBackupValue(byStableId[id]) { "Dokument verweist auf einen fehlenden Beleg." }
+                requireBackup(receipt.propertyId == doc.propertyId && receipt.unitId == doc.unitId.orEmpty()) { "Dokument und Beleg haben unterschiedliche Objektzuordnungen." }
             }
         }
         val accounts = database.bankDao().getAllAccounts().map { it.accountId }.toSet()
         val transactions = database.bankDao().getAllTransactions().associateBy { it.transactionId }
-        transactions.values.forEach { require(it.accountId in accounts) { "Bankkonto einer Buchung fehlt." }; scope(it.propertyId, it.unitId, optional = true) }
+        transactions.values.forEach { requireBackup(it.accountId in accounts) { "Bankkonto einer Buchung fehlt." }; scope(it.propertyId, it.unitId, optional = true) }
         database.bankDao().getAllLinks().forEach { link ->
-            val receipt = requireNotNull(byId[link.receiptId]) { "Bankzuordnung verweist auf einen fehlenden Beleg." }
-            require(link.transactionId in transactions && (link.receiptInternalId.isBlank() || link.receiptInternalId == receipt.internalId)) { "Bank- und Belegbeziehung ist ungültig." }
+            val receipt = requireBackupValue(byId[link.receiptId]) { "Bankzuordnung verweist auf einen fehlenden Beleg." }
+            requireBackup(link.transactionId in transactions && (link.receiptInternalId.isBlank() || link.receiptInternalId == receipt.internalId)) { "Bank- und Belegbeziehung ist ungültig." }
         }
         database.bankRentAssignmentDao().getAll().forEach { assignment ->
-            require(assignment.transactionId in transactions) { "Bankbuchung einer Mietzuordnung fehlt." }
-            require(assignment.paymentType !in BankSplitPaymentType.rentScoped || assignment.unitId.isNotBlank()) { "Einheit einer Mietzuordnung fehlt." }
+            requireBackup(assignment.transactionId in transactions) { "Bankbuchung einer Mietzuordnung fehlt." }
+            requireBackup(assignment.paymentType !in BankSplitPaymentType.rentScoped || assignment.unitId.isNotBlank()) { "Einheit einer Mietzuordnung fehlt." }
             scope(assignment.propertyId, assignment.unitId, optional = assignment.paymentType !in BankSplitPaymentType.rentScoped)
         }
         val loans = database.loanDao().getAllLoans().associateBy { it.id }
         loans.values.forEach { scope(it.propertyId, "") }
         database.bankLoanAssignmentDao().getAll().forEach { assignment ->
-            require(assignment.transactionId in transactions && loans[assignment.loanId]?.propertyId == assignment.propertyId) { "Darlehenszuordnung ist ungültig." }
+            requireBackup(assignment.transactionId in transactions && loans[assignment.loanId]?.propertyId == assignment.propertyId) { "Darlehenszuordnung ist ungültig." }
         }
         database.logbookDao().getAllTrips().forEach { trip ->
             scope(trip.propertyId, "")
-            require(trip.expenseReceiptId == null || trip.expenseReceiptId in byId) { "Fahrtkostenbeleg fehlt." }
-            require(trip.sourceReceiptId == null || trip.sourceReceiptId in byId) { "Quellbeleg einer Fahrt fehlt." }
+            requireBackup(trip.expenseReceiptId == null || trip.expenseReceiptId in byId) { "Fahrtkostenbeleg fehlt." }
+            requireBackup(trip.sourceReceiptId == null || trip.sourceReceiptId in byId) { "Quellbeleg einer Fahrt fehlt." }
         }
     }
 
     private fun validateTables(root: JSONObject, db: SupportSQLiteDatabase) {
         val tables = root.getJSONObject("tables"); val schema = schema(db)
-        require(tables.keys().asSequence().toSet() == schema.keys) { "Die Sicherung enthält eine andere Datenbankstruktur." }
+        requireBackup(tables.keys().asSequence().toSet() == schema.keys) { "Die Sicherung enthält eine andere Datenbankstruktur." }
         schema.forEach { (name, columns) ->
-            require(columns.any { it.primary > 0 }) { "Nicht unterstützte Tabelle." }
+            requireBackup(columns.any { it.primary > 0 }) { "Nicht unterstützte Tabelle." }
             val table = tables.getJSONObject(name); val names = table.getJSONArray("columns")
-            require((0 until names.length()).map { names.getString(it) } == columns.map { it.name }) { "Die Tabellenspalten passen nicht zur App-Version." }
+            requireBackup((0 until names.length()).map { names.getString(it) } == columns.map { it.name }) { "Die Tabellenspalten passen nicht zur App-Version." }
             val rows = table.getJSONArray("rows")
             for (r in 0 until rows.length()) {
-                val row = rows.getJSONArray(r); require(row.length() == columns.size)
+                val row = rows.getJSONArray(r); requireBackup(row.length() == columns.size)
                 columns.forEachIndexed { c, column ->
                     val value = row.get(c)
-                    require(value !== JSONObject.NULL || (!column.notNull && column.primary == 0)) { "Pflichtfeld fehlt in der Sicherung." }
-                    require(value === JSONObject.NULL || when (column.type.uppercase()) {
+                    requireBackup(value !== JSONObject.NULL || (!column.notNull && column.primary == 0)) { "Pflichtfeld fehlt in der Sicherung." }
+                    requireBackup(value === JSONObject.NULL || when (column.type.uppercase()) {
                         "INTEGER" -> value is Number && value.toDouble().isFinite() && value.toDouble() == value.toLong().toDouble()
                         "REAL" -> value is Number && value.toDouble().isFinite()
                         "BLOB" -> value is JSONObject && value.has("blob")
@@ -275,13 +287,13 @@ internal class OfflineBackupService(private val context: Context, private val da
             val extension = com.example.util.DatevOriginalAttachmentPolicy.detect(source)?.second ?: "bin"
             val pathId = StableDocumentIdentity.sha256(item.getString("path").toByteArray(Charsets.UTF_8))
             val target = File(destination, "$pathId-${item.getString("sha256")}.$extension")
-            require(com.example.util.ReceiptManifestService.calculateSha256(source) == item.getString("sha256")) { "Das vorbereitete Original wurde verändert." }
-            if (target.exists()) require(com.example.util.ReceiptManifestService.calculateSha256(target) == item.getString("sha256")) { "Eine vorhandene Originaldatei steht im Konflikt." }
+            requireBackup(com.example.util.ReceiptManifestService.calculateSha256(source) == item.getString("sha256")) { "Das vorbereitete Original wurde verändert." }
+            if (target.exists()) requireBackup(com.example.util.ReceiptManifestService.calculateSha256(target) == item.getString("sha256")) { "Eine vorhandene Originaldatei steht im Konflikt." }
             else {
                 val staging = File.createTempFile("original-", ".tmp", destination)
                 try {
                     source.copyTo(staging, overwrite = true)
-                    require(com.example.util.ReceiptManifestService.calculateSha256(staging) == item.getString("sha256")) { "Originaldatei konnte nicht vollständig kopiert werden." }
+                    requireBackup(com.example.util.ReceiptManifestService.calculateSha256(staging) == item.getString("sha256")) { "Originaldatei konnte nicht vollständig kopiert werden." }
                     check(staging.renameTo(target)) { "Originaldatei konnte nicht dauerhaft gespeichert werden." }
                 } finally { staging.delete() }
             }
@@ -292,7 +304,7 @@ internal class OfflineBackupService(private val context: Context, private val da
             val table = tables.getJSONObject(name); val columns = table.getJSONArray("columns"); val rows = table.getJSONArray("rows")
             for (c in 0 until columns.length()) if (columns.getString(c) in pathColumns) for (r in 0 until rows.length()) {
                 val row = rows.getJSONArray(r); val raw = row.optString(c, "")
-                if (raw.isNotBlank()) row.put(c, mapping[raw] ?: ReceiptOriginalChain.encodePaths(ReceiptOriginalChain.paths(raw).map { path -> requireNotNull(mapping[path]) { "Eine Dateireferenz fehlt im Sicherungspaket." } }))
+                if (raw.isNotBlank()) row.put(c, mapping[raw] ?: ReceiptOriginalChain.encodePaths(ReceiptOriginalChain.paths(raw).map { path -> requireBackupValue(mapping[path]) { "Eine Dateireferenz fehlt im Sicherungspaket." } }))
             }
         }
         val preferencesBefore = JSONObject().also { PersistentPreferenceInventory.writePayload(context, it) }
@@ -310,7 +322,7 @@ internal class OfflineBackupService(private val context: Context, private val da
                         val arguments = keys.map { bound(row.get(it.index)) }.toTypedArray()
                         db.query("SELECT * FROM `$name` WHERE $where", arguments).use { cursor ->
                             if (cursor.moveToFirst()) {
-                                require(columns.indices.all { c -> equivalent(value(cursor, cursor.getColumnIndexOrThrow(columns[c].name)), row.get(c)) }) {
+                                requireBackup(columns.indices.all { c -> equivalent(value(cursor, cursor.getColumnIndexOrThrow(columns[c].name)), row.get(c)) }) {
                                     "Vorhandene Daten unterscheiden sich von der Sicherung. Es wurde nichts überschrieben. Bitte auf einem leeren App-Bestand wiederherstellen."
                                 }
                             } else insertions += "INSERT INTO `$name` (${columns.joinToString { "`${it.name}`" }}) VALUES (${columns.joinToString { "?" }})" to Array(columns.size) { bound(row.get(it)) }
@@ -318,7 +330,7 @@ internal class OfflineBackupService(private val context: Context, private val da
                     }
                 }
                 insertions.forEach { (sql, arguments) -> db.execSQL(sql, arguments) }
-                db.query("PRAGMA foreign_key_check").use { require(!it.moveToFirst()) { "Ungültige Beziehungen in der Sicherung." } }
+                db.query("PRAGMA foreign_key_check").use { requireBackup(!it.moveToFirst()) { "Ungültige Beziehungen in der Sicherung." } }
                 database.managedDocumentDao().getAll().forEach { document ->
                     database.managedDocumentDao().deleteSearchEntry(document.documentId)
                     database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))

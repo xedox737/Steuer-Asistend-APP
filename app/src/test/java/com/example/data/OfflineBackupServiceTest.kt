@@ -101,6 +101,41 @@ class OfflineBackupServiceTest {
 
     private suspend fun backup(): ByteArray = ByteArrayOutputStream().also { sourceService.create(it) }.toByteArray()
 
+    @Test fun emptySelectedFileIsRejectedWithoutExposingAnInternalPathOrChangingLocalData() = runBlocking {
+        assertIncompleteArchiveRejectedWithoutLocalChanges(byteArrayOf())
+    }
+
+    @Test fun emptyZipIsRejectedBeforeReadingMissingSnapshotFiles() = runBlocking {
+        assertIncompleteArchiveRejectedWithoutLocalChanges(zip(emptyMap()))
+    }
+
+    @Test fun missingSnapshotIsRejectedBeforeReadingItsCachePath() = runBlocking {
+        assertIncompleteArchiveRejectedWithoutLocalChanges(zip(mapOf("snapshot.sha256" to "checksum".toByteArray())))
+    }
+
+    @Test fun missingChecksumIsRejectedBeforeReadingItsCachePath() = runBlocking {
+        seedPortfolio()
+        assertIncompleteArchiveRejectedWithoutLocalChanges(zip(zipEntries(backup()).filterKeys { it != "snapshot.sha256" }))
+    }
+
+    private suspend fun assertIncompleteArchiveRejectedWithoutLocalChanges(bytes: ByteArray) {
+        targetDatabase.propertyDao().insertPropertyMetadata(property)
+        targetDatabase.receiptDao().insertReceipt(receipt)
+        target.getSharedPreferences("bank_transaction_notes", 0).edit().putString("local", "Behalten").commit()
+        val original = File(target.filesDir, "keep.pdf").apply { writeBytes(originalBytes) }
+        val cacheMarker = File(target.cacheDir, "keep.tmp").apply { writeText("Behalten") }
+        val failure = runCatching { targetService.inspect(ByteArrayInputStream(bytes)).close() }.exceptionOrNull()
+        assertTrue("A missing mandatory ZIP member must produce a readable validation error, not a file-system error: $failure", failure is IllegalArgumentException)
+        assertTrue(failure!!.message.orEmpty().contains("vollständige ImmoPilot-Vollsicherung"))
+        assertFalse(failure.message.orEmpty().contains("offline-import-"))
+        assertFalse(failure.message.orEmpty().contains("snapshot.json"))
+        assertEquals(listOf(property), targetDatabase.propertyDao().getAllProperties())
+        assertEquals(listOf(receipt), targetDatabase.receiptDao().getAllReceiptsList())
+        assertEquals("Behalten", target.getSharedPreferences("bank_transaction_notes", 0).getString("local", null))
+        assertArrayEquals(originalBytes, original.readBytes())
+        assertEquals(setOf(cacheMarker.name), target.cacheDir.listFiles()!!.map { it.name }.toSet())
+    }
+
     @Test fun portableBackupPreservesOriginalsIdsRelationshipsPreferencesAndIsIdempotent() = runBlocking {
         seedPortfolio()
         val bytes = backup()
