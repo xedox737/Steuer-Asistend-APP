@@ -47,8 +47,10 @@ class AppDatePersistenceEmulatorTest : EmulatorTestSupport() {
         ui.onNode(hasText("Datum") and hasClickAction()).performScrollTo().performClick()
         selectCalendarDate("logbook_date", "11.10.2026", "11", scroll = false)
         ui.onNodeWithText("Übernehmen").performClick()
+        ui.onNodeWithTag("logbook_trip_time").performScrollTo().performTextReplacement("09:35")
+        Espresso.closeSoftKeyboard()
         ui.onNode(hasText("Zweck der Fahrt") and hasClickAction()).performScrollTo().performClick()
-        ui.onNode(hasSetTextAction()).performTextReplacement("Besichtigung Kalenderobjekt")
+        ui.onNode(hasSetTextAction() and hasAnyAncestor(isDialog())).performTextReplacement("Besichtigung Kalenderobjekt")
         Espresso.closeSoftKeyboard()
         ui.onNodeWithText("Übernehmen").performClick()
         ui.onNode(hasText("Entfernung") and hasClickAction()).performScrollTo().performClick()
@@ -60,7 +62,9 @@ class AppDatePersistenceEmulatorTest : EmulatorTestSupport() {
         ui.waitUntil(10_000) { model.logbookTrips.value.size == 1 }
         val trip = model.logbookTrips.value.single()
         assertEquals("2026-10-11", trip.date)
+        assertEquals("09:35", trip.time)
         ui.waitUntil(10_000) { model.receipts.value.any { it.id == trip.expenseReceiptId } }
+        assertEquals("09:35", model.receipts.value.single { it.id == trip.expenseReceiptId }.uhrzeit)
         scenario.close()
         scenario = ActivityScenario.launch(MainActivity::class.java)
         val reloaded = vm
@@ -68,6 +72,7 @@ class AppDatePersistenceEmulatorTest : EmulatorTestSupport() {
         clickMore("Fahrtenbuch")
         ui.waitUntil(10_000) { reloaded.logbookTrips.value.any { it.id == trip.id } }
         assertEquals("2026-10-11", reloaded.logbookTrips.value.single().date)
+        assertEquals("09:35", reloaded.logbookTrips.value.single().time)
         ui.waitUntil(10_000) { reloaded.receipts.value.any { it.id == trip.expenseReceiptId } }
         ui.onNodeWithText("11.10.2026").performScrollTo().assertIsDisplayed()
         capture("date-logbook-after-fresh-activity")

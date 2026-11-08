@@ -93,6 +93,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
     var propertyId by rememberSaveable { mutableStateOf<String?>(null) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var editing by remember { mutableStateOf(false) }
+    var editProperty by remember { mutableStateOf(false) }
     var showBreakdown by remember { mutableStateOf(false) }
     var editConfirmedAfa by remember { mutableStateOf(false) }
     var confirmedRevision by remember { mutableIntStateOf(0) }
@@ -107,6 +108,9 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
         TaxPropertyCalculator.calculate(it, ImmobilienManagerProjection.receipts(it, viewModel.getWohneinheitenForProperty(it), receipts))
     }
 
+    if (property != null && editProperty) {
+        PropertyMetadataFormDialog(viewModel, property, onDismiss = { editProperty = false })
+    }
     if (property != null && editing) {
         AfaDurationDialog(property, documents.filter { it.propertyId == property.propertyId },
             onDismiss = { editing = false }, onSave = { viewModel.updatePropertyMetadata(it); editing = false })
@@ -235,7 +239,7 @@ internal fun AfaPortfolioScreen(viewModel: ReceiptViewModel, onBack: () -> Unit)
                     if (property.afaShorterYears > 0) AfaValueRow("Geplante Restnutzungsdauer", "${property.afaShorterYears} Jahre")
                     if (property.afaShorterYears > 0) AfaValueRow("Status", if (summary.shorterMethodActive) "Bestätigt" else "Szenario – nicht übernommen")
                     TextButton(onClick = { showBreakdown = true }) { Text("Kaufpreisaufteilung ansehen") }
-                    TextButton(onClick = { viewModel.selectProperty(property.propertyId); viewModel.setScreen(AppScreen.PROPERTIES) }) {
+                    TextButton(onClick = { editProperty = true }) {
                         Text("Immobilien-Stammdaten bearbeiten")
                     }
                 } }

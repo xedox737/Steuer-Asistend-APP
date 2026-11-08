@@ -235,7 +235,8 @@ internal fun ManagedDocumentDetailScreen(
     onUpdatePresentation: (String, String) -> Unit,
     hasPendingReview: Boolean = false,
     onReviewPending: () -> Unit = {},
-    operationStatus: String? = null
+    operationStatus: String? = null,
+    onPrepareBooking: (() -> Unit)? = null
 ) {
     BackHandler(onBack = onBack)
     val context = LocalContext.current
@@ -438,6 +439,12 @@ internal fun ManagedDocumentDetailScreen(
                     ) {
                         Icon(Icons.Default.Edit, null, modifier = Modifier.size(18.dp))
                         Text(" Beschreibung", fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+                if (documentTypeLabel(document) in setOf("Rechnung", "Kassenbon") && onPrepareBooking != null) {
+                    Text("Die Dokumentprüfung ist keine Buchungs- oder DATEV-Freigabe. Betrag und Kontierung werden am Buchungsbeleg geprüft.", fontSize = 12.sp, color = SlateGray)
+                    OutlinedButton(onClick = onPrepareBooking, modifier = Modifier.fillMaxWidth().testTag("prepare_document_booking"), shape = Ui2.controlShape) {
+                        Text("Als Buchungsbeleg vorbereiten")
                     }
                 }
                 if (!driveSynced) {

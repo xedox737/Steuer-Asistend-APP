@@ -519,7 +519,7 @@ private fun PropertyDashboard(
             Triple(PropertySection.RENOVATIONS, "Sanierungen", Icons.Default.Build),
             Triple(PropertySection.DOCUMENTS, "Dokumente", Icons.Default.Description),
             Triple(PropertySection.TASKS, "Aufgaben & Fristen", Icons.Default.CalendarMonth),
-            Triple(PropertySection.UTILITIES_PREP, "Nebenkosten", Icons.Default.Payments),
+            Triple(PropertySection.UTILITIES_PREP, "Nebenkosten (geplant)", Icons.Default.Payments),
             Triple(PropertySection.TAX, "Steuer & AfA", Icons.Default.Assessment),
             Triple(PropertySection.DATA, "Objektdaten", Icons.Default.HomeWork)
         )
@@ -956,7 +956,10 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null)
                 Text("Zurück zu Mehr")
             } }
-            if (page == "backup") item { GoogleDriveSyncCard(viewModel) }
+            if (page == "backup") {
+                item { OfflineBackupCard(viewModel) }
+                item { GoogleDriveSyncCard(viewModel) }
+            }
             if (page == "rules") {
                 item { Ui2Section("Regeln") {
                     Ui2Destination("Gelerntes KI-Wissen", "Händler-Zuordnungen verwalten", Icons.Default.Settings) { showLearnedRules = true }
@@ -1088,10 +1091,26 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
             singleLine = true
         )
     }
+    var discardRequested by remember { mutableStateOf(false) }
+    val dirty = listOf(name, street, zip, city, purchaseDate, purchasePrice, yearBuilt, livingArea, landArea,
+        buildingValue, landValue, loanName, loanBank, loanAmount).any(String::isNotBlank) ||
+        unitCount != "1" || objectType != "Mehrfamilienhaus" || unitNames.toList() != listOf("WE 01") ||
+        unitLocations.any(String::isNotBlank) || unitAreas.any(String::isNotBlank)
+    fun requestClose() { if (dirty) discardRequested = true else onDismiss() }
+    fun wizardBack() { if (!preparingUnits) { if (step > 0) step-- else requestClose() } }
+    if (discardRequested) AlertDialog(
+        onDismissRequest = { discardRequested = false },
+        title = { Text("Entwurf verwerfen?") },
+        text = { Text("Deine ungespeicherten Angaben werden verworfen.") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Verwerfen") } },
+        dismissButton = { TextButton(onClick = { discardRequested = false }) { Text("Weiter bearbeiten") } }
+    )
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { requestClose() },
+        properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false),
         title = { Text("Immobilie anlegen · ${step + 1}/5", fontWeight = FontWeight.Bold) },
         text = {
+            BackHandler(enabled = !discardRequested) { wizardBack() }
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (step) {
                     0 -> {
@@ -1143,7 +1162,18 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                             }) { Text("+ Einheit hinzufügen") }
                         }
                     }
-                    else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und 15-%-Prüfung verwenden danach unverändert die bestehende Steuerlogik.", fontSize = 10.sp, color = SlateGray) }
+                    else -> { field(buildingValue, "Gebäudeanteil € (optional)") { buildingValue = it }; field(landValue, "Grund und Boden € (optional)") { landValue = it }; Text("AfA und Sanierungsprüfung findest du anschließend am Objekt.", fontSize = 10.sp, color = SlateGray) }
+                }
+                if (step == 4) {
+                    val count = PropertyFormInput.unitCount(unitCount) ?: 1
+                    val areas = (0 until count).map { PropertyWizardInput.unitArea(unitAreas[it]) ?: 0.0 }
+                    val missing = areas.count { it <= 0.0 }
+                    val total = areas.sum()
+                    val expected = NumberFieldInput.nonNegative(livingArea, optional = true).value ?: 0.0
+                    Text("Flächen prüfen: Einheiten ${GermanNumberInput.formatQuantity(total)} m² · Gesamtwohnfläche ${GermanNumberInput.formatQuantity(expected)} m²", fontSize = 12.sp, color = SlateGray)
+                    if (missing > 0 || kotlin.math.abs(total - expected) > 0.01) Text(
+                        "$missing Einheiten ohne Wohnfläche. Bitte fehlende Flächen und die Abweichung prüfen. Du kannst die Angaben später ergänzen.",
+                        fontSize = 12.sp, color = CrimsonRed)
                 }
                 wizardMessage?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
@@ -1274,7 +1304,7 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                 Text(if (preparingUnits) "Einheiten vorbereiten …" else if (step == 4) "Immobilie anlegen" else "Weiter")
             }
         },
-        dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }, enabled = !preparingUnits) { Text("Zurück") }; TextButton(onClick = onDismiss) { Text("Abbrechen") } } }
+        dismissButton = { Row { if (step > 0) TextButton(onClick = { step-- }, enabled = !preparingUnits) { Text("Zurück") }; TextButton(onClick = { requestClose() }) { Text("Abbrechen") } } }
     )
 }
 

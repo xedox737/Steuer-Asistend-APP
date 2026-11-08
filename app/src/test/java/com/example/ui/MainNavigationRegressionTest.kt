@@ -29,7 +29,7 @@ class MainNavigationRegressionTest {
     private fun seedProperty() {
         runBlocking { database().propertyDao().insertPropertyMetadata(PropertyMetadata(id = 81,
             propertyId = "nav-property", name = "Navigationstest-Objekt", wohneinheiten = "WE 1")) }
-        ui.waitUntil(10000) { vm.properties.value.any { it.propertyId == "nav-property" } }
+        ui.waitUntilAndroidState(10000) { vm.properties.value.any { it.propertyId == "nav-property" } }
     }
 
     @Test fun dashboardPropertySubsectionReturnsToPropertyThenOverviewWithBothBackActions() {
@@ -60,7 +60,7 @@ class MainNavigationRegressionTest {
                 amount = -12.0, counterparty = "Navigationstest-Buchung", purpose = "Test"))
         }
         ui.runOnIdle { vm.setScreen(AppScreen.BANK) }
-        ui.waitUntil(10000) { vm.bankTransactions.value.any { it.transactionId == "nav-transaction" } }
+        ui.waitUntilAndroidState(10000) { vm.bankTransactions.value.any { it.transactionId == "nav-transaction" } }
         ui.waitUntil(10_000) { ui.onAllNodes(hasText("Navigationstest-Buchung")).fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("Navigationstest-Buchung").performScrollTo().performClick()
         ui.onNodeWithText("Buchungsdetails").assertExists()
@@ -79,7 +79,7 @@ class MainNavigationRegressionTest {
         runBlocking { database().receiptDao().insertReceipt(Receipt(id = 900, aussteller = "Navigationstest-Beleg",
             datum = "2026-10-01", uhrzeit = "", bruttobetrag = 10.0, hauptkategorie = "Sonstiges",
             unterkategorie = "", kontoNr = "", beschreibung = "Test", internalId = "nav-receipt")) }
-        ui.waitUntil(10000) { vm.receipts.value.any { it.id == 900 } }
+        ui.waitUntilAndroidState(10000) { vm.receipts.value.any { it.id == 900 } }
         ui.onNodeWithTag("nav_item_receipts_list").performClick()
         ui.runOnIdle { vm.openReceiptDetail(900) }
         ui.onNodeWithText("Bearbeiten").performScrollTo().performClick()
