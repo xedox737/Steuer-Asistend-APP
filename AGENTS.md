@@ -2,6 +2,8 @@
 
 Diese Datei ist der verbindliche Kurzeinstieg. Weitere Dokumente **gezielt nach Aufgabenbezug** lesen: `docs/CODE_MAP.md` bei unklaren Dateien/Abhängigkeiten, `docs/VERIFY_CHANGES.md` für die verbindlichen Prüfungen, `docs/PROJECT_STATUS.md` nur als möglicherweise veralteten Hintergrund. Aktuellen GitHub-Stand stets selbst verifizieren.
 
+**Codex-Arbeitsablauf:** Für Analyse, Ursachenbehebung, Tests, Pull Requests und explizite Merge-Freigaben zusätzlich [`docs/CODEX_WORKFLOW.md`](docs/CODEX_WORKFLOW.md) beachten. Diese Detailanleitung ergänzt die hier definierten Schutzregeln; sie erteilt keine zusätzlichen Git-Berechtigungen. Ein optionaler Prompt-Master-Skill darf verwendet werden, sobald er tatsächlich im Arbeitsbranch vorhanden ist.
+
 ## Vor jeder Änderung
 
 1. Aktuellen `main` abrufen und eigenen Branch verwenden.
