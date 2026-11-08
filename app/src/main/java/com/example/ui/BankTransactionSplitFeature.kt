@@ -51,6 +51,7 @@ import com.example.data.BankRentAssignment
 import com.example.data.BankSplitPaymentType
 import com.example.data.BankTransaction
 import com.example.data.BankTransactionSplitPolicy
+import com.example.data.PropertyMetadata
 import com.example.data.Receipt
 import java.text.NumberFormat
 import java.util.Locale
@@ -77,7 +78,9 @@ fun BankTransactionSplitActions(
     val links by viewModel.bankReceiptLinks.collectAsStateWithLifecycle()
     val assignments by viewModel.bankRentAssignments.collectAsStateWithLifecycle()
     val receipts by viewModel.receipts.collectAsStateWithLifecycle()
-    val units by viewModel.wohneinheitenStatus.collectAsStateWithLifecycle()
+    val properties by viewModel.properties.collectAsStateWithLifecycle()
+    val unitsByProperty = properties.associate { it.propertyId to viewModel.getWohneinheitenForProperty(it) }
+    var saveError by remember { mutableStateOf<String?>(null) }
     val property by viewModel.propertyMetadata.collectAsStateWithLifecycle()
     val transactionAssignments = assignments.filter { it.transactionId == transaction.transactionId }
     var showDialog by remember(transaction.transactionId) { mutableStateOf(false) }
@@ -134,7 +137,7 @@ fun BankTransactionSplitActions(
                 Text("Bestehende Aufteilung", fontWeight = FontWeight.SemiBold, color = DarkNavy)
                 transactionAssignments.forEach { assignment ->
                     Text("${euro.format(assignment.allocatedAmount)} → ${BankSplitPaymentType.label(assignment.paymentType)}", color = DarkNavy)
-                    if (assignment.propertyId.isNotBlank()) Text("Immobilie: ${assignment.propertyId}${assignment.unitId.takeIf { it.isNotBlank() }?.let { " • $it" }.orEmpty()}", color = SlateGray)
+                    if (assignment.propertyId.isNotBlank()) Text("Immobilie: ${properties.firstOrNull { it.propertyId == assignment.propertyId }?.name ?: "Nicht mehr vorhandene Immobilie"} • ${unitsByProperty[assignment.propertyId]?.firstOrNull { it.unitId == assignment.unitId }?.label ?: "Einheit prüfen"}", color = SlateGray)
                     if (assignment.tenantReference.isNotBlank()) Text("Mieter/Mietverhältnis: ${assignment.tenantReference}", color = SlateGray)
                     if (assignment.note.isNotBlank()) Text("Notiz: ${assignment.note}", color = SlateGray)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -155,13 +158,15 @@ fun BankTransactionSplitActions(
             links = links.filter { it.transactionId == transaction.transactionId },
             assignments = transactionAssignments,
             receipts = receipts,
-            units = units,
+            properties = properties,
+            unitsByProperty = unitsByProperty,
+            saveError = saveError,
             defaultPropertyId = transaction.propertyId.ifBlank { property?.propertyId.orEmpty() },
             onDismiss = { showDialog = false },
             onConfirm = { positions ->
                 scope.launch {
                     val result = viewModel.bankPhase2DServiceForUi().confirmManualSplit(positions, true)
-                    if (result.success) showDialog = false
+                    if (result.success) { showDialog = false; saveError = null } else saveError = result.message
                 }
             }
         )
@@ -196,7 +201,9 @@ private fun BankTransactionSplitDialog(
     links: List<com.example.data.BankReceiptLink>,
     assignments: List<BankRentAssignment>,
     receipts: List<Receipt>,
-    units: List<WohneinheitStatus>,
+    properties: List<PropertyMetadata>,
+    unitsByProperty: Map<String, List<WohneinheitStatus>>,
+    saveError: String?,
     defaultPropertyId: String,
     onDismiss: () -> Unit,
     onConfirm: (List<BankManualSplitPosition>) -> Unit
@@ -206,6 +213,8 @@ private fun BankTransactionSplitDialog(
     }
     var previewMode by remember { mutableStateOf(false) }
     var categoryMenu by remember { mutableStateOf<Int?>(null) }
+    var propertyMenu by remember { mutableStateOf<Int?>(null) }
+    var receiptQuery by remember { mutableStateOf("") }
     var unitMenu by remember { mutableStateOf<Int?>(null) }
     var receiptMenu by remember { mutableStateOf<Int?>(null) }
     val euro = remember { NumberFormat.getCurrencyInstance(Locale.GERMANY) }
@@ -262,11 +271,21 @@ private fun BankTransactionSplitDialog(
                                     })
                                 }
                             }
-                            OutlinedTextField(value = draft.propertyId, onValueChange = { value -> drafts = drafts.toMutableList().also { it[index] = draft.copy(propertyId = value) } }, label = { Text("Immobilie") }, enabled = !previewMode)
+                            OutlinedButton(onClick = { propertyMenu = index }, enabled = !previewMode) {
+                                Text("Immobilie: ${properties.firstOrNull { it.propertyId == draft.propertyId }?.name ?: "auswählen"}")
+                            }
+                            DropdownMenu(expanded = propertyMenu == index, onDismissRequest = { propertyMenu = null }) {
+                                properties.forEach { target ->
+                                    DropdownMenuItem(text = { Text(target.name.ifBlank { target.adresse }) }, onClick = {
+                                        drafts = drafts.toMutableList().also { it[index] = draft.copy(propertyId = target.propertyId, unitId = "", receiptId = null) }
+                                        propertyMenu = null
+                                    })
+                                }
+                            }
                             if (draft.paymentType in BankSplitPaymentType.rentScoped) {
-                                OutlinedButton(onClick = { if (!previewMode) unitMenu = index }, enabled = !previewMode) { Text("Wohneinheit: ${draft.unitId.ifBlank { "auswählen" }}") }
+                                OutlinedButton(onClick = { if (!previewMode) unitMenu = index }, enabled = !previewMode) { Text("Wohneinheit: ${unitsByProperty[draft.propertyId]?.firstOrNull { it.unitId == draft.unitId }?.label ?: "auswählen"}") }
                                 DropdownMenu(expanded = unitMenu == index, onDismissRequest = { unitMenu = null }) {
-                                    units.forEach { unit -> DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = {
+                                    unitsByProperty[draft.propertyId].orEmpty().forEach { unit -> DropdownMenuItem(text = { Text(unit.label.ifBlank { unit.name }) }, onClick = {
                                         drafts = drafts.toMutableList().also { it[index] = draft.copy(unitId = unit.unitId) }
                                         unitMenu = null
                                     }) }
@@ -276,12 +295,7 @@ private fun BankTransactionSplitDialog(
                             if (draft.paymentType == BankSplitPaymentType.RECEIPT) {
                                 val selected = receipts.firstOrNull { it.id == draft.receiptId }
                                 OutlinedButton(onClick = { if (!previewMode) receiptMenu = index }, enabled = !previewMode) { Text("Beleg: ${selected?.let { "${DateFormatUtils.safeFormat(it.datum)} • ${it.aussteller} • ${euro.format(it.bruttobetrag)}" } ?: "auswählen"}") }
-                                DropdownMenu(expanded = receiptMenu == index, onDismissRequest = { receiptMenu = null }) {
-                                    receipts.take(30).forEach { receipt -> DropdownMenuItem(text = { Text("${DateFormatUtils.safeFormat(receipt.datum)} • ${receipt.aussteller} • ${euro.format(receipt.bruttobetrag)}") }, onClick = {
-                                        drafts = drafts.toMutableList().also { it[index] = draft.copy(receiptId = receipt.id, propertyId = draft.propertyId.ifBlank { receipt.propertyId }) }
-                                        receiptMenu = null
-                                    }) }
-                                }
+
                             }
                             OutlinedTextField(value = draft.note, onValueChange = { value -> drafts = drafts.toMutableList().also { it[index] = draft.copy(note = value) } }, label = { Text("Notiz (optional)") }, enabled = !previewMode)
                             if (!previewMode && drafts.size > 1) TextButton(onClick = { drafts = drafts.toMutableList().also { it.removeAt(index) } }) { Text("Position entfernen") }
@@ -294,6 +308,7 @@ private fun BankTransactionSplitDialog(
                     Text("Neue Zuordnungen: ${euro.format(preview.newAllocations)}")
                     Text("Verbleibender Rest: ${euro.format(preview.remainingAmount)}", fontWeight = FontWeight.Bold)
                     Text("Status danach: ${preview.statusAfter}")
+                    saveError?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
                     if (!preview.valid) Text(preview.message, color = androidx.compose.material3.MaterialTheme.colorScheme.error)
                 }
             }
@@ -307,4 +322,30 @@ private fun BankTransactionSplitDialog(
             else TextButton(onClick = onDismiss) { Text("Abbrechen") }
         }
     )
+    receiptMenu?.let { index ->
+        AlertDialog(
+            onDismissRequest = { receiptMenu = null },
+            title = { Text("Beleg auswählen") },
+            text = {
+                Column {
+                    OutlinedTextField(receiptQuery, { receiptQuery = it }, label = { Text("Belege suchen") }, modifier = Modifier.fillMaxWidth())
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        val matches = receipts.filter { receipt ->
+                            receiptQuery.isBlank() || listOf(receipt.aussteller, receipt.datum, receipt.beschreibung, receipt.bruttobetrag.toString(),
+                                properties.firstOrNull { it.propertyId == receipt.propertyId }?.name.orEmpty()).any { it.contains(receiptQuery, true) }
+                        }
+                        if (matches.isEmpty()) item { Text("Keine passenden Belege.") }
+                        items(matches, key = { it.id }) { receipt ->
+                            TextButton(onClick = {
+                                drafts = drafts.toMutableList().also { it[index] = it[index].copy(receiptId = receipt.id, propertyId = receipt.propertyId) }
+                                receiptMenu = null
+                            }) { Text("${DateFormatUtils.safeFormat(receipt.datum)} • ${receipt.aussteller} • ${euro.format(receipt.bruttobetrag)} • ${properties.firstOrNull { it.propertyId == receipt.propertyId }?.name ?: "Ohne Immobilie"}") }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { receiptMenu = null }) { Text("Schließen") } }
+        )
+    }
+
 }

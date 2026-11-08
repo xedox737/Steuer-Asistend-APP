@@ -12,6 +12,7 @@ data class BankCombinationApplyResult(
 
 class BankPhase2DService(
     private val database: AppDatabase,
+    private val unitPreferences: android.content.SharedPreferences? = null,
     private val now: () -> String = { Instant.now().toString() }
 ) {
     suspend fun confirmCombination(
@@ -59,6 +60,18 @@ class BankPhase2DService(
                 val validated = BankTransactionSplitPolicy.validatePosition(transaction, raw)
                 if (!validated.allowed) return@withTransaction BankCombinationApplyResult(false, message = validated.reason)
                 val position = raw.copy(amount = validated.amount, rentMonth = raw.rentMonth.ifBlank { transaction.bookingDate.take(7) })
+                if (position.paymentType in BankSplitPaymentType.rentScoped) {
+                    val property = database.propertyDao().getPropertyByPropertyId(position.propertyId)
+                        ?: return@withTransaction BankCombinationApplyResult(false, message = "Die gewählte Immobilie existiert nicht mehr. Bitte erneut auswählen.")
+                    val entries = if (unitPreferences != null) {
+                        UnitIdentity.read(property.wohneinheiten, property.propertyId, unitPreferences).entries
+                    } else {
+                        runCatching { UnitIdentity.decode(property.wohneinheiten) }.getOrDefault(emptyList())
+                    }
+                    if (entries.none { it.unitId == position.unitId }) {
+                        return@withTransaction BankCombinationApplyResult(false, message = "Die gewählte Wohneinheit gehört nicht zur Immobilie. Bitte erneut auswählen.")
+                    }
+                }
                 if (position.paymentType == BankSplitPaymentType.RECEIPT) {
                     val receiptId = position.receiptId ?: return@withTransaction BankCombinationApplyResult(false, message = "Für 'Beleg zuordnen' muss ein Beleg gewählt werden.")
                     val receipt = database.receiptDao().getReceiptById(receiptId)
