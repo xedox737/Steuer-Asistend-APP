@@ -1175,6 +1175,11 @@ internal fun PropertyCreationWizard(onDismiss: () -> Unit, onSave: (PropertyMeta
                         "$missing Einheiten ohne Wohnfläche. Bitte fehlende Flächen und die Abweichung prüfen. Du kannst die Angaben später ergänzen.",
                         fontSize = 12.sp, color = CrimsonRed)
                 }
+                if (step == 3 || step == 4) {
+                    PropertyWizardUnitAreaNotice.message(livingArea, unitAreas.toList())?.let { notice ->
+                        Text(notice, color = SlateGray, fontSize = 12.sp)
+                    }
+                }
                 wizardMessage?.let { Text(it, color = CrimsonRed, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             }
         },
