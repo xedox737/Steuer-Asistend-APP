@@ -204,6 +204,56 @@ class DrivePersistenceManagedDocumentE2eTest {
         }
     }
 
+    @Test fun multiPageDownloadKeepsRegistrationBetweenFilePublicationAndReferenceUpdates() = runTest {
+        val (receipt, previous) = legacyReceiptWithOriginal()
+        val second = java.io.File(previous.parentFile, "Coordinated-second.pdf").apply { writeText("second previous bytes") }
+        val current = receipt.copy(imageUrl = ReceiptOriginalChain.encodePaths(listOf(previous.absolutePath, second.absolutePath)))
+        database.receiptDao().insertReceipt(current)
+        val fixtures = SyntheticDocumentFixtureFactory.create().take(2)
+        val originals = listOf(previous, second).mapIndexed { index, file ->
+            forcedOriginal(current, file, fixtures[index].bytes, index)
+        }
+        originals.forEachIndexed { index, document ->
+            localRepository.upsertManagedDocument(document)
+            fakeDrive.put(document.driveFileId!!, "receipts", document.storedFilename, fixtures[index].bytes)
+        }
+        val coordinator = OfflineBackupCoordinator.shared
+        var blockedAtSecondPage: Boolean? = null
+        var firstFilePublished = false
+        var referencesStillOld = false
+        val gateway = object : ManagedDocumentDriveGateway by fakeDrive {
+            override suspend fun downloadFileBytes(accessToken: String, fileId: String): ByteArray? {
+                if (fileId == originals[1].driveFileId) {
+                    firstFilePublished = java.io.File(context.filesDir, "managed_documents").listFiles().orEmpty().any { it.isFile }
+                    referencesStillOld = localRepository.getManagedDocument(originals[0].documentId) == originals[0]
+                    blockedAtSecondPage = runCatching { coordinator.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                }
+                return fakeDrive.downloadFileBytes(accessToken, fileId)
+            }
+        }
+        val repository = DrivePersistenceRepository(context, localRepository, gateway)
+        val capture = coordinator.beginCapture()
+        try {
+            repository.downloadReceiptOriginals("test-token", current, originals, emptyList(), forceRemote = true)
+            assertTrue(firstFilePublished)
+            assertTrue(referencesStillOld)
+            assertEquals(true, blockedAtSecondPage)
+            val saved = originals.map { localRepository.getManagedDocument(it.documentId)!! }
+            saved.forEachIndexed { index, document ->
+                assertNotEquals(originals[index].localUri, document.localUri)
+                assertArrayEquals(fixtures[index].bytes, java.io.File(document.localUri).readBytes())
+            }
+            assertEquals(saved.map { it.localUri }, ReceiptOriginalChain.paths(localRepository.getReceiptByInternalId(current.internalId)!!.imageUrl))
+            assertEquals("previous original bytes", previous.readText())
+            assertEquals("second previous bytes", second.readText())
+            org.junit.Assert.assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+            coordinator.completeCapture(coordinator.beginCapture())
+        } finally {
+            java.io.File(context.filesDir, "managed_documents").deleteRecursively()
+            previous.delete(); second.delete()
+        }
+    }
+
     @Test fun receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata() = runTest {
         val fixtures = SyntheticDocumentFixtureFactory.create().filter { it.number in setOf(1, 5) }
         val originals = fixtures.mapIndexed { index, fixture ->

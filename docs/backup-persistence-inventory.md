@@ -1296,3 +1296,34 @@ Dokument-Restore, beide Inventarguards und Legacy-Roundtrip.
 `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
 (`/tmp/immopilot-backend-writers-build.log`), Lint ohne Error/Fatal;
 `git diff --check` bestanden. Kein Push und kein Emulatorlauf.
+
+### Schritt 4: vollständige Drive-Original-Downloads anmelden
+
+Drei Dateien: DrivePersistenceRepository, DrivePersistenceManagedDocumentE2eTest
+und dieses Dokument. downloadDocumentOnDemand sowie downloadReceiptOriginals
+halten die Anmeldung von der Auflösung über sämtliche Dateiveröffentlichungen
+bis zur letzten Dokument-/Belegreferenz. Ein direkter Backend-Aufruf mit zwei
+Originalseiten beobachtet die zweite Remote-Abfrage: Die erste neue Dateiversion
+ist bereits vorhanden, die fachlichen Referenzen sind noch unverändert. Genau
+in diesem Zwischenraum muss die Erfassung gesperrt bleiben. Nur der Transport
+ist ein vorhandener Fake; Originalspeicher, Repository und Room sind echt.
+
+Vorab-Nachweis: Der tatsächliche erste Download war abgeschlossen und
+die Referenzen noch alt; bei zweiter Seitenabfrage blieb Erfassung möglich
+(`expected:<true> but was:<false>`). Genau eine neue Methode ausgeführt,
+keine Skips/Timeouts (`/tmp/immopilot-drive-download-coordination-red.xml`,
+`/tmp/immopilot-drive-download-coordination-red.log`). Danach beide
+Download-Funktionen über den gesamten Ablauf angemeldet. Ursprüngliche
+Funktions-Bodies nach Abzug nur der Hüllen/Einrückung exakt verglichen;
+keine Änderung von Referenzreihenfolge, Validierungen oder Rückgaben.
+
+Abnahme: neun gezielte Methoden bestanden; exakte XML-Namen und keine
+Fehler/Skips/Duplikate geprüft
+(`/tmp/immopilot-drive-download-coordination-results`,
+`/tmp/immopilot-drive-download-coordination-tests.log`). Der beobachtete
+Zwischenraum ist nun gesperrt; vorherige Bytes und Referenzen bleiben bei
+fehlenden/defekten Seiten erhalten. Nur Leerraum auf Leerzeilen der beiden
+geänderten Methoden nach dem Testlauf bereinigt; kein Verhalten verändert.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-drive-download-coordination-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Kein Push und kein Emulatorlauf.

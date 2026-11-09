@@ -3889,68 +3889,70 @@ class DrivePersistenceRepository(
     }
 
     suspend fun downloadDocumentOnDemand(accessToken: String, receipt: Receipt, forceRemote: Boolean = false): String {
-        val documents = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
-        val references = localRepository.getDocumentsForReceipt(receipt.internalId)
-        if (documents.isNotEmpty() || references.size > 1) {
-            return downloadReceiptOriginals(accessToken, receipt, documents, references, forceRemote = forceRemote)
-        }
-        val fileId = receipt.driveFileId ?: throw Exception("Keine Drive-ID für diesen Beleg vorhanden.")
-        try {
-            val fileBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
-                ?: throw Exception("Datei in Google Drive nicht gefunden oder unlesbar.")
-                
-            if (fileBytes.isEmpty()) {
-                throw Exception("Geleerte Datei (0 Bytes) aus Google Drive erhalten.")
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val documents = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
+            val references = localRepository.getDocumentsForReceipt(receipt.internalId)
+            if (documents.isNotEmpty() || references.size > 1) {
+                return downloadReceiptOriginals(accessToken, receipt, documents, references, forceRemote = forceRemote)
             }
-            
-            // Detect real format via magic bytes
-            var detectedExt: String? = null
-            var detectedFormatName = "Unbekannt"
-            val header = fileBytes.take(16).toByteArray()
-            val hex = header.joinToString(" ") { b -> "%02X".format(b) }
-            
-            if (header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x25, 0x50, 0x44, 0x46))) {
-                detectedExt = "pdf"
-                detectedFormatName = "PDF"
-            } else if (header.size >= 3 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()) {
-                detectedExt = "jpg"
-                detectedFormatName = "JPEG"
-            } else if (header.size >= 8 && header.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))) {
-                detectedExt = "png"
-                detectedFormatName = "PNG"
-            } else if (header.size >= 12 && header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) && header.copyOfRange(8, 12).contentEquals("WEBP".toByteArray())) {
-                detectedExt = "webp"
-                detectedFormatName = "WEBP"
-            }
+            val fileId = receipt.driveFileId ?: throw Exception("Keine Drive-ID für diesen Beleg vorhanden.")
+            try {
+                val fileBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
+                    ?: throw Exception("Datei in Google Drive nicht gefunden oder unlesbar.")
 
-            val mime = receipt.originalMimeType ?: ""
-            val ext = detectedExt ?: when {
-                mime.contains("pdf", ignoreCase = true) -> "pdf"
-                mime.contains("png", ignoreCase = true) -> "png"
-                mime.contains("jpeg", ignoreCase = true) || mime.contains("jpg", ignoreCase = true) -> "jpg"
-                mime.contains("webp", ignoreCase = true) -> "webp"
-                mime.contains("xml", ignoreCase = true) -> "xml"
-                mime.contains("text/plain", ignoreCase = true) -> "txt"
-                else -> "bin"
-            }
-            
-            // Generate filename based on actual extension
-            var filename = receipt.storedFilename
-            if (filename.isNullOrEmpty() || (detectedExt != null && !filename.endsWith(".$detectedExt", ignoreCase = true))) {
-                val base = filename?.substringBeforeLast(".") ?: "original"
-                filename = "$base.$ext"
-            }
-            
-            val targetFile = ReceiptOriginalStorage(context).storeDownloadedVersion(fileBytes, filename)
+                if (fileBytes.isEmpty()) {
+                    throw Exception("Geleerte Datei (0 Bytes) aus Google Drive erhalten.")
+                }
 
-            // Make sure we only update the local fields, not anything that would trigger sync
-            val updatedReceipt = receipt.copy(imageUrl = targetFile.absolutePath, lastSyncedAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
-            localRepository.insert(updatedReceipt)
-            return targetFile.absolutePath
-        } catch (e: Exception) {
-            e.rethrowDriveControlFailure()
-            DiagnosticLog.e(TAG, "Error downloading document on demand for fileId")
-            throw e
+                // Detect real format via magic bytes
+                var detectedExt: String? = null
+                var detectedFormatName = "Unbekannt"
+                val header = fileBytes.take(16).toByteArray()
+                val hex = header.joinToString(" ") { b -> "%02X".format(b) }
+
+                if (header.size >= 4 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x25, 0x50, 0x44, 0x46))) {
+                    detectedExt = "pdf"
+                    detectedFormatName = "PDF"
+                } else if (header.size >= 3 && header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()) {
+                    detectedExt = "jpg"
+                    detectedFormatName = "JPEG"
+                } else if (header.size >= 8 && header.copyOfRange(0, 8).contentEquals(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))) {
+                    detectedExt = "png"
+                    detectedFormatName = "PNG"
+                } else if (header.size >= 12 && header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray()) && header.copyOfRange(8, 12).contentEquals("WEBP".toByteArray())) {
+                    detectedExt = "webp"
+                    detectedFormatName = "WEBP"
+                }
+
+                val mime = receipt.originalMimeType ?: ""
+                val ext = detectedExt ?: when {
+                    mime.contains("pdf", ignoreCase = true) -> "pdf"
+                    mime.contains("png", ignoreCase = true) -> "png"
+                    mime.contains("jpeg", ignoreCase = true) || mime.contains("jpg", ignoreCase = true) -> "jpg"
+                    mime.contains("webp", ignoreCase = true) -> "webp"
+                    mime.contains("xml", ignoreCase = true) -> "xml"
+                    mime.contains("text/plain", ignoreCase = true) -> "txt"
+                    else -> "bin"
+                }
+
+                // Generate filename based on actual extension
+                var filename = receipt.storedFilename
+                if (filename.isNullOrEmpty() || (detectedExt != null && !filename.endsWith(".$detectedExt", ignoreCase = true))) {
+                    val base = filename?.substringBeforeLast(".") ?: "original"
+                    filename = "$base.$ext"
+                }
+
+                val targetFile = ReceiptOriginalStorage(context).storeDownloadedVersion(fileBytes, filename)
+
+                // Make sure we only update the local fields, not anything that would trigger sync
+                val updatedReceipt = receipt.copy(imageUrl = targetFile.absolutePath, lastSyncedAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
+                localRepository.insert(updatedReceipt)
+                return targetFile.absolutePath
+            } catch (e: Exception) {
+                e.rethrowDriveControlFailure()
+                DiagnosticLog.e(TAG, "Error downloading document on demand for fileId")
+                throw e
+            }
         }
     }
 
@@ -3961,44 +3963,46 @@ class DrivePersistenceRepository(
         references: List<ReceiptDocumentReference>? = null,
         forceRemote: Boolean = false
     ): String {
-        val candidates = (knownDocuments ?: localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }).toMutableList()
-        (references ?: localRepository.getDocumentsForReceipt(receipt.internalId)).forEachIndexed { index, reference ->
-            if (candidates.none { it.driveFileId == reference.driveFileId }) {
-                candidates += ManagedDocument(
-                    documentId = if (reference.role == ReceiptDocumentRole.MAIN_RECEIPT.name)
-                        StableDocumentIdentity.receiptDocumentId(receipt.internalId) else reference.id,
-                    receiptInternalId = receipt.internalId, propertyId = receipt.propertyId,
-                    originalFilename = reference.filename, storedFilename = reference.filename,
-                    mimeType = reference.mimeType, driveFileId = reference.driveFileId,
-                    driveFolderId = reference.driveFolderId, fileSizeBytes = reference.sizeBytes ?: 0L,
-                    createdAt = reference.createdAt, documentDate = receipt.datum,
-                    source = DocumentSource.RECEIPT.name,
-                    extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", if (reference.role == "MAIN_RECEIPT") 0 else index + 1).toString()
-                )
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val candidates = (knownDocuments ?: localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }).toMutableList()
+            (references ?: localRepository.getDocumentsForReceipt(receipt.internalId)).forEachIndexed { index, reference ->
+                if (candidates.none { it.driveFileId == reference.driveFileId }) {
+                    candidates += ManagedDocument(
+                        documentId = if (reference.role == ReceiptDocumentRole.MAIN_RECEIPT.name)
+                            StableDocumentIdentity.receiptDocumentId(receipt.internalId) else reference.id,
+                        receiptInternalId = receipt.internalId, propertyId = receipt.propertyId,
+                        originalFilename = reference.filename, storedFilename = reference.filename,
+                        mimeType = reference.mimeType, driveFileId = reference.driveFileId,
+                        driveFolderId = reference.driveFolderId, fileSizeBytes = reference.sizeBytes ?: 0L,
+                        createdAt = reference.createdAt, documentDate = receipt.datum,
+                        source = DocumentSource.RECEIPT.name,
+                        extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", if (reference.role == "MAIN_RECEIPT") 0 else index + 1).toString()
+                    )
+                }
             }
-        }
-        check(candidates.isNotEmpty()) { "Keine Originalreferenzen für diesen Beleg vorhanden." }
-        val downloaded = ReceiptOriginalChain.ordered(candidates).map { document ->
-            val local = File(document.localUri)
-            val reuseLocal = local.isFile && !forceRemote
-            val bytes = if (reuseLocal) local.readBytes() else {
-                val fileId = document.driveFileId ?: error("Eine Originalseite besitzt keine gesicherte Dateireferenz.")
-                managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
-                    ?: error("Eine Originalseite konnte nicht aus Google Drive geladen werden.")
+            check(candidates.isNotEmpty()) { "Keine Originalreferenzen für diesen Beleg vorhanden." }
+            val downloaded = ReceiptOriginalChain.ordered(candidates).map { document ->
+                val local = File(document.localUri)
+                val reuseLocal = local.isFile && !forceRemote
+                val bytes = if (reuseLocal) local.readBytes() else {
+                    val fileId = document.driveFileId ?: error("Eine Originalseite besitzt keine gesicherte Dateireferenz.")
+                    managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
+                        ?: error("Eine Originalseite konnte nicht aus Google Drive geladen werden.")
+                }
+                check(bytes.isNotEmpty()) { "Eine Originalseite ist leer." }
+                val sha = getSha256(bytes)
+                check(document.sha256.isBlank() || document.sha256 == sha) { "Prüfsumme einer Originalseite stimmt nicht überein." }
+                val targetPath = if (reuseLocal) local.absolutePath else
+                    ReceiptOriginalStorage(context).storeDownloadedOriginal(document, bytes).localUri
+                document.copy(localUri = targetPath, sha256 = sha, fileSizeBytes = bytes.size.toLong())
             }
-            check(bytes.isNotEmpty()) { "Eine Originalseite ist leer." }
-            val sha = getSha256(bytes)
-            check(document.sha256.isBlank() || document.sha256 == sha) { "Prüfsumme einer Originalseite stimmt nicht überein." }
-            val targetPath = if (reuseLocal) local.absolutePath else
-                ReceiptOriginalStorage(context).storeDownloadedOriginal(document, bytes).localUri
-            document.copy(localUri = targetPath, sha256 = sha, fileSizeBytes = bytes.size.toLong())
+            // All pages have passed validation before any receipt reference is changed.
+            downloaded.forEach { localRepository.upsertManagedDocument(it) }
+            val current = localRepository.getReceiptByInternalId(receipt.internalId) ?: receipt
+            val paths = com.example.data.ReceiptOriginalChain.encodePaths(downloaded.map { it.localUri })
+            if (current.imageUrl != paths) localRepository.insert(current.copy(imageUrl = paths))
+            return downloaded.first().localUri
         }
-        // All pages have passed validation before any receipt reference is changed.
-        downloaded.forEach { localRepository.upsertManagedDocument(it) }
-        val current = localRepository.getReceiptByInternalId(receipt.internalId) ?: receipt
-        val paths = com.example.data.ReceiptOriginalChain.encodePaths(downloaded.map { it.localUri })
-        if (current.imageUrl != paths) localRepository.insert(current.copy(imageUrl = paths))
-        return downloaded.first().localUri
     }
 
     suspend fun runFullRestoreEndToEndTest(accessToken: String, config: DriveAppConfig): DriveRestoreReport {
