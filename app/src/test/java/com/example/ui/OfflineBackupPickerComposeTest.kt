@@ -44,13 +44,17 @@ class OfflineBackupPickerComposeTest {
     private lateinit var database: AppDatabase
     private lateinit var model: ReceiptViewModel
     private lateinit var selectedUri: Uri
+    private var pickerLaunches = 0
+    private var cancelPicker = false
     private val property = PropertyMetadata(id = 7, propertyId = "picker-backup-house", name = "Lokales Haus")
     private val receipt = Receipt(id = 41, internalId = "picker-backup-receipt", propertyId = property.propertyId,
         aussteller = "Lokaler Beleg", datum = "2026-11-08", uhrzeit = "", bruttobetrag = 20.0,
         hauptkategorie = "Kosten", unterkategorie = "Reparatur", kontoNr = "4800", beschreibung = "Behalten")
     private val picker = object : ActivityResultRegistry() {
         override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
-            dispatchResult(requestCode, Activity.RESULT_OK, Intent().setData(selectedUri))
+            pickerLaunches++
+            dispatchResult(requestCode, if (cancelPicker) Activity.RESULT_CANCELED else Activity.RESULT_OK,
+                Intent().setData(selectedUri))
         }
     }
 
@@ -127,6 +131,44 @@ class OfflineBackupPickerComposeTest {
         ui.onNodeWithText("1 Immobilien · 1 Belege · 0 Originaldateien", substring = true).assertExists()
         ui.onNodeWithText("Wiederherstellen").performClick()
         waitForStatus("Lokale Sicherung wiederhergestellt")
+        assertLocalDataUnchanged()
+    }
+
+    @Test fun failedPreparationLeavesThePickerAndExistingBackupUntouchedAndErrorSurvivesImport() {
+        val missing = File(ui.activity.filesDir, "managed_documents/missing-backup-original.pdf")
+        missing.delete()
+        val withMissingOriginal = receipt.copy(imageUrl = missing.absolutePath)
+        runBlocking(Dispatchers.IO) { database.receiptDao().insertReceipt(withMissingOriginal) }
+        val previous = File(ui.activity.cacheDir, "keep-existing-backup.zip").apply { writeText("previous backup") }
+        select(previous)
+        ui.onNodeWithTag("offline_backup_export").performClick()
+        waitForStatus("fehlt")
+        assertEquals("A failed preparation must not create a target document", 0, pickerLaunches)
+        assertEquals("previous backup", previous.readText())
+        ui.onNodeWithText("picker-backup-receipt", substring = true).assertExists()
+
+        select(File(ui.activity.cacheDir, "empty-import-after-export-error.zip").apply { writeBytes(byteArrayOf()) })
+        ui.onNodeWithTag("offline_backup_import").performClick()
+        waitForStatus("vollständige ImmoPilot-Vollsicherung")
+        ui.onNodeWithText("picker-backup-receipt", substring = true).assertExists()
+        ui.onNodeWithText("Wiederherstellen").assertDoesNotExist()
+        runBlocking(Dispatchers.IO) {
+            assertEquals(withMissingOriginal, database.receiptDao().getReceiptById(receipt.id))
+        }
+    }
+
+    @Test fun cancellingExportPickerCleansThePrivateArchiveAndKeepsExistingFile() {
+        val previous = File(ui.activity.cacheDir, "keep-on-picker-cancel.zip").apply { writeText("previous backup") }
+        select(previous)
+        cancelPicker = true
+        val staging = File(ui.activity.filesDir, "offline-backup-staging")
+        ui.onNodeWithTag("offline_backup_export").performClick()
+        ui.waitUntil(10_000) {
+            pickerLaunches == 1 && staging.isDirectory && staging.listFiles()?.isEmpty() == true
+        }
+        ui.onNodeWithTag("offline_backup_export").assertIsEnabled()
+        ui.onAllNodes(hasText("Vollständige lokale Sicherung gespeichert", substring = true)).assertCountEquals(0)
+        assertEquals("previous backup", previous.readText())
         assertLocalDataUnchanged()
     }
 }

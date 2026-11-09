@@ -10,7 +10,7 @@ class PersistentStorageInventoryTest {
 
     @Test fun persistentFileRootsAndDataStoreOwnersRequireExplicitClassification() {
         val classifiedRoots = setOf("managed_documents", "property-images", "offline-originals",
-            "restored_receipts", "receipt_documents", "receipt_page_")
+            "restored_receipts", "receipt_documents", "receipt_page_", "offline-backup-staging")
         val found = mutableSetOf<String>()
         val root = Regex("filesDir\\s*,\\s*\"([^\"]+)\"")
         sources().walkTopDown().filter { it.extension == "kt" }.forEach { file ->

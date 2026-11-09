@@ -101,6 +101,21 @@ internal class OfflineBackupService(private val context: Context, private val da
         }
     }
 
+    /** The document picker must only receive an already prepared, validated archive. */
+    suspend fun prepareExport(): File {
+        val directory = File(context.filesDir, "offline-backup-staging")
+        check(directory.isDirectory || directory.mkdirs())
+        val archive = File.createTempFile("offline-backup-", ".zip", directory)
+        try {
+            archive.outputStream().use { create(it) }
+            archive.inputStream().use { inspect(it).close() }
+            return archive
+        } catch (error: Throwable) {
+            archive.delete()
+            throw error
+        }
+    }
+
     suspend fun create(output: OutputStream) {
         val directory = File(context.cacheDir, "offline-export-${UUID.randomUUID()}").apply { check(mkdirs()) }
         try {

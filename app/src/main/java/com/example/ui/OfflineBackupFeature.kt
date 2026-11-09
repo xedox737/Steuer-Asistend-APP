@@ -35,26 +35,29 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
     val service = remember(viewModel) { viewModel.offlineBackupServiceForUi() }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
+    var exportStatus by remember { mutableStateOf<String?>(null) }
+    var exportArchive by remember { mutableStateOf<File?>(null) }
     var prepared by remember { mutableStateOf<OfflineBackupService.Prepared?>(null) }
-    DisposableEffect(Unit) { onDispose { prepared?.close() } }
+    DisposableEffect(Unit) { onDispose { prepared?.close(); exportArchive?.delete() } }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri != null && !busy) scope.launch {
-            busy = true
+        val temporary = exportArchive
+        if (uri == null || temporary == null) {
+            temporary?.delete(); exportArchive = null; busy = false
+            if (uri != null) exportStatus = "Die vorbereitete Sicherung ist nicht mehr verfügbar. Bitte erneut speichern."
+        } else scope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val temporary = File.createTempFile("offline-backup-", ".zip", context.cacheDir)
-                    try {
-                        temporary.outputStream().use { service.create(it) }
-                        requireNotNull(context.contentResolver.openOutputStream(uri, "wt")) { "Zieldatei konnte nicht geöffnet werden." }.use { output ->
-                            temporary.inputStream().use { it.copyTo(output) }
-                        }
-                    } finally { temporary.delete() }
+                    requireNotNull(context.contentResolver.openOutputStream(uri, "wt")) { "Zieldatei konnte nicht geöffnet werden." }.use { output ->
+                        temporary.inputStream().use { it.copyTo(output) }
+                    }
+                    requireNotNull(context.contentResolver.openInputStream(uri)) { "Zieldatei konnte nicht geprüft werden." }
+                        .use { service.inspect(it).close() }
                 }
-                status = "Vollständige lokale Sicherung gespeichert."
+                exportStatus = "Vollständige lokale Sicherung gespeichert."
             } catch (error: CancellationException) { throw error
-            } catch (error: OfflineBackupValidationException) { status = error.message
-            } catch (error: Exception) { status = "Die lokale Sicherung konnte nicht gespeichert werden. Bitte prüfe den Speicherort und versuche es erneut."
-            } finally { busy = false }
+            } catch (error: OfflineBackupValidationException) { exportStatus = error.message
+            } catch (error: Exception) { exportStatus = "Die lokale Sicherung konnte nicht gespeichert und geprüft werden. Die Zieldatei ist möglicherweise unvollständig. Bitte prüfe den Speicherort und versuche es erneut."
+            } finally { temporary.delete(); exportArchive = null; busy = false }
         }
     }
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -77,12 +80,36 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Lokale Vollsicherung", color = DarkNavy)
             Text("Belege, Originaldateien, Immobilien, Mieten, Bank, AfA, Fahrtenbuch und Einstellungen – ohne Google-Konto. Zugangsschlüssel werden ausgelassen.", color = SlateGray)
-            OutlinedButton(onClick = { export.launch("ImmoPilot-Sicherung-${LocalDate.now()}.zip") }, enabled = !busy,
+            OutlinedButton(onClick = {
+                busy = true
+                exportStatus = null
+                scope.launch {
+                    var temporary: File? = null
+                    var handedToPicker = false
+                    try {
+                        withContext(Dispatchers.IO) {
+                            temporary = service.prepareExport()
+                        }
+                        exportArchive = temporary
+                        export.launch("ImmoPilot-Sicherung-${LocalDate.now()}-${java.util.UUID.randomUUID()}.zip")
+                        handedToPicker = true
+                    } catch (error: CancellationException) { throw error
+                    } catch (error: OfflineBackupValidationException) { exportStatus = error.message
+                    } catch (error: Exception) { exportStatus = "Die lokale Sicherung konnte nicht vorbereitet werden. Es wurde keine Zieldatei angelegt. Bitte prüfe den lokalen Speicher und versuche es erneut."
+                    } finally {
+                        if (!handedToPicker) {
+                            temporary?.delete(); exportArchive = null; busy = false
+                        }
+                    }
+                }
+            }, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().testTag("offline_backup_export")) { Text("Vollsicherung speichern") }
             OutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, enabled = !busy,
                 modifier = Modifier.fillMaxWidth().testTag("offline_backup_import")) { Text("Lokale Sicherung prüfen") }
             if (busy) Text("Sicherung wird verarbeitet …")
-            status?.let { Text(it, modifier = Modifier.testTag("offline_backup_status")) }
+            listOfNotNull(exportStatus, status).takeIf { it.isNotEmpty() }?.let {
+                Text(it.joinToString("\n\n"), modifier = Modifier.testTag("offline_backup_status"))
+            }
         }
     }
     prepared?.let { snapshot ->

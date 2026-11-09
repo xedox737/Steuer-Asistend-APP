@@ -78,6 +78,7 @@ zu leeren. String, Int, Long, Float, Boolean und StringSet bleiben typgetreu.
 |---|---|---|
 | receipt_page_* und referenzierte Belegoriginale | Scanbilder, PDFs und Originaldateien | BACKUP, vorhandener Belegupload; Fehlschlag zählt jetzt als unvollständige Sicherung |
 | filesDir/managed_documents | Importierte/gescannte Objekt- und Einheitsdokumente | BACKUP, vorhandener Dokumentupload + Dokumentindex; Fehlschlag verhindert Erfolgsmeldung |
+| filesDir/offline-backup-staging | Vor Zieldialog erstelltes und geprüftes V1-Archiv | LOCAL_ONLY, nach Zielkopie, Fehler oder Dialogabbruch entfernen; noch kein prozessfester Coordinator |
 | filesDir/restored_receipts, filesDir/receipt_documents, filesDir/offline-originals | Wiederhergestellte Originale und zusätzliche Beleganhänge | BACKUP über persistierte Dateireferenzen; unreferenzierte Dateien nicht still als vollständig erfasst ausgeben |
 | filesDir/property-images | Objektbilder | BACKUP, neu als Bytes im Zusatzbackup; Restore unter objektbezogenem SHA-256-Dateiname statt fremdem Dateipfad |
 | cacheDir (DATEV-CSV/ZIP) | Noch vorhandene Exportartefakte aus DatevCsvOutput und DatevExporter | Fachlich aufbewahrte Exporte separat inventarisieren; aktuell im lokalen V1 nicht erfasst |
@@ -251,3 +252,39 @@ Die API-Dokumentationen der offiziellen Quellrepositorys waren alternativ erreic
 Die gesperrten Android-Webseiten sind dadurch nicht als gelesen zu melden. Vor
 Schritt 10 bleiben die konkreten Quoten für Ziel-API 36, die verwendete
 WorkManager-Version und das Benachrichtigungsverhalten zu bestätigen.
+
+
+## Verifizierter Zwischenstand der Sofortkorrektur (09.11.2026)
+
+- Basis `302b007ad510c44fb596a0081197490d3430374e`, Featurebranch
+  `feat/local-full-backup`; kein Push, kein PR und kein Merge.
+- Inventar aktualisiert; neue Tests erkennen unbekannte Room-Tabellen,
+  private Dateiwurzeln und DataStore-Erzeuger. Der gesamte neue Archivumfang
+  und seine fachliche Roundtrip-Abnahme sind dadurch noch nicht implementiert.
+- Schritt 2: fehlende, leere, nicht lesbare und über 1 GiB große Originale
+  getrennt melden; Datensatz, Titel und Dateiname benennen. Keine Quelldatenänderung.
+- Schritt 2b: `OfflineBackupService.prepareExport` erstellt und prüft das V1-Archiv
+  im privaten Speicher vor dem Zieldialog. Die Oberfläche behält Export- und
+  Importmeldungen getrennt; Dialogabbruch räumt das vorbereitete Archiv auf.
+  Nach der Zielkopie wird das Zielarchiv erneut eingelesen und geprüft.
+- Java 21 / Gradle 9.3.1: 47 gezielte Methoden bestanden: PreferenceBackupCompletenessTest
+  (13), die beiden aufgabenbezogenen PersistentStorageInventoryTest-Methoden (2),
+  OfflineBackupServiceTest (23), OfflineBackupRelationTest (4),
+  OfflineBackupPickerComposeTest (5). JUnit-XML gegen die Methoden der Quellen
+  geprüft: keine Fehler, Skips, Duplikate oder Suite-Platzhalter. Roborazzi-Verify
+  aktiviert; keine neue Screenshotaufnahme und kein behaupteter Bildvergleich.
+- Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden;
+  Lint-XML ohne Error-/Fatal-Befunde. `git diff --check` bestanden.
+- Debug-Signatur gegen das Zertifikat des unveränderten Repository-Keystores
+  geprüft: SHA-256 `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
+  Dies ist kein Signaturvergleich mit einem echten Nutzergerät.
+- Android-Emulatortest nicht ausgeführt: lokal kein `/dev/kvm`; GitHub-Ausführung
+  erst nach ausdrücklich freigegebenem, aufgabenbezogenem CI-Profil.
+- Weiter offen: Schritt 3 (Originalauflösung), vollständige Writer-Matrix und
+  Snapshot-Konsistenz, V2-Verschlüsselung, Destination-Coordinator, Probe-Restore,
+  vollständiger ersetzender Restore mit Wiederanlauf, dauerhafter Status,
+  Zeitplanung und Worker sowie deren Gerätewechsel-/Emulatorabnahme.
+- Konkreter Eingriffspunkt für die spätere Writer-Matrix: `ReceiptRepository`
+  ist in `ReceiptDatabase.kt` definiert; eine eigene `ReceiptRepository.kt`
+  existiert an dieser Basis nicht. Die vorhandenen Drive-Mutexe koordinieren
+  Initialisierung, Index und Einzelmetadaten, kein gemeinsames Snapshot-Gate.
