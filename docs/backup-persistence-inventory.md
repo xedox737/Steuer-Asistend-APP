@@ -159,7 +159,7 @@ die aktuelle Datenbank. `restore` importiert die Zeilen transaktional und baut F
 ### Noch offene Voraussetzungen des Codingplans
 
 Die Inventar-Abdeckungstests prüfen SharedPreferences, die tatsächlichen Room-Tabellen
-und die im Quellcode angelegten privaten Dateiwurzeln. Neue DataStore-Erzeuger oder
+und die im Quellcode angelegten `filesDir`-/`noBackupFilesDir`-Dateiwurzeln. Neue DataStore-Erzeuger oder
 anders aufgebaute Dateiablagen verlangen eine explizite Erweiterung der Klassifikation.
 Dies belegt die Quellenzuordnung, noch nicht den vollständigen fachlichen Roundtrip
 oder die Konsistenz der späteren Engine. Noch vorhandene Exportartefakte im Cache
@@ -345,9 +345,9 @@ vorhandenen autorisierten Zugriff lesend und mit begrenztem Speicher verwenden.
   Dieser Start-/Reparaturpfad muss in Gate und Identitätsprüfung einbezogen werden.
 - `DrivePendingWrites` schreibt eigene atomare Vorgangsdateien unter
   `noBackupFilesDir/drive-pending-writes`. Es sind technische Verbindungsnachweise,
-  keine fachlichen Originale. Die bisherige Dateiwurzelprüfung erfasst `filesDir`;
-  vor der vollständigen Inventar-Abnahme ist ihre Abdeckung auf diese weitere
-  Speicher-API auszudehnen. Die Android-Bezeichnung `noBackupFilesDir` allein
+  keine fachlichen Originale. Die Dateiwurzelprüfung wurde im folgenden Inventarschritt auf
+  `filesDir` und `noBackupFilesDir` erweitert; nicht zugeordnete Getter-/
+  Speicherzugriffe werden ebenfalls abgelehnt. Die Android-Bezeichnung `noBackupFilesDir` allein
   wäre keine ausreichende fachliche Klassifikation für künftige neue Quellen.
 - Ein Vorab-Suchlauf fand zusätzlich zu den DAO-Deklarationen direkte
   Preference-, Datei- und SQL-Schreibstellen. Diese Fundstellen sind erst noch
@@ -388,3 +388,194 @@ vorhandenen autorisierten Zugriff lesend und mit begrenztem Speicher verwenden.
   konsistenter Snapshot, V2-Verschlüsselung, sichere Destination und Probe-Restore,
   ersetzender Restore mit Wiederanlauf, dauerhafter Verlauf, Scheduler/Worker und
   Geräte-/Emulatorabnahme. Das gesondert freizugebende enge CI-Profil bleibt offen.
+
+
+## Schreibweg-Katalog vor dem Snapshot-Gate (09.11.2026, Basis 992b7d9)
+
+Die folgenden Tabellen ordnen die gefundenen produktiven Mutationsgrenzen zu.
+**Keiner der vorgeschlagenen Koordinationspunkte ist damit schon implementiert.**
+Die Katalogisierung ist kein Nachweis eines gemeinsamen Snapshots und keine
+pauschale Änderungsfreigabe für die aufgeführten Screens oder Fachlogik.
+
+Koordinationspunkte für die weitere Umsetzung:
+
+- **DB:** gemeinsame Room-/SQLite-Grenze des einzigen produktiven Builders
+  `ReceiptDatabase.kt: AppDatabase.getDatabase`, einschließlich generierter
+  Statements, direkter SQL-Aufrufe und vollständiger Transaktionslebensdauer.
+- **PREF:** sämtliche fachlichen Editor-Commits und `apply`-Aufrufe, einschließlich
+  Entfernen/Clear und Migration beim Lesen. `apply` aktualisiert den Speicher
+  synchron und darf nicht als ausschließlich spätere Dateisystemarbeit gelten.
+- **FILE:** Veröffentlichung, Überschreiben und Löschen fachlicher Originalversionen
+  sowie vorhandener aufbewahrter Exporte. Vor Gate-Freigabe müssen die zum
+  Snapshot gehörenden Versionen fixiert sein; ein offener Deskriptor oder späterer
+  Hash-Vergleich allein genügt nicht.
+- **REMOTE:** Wartungs-/Operationsgrenze für laufende und neue Synchronisation
+  beim Restore. Ein Backup-Mutex ersetzt weder diese Grenze noch DB/PREF/FILE.
+
+### Room: alle 14 produktiv bereitgestellten DAOs
+
+Die DAO-Grenze erfasst auch direkte Aufrufer aus ViewModels, Repository,
+Drive-/Firestore-Import und Zusatzrestore. Eine ausschließlich in
+`ReceiptRepository` eingebaute Sperre würde diese direkten Wege nicht abdecken.
+
+| Datei / DAO | Mutierende Funktionen | Quellen | Geplanter Punkt |
+|---|---|---|---|
+| ReceiptDatabase.kt / ReceiptDao | insertReceipt, updateDriveSyncFields, deleteReceiptById, insertAll, deleteAll | receipts, einschließlich Löschzustand und Sync-Bestätigung | DB |
+| ReceiptDatabase.kt / PropertyDao | deletePropertyByPropertyId, insertPropertyMetadata, upsertRestoredPropertyMetadata | property_metadata | DB; Bildveröffentlichung zusätzlich FILE |
+| ReceiptDatabase.kt / LoanDao | upsertLoan, deleteLoan | loans | DB |
+| ReceiptDatabase.kt / ReceiptEntityDao | insert, deleteById, deleteAll | receipt_entities | DB |
+| Beleg.kt / BelegDao | insertBeleg, deleteBelegById, deleteAllBelege | belege | DB |
+| ReceiptDatabase.kt / ExportAuditDao | insertRun, deleteAll | export_audit_runs | DB; Exportbytes zusätzlich FILE |
+| ReceiptDatabase.kt / ReceiptDocumentDao | insertDocument, deleteDocumentById, deleteAll | receipt_documents | DB |
+| DocumentModels.kt / ManagedDocumentDao | upsert, updateExisting, upsertAll, deleteById, deleteAllDocuments | managed_documents | DB; Originaldateien zusätzlich FILE |
+| DocumentModels.kt / ManagedDocumentDao | adoptOriginalBaseline, updateDriveStorageIfPresent, updateLoanIfPresent, updateReviewIfPresent, updateProcessingIfPresent | Originalnachweis, OCR, KI-Ergebnis, Prüfung und Zuordnungen | DB, vollständige @Transaction-Grenze |
+| DocumentModels.kt / ManagedDocumentDao | deleteSearchEntry, insertSearchEntry, clearSearchIndex | abgeleiteter FTS-Index | DB; beim Restore neu aufbauen |
+| DocumentModels.kt / ManagedDocumentDao | clearMigrationJournal, upsertMigrationJournal, deleteMigrationJournal | document_migration_journal, technischer Zustand | DB; nicht als alte Aufträge reaktivieren |
+| LogbookModels.kt / LogbookDao | upsertTrip, deleteTrip, upsertStandardRoute, deleteStandardRoute | logbook_trips, standard_routes | DB |
+| BankingModels.kt / BankDao | upsertAccount, insertTransactions, upsertTransaction, updateTransactionStatus, updateTransactionClassification, updateTransactionReviewState | bank_accounts, bank_transactions | DB |
+| BankingModels.kt / BankDao | upsertLink, deleteLink, clearLinks, deleteAllTransactions, deleteAllAccounts, reopenLinkedTransactions | bank_receipt_links und abhängige Buchungen/Konten | DB |
+| BankLearningRules.kt / BankLearningRuleDao | upsertRule, deleteRule, insertEvidence, deleteEvidence | bank_learning_rules, bank_rule_evidence | DB |
+| BankRentAssignments.kt / BankRentAssignmentDao | upsert, deleteById, clearAll | bank_rent_assignments | DB |
+| BankLoanRecurringPersistence.kt / BankLoanAssignmentDao | upsert, deleteForTransaction | bank_loan_assignments | DB |
+| BankLoanRecurringPersistence.kt / BankRecurringPatternDao | upsert, setEnabled, delete | bank_recurring_patterns | DB |
+
+Zusätzliche SQL-Wege außerhalb der DAO-Mutatoren:
+
+| Datei / Funktion | Wirkung | Bedarf / Koordination |
+|---|---|---|
+| ReceiptDatabase.kt / MIGRATION_10_11 bis MIGRATION_33_34 | DDL und Datenübernahmen beim Öffnen alter Schemata | normalen Schemaaufbau vor Snapshot abschließen; keine neue Migration für das Gate |
+| ReceiptDatabase.kt / AppDatabaseCallback.onOpen | startet asynchron UPDATE receipts für internalId/displayId | DB; Startreparatur ausdrücklich erfassen und Identitäten vor Erfolg prüfen |
+| OfflineBackupService.kt / restore | direkte INSERT-Statements in Room-Transaktion, FTS-Neuaufbau | DB + PREF + FILE, gemeinsamer Restore-Wartungsmodus |
+| SupplementalDriveBackup.kt / restorePayload, clearSnapshotDomains | DAO-Import, Ersetzen/Löschen, Preferences und Objektbilder | DB + PREF + FILE; darf nicht am lokalen Restore vorbeilaufen |
+| DrivePersistenceRepository.kt / executeFullDriveRestore und Restore-Aufrufer | orchestrieren fachlichen Import und Journal | dieselbe Wartungsgrenze wie lokaler Restore; bestehende Semantik erhalten |
+
+### Fachliche Preference-Schreibwege
+
+Dateien liegen unter `app/src/main/java/com/example`; `ui/` und `data/` sind
+jeweils im Dateinamen angegeben. Genannt werden auch implizite Schreibvorgänge
+beim Lesen und beim Entfernen anderer Werte.
+
+| Datei / Funktion | Store / fachliche Daten | Geplanter Punkt |
+|---|---|---|
+| util/DatevProfileService.kt / saveActiveProfile | datev_kanzleiprofil_prefs, active_profile_json | PREF |
+| ui/UnifiedUnitsFeature.kt / UnitStatusMetaStore.save | unit_status_meta_prefs | PREF |
+| ui/UnifiedUnitsFeature.kt / UnitRentalDetailStore.save | unit_rental_detail_prefs | PREF |
+| ui/TenantHistoryFeature.kt / TenantHistoryStore.read | tenant_history_prefs; übernimmt gültige Legacy-Werte beim Lesen | PREF, auch dieser Lesepfad schreibt |
+| ui/TenantHistoryFeature.kt / TenantHistoryStore.save, saveInitialPeriods | tenant_history_prefs, neue und Legacy-Schlüssel | PREF; einen Editor vollständig erfassen |
+| ui/PropertyUnitScopedData.kt / rentValue | rent_plan_prefs; Migration beim Lesen | PREF |
+| ui/PropertyUnitScopedData.kt / setRentValues | rent_plan_prefs, neue und Legacy-Schlüssel | PREF |
+| ui/PropertyTaskFeature.kt / PropertyTaskStore.save (einschließlich upsert-Aufrufern) | property_tasks_prefs | PREF |
+| ui/ConfirmedAfaValuesStore.kt / write | afa_confirmed_values_prefs | PREF |
+| ui/LoanFeature.kt / LoanManagementSection.assignReceipt | loan_interest_assignments | PREF |
+| ui/BankFeature.kt / BankTransactionDetailsScreen, Notiz-onValueChange | bank_transaction_notes | PREF, keine Änderung der Bank-Fachlogik |
+| ui/AnnualTaxAssistantFeature.kt / AnnualTaxAssistantScreen, Freigabe und Widerruf | annual_tax_approval_prefs | PREF |
+| data/RenovationReviewStore.kt / saveMeasure, saveRelation | renovation_review_prefs | PREF; vorhandenen Store-Mutex nicht mit globaler Abdeckung verwechseln |
+| ui/ReceiptViewModel.kt / learnVendorRule, deleteLearnedRule, clearAllLearnedRules | ki_learned_rules_prefs | PREF |
+| ui/ReceiptViewModel.kt / loadUnitById, lokale string-/number-Helfer | wohneinheiten_prefs; migriert Namen-/Legacy-Schlüssel beim Lesen | PREF |
+| ui/ReceiptViewModel.kt / updateWohneinheitForProperty, createProperty, updatePropertyMetadata | wohneinheiten_prefs und zugehörige Property-Zeilen | PREF + DB |
+| ui/ReceiptViewModel.kt / selectProperty, deleteProperty, toggleAutoBackup | google_drive_prefs: selected_property_id, auto_backup, auch remove | PREF; keine Autorisierung durch gesicherte Einstellungen |
+| ui/ReceiptViewModel.kt / resetLocalReceiptData | entfernt gelernte Regeln und Room-Belegbestand | PREF + DB; kein automatischer Reset durch Backup |
+| ui/ReceiptViewModel.kt / saveLogbookDraft, clearLogbookDraft | logbook_drafts | PREF, einschließlich Entfernen |
+| data/DrivePersistenceRepository.kt / saveWohneinheitenToPrefs, saveLearnedRulesToPrefs | wohneinheiten_prefs, ki_learned_rules_prefs | PREF; aktive Drive-Importe berücksichtigen |
+| data/PersistentPreferenceInventory.kt / restorePayload | alle BACKUP-Stores, Merge/Replace und remove | PREF; Restore-/Rollback-Zuständigkeit, keine neue Autorisierung/Planaktivierung |
+| api/AiProviderSettings.kt / saveSelection | ai_provider_settings: Anbieter und Modell | PREF; Credentials bleiben ausgeschlossen |
+| api/AiProviderSettings.kt / clearOpenAiKey | entfernt Ciphertext/IV **und ändert den fachlichen Anbieter** | PREF trotz Key-Methodenname; auch getOpenAiKey-Fehlerpfad kann diesen Aufruf auslösen |
+
+Gemischte und technische Preference-Wege sind ausdrücklich zu unterscheiden:
+
+| Datei / Funktionen | Klassifikation | Bedeutung für das Gate |
+|---|---|---|
+| ui/ReceiptViewModel.kt / connectDrive, disconnectDrive, initializeDrivePersistence, publishIncompleteDriveInventory, checkForDriveRestore, handleDriveFailure, handleDriveOperationFailure, syncAllToDrive | google_drive_prefs, überwiegend Verbindungs-/Fehler-/Zeitstempelzustand | Feldweise Positivliste erhalten; REMOTE beim Restore. Nicht den Drive-Zeitstempel als lokalen Erfolg verwenden |
+| api/AiProviderSettings.kt / storeOpenAiKey, storeGeminiKey, storeGoogleRoutesKey, clearGeminiKey, clearGoogleRoutesKey | Geheimnisse im gemischten ai_provider_settings | keine pauschale Store-Kopie; Opt-in bleibt aus. Gemeinsamen Store nicht beim Restore leeren |
+| data/DrivePersistenceRepository.kt / getOrCreateInstallationId, saveRestoreJournal | app_installation_prefs, restore_journal_prefs, LOCAL_ONLY | nicht übertragen; Journal darf bei Wiederanlauf nicht durch Backup zurückgesetzt werden |
+| data/SharedPreferencesDuplicateCleanupJournalStore.kt / save, removeCompleted | duplicate_cleanup_journals, LOCAL_ONLY | keine alten Bereinigungsaufträge wiederherstellen |
+| ui/ReceiptViewModel.kt / persistMetadataCleanupAudit | metadata_duplicate_cleanup_audit, LOCAL_ONLY | kein fachlicher Sicherungsumfang |
+| api/GoogleDriveClient.kt / saveCategoryMapping, invalidLocalMapping | category_folder_mappings_prefs, verbindungsgebundener Cache | auf Zielkonto neu auflösen; REMOTE-Operation während Restore sperren |
+
+### Dateien: Originale, Exportartefakte und technische Staging-Daten
+
+| Datei / Funktion | Betroffene Quelle / Mutationsart | Geplanter Punkt |
+|---|---|---|
+| data/ReceiptOriginalStorage.kt / importOriginal | schreibt Staging, veröffentlicht managed_documents/UUID.ext per rename | FILE: vollständige Veröffentlichung und zugehörige Metadatenzuordnung |
+| data/ManagedDocumentService.kt / persistPrepared | schreibt managed_documents und persistiert Dokumentmetadaten | FILE + DB; mögliche In-place-Schreibweise vor einer Unveränderlichkeitsbehauptung prüfen |
+| ui/ReceiptViewModel.kt / downloadManagedDocument | schreibt managed_documents und aktualisiert lokale Referenz | FILE + DB |
+| ui/ReceiptViewModel.kt / analyzeReceipt | schreibt receipt_page_*.jpg | FILE + zugehöriger Beleg-/Dokumentimport |
+| ui/ReceiptViewModel.kt / forceDocumentDownload | löscht vorhandene lokale Belegpfade vor erneutem Download | FILE + REMOTE; vor Löschung alte Snapshot-Version schützen |
+| ui/ImmobilienManagerFeature.kt / PropertyImagePicker | kopiert Objektbild nach property-images, startet Metadatenupdate | FILE + DB; keine Kopf-/Navigationsänderung |
+| data/DrivePersistenceRepository.kt / downloadDocumentOnDemand | schreibt restored_receipts | FILE + DB, falls referenzierter Bestand betroffen ist |
+| data/DrivePersistenceRepository.kt / downloadReceiptOriginals | Staging und rename nach managed_documents | FILE + DB |
+| data/DrivePersistenceRepository.kt / repairAndUploadOriginalDocument | copyTo(overwrite=true) nach receipt_documents, Beleg-Update und Drive-Schreiben | FILE + DB + REMOTE |
+| data/SupplementalDriveBackup.kt / restorePayload | Objektbild-Staging und rename nach property-images | FILE + DB + PREF |
+| data/OfflineBackupService.kt / restore | kopiert Original-Staging, rename nach offline-originals, wendet SQL/Preferences an | FILE + DB + PREF, Restore-Wartungsmodus |
+| util/DatevExporter.kt / createDatevZipPackage; util/DatevCsvOutput.kt / create | noch vorhandene DATEV-ZIP-/CSV-Artefakte im Cache | FILE für tatsächlich aufbewahrte Exportdateien; kein pauschales Cache-Backup |
+| util/AdvisorPackageBuilder.kt / buildPackage; util/PdfExporter.kt / exportReceiptsToPdf | Beraterpaket und PDF-Exportdateien | Inventar/FILE für vorhandene aufbewahrte Artefakte |
+| ui/ReceiptViewModel.kt / exportToDatev | CSV, document.xml und datev_export.pdf im Cache | vorhandene aufbewahrte Ausgaben von temporären Zwischenständen unterscheiden |
+| ui/ReceiptAppUi.kt / exportBankStatementToCsv | cacheDir/exports | gespeicherte CSV-Datei gesondert inventarisieren |
+| ui/ReceiptDetailScreen.kt / ReceiptDetailDialog, ReceiptDetailScreen; ui/ReceiptAppUi.kt / ReceiptPreviewSection, DocumentStatusOverviewDialog | receipt_replacement_*, repair_file_*, repair_scan_*, overview_repair_* | Staging ist temporär, aber anschließende Originalersetzung muss über FILE/DB laufen |
+| ui/ReceiptDetailScreen.kt / Datei-Exportcallback; ui/LogbookManagement.kt / CSV-Exportcallback | openOutputStream in ausdrücklich gewähltes SAF-Ziel | keine Wiederherstellungsberechtigung ableiten; externe Exporte nicht unbemerkt zum lokalen Bestand erklären |
+| data/OfflineBackupService.kt / prepareExport, create, inspect, Prepared.close; data/OfflineBackupResolver.kt / copy; ui/OfflineBackupFeature.kt / Pickerablauf | eigene Archiv-/Import-/Original-Staging-Dateien und Zielkopie | eigene Operationskennung/Ownership, kein fachlicher Writer-Gate-Nachweis durch diese Dateien |
+| data/DrivePendingWrites.kt / rememberOriginalChange, rememberBackupOriginalChange, rememberReceiptIndexPending, rememberJsonBaseline, creation, completed* | atomare lokale Drive-Vorgangsdateien | LOCAL_ONLY; aus fachlichem Snapshot ausschließen, aktive Sync-Operation über REMOTE berücksichtigen |
+
+### Weitere aktive Synchronisation: Firestore
+
+`ReceiptViewModel.syncWithCloud` importiert Firestore-Belege über
+`ReceiptRepository.insertAll` und Einheiten über `updateWohneinheitForProperty`.
+Andere ViewModel-Schreibpfade rufen `FirestoreService.saveReceipt`,
+`deleteReceipt` und `saveWohneinheit` auf. Das sind tatsächlich vorhandene
+Schreibwege, keine Freigabe einer neuen Cloud-Funktion. Die eingehenden Änderungen
+müssen DB/PREF durchlaufen. Beim Restore müssen zusätzlich bereits gestartete
+Firestore-Schreibfolgen unterbrochen/abgewartet und neue Folgen gesperrt werden;
+ein ausschließlich auf Drive begrenzter Wartungsmodus wäre unvollständig.
+
+### Noch zu schließende Nachweise vor Produktivcode des Snapshot-Gates
+
+1. Die ausgewählte DB-Grenze gegen die tatsächlich verwendete Room-/SQLite-API
+   prüfen: generierte DAO-Statements, direkte SQL-Aufrufe, Startup-Reparatur,
+   Commit/Rollback und verschachtelte Transaktionen müssen erfasst sein.
+2. Die Preference-Adapter müssen sämtliche oben genannten fachlichen Wege
+   einschließlich Lesemigration, remove/clear und des gemischten Key-Fehlerpfads
+   abdecken. Anmelde-/Credential-Daten nicht exportieren oder überschreiben.
+3. Große Originale nicht bei blockiertem UI-Thread über eine lang gehaltene
+   globale Sperre kopieren. Entweder einen nachweislich kurzen Erfassungsschritt
+   oder vorher dokumentierte Versionierungsalternative wählen. Nicht nur einen
+   Deskriptor öffnen und später einen Hash als gemeinsamen Zeitpunkt ausgeben.
+4. Unbekannte externe/Content-URI-Versionen, Löschung und In-place-Änderung müssen
+   einen fixierten Inhalt oder Abbruch ergeben. Erst nach vollständiger Fixierung
+   freigeben und ausschließlich aus dem unveränderlichen Staging archivieren.
+5. Gezielte Nachweise sind in den noch zu erstellenden Coordinator-/Restore-Tests
+   entlang der produktiven Verantwortlichkeiten zu ergänzen: SQL/PREF/Originale
+   während Erfassung ändern, nach Freigabe Datei ändern/löschen, Startup-Schreiber,
+   paralleler manueller Lauf/Worker, laufender Drive-/Firestore-Sync und Prozessende.
+   Diese Tests werden hier **nicht** als erstellt oder ausgeführt gemeldet.
+
+Der Katalog nennt die bei dieser Basis gefundenen Grenzen. Er beweist noch keine
+lückenlose instrumentierte Writer-Abdeckung; diese ist vor einer Erfolgsaussage
+für den neuen Snapshot zwingend durch Implementierung und gezielte Tests zu belegen.
+
+
+### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
+
+- Ausgangs-Head `992b7d9455782733f4b0a55dc1d6b2d4e5299159`, weiterhin
+  Basis `302b007ad510c44fb596a0081197490d3430374e`.
+- Die erweiterte Prüfung schlug vor der Klassifikation gezielt an
+  `DrivePendingWrites.kt: noBackupFilesDir/drive-pending-writes` fehl.
+  Die technische Quelle ist nun ausdrücklich LOCAL_ONLY zugeordnet.
+- Die Guard-Schlüssel enthalten Speicher-API und Wurzelname; ein Wechsel von
+  `noBackupFilesDir` nach `filesDir` ist daher keine still akzeptierte gleiche
+  Quelle. Neue nicht zugeordnete Getter-/Speicherzugriffe verlangen eine bewusste
+  Inventarergänzung. Java- und Kotlin-Dateien im vorhandenen Main-Quellverzeichnis
+  werden für Datei-/DataStore- und Preference-Öffnungen geprüft.
+- Zwei gezielte Methoden bestanden: `persistentFileRootsAndDataStoreOwnersRequireExplicitClassification`
+  und `everySharedPreferenceOpeningMustResolveToAnExplicitClassification` aus
+  `PersistentStorageInventoryTest`. JUnit-XML auf exakte Methoden, Fehler, Skips,
+  Duplikate und Platzhalter geprüft. Keine anderen Testsuiten ausgeführt.
+- Java 21 / Gradle 9.3.1 für Tests, Roborazzi-Verify; Java 17:
+  `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden.
+  Lint-XML ohne Error-/Fatal-Befunde; `git diff --check` bestanden.
+- Geändert wurden ausschließlich diese Inventar-Testdatei und dieses Dokument.
+  App-Code, Daten, Datenbankschema, Signierung, CI und bestehende Aufgabenpläne
+  blieben unverändert. Kein Push, PR, Merge oder Emulatorlauf.
+- Der Schreibweg-Katalog benennt produktive Funktionen und notwendige
+  Koordinationspunkte. Die Implementierung und vollständige Laufzeit-Abnahme
+  eines gemeinsamen Snapshot-Gates bleiben offen; es gibt hier noch keinen
+  neuen Konsistenz- oder Vollständigkeitsnachweis für die Sicherungs-Engine.

@@ -9,20 +9,21 @@ class PersistentStorageInventoryTest {
         .firstOrNull { it.isDirectory } ?: error("Produktive Quellen für Inventarprüfung fehlen.")
 
     @Test fun persistentFileRootsAndDataStoreOwnersRequireExplicitClassification() {
-        val classifiedRoots = setOf("managed_documents", "property-images", "offline-originals",
-            "restored_receipts", "receipt_documents", "receipt_page_", "offline-backup-staging")
+        val classifiedRoots = setOf("filesDir/managed_documents", "filesDir/property-images", "filesDir/offline-originals",
+            "filesDir/restored_receipts", "filesDir/receipt_documents", "filesDir/receipt_page_", "filesDir/offline-backup-staging",
+            "noBackupFilesDir/drive-pending-writes")
         val found = mutableSetOf<String>()
-        val root = Regex("filesDir\\s*,\\s*\"([^\"]+)\"")
-        sources().walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+        val root = Regex("(filesDir|noBackupFilesDir)\\s*,\\s*\"([^\"]+)\"")
+        sources().walkTopDown().filter { it.extension in setOf("kt", "java") }.forEach { file ->
             val source = file.readText().replace(Regex("(?s)/\\*.*?\\*/|//[^\\n]*"), "")
             val matches = root.findAll(source).toList()
-            Regex("\\b(filesDir|getFilesDir|getExternalFilesDir|getExternalFilesDirs)\\b")
+            Regex("\\b(filesDir|noBackupFilesDir|getFilesDir|getNoBackupFilesDir|getExternalFilesDir|getExternalFilesDirs|dataDir|getDataDir|getDir|getDatabasePath)\\b")
                 .findAll(source).forEach { use ->
                     assertTrue("${file.name}: neuer Dateispeicher benötigt eine Sicherungszuordnung",
                         matches.any { use.range.first in it.range })
                 }
             matches.forEach { match ->
-                val directory = match.groupValues[1].substringBefore('/').substringBefore('$')
+                val directory = match.groupValues[1] + "/" + match.groupValues[2].substringBefore('/').substringBefore('$')
                 assertTrue("${file.name}: $directory ist nicht klassifiziert", directory in classifiedRoots)
                 found.add(directory)
             }
@@ -38,7 +39,7 @@ class PersistentStorageInventoryTest {
         val found = mutableSetOf<String>()
         val opening = Regex("getSharedPreferences\\s*\\(\\s*(\"[^\"]+\"|[A-Za-z_][A-Za-z0-9_]*)")
         val declaration = Regex("const\\s+val\\s+(\\w+)\\s*=\\s*\"([^\"]+)\"")
-        sources().walkTopDown().filter { it.extension == "kt" && it.name != "PersistentPreferenceInventory.kt" }
+        sources().walkTopDown().filter { it.extension in setOf("kt", "java") && it.name != "PersistentPreferenceInventory.kt" }
             .forEach { file ->
                 val source = file.readText()
                 opening.findAll(source).forEach { call ->
