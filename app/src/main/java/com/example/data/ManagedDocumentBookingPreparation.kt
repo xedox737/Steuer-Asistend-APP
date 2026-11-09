@@ -17,7 +17,7 @@ internal class ManagedDocumentBookingPreparation(
         val property = requireNotNull(database.propertyDao().getPropertyByPropertyId(document.propertyId)) { "Immobilie nicht gefunden." }
         val unitId = document.unitId.orEmpty()
         val units = UnitIdentity.read(property.wohneinheiten, property.propertyId,
-            context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)).entries
+            com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")).entries
         require(unitId.isBlank() || units.any { it.unitId == unitId }) { "Die Wohneinheit gehört nicht zur Immobilie." }
         val original = File(document.localUri.removePrefix("file://"))
         require(original.isFile && original.length() > 0 && document.sha256.isNotBlank() &&

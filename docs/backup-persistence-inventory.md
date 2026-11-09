@@ -973,3 +973,19 @@ Fehlerfreiheit und keine Skips/Duplikate geprüft. XML:
 `/tmp/immopilot-unit-settings-tests.log`. `lintDebug`, `assembleDebug`,
 `assembleDebugAndroidTest` bestanden (`/tmp/immopilot-unit-settings-build.log`),
 Lint ohne Error/Fatal, `git diff --check` bestanden. Kein Push.
+
+### Schritt 4: weitere Zugänge in Dokumenten- und Drive-Pfaden
+
+Fünf Dateien: GoogleDriveClient, ManagedDocumentBookingPreparation,
+OfflineBackupService, BankFeature und dieses Dokument. Ausschließlich bekannte
+Preference-Öffnungen auf den Inventarzugang umstellen; Cache-Zugänge des
+Drive-Clients bleiben ausdrücklich Cache. Keine Bank-/DATEV-Fachlogik ändern.
+Prüfung über Inventarguard, portablen V1-Roundtrip mit Beziehungen und
+wiederholte Dokumentenvorbereitung ohne doppelte Belege oder Originalindizes.
+
+Abnahme: drei gezielt ausgewählte Methoden bestanden; XML auf exakte
+Namen und keine Fehler/Skips/Duplikate geprüft und unter
+`/tmp/immopilot-document-preferences-results` gesichert. Testprotokoll:
+`/tmp/immopilot-document-preferences-tests.log`. `lintDebug`, `assembleDebug`
+und `assembleDebugAndroidTest` bestanden; Lint ohne Error/Fatal. Build:
+`/tmp/immopilot-document-preferences-build.log`. `git diff --check` bestanden.

@@ -301,7 +301,7 @@ internal class OfflineBackupService(private val context: Context, private val da
     private suspend fun validateRelationships() {
         val properties = database.propertyDao().getAllProperties()
         requireBackup(properties.map { it.propertyId }.distinct().size == properties.size) { "Doppelte stabile Immobilien-ID in der Sicherung." }
-        val prefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
         val units = properties.associate { property -> property.propertyId to UnitIdentity.read(property.wohneinheiten, property.propertyId, prefs).also {
             requireBackup(it.error == null) { UnitIdentity.ERROR }
         }.entries.map { it.unitId }.toSet() }
