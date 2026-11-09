@@ -954,62 +954,71 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun loadUnitById(unitPrefs: android.content.SharedPreferences, propertyId: String, unitId: String, name: String): WohneinheitStatus {
-        val idPrefix = scopedUnitPrefix(propertyId, unitId)
-        val namePrefix = scopedUnitNamePrefix(propertyId, name)
-        val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, unitId, name)
-        val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches
-
-        fun string(field: String, legacyKey: String, default: String): String {
-            if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getString(idPrefix + field, default) ?: default
-            if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
-                val value = unitPrefs.getString(namePrefix + field, default) ?: default
-                unitPrefs.edit().putString(idPrefix + field, value).apply()
-                return value
-            }
-            if (legacyAllowed && unitPrefs.contains(legacyKey)) {
-                val value = unitPrefs.getString(legacyKey, default) ?: default
-                unitPrefs.edit().putString(idPrefix + field, value).apply()
-                return value
-            }
-            return default
+        var migrationWriter: java.io.Closeable? = null
+        fun publishMigration(action: () -> Unit) {
+            if (migrationWriter == null) migrationWriter = com.example.data.OfflineBackupCoordinator.shared.beginWrite()
+            action()
         }
+        try {
+            val idPrefix = scopedUnitPrefix(propertyId, unitId)
+            val namePrefix = scopedUnitNamePrefix(propertyId, name)
+            val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, unitId, name)
+            val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches
 
-        fun number(field: String, legacyKey: String): Double {
-            if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
-            if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
-                val value = unitPrefs.getFloat(namePrefix + field, 0f)
-                if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
-                return value.toDouble()
+            fun string(field: String, legacyKey: String, default: String): String {
+                if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getString(idPrefix + field, default) ?: default
+                if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
+                    val value = unitPrefs.getString(namePrefix + field, default) ?: default
+                    publishMigration { unitPrefs.edit().putString(idPrefix + field, value).apply() }
+                    return value
+                }
+                if (legacyAllowed && unitPrefs.contains(legacyKey)) {
+                    val value = unitPrefs.getString(legacyKey, default) ?: default
+                    publishMigration { unitPrefs.edit().putString(idPrefix + field, value).apply() }
+                    return value
+                }
+                return default
             }
-            if (legacyAllowed && unitPrefs.contains(legacyKey)) {
-                val value = unitPrefs.getFloat(legacyKey, 0f)
-                if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
-                return value.toDouble()
+
+            fun number(field: String, legacyKey: String): Double {
+                if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
+                if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
+                    val value = unitPrefs.getFloat(namePrefix + field, 0f)
+                    if (value.isFinite() && value >= 0f) publishMigration { unitPrefs.edit().putFloat(idPrefix + field, value).apply() }
+                    return value.toDouble()
+                }
+                if (legacyAllowed && unitPrefs.contains(legacyKey)) {
+                    val value = unitPrefs.getFloat(legacyKey, 0f)
+                    if (value.isFinite() && value >= 0f) publishMigration { unitPrefs.edit().putFloat(idPrefix + field, value).apply() }
+                    return value.toDouble()
+                }
+                return 0.0
             }
-            return 0.0
+
+            val stored = WohneinheitStatus(
+                name = name,
+                label = string("label", "unit_label_$name", name),
+                status = string("status", "unit_status_$name", "Leerstand"),
+                mieter = string("mieter", "unit_mieter_$name", ""),
+                kaltmiete = number("rent", "unit_rent_$name"),
+                wohnflaeche = number("area", "unit_area_$name"),
+                mietvertragsstart = string("start", "unit_start_$name", ""),
+                unitId = unitId
+            )
+            val periods = TenantHistoryStore.load(getApplication(), propertyId, unitId, name)
+            if (periods.isEmpty()) return stored
+            val period = TenantHistoryStore.currentAt(periods)
+            return if (period != null) stored.copy(
+                status = "Vermietet", mieter = period.tenantName,
+                kaltmiete = period.amountsAt(java.time.LocalDate.now()).kaltmiete,
+                mietvertragsstart = period.startDate
+            ) else stored.copy(
+                status = stored.status.takeUnless { it == "Vermietet" } ?: "Leerstand",
+                mieter = "", kaltmiete = 0.0, mietvertragsstart = ""
+            )
+        } finally {
+            migrationWriter?.close()
         }
-
-        val stored = WohneinheitStatus(
-            name = name,
-            label = string("label", "unit_label_$name", name),
-            status = string("status", "unit_status_$name", "Leerstand"),
-            mieter = string("mieter", "unit_mieter_$name", ""),
-            kaltmiete = number("rent", "unit_rent_$name"),
-            wohnflaeche = number("area", "unit_area_$name"),
-            mietvertragsstart = string("start", "unit_start_$name", ""),
-            unitId = unitId
-        )
-        val periods = TenantHistoryStore.load(getApplication(), propertyId, unitId, name)
-        if (periods.isEmpty()) return stored
-        val period = TenantHistoryStore.currentAt(periods)
-        return if (period != null) stored.copy(
-            status = "Vermietet", mieter = period.tenantName,
-            kaltmiete = period.amountsAt(java.time.LocalDate.now()).kaltmiete,
-            mietvertragsstart = period.startDate
-        ) else stored.copy(
-            status = stored.status.takeUnless { it == "Vermietet" } ?: "Leerstand",
-            mieter = "", kaltmiete = 0.0, mietvertragsstart = ""
-        )
     }
 
     private fun loadUnits(metaUnitsStr: String, propertyId: String): List<WohneinheitStatus> {

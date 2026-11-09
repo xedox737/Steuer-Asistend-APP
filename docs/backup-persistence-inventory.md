@@ -1055,3 +1055,39 @@ beendete weder Compiler noch Tests; Gradle und XML bestanden. `lintDebug`,
 `git diff --check` bestanden. Der ViewModel-Diff wurde zusätzlich nach
 Rücknahme ausschließlich der Koordinationshüllen und Einrückungen exakt
 gegen die unveränderte fachliche Ausgangslogik verglichen. Kein Push.
+
+### Schritt 4: mehrteilige Einheitenmigration beim Lesen
+
+Drei Dateien: ReceiptViewModel, OfflineBackupViewModelSnapshotTest und dieses
+Dokument. loadUnitById kopiert ältere Felder bisher über mehrere Editoren.
+Die Anmeldung beginnt erst bei der ersten tatsächlich erforderlichen Kopie
+und bleibt bis zum Ende des Lese-/Migrationsvorgangs bestehen. Kanonische
+Reads ohne Veröffentlichung bleiben unverändert ruhig. Ein echter ViewModel-
+Test beobachtet die Statusabfrage zwischen erster und zweiter Feldkopie;
+Robolectric-Application delegiert sämtliche Preference-Daten an echte Stores.
+Keine Änderung der Schlüssel, Werte, Aliasregeln oder Mietberechnungen.
+
+Vorab-Nachweis: Der neue Test erreichte tatsächlich die Abfrage zwischen
+den Editoren und meldete `expected:<[true]> but was:<[false]>`: Erfassung
+war dort noch erlaubt. Keine Timeout-/Initialisierungsursache. XML:
+`/tmp/immopilot-unit-read-migration-red.xml`; Protokoll:
+`/tmp/immopilot-unit-read-migration-red.log`. Danach eine erst bei
+tatsächlicher Veröffentlichung beginnende Anmeldung ergänzt, Freigabe
+auch bei Ausnahme/Return im finally. Alle vier Kopierstellen nutzen sie.
+
+Offener Hinweis für den vollständigen Snapshot-/Restore-Vertrag: Die V1-
+Schemasuche lässt `sqlite_*` aus. Für REPLACE_FULL sind neben den expliziten
+Zeilen-IDs auch ursprüngliche AUTOINCREMENT-Höchststände (`sqlite_sequence`)
+zu erfassen und zu prüfen, damit nach archivierten Löschungen keine alten
+Kennungen erneut vergeben werden. Dies ist noch kein implementierter
+V2-Transport; keine Änderung an Room-Schema oder Migrationen.
+
+Abnahme: fünf ausgewählte Methoden bestanden, exakte XML-Namen und keine
+Fehler/Skips/Duplikate geprüft (`/tmp/immopilot-unit-read-migration-results`;
+`/tmp/immopilot-unit-read-migration-tests.log`). Der neue tatsächliche
+ViewModel-Test prüft den beobachteten Editor-Zwischenraum, unveränderte
+Kennung/Werte/Legacy-Daten und den ruhigen anschließenden kanonischen Read.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-unit-read-migration-build.log`), Lint ohne Error/Fatal,
+`git diff --check` bestanden. Fachliche Ausgangslogik nach Abzug allein der
+Anmeldung/Hüllen/Einrückungen exakt verglichen. Kein GitHub-Upload.
