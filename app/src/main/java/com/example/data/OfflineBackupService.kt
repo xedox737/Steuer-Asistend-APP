@@ -61,6 +61,7 @@ internal class OfflineBackupService(private val context: Context, private val da
         else -> value
     }
     private val pathColumns = setOf("imageUrl", "pdfPath", "bildPfad", "localUri")
+    private val originalResolver = OfflineBackupResolver(context)
 
     private fun originalOwner(table: String, columns: JSONArray, row: JSONArray, path: String): String {
         fun field(name: String): String = (0 until columns.length())
@@ -76,29 +77,12 @@ internal class OfflineBackupService(private val context: Context, private val da
         val id = listOf("documentId", "internalId", "propertyId", "id").firstNotNullOfOrNull {
             field(it).takeIf(String::isNotBlank)
         }.orEmpty()
-        val filename = field("originalFilename").ifBlank { field("storedFilename") }.ifBlank { path }
+        val filename = field("originalFilename").ifBlank { field("storedFilename") }.ifBlank {
+            val uri = android.net.Uri.parse(path)
+            if (uri.scheme != null) uri.lastPathSegment.orEmpty().ifBlank { "Originaldatei" } else path
+        }
             .substringAfterLast('/').substringAfterLast('\\')
         return "$kind „$title“ (ID: $id, Objekt: ${field("propertyId")}, Datei: $filename)"
-    }
-
-    private fun copyOriginal(path: String, destination: File, owner: String): String {
-        try {
-            val source = File(path.removePrefix("file://"))
-            requireBackup(source.exists()) { "$owner: Originaldatei fehlt lokal. Bitte zuerst die Originale wiederherstellen." }
-            requireBackup(source.isFile && source.canRead()) { "$owner: Originaldatei ist nicht lesbar. Bitte den Zugriff prüfen." }
-            requireBackup(source.length() > 0) { "$owner: Originaldatei ist leer (0 Byte)." }
-            requireBackup(source.length() <= 1024L * 1024 * 1024) { "$owner: Originaldatei überschreitet die Grenze von 1 GiB." }
-            source.copyTo(destination)
-            val sha = com.example.util.ReceiptManifestService.calculateSha256(destination)
-            requireBackup(sha == com.example.util.ReceiptManifestService.calculateSha256(source)) {
-                "$owner: Originaldatei wurde während der Sicherung geändert. Bitte erneut versuchen."
-            }
-            return sha
-        } catch (error: java.io.IOException) {
-            throw OfflineBackupValidationException("$owner: Originaldatei konnte nicht vollständig gelesen werden. Bitte Datei und Zugriff prüfen.")
-        } catch (error: SecurityException) {
-            throw OfflineBackupValidationException("$owner: Zugriff auf die Originaldatei wurde verweigert.")
-        }
     }
 
     /** The document picker must only receive an already prepared, validated archive. */
@@ -113,6 +97,37 @@ internal class OfflineBackupService(private val context: Context, private val da
         } catch (error: Throwable) {
             archive.delete()
             throw error
+        }
+    }
+
+    /** URI grants and query credentials are not portable archive references. */
+    private fun replacePrivateUriReferences(root: JSONObject, files: JSONArray) {
+        val aliases = (0 until files.length()).map { files.getJSONObject(it).getString("path") }
+            .filter { path -> android.net.Uri.parse(path).let { it.scheme != null && (it.query != null || it.fragment != null) } }
+            .associateWith { "offline-original-${StableDocumentIdentity.sha256(it.toByteArray(Charsets.UTF_8))}" }
+        if (aliases.isEmpty()) return
+        for (index in 0 until files.length()) {
+            val item = files.getJSONObject(index)
+            aliases[item.getString("path")]?.let { item.put("path", it) }
+        }
+        val tables = root.getJSONObject("tables")
+        tables.keys().forEach { name ->
+            val table = tables.getJSONObject(name)
+            val columns = table.getJSONArray("columns")
+            val rows = table.getJSONArray("rows")
+            for (c in 0 until columns.length()) if (columns.getString(c) in pathColumns) {
+                for (r in 0 until rows.length()) {
+                    val row = rows.getJSONArray(r)
+                    val raw = row.optString(c, "")
+                    val direct = aliases[raw]
+                    if (direct != null) row.put(c, direct)
+                    else if (raw.isNotBlank() && columns.getString(c) != "localUri" &&
+                        !(name == "property_metadata" && columns.getString(c) == "bildPfad")) {
+                        val paths = ReceiptOriginalChain.paths(raw)
+                        if (paths.any { it in aliases }) row.put(c, JSONArray(paths.map { aliases[it] ?: it }).toString())
+                    }
+                }
+            }
         }
     }
 
@@ -134,6 +149,26 @@ internal class OfflineBackupService(private val context: Context, private val da
             }
             val paths = linkedMapOf<String, MutableSet<String>>()
             val tables = root.getJSONObject("tables")
+            val documents = tables.getJSONObject("managed_documents")
+            val documentColumns = documents.getJSONArray("columns")
+            fun column(name: String) = (0 until documentColumns.length()).single { documentColumns.getString(it) == name }
+            val documentRows = documents.getJSONArray("rows")
+            fun metadataOnly(row: JSONArray) = row.optString(column("receiptInternalId"), "").isNotBlank() &&
+                row.optString(column("sha256"), "").isBlank() && row.optLong(column("fileSizeBytes"), 0) == 0L &&
+                row.optString(column("driveFileId"), "").isBlank()
+            for (index in 0 until documentRows.length()) {
+                val row = documentRows.getJSONArray(index)
+                if (row.optString(column("localUri"), "").isBlank() && !metadataOnly(row)) {
+                    val id = row.optString(column("documentId"), "")
+                    requireBackup(id.isNotBlank()) { "Ein Dokumentoriginal besitzt keine stabile Dokument-ID." }
+                    // Archive-only key: a verified local candidate can supply the bytes without repairing the live row.
+                    row.put(column("localUri"), "offline-original:${StableDocumentIdentity.sha256(id.toByteArray(Charsets.UTF_8))}")
+                }
+            }
+            val documentValues = tableRows(root, "managed_documents")
+            val documentsByPath = documentValues.groupBy { text(it["localUri"]) }
+            val documentsByHash = documentValues.groupBy { text(it["sha256"]) }
+            val originalDirectory = File(context.filesDir, "managed_documents")
             tables.keys().forEach { name ->
                 val table = tables.getJSONObject(name); val columns = table.getJSONArray("columns"); val rows = table.getJSONArray("rows")
                 for (c in 0 until columns.length()) if (columns.getString(c) in pathColumns) {
@@ -151,22 +186,32 @@ internal class OfflineBackupService(private val context: Context, private val da
             val files = JSONArray()
             paths.entries.forEachIndexed { index, (path, owners) ->
                 val copied = File(directory, index.toString())
-                val sha = copyOriginal(path, copied, owners.joinToString("; "))
+                val claims = documentsByPath[path].orEmpty()
+                val hashes = claims.map { text(it["sha256"]) }.filter(String::isNotBlank).distinct()
+                val sizes = claims.mapNotNull { (it["fileSizeBytes"] as? Number)?.toLong()?.takeIf { size -> size > 0 } }.distinct()
+                val owner = owners.joinToString("; ")
+                requireBackup(hashes.size <= 1 && sizes.size <= 1) { "$owner: Widersprüchliche Originalmetadaten. Bitte die Datei prüfen." }
+                val expected = hashes.singleOrNull()
+                val candidates = if (expected == null) emptyList() else {
+                    val storedCopies = claims.mapNotNull { claim ->
+                        val filename = text(claim["storedFilename"])
+                        if (filename.isBlank() || filename in setOf(".", "..") || '/' in filename || '\\' in filename) null
+                        else File(originalDirectory, filename).takeIf { candidate ->
+                            runCatching { candidate.canonicalFile.parentFile == originalDirectory.canonicalFile }.getOrDefault(false)
+                        }?.absolutePath
+                    }
+                    storedCopies + documentsByHash[expected].orEmpty().map { text(it["localUri"]) }.filter(String::isNotBlank)
+                }
+                val sha = originalResolver.copy(path, copied, owner, expected, sizes.singleOrNull(), candidates)
                 files.put(JSONObject().put("path", path).put("entry", "files/$index").put("sha256", sha).put("size", copied.length()))
             }
             val originalsByPath = (0 until files.length()).associate {
                 val file = files.getJSONObject(it); file.getString("path") to file.getString("sha256")
             }
-            val documents = tables.getJSONObject("managed_documents")
-            val documentColumns = documents.getJSONArray("columns")
-            fun column(name: String) = (0 until documentColumns.length()).single { documentColumns.getString(it) == name }
-            val documentRows = documents.getJSONArray("rows")
             for (index in 0 until documentRows.length()) {
                 val row = documentRows.getJSONArray(index)
                 val path = row.optString(column("localUri"), "")
-                requireBackup(path.isNotBlank() || (row.optString(column("receiptInternalId"), "").isNotBlank() &&
-                    row.optString(column("sha256"), "").isBlank() && row.optLong(column("fileSizeBytes"), 0) == 0L &&
-                    row.optString(column("driveFileId"), "").isBlank())) {
+                requireBackup(path.isNotBlank() || metadataOnly(row)) {
                     "Ein Dokumentoriginal fehlt lokal. Bitte zuerst die Originale herunterladen."
                 }
                 val expected = row.optString(column("sha256"), "")
@@ -174,7 +219,6 @@ internal class OfflineBackupService(private val context: Context, private val da
                     "Ein Original stimmt nicht mit seiner gespeicherten Prüfsumme überein. Bitte zuerst die Datei prüfen."
                 }
             }
-            val documentValues = tableRows(root, "managed_documents")
             val receiptValues = tableRows(root, "receipts")
             receiptValues.forEach { receipt ->
                 val claimsOriginal = text(receipt["driveFileId"]).isNotBlank() || text(receipt["originalMimeType"]).isNotBlank() || (receipt["fileSizeBytes"] as? Number)?.toLong()?.let { it > 0 } == true
@@ -189,6 +233,7 @@ internal class OfflineBackupService(private val context: Context, private val da
             }
             requireBackup(files.length() <= 10000 && dataSize(files) <= 2L * 1024 * 1024 * 1024 - 64L * 1024 * 1024) { "Die Sicherung ist zu groß für dieses Format." }
             root.put("files", files)
+            replacePrivateUriReferences(root, files)
             val data = root.toString().toByteArray(Charsets.UTF_8)
             requireBackup(data.size <= 64 * 1024 * 1024) { "Die Sicherungsdaten sind zu groß für dieses Format." }
             ZipOutputStream(output).use { zip ->

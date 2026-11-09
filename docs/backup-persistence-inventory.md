@@ -79,6 +79,7 @@ zu leeren. String, Int, Long, Float, Boolean und StringSet bleiben typgetreu.
 | receipt_page_* und referenzierte Belegoriginale | Scanbilder, PDFs und Originaldateien | BACKUP, vorhandener Belegupload; Fehlschlag zählt jetzt als unvollständige Sicherung |
 | filesDir/managed_documents | Importierte/gescannte Objekt- und Einheitsdokumente | BACKUP, vorhandener Dokumentupload + Dokumentindex; Fehlschlag verhindert Erfolgsmeldung |
 | filesDir/offline-backup-staging | Vor Zieldialog erstelltes und geprüftes V1-Archiv | LOCAL_ONLY, nach Zielkopie, Fehler oder Dialogabbruch entfernen; noch kein prozessfester Coordinator |
+| noBackupFilesDir/drive-pending-writes | Drive-Schreibabsichten, Bestätigungen und Hash-Vorstände, keine Originalbytes | LOCAL_ONLY; auf ein anderes Gerät weder übertragen noch als auszuführende Aufträge wiederherstellen |
 | filesDir/restored_receipts, filesDir/receipt_documents, filesDir/offline-originals | Wiederhergestellte Originale und zusätzliche Beleganhänge | BACKUP über persistierte Dateireferenzen; unreferenzierte Dateien nicht still als vollständig erfasst ausgeben |
 | filesDir/property-images | Objektbilder | BACKUP, neu als Bytes im Zusatzbackup; Restore unter objektbezogenem SHA-256-Dateiname statt fremdem Dateipfad |
 | cacheDir (DATEV-CSV/ZIP) | Noch vorhandene Exportartefakte aus DatevCsvOutput und DatevExporter | Fachlich aufbewahrte Exporte separat inventarisieren; aktuell im lokalen V1 nicht erfasst |
@@ -288,3 +289,102 @@ WorkManager-Version und das Benachrichtigungsverhalten zu bestätigen.
   ist in `ReceiptDatabase.kt` definiert; eine eigene `ReceiptRepository.kt`
   existiert an dieser Basis nicht. Die vorhandenen Drive-Mutexe koordinieren
   Initialisierung, Index und Einzelmetadaten, kein gemeinsames Snapshot-Gate.
+
+## Schritt 3: lokale Originalauflösung
+
+`OfflineBackupResolver` übernimmt das begrenzte, abbrechbare Lesen und Prüfen
+vorhandener lokaler Originale. Er erhält ausschließlich Referenzen aus dem für
+den Lauf erfassten Datenbestand und schreibt nur in das laufbezogene Staging.
+
+- Absolute Pfade, dekodierte `file:`-URIs und bereits berechtigte `content:`-URIs
+  werden unterstützt. Keine neue Ordner-/URI-Freigabe, Anmeldung oder Berechtigung
+  wird ausgelöst; fehlender Zugriff führt zum kontrollierten Fehler.
+- Ist ein Original nicht erreichbar, darf eine vorhandene Kopie nur mit dem
+  gespeicherten SHA-256 des angeforderten Originals einspringen. Kandidaten stammen
+  aus dessen exaktem `storedFilename` im kanonischen privaten Verzeichnis
+  `managed_documents` oder aus erfassten Dokumentreferenzen mit demselben Hash.
+  Keine Verzeichnissuche nach ähnlichen Namen, kein Fallback ohne aufgezeichneten
+  Hash und keine Traversal-/Symlink-Flucht über `storedFilename`.
+- Auch ein leerer lokaler Dokumentverweis kann über die gespeicherte Identität und
+  Prüfsumme aufgelöst werden. Dafür entsteht ausschließlich im Archiv eine eigene
+  Referenz; der leere produktive Verweis wird nicht repariert oder überschrieben.
+  Die bestehende Ausnahme für reine Beleg-Metadatenprojektionen bleibt unverändert.
+- Mehrere widersprüchliche Hash-/Größenangaben für denselben Pfad werden abgelehnt.
+  Eine vorhandene, aber inhaltlich veränderte Primärdatei wird nicht still durch
+  eine ältere passende Kopie ersetzt. Gespeicherte positive Größen werden geprüft.
+- Die Grenze von 1 GiB je Original bleibt erhalten und gilt auch beim Lesen von
+  Providern mit unbekannter Länge. SHA-256 wird aus den tatsächlich gelesenen
+  Bytes berechnet; Fehler-Sentinels wie `SHA_ERROR` sind kein Inhaltsnachweis.
+- Eine zweite vollständige Quellenlesung muss zum kopierten Inhalt passen.
+  Abbruch und Fehler räumen ausschließlich die neu angelegte Staging-Datei auf.
+  Quellbytes, produktive Dateiverweise und Metadaten bleiben unverändert.
+- URI-Queryparameter und Fragmente werden weder in Fehlermeldungen angezeigt noch
+  als Klartext-Referenzen im V1-Archiv gespeichert. Solche Referenzen werden nur
+  innerhalb des Archivs durch deterministische, undurchsichtige Kennungen ersetzt,
+  einschließlich mehrseitiger Belegketten und Manifestzuordnung. Produktive Daten
+  werden dafür nicht umgeschrieben. Es werden keine URI-Rechte übertragen.
+- Der Restore ordnet die gesicherten Bytes wie bisher einem privaten Zielpfad zu;
+  ursprüngliche URI-Zugangsdaten sind dafür nicht erforderlich.
+  Das ist noch kein gemeinsamer Room-/Preference-/Datei-Snapshot: eine nachträgliche
+  Hash-Prüfung ersetzt ausdrücklich nicht den Vertrag und die Writer-Matrix aus Schritt 4.
+
+Optionales automatisches Cloud-Nachladen ist in diesem Teil nicht aktiviert.
+Die geprüften vorhandenen Drive-Downloader liefern vollständige `ByteArray`s;
+ihre unveränderte Verwendung wäre für Originale bis 1 GiB kein geeigneter
+Streaming-Pfad. Cloud-only-Originale bleiben daher ein sichtbarer Abbruch mit
+Benutzeraktion; kein automatischer Sync, keine Drive-Schreibzugriffe und keine
+Anmeldedialoge aus der lokalen Sicherung. Ein späterer Downloadadapter muss den
+vorhandenen autorisierten Zugriff lesend und mit begrenztem Speicher verwenden.
+
+### Zusätzliche Befunde für Schritt 4 (noch keine vollständige Writer-Matrix)
+
+- Die einzige produktive `Room.databaseBuilder`-Stelle liegt in
+  `ReceiptDatabase.kt`, `AppDatabase.getDatabase`. Ein DAO-Mutex allein wäre
+  trotzdem unvollständig: `AppDatabaseCallback.onOpen` startet einen asynchronen
+  `UPDATE receipts` für fehlende `internalId`/`displayId` über `execSQL`.
+  Dieser Start-/Reparaturpfad muss in Gate und Identitätsprüfung einbezogen werden.
+- `DrivePendingWrites` schreibt eigene atomare Vorgangsdateien unter
+  `noBackupFilesDir/drive-pending-writes`. Es sind technische Verbindungsnachweise,
+  keine fachlichen Originale. Die bisherige Dateiwurzelprüfung erfasst `filesDir`;
+  vor der vollständigen Inventar-Abnahme ist ihre Abdeckung auf diese weitere
+  Speicher-API auszudehnen. Die Android-Bezeichnung `noBackupFilesDir` allein
+  wäre keine ausreichende fachliche Klassifikation für künftige neue Quellen.
+- Ein Vorab-Suchlauf fand zusätzlich zu den DAO-Deklarationen direkte
+  Preference-, Datei- und SQL-Schreibstellen. Diese Fundstellen sind erst noch
+  Funktionen, Datenquellen und konkreten Koordinationspunkten zuzuordnen;
+  eine vollständige Matrix oder globale Snapshot-Sperre wird hier nicht behauptet.
+
+
+### Prüfnachweis der lokalen Originalauflösung (09.11.2026)
+
+- Ausgangs-Head `c98a226a75bf6d246ae84d29257442d31c23da04`, weiterhin Basis
+  `302b007ad510c44fb596a0081197490d3430374e`; ausschließlich Featurebranch.
+- Vor der Korrektur gezielt rot nachgewiesen: veralteter Pfad trotz passender
+  Kopie, leeres `localUri`, kodierte Datei-URI, berechtigte Content-URI,
+  URI-Parameter in Fehlermeldung/Archiv und übergroße Primärdatei trotz älterer Kopie.
+- Abschließend 49 gezielte Methoden bestanden: OfflineBackupServiceTest (33),
+  OfflineBackupResolverTest (6), OfflineBackupRelationTest (4),
+  OfflineBackupPickerComposeTest (5) und die Dateiwurzel-Methode aus
+  PersistentStorageInventoryTest (1). JUnit-XML gegen die Methoden der Quellen
+  geprüft: keine Fehler, Skips, Duplikate oder Suite-Platzhalter.
+- Neue Schutzfälle umfassen falsche Kopien, fehlende Hashes bei veraltetem und
+  leerem Verweis, Traversal, verweigerte URI-Rechte, Mehrseiten-Restore ohne
+  URI-Queryparameter, zweimaligen Restore ohne Dubletten, Datenänderung beim
+  Rücklesen, Größenabweichung, Streaming-Limit, Abbruch und vorhandene Zieldatei.
+- Eine fehlgeschlagene Mehrseitenprüfung wurde auf den statischen FileProvider-
+  Cache zwischen Robolectric-Anwendungsinstanzen zurückgeführt. Die Testisolation
+  wurde nach dem vorhandenen Compose-Testmuster korrigiert; alle Assertions blieben
+  erhalten. Der vollständige betroffene Service-Lauf und die Abschlusssammlung
+  wurden danach erfolgreich geprüft, ohne Timeout-Erhöhung oder blinden Retry.
+- Java 21 / Gradle 9.3.1 für Tests, Roborazzi-Verify ohne neue Screenshotaufnahme;
+  Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden.
+  Lint-XML ohne Error-/Fatal-Befunde; `git diff --check` bestanden.
+- Debug-Signierzertifikat unverändert:
+  `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
+- Keine Room-Migration, Preference-Serialisierungsänderung, neue Bibliothek,
+  Manifest-/Berechtigungsänderung oder produktive Datenreparatur.
+  Kein automatischer Cloud-Download, kein Push/PR/Merge, kein Emulatorlauf.
+- Der Gesamtplan bleibt offen: vollständiges Inventar und Writer-Matrix,
+  konsistenter Snapshot, V2-Verschlüsselung, sichere Destination und Probe-Restore,
+  ersetzender Restore mit Wiederanlauf, dauerhafter Verlauf, Scheduler/Worker und
+  Geräte-/Emulatorabnahme. Das gesondert freizugebende enge CI-Profil bleibt offen.
