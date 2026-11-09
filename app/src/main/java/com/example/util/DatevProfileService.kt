@@ -13,7 +13,7 @@ object DatevProfileService {
     private val jsonAdapter = moshi.adapter(DatevProfile::class.java)
 
     fun getActiveProfile(context: Context): DatevProfile {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         val json = prefs.getString(KEY_ACTIVE_PROFILE_JSON, null)
         return if (!json.isNullOrBlank()) {
             try {
@@ -29,7 +29,7 @@ object DatevProfileService {
     }
 
     fun saveActiveProfile(context: Context, profile: DatevProfile) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         val json = jsonAdapter.toJson(profile)
         prefs.edit().putString(KEY_ACTIVE_PROFILE_JSON, json).apply()
     }

@@ -94,7 +94,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
             ?: allLoans.filter { it.propertyId == selectedPropertyId }
     } else allLoans
     val receipts = if (propertyScoped || propertyId != null) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts
-    val assignmentPrefs = remember(context) { context.getSharedPreferences("loan_interest_assignments", 0) }
+    val assignmentPrefs = remember(context) { com.example.data.PersistentPreferenceInventory.open(context, "loan_interest_assignments") }
 
     var showManager by remember(selectedPropertyId) { mutableStateOf(false) }
     var editingLoan by remember(selectedPropertyId) { mutableStateOf<Loan?>(null) }

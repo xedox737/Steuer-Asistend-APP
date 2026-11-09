@@ -955,3 +955,21 @@ Inventarguard), XML ohne Fehler/Skips/Duplikate geprüft. Ergebnisse:
 `/tmp/immopilot-settings-writers-tests.log`. `lintDebug`, `assembleDebug` und
 `assembleDebugAndroidTest` bestanden, Lint ohne Error/Fatal; Buildprotokoll
 `/tmp/immopilot-settings-writers-build.log`. Kein GitHub-Upload.
+
+### Schritt 4: Aufgaben, Darlehenszuordnungen und Einheiten-Metadaten
+
+Nächste fünf Dateien: PropertyTaskFeature, LoanFeature, UnifiedUnitsFeature,
+DatevProfileService und dieses Dokument. Die bekannten Preference-Zugänge
+werden über das Inventar geöffnet. Der bestehende Statusdialog veröffentlicht
+Mietverlauf, Einheitenstatus und Statusdatum zusammen unter einer logischen
+Schreibanmeldung; seine Validierungen und Werte bleiben unverändert. Die
+asynchronen ViewModel-/Cloud-Pfade werden anschließend separat angebunden.
+Prüfung: Inventarguard, vollständige Preference-Wiederherstellung mit stabilen
+Zuordnungen und Aktualisierung des bestehenden ViewModels nach Restore.
+
+Abnahme: alle drei ausgewählten Methoden bestanden; exakte XML-Namen,
+Fehlerfreiheit und keine Skips/Duplikate geprüft. XML:
+`/tmp/immopilot-unit-settings-results`; Tests:
+`/tmp/immopilot-unit-settings-tests.log`. `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden (`/tmp/immopilot-unit-settings-build.log`),
+Lint ohne Error/Fatal, `git diff --check` bestanden. Kein Push.

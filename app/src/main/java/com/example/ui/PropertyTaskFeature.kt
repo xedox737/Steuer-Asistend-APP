@@ -75,7 +75,7 @@ internal object PropertyTaskStore {
     private fun key(propertyId: String) = "tasks_$propertyId"
 
     fun read(context: Context, propertyId: String): StoredListRead<PropertyTask> {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
         if (!prefs.contains(key(propertyId))) return StoredListRead(emptyList(), false)
         val raw = runCatching { requireNotNull(prefs.getString(key(propertyId), null)) }
             .getOrElse { return StoredListRead(emptyList(), true, true) }
@@ -122,7 +122,7 @@ internal object PropertyTaskStore {
                 put("updatedAt", task.updatedAt)
             })
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(key(propertyId), arr.toString()).commit()
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS).edit().putString(key(propertyId), arr.toString()).commit()
     }
 
     fun upsert(context: Context, task: PropertyTask): Boolean = synchronized(this) {
