@@ -1223,3 +1223,33 @@ Room-Zeile, stabile Einheit, Preferences und Auswahl vollständig vorhanden.
 `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
 (`/tmp/immopilot-viewmodel-mutations-build.log`), Lint ohne Error/Fatal,
 `git diff --check` bestanden. Keine Änderung an SDK-Auswahl oder Prüfregeln.
+
+### Separater Inventarschritt: inaktiver Legacy-Erzeugerpfad
+
+Der Backend-Prüflauf bestand zehn Methoden und zeigte einen bereits bestehenden
+Inventarfehler: Der Quelltest verlangte weiterhin eine aktive Öffnung von
+`filesDir/restored_receipts`. Auch am unveränderten Head `c6fef75` gibt es keine
+solche produktive Quellstelle (`rg`); Historie `3673862` ersetzte den alten
+Downloadpfad durch neue Versionen in managed_documents. Die Backend-Änderungen
+sind deshalb unverändert in einem benannten lokalen Stash gesichert und dieser
+Prüfvertrag wird als eigener Dreidateien-Schritt bearbeitet, bevor die fünf
+Backend-Dateien fortgeführt werden.
+
+`restored_receipts` bleibt bewusst klassifizierter Legacy-Datenbestand.
+Lediglich seine Erzeugerwurzel ist ausdrücklich inaktiv. Die Gleichheitsprüfung
+verlangt weiterhin genau alle aktiven Quellwurzeln; unbekannte Zugriffe, neue
+DataStores und eine unkommentierte Reaktivierung des alten Pfads werden weiterhin
+abgelehnt. Keine Absenkung auf eine bloße Teilmengenprüfung. Ein neuer Service-
+Roundtrip legt das einzige referenzierte Original in den alten Ordner, entfernt
+nur dessen synthetische frühere Kopie und prüft Export sowie zweimaliges Restore
+mit unveränderten Bytes, stabilen IDs und Beziehungen. Keine Nutzerdaten berührt.
+
+Abnahme des getrennten Inventarschritts: drei exakt ausgewählte Methoden
+bestanden; XML ohne Fehler/Skips/Duplikate geprüft und unter
+`/tmp/immopilot-retired-root-inventory-results` gesichert. Tests:
+`/tmp/immopilot-retired-root-inventory-tests.log`. Der Legacy-Roundtrip erhält
+Originalbytes, stabile IDs und Beziehungen auch beim zweiten Restore.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-retired-root-inventory-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Ausschließlich zwei Testdateien und Dokument
+geändert; Backend-Fortsetzung folgt mit unveränderten gesicherten Dateien.

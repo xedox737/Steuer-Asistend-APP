@@ -12,6 +12,9 @@ class PersistentStorageInventoryTest {
         val classifiedRoots = setOf("filesDir/managed_documents", "filesDir/property-images", "filesDir/offline-originals",
             "filesDir/restored_receipts", "filesDir/receipt_documents", "filesDir/receipt_page_", "filesDir/offline-backup-staging",
             "noBackupFilesDir/drive-pending-writes")
+        // No current producer opens this legacy directory; existing referenced bytes remain backup data.
+        val retiredProducerRoots = setOf("filesDir/restored_receipts")
+        assertTrue(classifiedRoots.containsAll(retiredProducerRoots))
         val found = mutableSetOf<String>()
         val root = Regex("(filesDir|noBackupFilesDir)\\s*,\\s*\"([^\"]+)\"")
         sources().walkTopDown().filter { it.extension in setOf("kt", "java") }.forEach { file ->
@@ -31,7 +34,8 @@ class PersistentStorageInventoryTest {
                 Regex("\\b(preferencesDataStore|dataStore|DataStoreFactory|PreferenceDataStoreFactory)\\s*[.(]")
                     .containsMatchIn(source))
         }
-        assertEquals("Dateiinventar enthält veraltete oder fehlende Speicher", classifiedRoots, found)
+        assertEquals("Dateiinventar enthält veraltete oder fehlende aktive Speicher",
+            classifiedRoots - retiredProducerRoots, found)
     }
 
     @Test fun everySharedPreferenceOpeningMustResolveToAnExplicitClassification() {

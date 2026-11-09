@@ -106,6 +106,30 @@ class OfflineBackupServiceTest {
 
     private suspend fun backup(): ByteArray = ByteArrayOutputStream().also { sourceService.create(it) }.toByteArray()
 
+    @Test fun referencedOriginalFromRetiredDownloadDirectoryRemainsPortableAndRestoresTwice() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val legacy = File(source.filesDir, "restored_receipts/legacy-original.pdf")
+        legacy.parentFile!!.mkdirs()
+        legacy.writeBytes(originalBytes)
+        sourceDatabase.managedDocumentDao().upsert(document.copy(localUri = legacy.absolutePath))
+        assertTrue(File(document.localUri).delete())
+        val bytes = backup()
+        assertEquals(legacy.absolutePath, sourceDatabase.managedDocumentDao().getById(document.documentId)!!.localUri)
+        assertArrayEquals(originalBytes, legacy.readBytes())
+        repeat(2) {
+            targetService.inspect(ByteArrayInputStream(bytes)).use { prepared ->
+                assertEquals(1, prepared.fileCount)
+                targetService.restore(prepared)
+            }
+            val restored = targetDatabase.managedDocumentDao().getById(document.documentId)!!
+            assertEquals(document, restored.copy(localUri = document.localUri))
+            assertArrayEquals(originalBytes, File(restored.localUri).readBytes())
+            assertTrue(File(restored.localUri).canonicalPath.startsWith(target.filesDir.canonicalPath + File.separator))
+            assertEquals(1, targetDatabase.managedDocumentDao().getAll().size)
+        }
+    }
+
     @Test fun missingPathUsesOnlyAnExactHashVerifiedManagedOriginalWithoutRewritingTheSource() = runBlocking {
         seedPortfolio()
         val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
