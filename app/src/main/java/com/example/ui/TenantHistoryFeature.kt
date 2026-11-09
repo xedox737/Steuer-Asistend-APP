@@ -91,6 +91,9 @@ internal data class TenantPeriod(
 internal object TenantHistoryStore {
     private const val PREFS = "tenant_history_prefs"
 
+    private fun <T> coordinatedWrite(block: () -> T): T =
+        com.example.data.OfflineBackupCoordinator.shared.writing { synchronized(this) { block() } }
+
     private fun legacyKey(unitName: String) = "history_$unitName"
     private fun scopedKey(propertyId: String, unitId: String) = "history_v2_${propertyId}_$unitId"
 
@@ -162,7 +165,7 @@ internal object TenantHistoryStore {
     }
 
     fun read(context: Context, propertyId: String, unitId: String, unitName: String): StoredListRead<TenantPeriod> {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
         val scoped = scopedKey(propertyId, stableUnitId)
         if (prefs.contains(scoped)) {
@@ -170,7 +173,7 @@ internal object TenantHistoryStore {
                 .getOrElse { StoredListRead(emptyList(), true, true) }
         }
         if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && prefs.contains(legacyKey(unitName)) &&
-            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, stableUnitId, unitName)) {
+            com.example.data.UnitIdentity.legacyAliasMatches(com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs"), propertyId, stableUnitId, unitName)) {
             return runCatching {
                 val raw = requireNotNull(prefs.getString(legacyKey(unitName), null))
                 val result = decode(raw, unitName)
@@ -185,22 +188,22 @@ internal object TenantHistoryStore {
     fun load(context: Context, propertyId: String, unitId: String, unitName: String): List<TenantPeriod> =
         read(context, propertyId, unitId, unitName).entries
 
-    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>): Boolean = synchronized(this) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    fun save(context: Context, propertyId: String, unitId: String, unitName: String, periods: List<TenantPeriod>): Boolean = coordinatedWrite {
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
         val stableUnitId = unitId.ifBlank { StableDocumentIdentity.legacyUnitId(propertyId, unitName) }
-        if (read(context, propertyId, stableUnitId, unitName).damaged) return@synchronized false
+        if (read(context, propertyId, stableUnitId, unitName).damaged) return@coordinatedWrite false
         if (runCatching { periods.forEach { period ->
             listOf(period.kaltmiete, period.nebenkosten, period.sonstige).forEach { com.example.data.NumericWriteBoundary.float(it) }
             period.rentChanges.forEach { change ->
                 listOf(change.kaltmiete, change.nebenkosten, change.sonstige).forEach { com.example.data.NumericWriteBoundary.float(it) }
             }
-        } }.isFailure) return@synchronized false
+        } }.isFailure) return@coordinatedWrite false
         val raw = encode(periods)
         prefs.edit().putString(scopedKey(propertyId, stableUnitId), raw).apply()
         // Keep historical readers compatible for property-1, but never create a
         // name-only key for another property.
         if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
-            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, stableUnitId, unitName)) {
+            com.example.data.UnitIdentity.legacyAliasMatches(com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs"), propertyId, stableUnitId, unitName)) {
             prefs.edit().putString(legacyKey(unitName), raw).apply()
         }
         true
@@ -208,18 +211,18 @@ internal object TenantHistoryStore {
 
     /** A malformed stored history is existing data, never an invitation to overwrite it. */
     fun hasStoredPeriods(context: Context, propertyId: String, unitId: String, unitName: String): Boolean {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
         val raw = runCatching {
             prefs.getString(scopedKey(propertyId, unitId), null)
-                ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unitName)) prefs.getString(legacyKey(unitName), null) else null)
+                ?: (if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID && com.example.data.UnitIdentity.legacyAliasMatches(com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs"), propertyId, unitId, unitName)) prefs.getString(legacyKey(unitName), null) else null)
         }.getOrElse { return true } ?: return false
         return runCatching { JSONArray(raw).length() > 0 }.getOrDefault(true)
     }
 
     /** Commit the initial contractual truth of all rented rows as one preference write. */
-    fun saveInitialPeriods(context: Context, propertyId: String, entries: List<Pair<WohneinheitStatus, TenantPeriod>>): Boolean = synchronized(this) {
-        if (entries.any { (unit, _) -> hasStoredPeriods(context, propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit), unit.name) }) return@synchronized false
-        val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+    fun saveInitialPeriods(context: Context, propertyId: String, entries: List<Pair<WohneinheitStatus, TenantPeriod>>): Boolean = coordinatedWrite {
+        if (entries.any { (unit, _) -> hasStoredPeriods(context, propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit), unit.name) }) return@coordinatedWrite false
+        val editor = com.example.data.PersistentPreferenceInventory.open(context, PREFS).edit()
         entries.forEach { (unit, period) ->
             val raw = encode(listOf(period))
             editor.putString(scopedKey(propertyId, PropertyUnitScopedData.stableUnitId(propertyId, unit)), raw)

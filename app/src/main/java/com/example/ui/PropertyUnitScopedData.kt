@@ -24,7 +24,7 @@ internal object PropertyUnitScopedData {
     private const val DRIVE_PREFS = "google_drive_prefs"
 
     fun selectedPropertyId(context: Context): String =
-        context.getSharedPreferences(DRIVE_PREFS, Context.MODE_PRIVATE)
+        com.example.data.PersistentPreferenceInventory.open(context, DRIVE_PREFS)
             .getString("selected_property_id", "")
             ?.takeIf { it.isNotBlank() }
             ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
@@ -46,12 +46,12 @@ internal object PropertyUnitScopedData {
             val amounts = TenantHistoryStore.currentAt(history)?.amountsAt(LocalDate.now()) ?: return 0.0
             return if (field == "nk") amounts.nebenkosten else amounts.sonstige
         }
-        val prefs = context.getSharedPreferences(RENT_PREFS, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, RENT_PREFS)
         val unitId = stableUnitId(propertyId, unit)
         val scoped = scopedRentKey(propertyId, unitId, field)
         if (prefs.contains(scoped)) return prefs.getFloat(scoped, 0f).toDouble()
         if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
-            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unit.name)) {
+            com.example.data.UnitIdentity.legacyAliasMatches(com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs"), propertyId, unitId, unit.name)) {
             val legacy = legacyRentKey(unit.name, field)
             if (prefs.contains(legacy)) {
                 val value = prefs.getFloat(legacy, 0f)
@@ -62,10 +62,10 @@ internal object PropertyUnitScopedData {
         return 0.0
     }
 
-    fun setRentValues(context: Context, propertyId: String, unit: WohneinheitStatus, nebenkosten: Double, sonstige: Double) {
+    fun setRentValues(context: Context, propertyId: String, unit: WohneinheitStatus, nebenkosten: Double, sonstige: Double) : Unit = com.example.data.OfflineBackupCoordinator.shared.writing {
         com.example.data.NumericWriteBoundary.float(nebenkosten)
         com.example.data.NumericWriteBoundary.float(sonstige)
-        val prefs = context.getSharedPreferences(RENT_PREFS, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, RENT_PREFS)
         val unitId = stableUnitId(propertyId, unit)
         prefs.edit()
             .putFloat(scopedRentKey(propertyId, unitId, "nk"), com.example.data.NumericWriteBoundary.float(nebenkosten))
@@ -74,7 +74,7 @@ internal object PropertyUnitScopedData {
         // Keep historical property-1 consumers compatible without ever writing
         // name-only values for a second property.
         if (propertyId == StableDocumentIdentity.LEGACY_PROPERTY_ID &&
-            com.example.data.UnitIdentity.legacyAliasMatches(context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE), propertyId, unitId, unit.name)) {
+            com.example.data.UnitIdentity.legacyAliasMatches(com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs"), propertyId, unitId, unit.name)) {
             prefs.edit()
                 .putFloat(legacyRentKey(unit.name, "nk"), com.example.data.NumericWriteBoundary.float(nebenkosten))
                 .putFloat(legacyRentKey(unit.name, "other"), com.example.data.NumericWriteBoundary.float(sonstige))

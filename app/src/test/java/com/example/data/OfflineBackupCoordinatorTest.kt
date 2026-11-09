@@ -2,6 +2,7 @@ package com.example.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.SharedPreferences
 import android.database.Cursor
 import android.database.SQLException
@@ -413,5 +414,76 @@ class OfflineBackupCoordinatorTest {
             assertTrue(technical.edit().putString("synthetic_marker", "technical").commit())
             shared.completeCapture(capture)
         } finally { technical.edit().remove("synthetic_marker").commit() }
+    }
+
+    @Test fun domainReadMigrationsRegisterWritesAndCanonicalReadsRemainQuiet() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shared = OfflineBackupCoordinator.shared
+        val pid = StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val name = "migration-${UUID.randomUUID()}"
+        val uid = "stable-$name"
+        val units = context.getSharedPreferences("wohneinheiten_prefs", 0)
+        units.edit().putString("unit_id_$name", uid).putString("unit_id_$name-rent", "$uid-rent").commit()
+        val histories = context.getSharedPreferences("tenant_history_prefs", 0)
+        val raw = org.json.JSONArray().put(JSONObject().put("id", 17).put("tenantName", "Alt")
+            .put("startDate", "2020-01-01").put("endDate", "").put("kaltmiete", 600)
+            .put("nebenkosten", 100).put("sonstige", 5)).toString()
+        histories.edit().putString("history_$name", raw).commit()
+        val capture = shared.beginCapture()
+        val read = com.example.ui.TenantHistoryStore.read(context, pid, uid, name)
+        assertFalse(read.damaged)
+        assertEquals(17L, read.entries.single().id)
+        assertEquals(raw, histories.getString("history_v2_${pid}_$uid", null))
+        assertEquals(raw, histories.getString("history_$name", null))
+        assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(capture) }
+        val quiet = shared.beginCapture()
+        com.example.ui.TenantHistoryStore.read(context, pid, uid, name)
+        shared.completeCapture(quiet)
+        val rents = context.getSharedPreferences("rent_plan_prefs", 0)
+        rents.edit().putFloat("nk_$name-rent", 125.25f).commit()
+        val unit = com.example.ui.WohneinheitStatus("$name-rent", "", "Vermietet", "", 600.0, 50.0, unitId = "$uid-rent")
+        val rentCapture = shared.beginCapture()
+        assertEquals(125.25, com.example.ui.PropertyUnitScopedData.rentValue(context, pid, unit, "nk"), 0.0)
+        assertEquals(125.25f, rents.getFloat("v2_${pid}_${uid}-rent_nk", 0f), 0f)
+        assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(rentCapture) }
+        val rentQuiet = shared.beginCapture()
+        com.example.ui.PropertyUnitScopedData.rentValue(context, pid, unit, "nk")
+        shared.completeCapture(rentQuiet)
+    }
+
+    @Test fun domainMultiEditorUpdatesDoNotExposeIdleGap() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shared = OfflineBackupCoordinator.shared
+        val pid = StableDocumentIdentity.LEGACY_PROPERTY_ID
+        val name = "gap-${UUID.randomUUID()}"
+        val uid = "stable-$name"
+        val units = context.getSharedPreferences("wohneinheiten_prefs", 0)
+        units.edit().putString("unit_id_$name", uid).commit()
+        val histories = context.getSharedPreferences("tenant_history_prefs", 0)
+        histories.edit().putString("history_v2_${pid}_$uid", "[]").commit()
+        val blocked = mutableListOf<Boolean>()
+        val observedUnits = object : SharedPreferences by units {
+            override fun getString(key: String?, defValue: String?): String? {
+                blocked += runCatching { shared.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                return units.getString(key, defValue)
+            }
+        }
+        val observedContext = object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int): SharedPreferences =
+                if (name == "wohneinheiten_prefs") observedUnits else context.getSharedPreferences(name, mode)
+        }
+        shared.completeCapture(shared.beginCapture())
+        val period = com.example.ui.TenantPeriod(23, name, "Neu", "2020-01-01", "", 600.0, 100.0, 5.0)
+        assertTrue(com.example.ui.TenantHistoryStore.save(observedContext, pid, uid, name, listOf(period)))
+        assertTrue(blocked.isNotEmpty() && blocked.all { it })
+        assertEquals(histories.getString("history_v2_${pid}_$uid", null), histories.getString("history_$name", null))
+        blocked.clear()
+        val unit = com.example.ui.WohneinheitStatus(name, "", "Vermietet", "", 600.0, 50.0, unitId = uid)
+        com.example.ui.PropertyUnitScopedData.setRentValues(observedContext, pid, unit, 150.0, 7.0)
+        assertTrue(blocked.isNotEmpty() && blocked.all { it })
+        val rents = context.getSharedPreferences("rent_plan_prefs", 0)
+        assertEquals(150f, rents.getFloat("v2_${pid}_${uid}_nk", 0f), 0f)
+        assertEquals(150f, rents.getFloat("nk_$name", 0f), 0f)
+        shared.completeCapture(shared.beginCapture())
     }
 }

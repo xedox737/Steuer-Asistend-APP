@@ -888,6 +888,27 @@ Veröffentlichungen für stabile Schlüssel und historische Aliasse. Solche Sett
 benötigen eine durchgehende fachliche Schreibanmeldung über beide Editor-Aufrufe.
 Eine globale Konsistenzbehauptung oder Aktivierung erfolgt hier weiterhin nicht.
 
+### Schritt 4: Mietverlauf und Einheitenwerte anbinden
+
+Konkrete nächste Grenzen: `TenantHistoryFeature.kt/TenantHistoryStore` sowie
+`PropertyUnitScopedData.kt/selectedPropertyId`, `rentValue`, `setRentValues`.
+Ihre bekannten Preference-Öffnungen werden über das Inventar geführt. Die Setter
+halten eine Anmeldung über kanonische und historische Editor-Veröffentlichungen;
+Migrationen beim Lesen werden erst bei tatsächlicher Veröffentlichung gezählt.
+Schlüssel, IDs, Beträge, Validierungen und Aliasregeln bleiben unverändert.
+Gezielte Tests prüfen tatsächliche Migrationen und einen beobachteten Zwischenraum
+zwischen den beiden Editor-Aufrufen, ergänzt um vorhandene Identitätsregressionen.
+Vier Dateien: die beiden Schreibstellen, Coordinator-Test und dieses Dokument.
+
+Abnahme: fünf ausgewählte Methoden bestanden, ohne Fehler/Skips/Platzhalter;
+exakte XML-Namen geprüft, Ergebnisse `/tmp/immopilot-domain-preferences-results`.
+Protokoll `/tmp/immopilot-domain-preferences-tests.log`. Java 21, Gradle 9.3.1,
+Roborazzi-Verify; Java 17: lintDebug, assembleDebug, assembleDebugAndroidTest
+bestanden (`/tmp/immopilot-domain-preferences-build.log`), Lint ohne Error/Fatal,
+git diff --check bestanden. Die neuen Tests beobachten echte Store-Migrationen
+und die Aliasabfrage zwischen zwei Editor-Veröffentlichungen; dort ist die
+Erfassung gesperrt. Bereits kanonische Reads ändern die Generation nicht.
+
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
 
