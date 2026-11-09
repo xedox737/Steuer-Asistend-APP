@@ -37,20 +37,9 @@ class PersistentStorageInventoryTest {
     @Test fun everySharedPreferenceOpeningMustResolveToAnExplicitClassification() {
         val classified = PersistentPreferenceInventory.stores.map { it.name }.toSet()
         val found = mutableSetOf<String>()
-        val opening = Regex("getSharedPreferences\\s*\\(\\s*(\"[^\"]+\"|[A-Za-z_][A-Za-z0-9_]*)")
-        val declaration = Regex("const\\s+val\\s+(\\w+)\\s*=\\s*\"([^\"]+)\"")
         sources().walkTopDown().filter { it.extension in setOf("kt", "java") && it.name != "PersistentPreferenceInventory.kt" }
             .forEach { file ->
-                val source = file.readText()
-                opening.findAll(source).forEach { call ->
-                    val argument = call.groupValues[1]
-                    val name = if (argument.startsWith('"')) argument.removeSurrounding("\"")
-                    else declaration.findAll(source.substring(0, call.range.first))
-                        .lastOrNull { it.groupValues[1] == argument }?.groupValues?.get(2)
-                    assertNotNull("${file.name}: Speichername $argument muss für die Klassifizierung auflösbar sein", name)
-                    assertTrue("${file.name}: $name nicht bewusst klassifiziert", name in classified)
-                    found.add(name!!)
-                }
+                found.addAll(preferenceNames(file.readText(), file.name))
             }
         assertEquals("Inventar enthält veraltete oder fehlende Speicher", classified, found)
         val exported = PersistentPreferenceInventory.stores.filter { it.kind == PersistentPreferenceInventory.Kind.BACKUP }
@@ -58,6 +47,53 @@ class PersistentStorageInventoryTest {
         assertEquals(exported.size, exported.map { it.payloadKey }.toSet().size)
         listOf("ai_provider_settings", "google_drive_prefs").forEach { mixed ->
             assertNotNull(PersistentPreferenceInventory.stores.single { it.name == mixed }.allowedKeys)
+        }
+    }
+
+    private fun preferenceNames(source: String, owner: String): Set<String> {
+        val classified = PersistentPreferenceInventory.stores.map { it.name }.toSet()
+        val token = "(\"[^\"]+\"|[A-Za-z_][A-Za-z0-9_]*)"
+        val declaration = Regex("const\\s+val\\s+(\\w+)\\s*=\\s*\"([^\"]+)\"")
+        val forms = listOf(
+            Regex("getSharedPreferences\\s*\\(") to Regex("getSharedPreferences\\s*\\(\\s*$token\\s*,"),
+            Regex("PersistentPreferenceInventory\\.open\\s*\\(") to
+                Regex("PersistentPreferenceInventory\\.open\\s*\\((?:[^,()]|\\(\\))+?,\\s*$token\\s*,?\\s*\\)")
+        )
+        return buildSet {
+            forms.forEach { (opening, full) ->
+                opening.findAll(source).forEach { call ->
+                    val match = full.find(source, call.range.first)?.takeIf { it.range.first == call.range.first }
+                    assertNotNull("$owner: dynamischer oder unbekannter Preference-Zugang benötigt eine explizite Klassifizierung", match)
+                    val argument = match!!.groupValues[1]
+                    val name = if (argument.startsWith('"')) argument.removeSurrounding("\"")
+                    else declaration.findAll(source.substring(0, call.range.first))
+                        .lastOrNull { it.groupValues[1] == argument }?.groupValues?.get(2)
+                    assertNotNull("$owner: Speichername $argument muss für die Klassifizierung auflösbar sein", name)
+                    assertTrue("$owner: $name nicht bewusst klassifiziert", name in classified)
+                    add(name!!)
+                }
+            }
+        }
+    }
+
+    @Test fun classifiedPreferenceFactoryOpeningsAreDetected() {
+        val source = """
+            private const val PREFS = "tenant_history_prefs"
+            PersistentPreferenceInventory.open(context, PREFS)
+            context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE)
+        """.trimIndent()
+        assertEquals(setOf("tenant_history_prefs", "rent_plan_prefs"), preferenceNames(source, "fixture"))
+    }
+
+    @Test fun unclassifiedAndComputedPreferenceNamesAreRejected() {
+        listOf(
+            "context.getSharedPreferences(\"unknown-store\", 0)",
+            "context.getSharedPreferences(\"rent_plan_prefs\" + suffix, 0)",
+            "PersistentPreferenceInventory.open(context, \"unknown-store\")",
+            "PersistentPreferenceInventory.open(context, \"tenant_history_prefs\" + suffix)",
+            "PersistentPreferenceInventory.open(context, runtimeName)"
+        ).forEach { source ->
+            org.junit.Assert.assertThrows(AssertionError::class.java) { preferenceNames(source, "fixture") }
         }
     }
 

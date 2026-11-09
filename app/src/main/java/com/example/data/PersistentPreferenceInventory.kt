@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -38,6 +39,14 @@ internal object PersistentPreferenceInventory {
         Store("metadata_duplicate_cleanup_audit", Kind.LOCAL_ONLY)
     )
 
+    fun open(context: Context, name: String): SharedPreferences {
+        val store = requireNotNull(stores.singleOrNull { it.name == name }) {
+            "Unbekannter Preference-Speicher benötigt eine explizite Sicherungszuordnung."
+        }
+        val preferences = context.getSharedPreferences(store.name, Context.MODE_PRIVATE)
+        return if (store.kind == Kind.BACKUP) OfflineBackupCoordinator.shared.trackPreferences(preferences) else preferences
+    }
+
     private val secretKey = Regex(
         "(?i)(^|[_-])(api[_-]?key|key[_-]?(ciphertext|iv)|ciphertext|token|pin|tan|password|secret|credential)([_-]|$)"
     )
@@ -62,12 +71,12 @@ internal object PersistentPreferenceInventory {
         store.kind == Kind.BACKUP && (store.allowedKeys?.contains(key) ?: (businessKey(store, key) || !secretKey.containsMatchIn(key)))
 
     fun hasBackupValues(context: Context, store: Store): Boolean =
-        context.getSharedPreferences(store.name, Context.MODE_PRIVATE).all.keys.any { permits(store, it) }
+        open(context, store.name).all.keys.any { permits(store, it) }
 
     fun writePayload(context: Context, root: JSONObject) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
             val values = JSONObject()
-            context.getSharedPreferences(store.name, Context.MODE_PRIVATE).all.forEach { (key, value) ->
+            open(context, store.name).all.forEach { (key, value) ->
                 if (permits(store, key)) {
                     val typed = when (value) {
                         is String -> entry("string", value)
@@ -122,7 +131,7 @@ internal object PersistentPreferenceInventory {
     ) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
             val values = root.optJSONObject(requireNotNull(store.payloadKey)) ?: return@forEach
-            val prefs = context.getSharedPreferences(store.name, Context.MODE_PRIVATE)
+            val prefs = open(context, store.name)
             val editor = prefs.edit()
 
             if (mode == RestoreMode.REPLACE_FULL) {

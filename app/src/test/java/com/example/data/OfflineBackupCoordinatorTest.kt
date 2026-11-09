@@ -2,6 +2,7 @@ package com.example.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.content.SharedPreferences
 import android.database.Cursor
 import android.database.SQLException
 import android.os.CancellationSignal
@@ -22,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -290,5 +292,126 @@ class OfflineBackupCoordinatorTest {
         }
         coordinator.completeCapture(capture)
         assertEquals(receipt, database.receiptDao().getReceiptById(7))
+    }
+
+    private fun rawPreferences(): SharedPreferences = ApplicationProvider.getApplicationContext<Context>()
+        .getSharedPreferences("coordinator-editor-${UUID.randomUUID()}", Context.MODE_PRIVATE)
+
+    @Test fun preferenceEditorChainsPublishEveryTypeOnlyAtApplyOrCommit() {
+        val raw = rawPreferences()
+        raw.edit().putString("remove", "old").commit()
+        val tracked = coordinator.trackPreferences(raw)
+        val editor = tracked.edit()
+        val capture = coordinator.beginCapture()
+        assertSame(editor, editor.remove("remove").putString("string", "value").putInt("int", 7)
+            .putLong("long", 16777217L).putFloat("float", 1.5f).putBoolean("boolean", true)
+            .putStringSet("set", mutableSetOf("a", "b")))
+        assertEquals(setOf("remove"), raw.all.keys)
+        coordinator.completeCapture(capture)
+        editor.apply()
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+        assertEquals("value", raw.getString("string", null))
+        assertEquals(7, raw.getInt("int", 0))
+        assertEquals(16777217L, raw.getLong("long", 0))
+        assertEquals(1.5f, raw.getFloat("float", 0f), 0f)
+        assertTrue(raw.getBoolean("boolean", false))
+        assertEquals(setOf("a", "b"), raw.getStringSet("set", null))
+        assertFalse(raw.contains("remove"))
+        val next = coordinator.beginCapture()
+        val clearing = tracked.edit()
+        assertSame(clearing, clearing.clear())
+        assertTrue(clearing.commit())
+        assertTrue(raw.all.isEmpty())
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(next) }
+        quietCapture()
+    }
+
+    @Test fun preferenceReadsAndUnpublishedEditorsLeaveGenerationUnchanged() {
+        val raw = rawPreferences()
+        raw.edit().putString("existing", "value").commit()
+        val capture = coordinator.beginCapture()
+        val tracked = coordinator.trackPreferences(raw)
+        assertSame(tracked, coordinator.trackPreferences(raw))
+        assertEquals("value", tracked.getString("existing", null))
+        assertTrue(tracked.contains("existing"))
+        assertEquals(setOf("existing"), tracked.all.keys)
+        tracked.edit().putString("unpublished", "pending")
+        assertFalse(raw.contains("unpublished"))
+        coordinator.completeCapture(capture)
+    }
+
+    @Test fun preferenceListenersReceiveTrackedIdentityAndCanBeUnregistered() {
+        val raw = rawPreferences()
+        val tracked = coordinator.trackPreferences(raw)
+        var received: SharedPreferences? = null
+        var calls = 0
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, _ -> received = prefs; calls++ }
+        tracked.registerOnSharedPreferenceChangeListener(listener)
+        coordinator.trackPreferences(raw).registerOnSharedPreferenceChangeListener(listener)
+        tracked.edit().putString("first", "value").commit()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertSame(tracked, received)
+        assertEquals(1, calls)
+        val capture = coordinator.beginCapture()
+        received!!.edit().putInt("throughListener", 1).apply()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertEquals(1, raw.getInt("throughListener", 0))
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+        coordinator.trackPreferences(raw).unregisterOnSharedPreferenceChangeListener(listener)
+        val before = calls
+        tracked.edit().putInt("afterRemoval", 2).commit()
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        assertEquals(before, calls)
+    }
+
+    @Test fun failedPreferenceCommitAndApplyPreserveResultsAndReleaseRegistration() {
+        val raw = rawPreferences()
+        val failing = object : SharedPreferences by raw {
+            override fun edit(): SharedPreferences.Editor {
+                val actual = raw.edit()
+                return object : SharedPreferences.Editor by actual {
+                    override fun commit(): Boolean { actual.apply(); return false }
+                    override fun apply() { throw IllegalStateException("synthetic apply failure") }
+                }
+            }
+        }
+        val tracked = coordinator.trackPreferences(failing)
+        val capture = coordinator.beginCapture()
+        assertFalse(tracked.edit().putString("publishedInMemory", "value").commit())
+        assertEquals("value", raw.getString("publishedInMemory", null))
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+        quietCapture()
+        val next = coordinator.beginCapture()
+        assertThrows(IllegalStateException::class.java) { tracked.edit().putInt("failed", 1).apply() }
+        assertFalse(raw.contains("failed"))
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(next) }
+        quietCapture()
+    }
+
+    @Test fun inventoryRestoreRegistersBusinessWritesAndRejectsUnknownStoreNames() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val key = "history_synthetic-${UUID.randomUUID()}"
+        val shared = OfflineBackupCoordinator.shared
+        val capture = shared.beginCapture()
+        val root = JSONObject().put("tenantHistoryPrefs", JSONObject().put(key,
+            JSONObject().put("type", "string").put("value", "[]")))
+        try {
+            PersistentPreferenceInventory.restorePayload(context, root)
+            assertEquals("[]", PersistentPreferenceInventory.open(context, "tenant_history_prefs").getString(key, null))
+            assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(capture) }
+            assertThrows(IllegalArgumentException::class.java) { PersistentPreferenceInventory.open(context, "unclassified-store") }
+            shared.completeCapture(shared.beginCapture())
+        } finally { PersistentPreferenceInventory.open(context, "tenant_history_prefs").edit().remove(key).commit() }
+    }
+
+    @Test fun technicalPreferenceWritesRemainOutsideBusinessCapture() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shared = OfflineBackupCoordinator.shared
+        val capture = shared.beginCapture()
+        val technical = PersistentPreferenceInventory.open(context, "app_installation_prefs")
+        try {
+            assertTrue(technical.edit().putString("synthetic_marker", "technical").commit())
+            shared.completeCapture(capture)
+        } finally { technical.edit().remove("synthetic_marker").commit() }
     }
 }

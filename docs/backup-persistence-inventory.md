@@ -824,6 +824,70 @@ nicht über eine teilweise angebundene Koordination als konsistenter Vollsnapsho
 ausgegeben. Keine Schema-/Migrationsänderung, neue Produktionstabelle, CI-Änderung,
 Emulatorausführung, echter Nutzer-/Cloud-Test, Push oder Merge.
 
+### Schritt 4, Preference-Grenze im Inventar (09.11.2026)
+
+Konkreter Bedarf aus der Matrix: direkte Preference-Editoren sind bislang nicht
+an die gemeinsame Generation angebunden. Zunächst ist in
+`OfflineBackupCoordinator` ein delegierender Editor-Adapter ergänzt und über
+`PersistentPreferenceInventory.open` für bekannte BACKUP-Stores verwendet.
+Die bestehenden Inventar-Lese-/Restore-Funktionen verwenden jetzt diesen Zugang;
+sonstige fachliche Öffnungsstellen werden anschließend einzeln umgestellt.
+Der globale Snapshot bleibt bis zum Abschluss dieser Anbindung inaktiv.
+
+Nur commit/apply veröffentlichen Änderungen; sämtliche put/remove/clear-
+Ketten müssen den erfassten Editor zurückgeben. Listener erhalten denselben
+erfassten Preference-Zugang und bleiben schwach referenziert. Rückgabewerte,
+unveröffentlichte Editor-Puffer und die asynchrone apply-Semantik bleiben erhalten.
+Kind-/Key-Filter, MERGE-/REPLACE-Regeln und Credential-Schutz werden nicht geändert.
+Unbekannte Store-Namen müssen abgelehnt und neue Öffnungsstellen von der
+Inventarprüfung erkannt werden, auch beim neuen zentralen Zugang.
+
+Quelle zur unmittelbaren atomaren Veröffentlichung im Speicher, Editor-Ketten
+und Listener-Lebensdauer: [Android SharedPreferences, API 36](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-16.0.0_r1/core/java/android/content/SharedPreferences.java).
+Gezielte Nachweise: alle Editor-Typen einschließlich Verkettung, getrennte Puffer,
+commit-Rückgabe/Fehler, Listener und Deregistrierung, reine Reads, unbekannter
+Store, tatsächlicher Inventar-Restore sowie vorhandener Secret-/V1-Schutz.
+Genau fünf Dateien: Coordinator, Preference-Inventar, dessen bestehende
+Koordinationstests, PersistentStorageInventoryTest und dieses Dokument.
+
+Der Adapter ist je zugrundeliegendem Preference-Objekt stabil wiederverwendet.
+Listener-Proxys halten den eigentlichen Listener nur schwach, geben bei Aufrufen
+den erfassten Zugang weiter und lassen sich über diesen wieder deregistrieren.
+Technische Stores bleiben außerhalb der fachlichen Generation. Der Editor zählt
+auch fehlgeschlagene Commit-/Apply-Versuche, gibt boolesche Ergebnisse unverändert
+weiter und lässt bei Exceptions keine aktive Anmeldung zurück.
+
+Die Inventarprüfung erfasst nun beide Öffnungsformen. Jede gefundene Öffnung muss
+vollständig mit einem Literal oder einer vorher definierten Konstante auflösbar
+sein; ein nur erkanntes bekanntes Präfix vor einer Namensverkettung genügt nicht.
+Neue synthetische Klassifizierungsfälle prüfen bekannte Zugänge sowie unbekannte,
+zusammengesetzte und zur Laufzeit berechnete Namen. Die Prüfung wird weiterhin
+über sämtliche Kotlin-/Java-Dateien des vorhandenen Main-Quellverzeichnisses
+ausgeführt; zentrale Inventarzugriffe bleiben wie zuvor gesondert behandelt und
+verweigern unbekannte Namen jetzt zusätzlich zur Laufzeit.
+
+13 ausgewählte Methoden bestanden (erster Lauf): sieben Koordinationsmethoden,
+drei Inventarmethoden und drei vorhandene Preference-Backup-Regressionen. Darunter
+der V1-Export über erfasstes Room, Credential-Ausschluss/Injection-Abwehr, alle
+primitiven Typen und String-Sets sowie Wiederherstellung aller fachlichen
+Preferences und stabilen Zuordnungen auf frischer Installation zweimal.
+Exakte Methoden und Klassen, Fehler/Skips, Duplikate und Platzhalter im XML geprüft;
+Ergebnisse `/tmp/immopilot-preference-coordination-results`, Protokoll
+`/tmp/immopilot-preference-coordination-tests.log` (Java 21, Gradle 9.3.1,
+Roborazzi-Verify). Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest`
+bestanden (`/tmp/immopilot-preference-coordination-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Keine zusätzlichen fachfremden Tests, kein Emulator,
+Push, Merge oder CI-Eingriff.
+
+Der Secret-/Key-Filter und die MERGE-/REPLACE-Fachregeln blieben unverändert.
+Die tatsächlichen Store-Öffnungsstellen außerhalb des Inventars verwenden bisher
+weiterhin ihre bisherigen Zugänge. Als nächste konkrete Anbindung sind
+`TenantHistoryFeature.kt/TenantHistoryStore` und `PropertyUnitScopedData.kt`
+erfasst: beide besitzen Migrationen beim Lesen sowie Setter mit getrennten
+Veröffentlichungen für stabile Schlüssel und historische Aliasse. Solche Setter
+benötigen eine durchgehende fachliche Schreibanmeldung über beide Editor-Aufrufe.
+Eine globale Konsistenzbehauptung oder Aktivierung erfolgt hier weiterhin nicht.
+
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
 

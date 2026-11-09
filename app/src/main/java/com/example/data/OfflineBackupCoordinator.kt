@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.ContentValues
+import android.content.SharedPreferences
 import android.database.Cursor
 import android.database.CursorWrapper
 import android.os.CancellationSignal
@@ -12,8 +13,10 @@ import androidx.sqlite.db.SupportSQLiteStatement
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import kotlinx.coroutines.CompletableDeferred
 import java.io.Closeable
+import java.lang.ref.WeakReference
 import java.util.IdentityHashMap
 import java.util.Locale
+import java.util.WeakHashMap
 
 /**
  * Optimistic capture boundary. Not yet used by the exporter: preference, file and logical
@@ -25,6 +28,7 @@ internal class OfflineBackupCoordinator {
     private var activeWriters = 0L
     private var blockedReason: String? = null
     private val initializations = mutableSetOf<CompletableDeferred<Unit>>()
+    private val preferences = IdentityHashMap<SharedPreferences, SharedPreferences>()
 
     internal class Capture internal constructor(internal val owner: OfflineBackupCoordinator, internal val generation: Long)
 
@@ -49,6 +53,10 @@ internal class OfflineBackupCoordinator {
     }
 
     fun <T> writing(action: () -> T): T = beginWrite().use { action() }
+
+    fun trackPreferences(preferences: SharedPreferences): SharedPreferences = synchronized(monitor) {
+        this.preferences.getOrPut(preferences) { TrackedPreferences(preferences, this) }
+    }
 
     fun blockSnapshots(reason: String) = synchronized(monitor) {
         blockedReason = blockedReason ?: reason
@@ -142,6 +150,49 @@ internal class OfflineBackupCoordinator {
 
     companion object {
         val shared = OfflineBackupCoordinator()
+    }
+
+    private class TrackedPreferences(
+        private val preferences: SharedPreferences,
+        private val coordinator: OfflineBackupCoordinator
+    ) : SharedPreferences by preferences {
+        private val listeners = WeakHashMap<SharedPreferences.OnSharedPreferenceChangeListener, SharedPreferences.OnSharedPreferenceChangeListener>()
+
+        override fun edit(): SharedPreferences.Editor {
+            val editor = preferences.edit()
+            return object : SharedPreferences.Editor by editor {
+                // Each chained call must return this adapter, never the raw Editor.
+                override fun putString(key: String?, value: String?): SharedPreferences.Editor { editor.putString(key, value); return this }
+                override fun putStringSet(key: String?, values: MutableSet<String>?): SharedPreferences.Editor { editor.putStringSet(key, values); return this }
+                override fun putInt(key: String?, value: Int): SharedPreferences.Editor { editor.putInt(key, value); return this }
+                override fun putLong(key: String?, value: Long): SharedPreferences.Editor { editor.putLong(key, value); return this }
+                override fun putFloat(key: String?, value: Float): SharedPreferences.Editor { editor.putFloat(key, value); return this }
+                override fun putBoolean(key: String?, value: Boolean): SharedPreferences.Editor { editor.putBoolean(key, value); return this }
+                override fun remove(key: String?): SharedPreferences.Editor { editor.remove(key); return this }
+                override fun clear(): SharedPreferences.Editor { editor.clear(); return this }
+                override fun commit(): Boolean = coordinator.writing { editor.commit() }
+                override fun apply() = coordinator.writing { editor.apply() }
+            }
+        }
+
+        override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {
+            if (listener == null) { preferences.registerOnSharedPreferenceChangeListener(null); return }
+            synchronized(listeners) {
+                val proxy = listeners.getOrPut(listener) {
+                    val reference = WeakReference(listener)
+                    SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                        reference.get()?.onSharedPreferenceChanged(this@TrackedPreferences, key)
+                    }
+                }
+                preferences.registerOnSharedPreferenceChangeListener(proxy)
+            }
+        }
+
+        override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {
+            synchronized(listeners) {
+                preferences.unregisterOnSharedPreferenceChangeListener(listeners.remove(listener) ?: listener)
+            }
+        }
     }
 
     private class TrackedDatabase(
