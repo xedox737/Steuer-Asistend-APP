@@ -8,6 +8,31 @@ class PersistentStorageInventoryTest {
     private fun sources(): File = listOf(File("src/main/java"), File("app/src/main/java"))
         .firstOrNull { it.isDirectory } ?: error("Produktive Quellen für Inventarprüfung fehlen.")
 
+    @Test fun persistentFileRootsAndDataStoreOwnersRequireExplicitClassification() {
+        val classifiedRoots = setOf("managed_documents", "property-images", "offline-originals",
+            "restored_receipts", "receipt_documents", "receipt_page_")
+        val found = mutableSetOf<String>()
+        val root = Regex("filesDir\\s*,\\s*\"([^\"]+)\"")
+        sources().walkTopDown().filter { it.extension == "kt" }.forEach { file ->
+            val source = file.readText().replace(Regex("(?s)/\\*.*?\\*/|//[^\\n]*"), "")
+            val matches = root.findAll(source).toList()
+            Regex("\\b(filesDir|getFilesDir|getExternalFilesDir|getExternalFilesDirs)\\b")
+                .findAll(source).forEach { use ->
+                    assertTrue("${file.name}: neuer Dateispeicher benötigt eine Sicherungszuordnung",
+                        matches.any { use.range.first in it.range })
+                }
+            matches.forEach { match ->
+                val directory = match.groupValues[1].substringBefore('/').substringBefore('$')
+                assertTrue("${file.name}: $directory ist nicht klassifiziert", directory in classifiedRoots)
+                found.add(directory)
+            }
+            assertFalse("${file.name}: neuer DataStore benötigt eine Sicherungszuordnung",
+                Regex("\\b(preferencesDataStore|dataStore|DataStoreFactory|PreferenceDataStoreFactory)\\s*[.(]")
+                    .containsMatchIn(source))
+        }
+        assertEquals("Dateiinventar enthält veraltete oder fehlende Speicher", classifiedRoots, found)
+    }
+
     @Test fun everySharedPreferenceOpeningMustResolveToAnExplicitClassification() {
         val classified = PersistentPreferenceInventory.stores.map { it.name }.toSet()
         val found = mutableSetOf<String>()
