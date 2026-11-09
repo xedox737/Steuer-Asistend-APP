@@ -56,6 +56,64 @@ class OfflineBackupCoordinatorTest {
 
     private fun quietCapture() { coordinator.completeCapture(coordinator.beginCapture()) }
 
+    @Test fun queuedMutationIsRegisteredBeforeEntryAndAcrossSuspension() = kotlinx.coroutines.test.runTest {
+        val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        val release = CompletableDeferred<Unit>()
+        var entered = false
+        val capture = coordinator.beginCapture()
+        val job = coordinator.launch(this, dispatcher) {
+            entered = true
+            sql.execSQL("UPDATE receipts SET aussteller = 'first' WHERE id = 7")
+            release.await()
+            sql.execSQL("UPDATE receipts SET aussteller = 'complete' WHERE id = 7")
+        }
+        try {
+            assertFalse(entered)
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginCapture() }
+            testScheduler.runCurrent()
+            assertTrue(entered)
+            assertEquals("first", database.receiptDao().getReceiptById(7)!!.aussteller)
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginCapture() }
+            release.complete(Unit)
+            testScheduler.runCurrent()
+            job.join()
+            assertEquals("complete", database.receiptDao().getReceiptById(7)!!.aussteller)
+            quietCapture()
+        } finally { job.cancel(); testScheduler.runCurrent() }
+    }
+
+    @Test fun cancellationBeforeEntryReleasesQueuedAndLazyMutations() = kotlinx.coroutines.test.runTest {
+        val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        listOf(kotlinx.coroutines.CoroutineStart.DEFAULT, kotlinx.coroutines.CoroutineStart.LAZY).forEach { start ->
+            var entered = false
+            val capture = coordinator.beginCapture()
+            val job = coordinator.launch(this, dispatcher, start) { entered = true }
+            try {
+                assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginCapture() }
+            } finally { job.cancel(); testScheduler.runCurrent(); job.join() }
+            assertFalse(entered)
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+            quietCapture()
+        }
+    }
+
+    @Test fun mutationRegistrationSurvivesParentBodyUntilChildrenFinishAndReleasesOnCancellation() = kotlinx.coroutines.test.runTest {
+        val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
+        val release = CompletableDeferred<Unit>()
+        val entered = CompletableDeferred<Unit>()
+        val job = coordinator.launch(this, dispatcher) {
+            launch { entered.complete(Unit); release.await() }
+        }
+        try {
+            testScheduler.runCurrent()
+            assertTrue(entered.isCompleted)
+            assertFalse(job.isCompleted)
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginCapture() }
+        } finally { job.cancel(); testScheduler.runCurrent(); job.join() }
+        quietCapture()
+    }
+
     @Test fun readonlyRoomTransactionDoesNotInvalidateCapture() = runBlocking {
         val capture = coordinator.beginCapture()
         database.withTransaction {

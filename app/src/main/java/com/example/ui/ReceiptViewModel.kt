@@ -1087,90 +1087,94 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateWohneinheit(updated: WohneinheitStatus, correctCurrentContract: Boolean = false) {
-        if (runCatching { com.example.data.NumericWriteBoundary.float(updated.kaltmiete); com.example.data.NumericWriteBoundary.float(updated.wohnflaeche) }.isFailure) {
-            _driveSyncStatus.value = "Bitte gültige Miet- und Flächenwerte eingeben. Der Wert ist möglicherweise zu groß."
-            return
-        }
-        val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
-            propertyMetadata.value?.takeIf { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
-                ?: properties.value.singleOrNull { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
-        } ?: propertyMetadata.value?.takeIf { updated.unitId.isBlank() } ?: run {
-            _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR
-            return
-        }
-        val existing = getWohneinheitenForProperty(targetProperty).singleOrNull {
-            if (updated.unitId.isNotBlank()) it.unitId == updated.unitId else it.name == updated.name
-        } ?: run { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
-        if (correctCurrentContract) {
-            val unitId = existing.unitId
-            if (!TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)) {
-                _driveSyncStatus.value = StoredListRead.ERROR
+        com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+            if (runCatching { com.example.data.NumericWriteBoundary.float(updated.kaltmiete); com.example.data.NumericWriteBoundary.float(updated.wohnflaeche) }.isFailure) {
+                _driveSyncStatus.value = "Bitte gültige Miet- und Flächenwerte eingeben. Der Wert ist möglicherweise zu groß."
                 return
             }
+            val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
+                propertyMetadata.value?.takeIf { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
+                    ?: properties.value.singleOrNull { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
+            } ?: propertyMetadata.value?.takeIf { updated.unitId.isBlank() } ?: run {
+                _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR
+                return
+            }
+            val existing = getWohneinheitenForProperty(targetProperty).singleOrNull {
+                if (updated.unitId.isNotBlank()) it.unitId == updated.unitId else it.name == updated.name
+            } ?: run { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
+            if (correctCurrentContract) {
+                val unitId = existing.unitId
+                if (!TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)) {
+                    _driveSyncStatus.value = StoredListRead.ERROR
+                    return
+                }
+            }
+            updateWohneinheitForProperty(updated, targetProperty)
         }
-        updateWohneinheitForProperty(updated, targetProperty)
     }
 
     private fun updateWohneinheitForProperty(updated: WohneinheitStatus, targetProperty: PropertyMetadata) {
-        com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
-        com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
-        val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
-        val identities = com.example.data.UnitIdentity.read(targetProperty.wohneinheiten, targetProperty.propertyId, unitPrefs)
-        if (identities.error != null) { _driveSyncStatus.value = identities.error; return }
-        val identity = if (updated.unitId.isNotBlank()) identities.entries.singleOrNull { it.unitId == updated.unitId }
-            else identities.entries.singleOrNull { it.name == updated.name }
-        if (identity == null) { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
-        val stableId = identity.unitId
-        val renamed = identities.entries.map { if (it.unitId == stableId) it.copy(name = updated.name) else it }
-        val encoded = runCatching { com.example.data.UnitIdentity.encode(renamed) }.getOrElse {
-            _driveSyncStatus.value = it.message; return
-        }
-        val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
-        val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, targetProperty.propertyId, stableId, updated.name)
-
-        unitPrefs.edit().apply {
-            putString(idPrefix + "status", updated.status)
-            putString(idPrefix + "label", if (updated.label == identity.name) updated.name else updated.label)
-            putString(idPrefix + "mieter", updated.mieter)
-            putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
-            putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
-            putString(idPrefix + "start", updated.mietvertragsstart)
-
-            if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches) {
-                putString("unit_status_${updated.name}", updated.status)
-                putString("unit_label_${updated.name}", updated.label)
-                putString("unit_mieter_${updated.name}", updated.mieter)
-                putFloat("unit_rent_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
-                putFloat("unit_area_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
-                putString("unit_start_${updated.name}", updated.mietvertragsstart)
-                putString("unit_id_${updated.name}", stableId)
+        com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+            com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
+            com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
+            val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
+            val identities = com.example.data.UnitIdentity.read(targetProperty.wohneinheiten, targetProperty.propertyId, unitPrefs)
+            if (identities.error != null) { _driveSyncStatus.value = identities.error; return }
+            val identity = if (updated.unitId.isNotBlank()) identities.entries.singleOrNull { it.unitId == updated.unitId }
+                else identities.entries.singleOrNull { it.name == updated.name }
+            if (identity == null) { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
+            val stableId = identity.unitId
+            val renamed = identities.entries.map { if (it.unitId == stableId) it.copy(name = updated.name) else it }
+            val encoded = runCatching { com.example.data.UnitIdentity.encode(renamed) }.getOrElse {
+                _driveSyncStatus.value = it.message; return
             }
-        }.apply()
+            val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
+            val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, targetProperty.propertyId, stableId, updated.name)
 
-        val structuredProperty = targetProperty.copy(wohneinheiten = encoded)
-        if (targetProperty.wohneinheiten != encoded) viewModelScope.launch(Dispatchers.IO) {
-            repository.updatePropertyMetadata(structuredProperty)
-        }
-        if (propertyMetadata.value?.propertyId == targetProperty.propertyId) {
-            _wohneinheitenStatus.value = getWohneinheitenForProperty(structuredProperty)
-        }
+            unitPrefs.edit().apply {
+                putString(idPrefix + "status", updated.status)
+                putString(idPrefix + "label", if (updated.label == identity.name) updated.name else updated.label)
+                putString(idPrefix + "mieter", updated.mieter)
+                putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
+                putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
+                putString(idPrefix + "start", updated.mietvertragsstart)
 
-        if (FirestoreService.isCloudActive()) {
-            viewModelScope.launch {
-                FirestoreService.saveWohneinheit(updated.copy(unitId = stableId), targetProperty.propertyId)
+                if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches) {
+                    putString("unit_status_${updated.name}", updated.status)
+                    putString("unit_label_${updated.name}", updated.label)
+                    putString("unit_mieter_${updated.name}", updated.mieter)
+                    putFloat("unit_rent_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
+                    putFloat("unit_area_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
+                    putString("unit_start_${updated.name}", updated.mietvertragsstart)
+                    putString("unit_id_${updated.name}", stableId)
+                }
+            }.apply()
+
+            val structuredProperty = targetProperty.copy(wohneinheiten = encoded)
+            if (targetProperty.wohneinheiten != encoded) com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
+                repository.updatePropertyMetadata(structuredProperty)
             }
-        }
+            if (propertyMetadata.value?.propertyId == targetProperty.propertyId) {
+                _wohneinheitenStatus.value = getWohneinheitenForProperty(structuredProperty)
+            }
 
-        if (_isDriveConnected.value && _autoDriveBackup.value && propertyMetadata.value?.propertyId == targetProperty.propertyId) {
-            val email = _googleAccountEmail.value
-            if (email != null) {
-                viewModelScope.launch(Dispatchers.IO) {
-                    try {
-                        val token = getValidToken(email)
-                        val folderId = GoogleDriveClient.getOrCreateFolder(token) ?: return@launch
-                        GoogleDriveClient.uploadWohneinheitenCsv(token, folderId, _wohneinheitenStatus.value)
-                    } catch (e: Exception) {
-                        DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed for units")
+            if (FirestoreService.isCloudActive()) {
+                com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
+                    FirestoreService.saveWohneinheit(updated.copy(unitId = stableId), targetProperty.propertyId)
+                }
+            }
+
+            if (_isDriveConnected.value && _autoDriveBackup.value && propertyMetadata.value?.propertyId == targetProperty.propertyId) {
+                val email = _googleAccountEmail.value
+                if (email != null) {
+                    com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
+                        try {
+                            val token = getValidToken(email)
+                            val folderId = GoogleDriveClient.getOrCreateFolder(token) ?: return@launch
+                            GoogleDriveClient.uploadWohneinheitenCsv(token, folderId, _wohneinheitenStatus.value)
+                        } catch (e: Exception) {
+                            DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed for units")
+                        }
                     }
                 }
             }

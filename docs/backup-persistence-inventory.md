@@ -1022,3 +1022,36 @@ gestartete Prüflauf bestand `lintDebug`, `assembleDebug` und
 Lint ohne Error/Fatal; `git diff --check` bestanden. Alle derzeit inventarisierten
 fachlichen Preference-Öffnungen verwenden nun die koordinierte Factory. Das
 ersetzt weiterhin nicht die noch offene Anmeldung mehrteiliger Operationen.
+
+### Schritt 4: asynchrone Übergabe bei Einheitenänderungen
+
+Vier Dateien: OfflineBackupCoordinator, dessen Test, ReceiptViewModel und
+dieses Dokument. Coroutine-Mutationen werden vor dem Einplanen angemeldet
+und erst nach Abschluss aller strukturierten Kinder freigegeben; auch Abbruch
+vor Eintritt und LAZY-Aufträge müssen die Anmeldung freigeben. Die drei
+Schreib-/Cloud-Aufträge in updateWohneinheitForProperty verwenden diesen
+Zugang. updateWohneinheit und updateWohneinheitForProperty halten zusätzlich
+die synchrone Übergabe über Mietverlauf, Preferences und Einplanung zusammen.
+Prüfung: beobachtete Warteschlange, Suspendierung, Kinder und Abbruch sowie
+bestehende Einheiten-/Identitätsregressionen. Andere ViewModel-Aufträge
+werden im nächsten Teilschritt geprüft und angebunden.
+
+Vorab: genau der Warteschlangen-Test schlug erwartungsgemäß fehl, weil
+vor Eintritt keine OfflineBackupValidationException ausgelöst wurde. Keine
+Zeitüberschreitung oder Infrastrukturursache. Belege:
+`/tmp/immopilot-coroutine-writers-red.xml` und
+`/tmp/immopilot-coroutine-writers-red.log`. Danach Anmeldung vor launch
+und Freigabe per Job.invokeOnCompletion ergänzt; anschließend die drei
+Einheiten-Aufträge und ihre synchrone Übergabe angebunden.
+
+Abnahme: acht exakt ausgewählte Methoden bestanden (drei neue Coroutine-,
+zwei bestehende Domain-Koordinations-, zwei Einheiten-/Backup- und ein
+Inventartest). XML ohne Fehler/Skips/Duplikate geprüft und unter
+`/tmp/immopilot-coroutine-writers-results` gesichert. Testprotokoll:
+`/tmp/immopilot-coroutine-writers-tests.log`. Der bekannte KSP-AWT-Threadfehler
+beendete weder Compiler noch Tests; Gradle und XML bestanden. `lintDebug`,
+`assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-coroutine-writers-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Der ViewModel-Diff wurde zusätzlich nach
+Rücknahme ausschließlich der Koordinationshüllen und Einrückungen exakt
+gegen die unveränderte fachliche Ausgangslogik verglichen. Kein Push.

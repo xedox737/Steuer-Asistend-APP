@@ -12,11 +12,17 @@ import androidx.sqlite.db.SupportSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteStatement
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.io.Closeable
 import java.lang.ref.WeakReference
 import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.WeakHashMap
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * Optimistic capture boundary. Not yet used by the exporter: preference, file and logical
@@ -53,6 +59,25 @@ internal class OfflineBackupCoordinator {
     }
 
     fun <T> writing(action: () -> T): T = beginWrite().use { action() }
+
+    /** Registers the entire mutation, including queued entry and structured child jobs. */
+    fun launch(
+        scope: CoroutineScope,
+        context: CoroutineContext = EmptyCoroutineContext,
+        start: CoroutineStart = CoroutineStart.DEFAULT,
+        block: suspend CoroutineScope.() -> Unit
+    ): Job {
+        val writer = beginWrite()
+        try {
+            return scope.launch(context, start, block).also { job ->
+                // Runs even if cancellation prevents the coroutine body from entering.
+                job.invokeOnCompletion { writer.close() }
+            }
+        } catch (error: Throwable) {
+            writer.close()
+            throw error
+        }
+    }
 
     fun trackPreferences(preferences: SharedPreferences): SharedPreferences = synchronized(monitor) {
         this.preferences.getOrPut(preferences) { TrackedPreferences(preferences, this) }
