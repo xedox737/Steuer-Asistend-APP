@@ -270,7 +270,7 @@ private fun buildAnnualRentRows(
     units: List<WohneinheitStatus>,
     propertyId: String = ""
 ): List<AnnualRentRow> {
-    val rentPrefs = context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE)
+    val rentPrefs = com.example.data.PersistentPreferenceInventory.open(context, "rent_plan_prefs")
     return units.map { unit ->
         val nk = if (propertyId.isNotBlank()) PropertyUnitScopedData.rentValue(context, propertyId, unit, "nk")
             else rentPrefs.getFloat("nk_${unit.name}", 0f).toDouble()
@@ -317,7 +317,7 @@ private fun buildAnnualTaxSummary(
     val regularRental = rentalReceipts.filter { it.hauptkategorie == "Miete, Nebenkosten & Kaution" }
     val otherRental = rentalReceipts.filter { it.hauptkategorie == "Sonstige Einnahmen" }
 
-    val assignmentPrefs = context.getSharedPreferences("loan_interest_assignments", Context.MODE_PRIVATE)
+    val assignmentPrefs = com.example.data.PersistentPreferenceInventory.open(context, "loan_interest_assignments")
     val loansById = loans.associateBy { it.id }
     val interestReceipts = receipts.filter(::isInterest)
     val assignedInterest = interestReceipts.mapNotNull { r ->
@@ -676,10 +676,7 @@ internal fun buildAdvisorAnnualSummary(
         metadata,
         loans
     )
-    val approvalPrefs = context.getSharedPreferences(
-        ANNUAL_APPROVAL_PREFS,
-        Context.MODE_PRIVATE
-    )
+    val approvalPrefs = com.example.data.PersistentPreferenceInventory.open(context, ANNUAL_APPROVAL_PREFS)
     val approvalScope = metadata.propertyId.takeIf(String::isNotBlank)
     val scopedFingerprintKey = approvalScope?.let { "fingerprint_${it}_$year" }
     val scopedApprovedAtKey = approvalScope?.let { "approved_at_${it}_$year" }
@@ -986,7 +983,7 @@ fun AnnualTaxAssistantScreen(viewModel: ReceiptViewModel) {
     val approvalFingerprint = remember(summary, closingChecks, rentRows, receipts, metadata, loans) {
         annualApprovalFingerprint(summary, closingChecks, rentRows, receipts, metadata, loans)
     }
-    val approvalPrefs = remember(context) { context.getSharedPreferences(ANNUAL_APPROVAL_PREFS, Context.MODE_PRIVATE) }
+    val approvalPrefs = remember(context) { com.example.data.PersistentPreferenceInventory.open(context, ANNUAL_APPROVAL_PREFS) }
     val scopedApprovalFingerprintKey = remember(metadata.propertyId, year) {
         metadata.propertyId.takeIf(String::isNotBlank)?.let { "fingerprint_${it}_$year" }
     }

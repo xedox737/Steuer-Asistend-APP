@@ -49,7 +49,7 @@ object AiProviderSettings {
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     fun loadState(context: Context): AiProviderState {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         val provider = runCatching {
             ReceiptAnalysisProvider.valueOf(
                 prefs.getString(KEY_PROVIDER, ReceiptAnalysisProvider.GEMINI.name)
@@ -82,7 +82,7 @@ object AiProviderSettings {
             "Für OpenAI muss zuerst ein API-Schlüssel gespeichert werden."
         }
         val normalizedModel = model.trim().ifBlank { AiProviderState.DEFAULT_OPENAI_MODEL }
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
             .edit()
             .putString(KEY_PROVIDER, provider.name)
             .putString(KEY_MODEL, normalizedModel)
@@ -100,7 +100,7 @@ object AiProviderSettings {
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
             val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
 
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
                 .edit()
                 .putString(KEY_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
@@ -111,7 +111,7 @@ object AiProviderSettings {
     }
 
     fun getOpenAiKey(context: Context): CharArray? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         val ciphertext = prefs.getString(KEY_CIPHERTEXT, null) ?: return null
         val iv = prefs.getString(KEY_IV, null) ?: return null
         return runCatching {
@@ -140,7 +140,7 @@ object AiProviderSettings {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGeminiSecretKey())
             val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
                 .edit()
                 .putString(KEY_GEMINI_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString(KEY_GEMINI_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
@@ -151,7 +151,7 @@ object AiProviderSettings {
     }
 
     fun getGeminiKey(context: Context): CharArray? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         val ciphertext = prefs.getString(KEY_GEMINI_CIPHERTEXT, null) ?: return null
         val iv = prefs.getString(KEY_GEMINI_IV, null) ?: return null
         return runCatching {
@@ -175,7 +175,7 @@ object AiProviderSettings {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGoogleRoutesSecretKey())
             val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
-            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).edit()
                 .putString(KEY_GOOGLE_ROUTES_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .putString(KEY_GOOGLE_ROUTES_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
                 .apply()
@@ -185,7 +185,7 @@ object AiProviderSettings {
     }
 
     fun getGoogleRoutesKey(context: Context): CharArray? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         val ciphertext = prefs.getString(KEY_GOOGLE_ROUTES_CIPHERTEXT, null) ?: return null
         val iv = prefs.getString(KEY_GOOGLE_ROUTES_IV, null) ?: return null
         return runCatching {
@@ -203,7 +203,7 @@ object AiProviderSettings {
     }
 
     fun clearOpenAiKey(context: Context): AiProviderState {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
             .edit()
             .remove(KEY_CIPHERTEXT)
             .remove(KEY_IV)
@@ -213,7 +213,7 @@ object AiProviderSettings {
     }
 
     fun clearGeminiKey(context: Context): AiProviderState {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
             .edit()
             .remove(KEY_GEMINI_CIPHERTEXT)
             .remove(KEY_GEMINI_IV)
@@ -222,7 +222,7 @@ object AiProviderSettings {
     }
 
     fun clearGoogleRoutesKey(context: Context): AiProviderState {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).edit()
             .remove(KEY_GOOGLE_ROUTES_CIPHERTEXT)
             .remove(KEY_GOOGLE_ROUTES_IV)
             .apply()
@@ -241,17 +241,17 @@ object AiProviderSettings {
         value.length >= 16 && value.none(Char::isWhitespace)
 
     private fun hasStoredOpenAiKey(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         return prefs.contains(KEY_CIPHERTEXT) && prefs.contains(KEY_IV)
     }
 
     private fun hasStoredGeminiKey(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         return prefs.contains(KEY_GEMINI_CIPHERTEXT) && prefs.contains(KEY_GEMINI_IV)
     }
 
     private fun hasStoredGoogleRoutesKey(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
         return prefs.contains(KEY_GOOGLE_ROUTES_CIPHERTEXT) && prefs.contains(KEY_GOOGLE_ROUTES_IV)
     }
 

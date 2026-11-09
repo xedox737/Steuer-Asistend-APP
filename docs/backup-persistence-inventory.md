@@ -909,6 +909,17 @@ git diff --check bestanden. Die neuen Tests beobachten echte Store-Migrationen
 und die Aliasabfrage zwischen zwei Editor-Veröffentlichungen; dort ist die
 Erfassung gesperrt. Bereits kanonische Reads ändern die Generation nicht.
 
+### Schritt 4: weitere einzelne Preference-Veröffentlichungen
+
+Nächste konkret benannte Grenzen: AiProviderSettings (Selection, Key-Speicherung
+und Reset), RenovationReviewStore (saveMeasure/saveRelation), ConfirmedAfaValuesStore
+(load/save) und AnnualTaxAssistantFeature (Freigaben sowie zugehörige Lesezugänge).
+Alle dortigen Öffnungen verwenden den erfassten Inventarzugang. Die jeweiligen
+Veröffentlichungen erfolgen bereits über einzelne Editor-Commits/Apply-Ketten;
+Cipher, Schlüsselbehandlung, Berechnungen, Steuersachlogik und UI bleiben gleich.
+Fünf Dateien einschließlich dieses Dokuments. Prüfung über Inventarguard,
+Provider-Key-Sicherheit und bestehende Sanierungs-/AfA-Persistenzregressionen.
+
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
 
@@ -936,3 +947,11 @@ Erfassung gesperrt. Bereits kanonische Reads ändern die Generation nicht.
   Koordinationspunkte. Die Implementierung und vollständige Laufzeit-Abnahme
   eines gemeinsamen Snapshot-Gates bleiben offen; es gibt hier noch keinen
   neuen Konsistenz- oder Vollständigkeitsnachweis für die Sicherungs-Engine.
+
+Abnahme dieser vier Preference-Anbindungen: acht gezielte Methoden bestanden
+(Provider-Key-Sicherheit, Sanierungspersistenz, AfA-/Credential-Backup und
+Inventarguard), XML ohne Fehler/Skips/Duplikate geprüft. Ergebnisse:
+`/tmp/immopilot-settings-writers-results`, Testprotokoll
+`/tmp/immopilot-settings-writers-tests.log`. `lintDebug`, `assembleDebug` und
+`assembleDebugAndroidTest` bestanden, Lint ohne Error/Fatal; Buildprotokoll
+`/tmp/immopilot-settings-writers-build.log`. Kein GitHub-Upload.
