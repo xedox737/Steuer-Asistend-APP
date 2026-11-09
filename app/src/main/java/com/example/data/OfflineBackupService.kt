@@ -377,70 +377,72 @@ internal class OfflineBackupService(private val context: Context, private val da
     }
 
     suspend fun restore(prepared: Prepared) {
-        val root = JSONObject(prepared.root.toString())
-        val destination = File(context.filesDir, "offline-originals")
-        check(destination.isDirectory || destination.mkdirs()) { "Lokaler Originalspeicher nicht verfügbar." }
-        val files = root.getJSONArray("files"); val mapping = mutableMapOf<String, String>()
-        for (index in 0 until files.length()) {
-            val item = files.getJSONObject(index)
-            val source = File(prepared.staging, "files_$index")
-            val extension = com.example.util.DatevOriginalAttachmentPolicy.detect(source)?.second ?: "bin"
-            val pathId = StableDocumentIdentity.sha256(item.getString("path").toByteArray(Charsets.UTF_8))
-            val target = File(destination, "$pathId-${item.getString("sha256")}.$extension")
-            requireBackup(com.example.util.ReceiptManifestService.calculateSha256(source) == item.getString("sha256")) { "Das vorbereitete Original wurde verändert." }
-            if (target.exists()) requireBackup(com.example.util.ReceiptManifestService.calculateSha256(target) == item.getString("sha256")) { "Eine vorhandene Originaldatei steht im Konflikt." }
-            else {
-                val staging = File.createTempFile("original-", ".tmp", destination)
-                try {
-                    source.copyTo(staging, overwrite = true)
-                    requireBackup(com.example.util.ReceiptManifestService.calculateSha256(staging) == item.getString("sha256")) { "Originaldatei konnte nicht vollständig kopiert werden." }
-                    check(staging.renameTo(target)) { "Originaldatei konnte nicht dauerhaft gespeichert werden." }
-                } finally { staging.delete() }
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val root = JSONObject(prepared.root.toString())
+            val destination = File(context.filesDir, "offline-originals")
+            check(destination.isDirectory || destination.mkdirs()) { "Lokaler Originalspeicher nicht verfügbar." }
+            val files = root.getJSONArray("files"); val mapping = mutableMapOf<String, String>()
+            for (index in 0 until files.length()) {
+                val item = files.getJSONObject(index)
+                val source = File(prepared.staging, "files_$index")
+                val extension = com.example.util.DatevOriginalAttachmentPolicy.detect(source)?.second ?: "bin"
+                val pathId = StableDocumentIdentity.sha256(item.getString("path").toByteArray(Charsets.UTF_8))
+                val target = File(destination, "$pathId-${item.getString("sha256")}.$extension")
+                requireBackup(com.example.util.ReceiptManifestService.calculateSha256(source) == item.getString("sha256")) { "Das vorbereitete Original wurde verändert." }
+                if (target.exists()) requireBackup(com.example.util.ReceiptManifestService.calculateSha256(target) == item.getString("sha256")) { "Eine vorhandene Originaldatei steht im Konflikt." }
+                else {
+                    val staging = File.createTempFile("original-", ".tmp", destination)
+                    try {
+                        source.copyTo(staging, overwrite = true)
+                        requireBackup(com.example.util.ReceiptManifestService.calculateSha256(staging) == item.getString("sha256")) { "Originaldatei konnte nicht vollständig kopiert werden." }
+                        check(staging.renameTo(target)) { "Originaldatei konnte nicht dauerhaft gespeichert werden." }
+                    } finally { staging.delete() }
+                }
+                mapping[item.getString("path")] = target.absolutePath
             }
-            mapping[item.getString("path")] = target.absolutePath
-        }
-        val tables = root.getJSONObject("tables")
-        tables.keys().forEach { name ->
-            val table = tables.getJSONObject(name); val columns = table.getJSONArray("columns"); val rows = table.getJSONArray("rows")
-            for (c in 0 until columns.length()) if (columns.getString(c) in pathColumns) for (r in 0 until rows.length()) {
-                val row = rows.getJSONArray(r); val raw = row.optString(c, "")
-                if (raw.isNotBlank()) row.put(c, mapping[raw] ?: ReceiptOriginalChain.encodePaths(ReceiptOriginalChain.paths(raw).map { path -> requireBackupValue(mapping[path]) { "Eine Dateireferenz fehlt im Sicherungspaket." } }))
+            val tables = root.getJSONObject("tables")
+            tables.keys().forEach { name ->
+                val table = tables.getJSONObject(name); val columns = table.getJSONArray("columns"); val rows = table.getJSONArray("rows")
+                for (c in 0 until columns.length()) if (columns.getString(c) in pathColumns) for (r in 0 until rows.length()) {
+                    val row = rows.getJSONArray(r); val raw = row.optString(c, "")
+                    if (raw.isNotBlank()) row.put(c, mapping[raw] ?: ReceiptOriginalChain.encodePaths(ReceiptOriginalChain.paths(raw).map { path -> requireBackupValue(mapping[path]) { "Eine Dateireferenz fehlt im Sicherungspaket." } }))
+                }
             }
-        }
-        val preferencesBefore = JSONObject().also { PersistentPreferenceInventory.writePayload(context, it) }
-        try {
-            database.withTransaction {
-                val db = database.openHelper.writableDatabase
-                validateTables(root, db)
-                val insertions = mutableListOf<Pair<String, Array<Any?>>>()
-                schema(db).forEach { (name, columns) ->
-                    val rows = tables.getJSONObject(name).getJSONArray("rows")
-                    val keys = columns.withIndex().filter { it.value.primary > 0 }
-                    for (r in 0 until rows.length()) {
-                        val row = rows.getJSONArray(r)
-                        val where = keys.joinToString(" AND ") { "`${it.value.name}` IS ?" }
-                        val arguments = keys.map { bound(row.get(it.index)) }.toTypedArray()
-                        db.query("SELECT * FROM `$name` WHERE $where", arguments).use { cursor ->
-                            if (cursor.moveToFirst()) {
-                                requireBackup(columns.indices.all { c -> equivalent(value(cursor, cursor.getColumnIndexOrThrow(columns[c].name)), row.get(c)) }) {
-                                    "Vorhandene Daten unterscheiden sich von der Sicherung. Es wurde nichts überschrieben. Bitte auf einem leeren App-Bestand wiederherstellen."
-                                }
-                            } else insertions += "INSERT INTO `$name` (${columns.joinToString { "`${it.name}`" }}) VALUES (${columns.joinToString { "?" }})" to Array(columns.size) { bound(row.get(it)) }
+            val preferencesBefore = JSONObject().also { PersistentPreferenceInventory.writePayload(context, it) }
+            try {
+                database.withTransaction {
+                    val db = database.openHelper.writableDatabase
+                    validateTables(root, db)
+                    val insertions = mutableListOf<Pair<String, Array<Any?>>>()
+                    schema(db).forEach { (name, columns) ->
+                        val rows = tables.getJSONObject(name).getJSONArray("rows")
+                        val keys = columns.withIndex().filter { it.value.primary > 0 }
+                        for (r in 0 until rows.length()) {
+                            val row = rows.getJSONArray(r)
+                            val where = keys.joinToString(" AND ") { "`${it.value.name}` IS ?" }
+                            val arguments = keys.map { bound(row.get(it.index)) }.toTypedArray()
+                            db.query("SELECT * FROM `$name` WHERE $where", arguments).use { cursor ->
+                                if (cursor.moveToFirst()) {
+                                    requireBackup(columns.indices.all { c -> equivalent(value(cursor, cursor.getColumnIndexOrThrow(columns[c].name)), row.get(c)) }) {
+                                        "Vorhandene Daten unterscheiden sich von der Sicherung. Es wurde nichts überschrieben. Bitte auf einem leeren App-Bestand wiederherstellen."
+                                    }
+                                } else insertions += "INSERT INTO `$name` (${columns.joinToString { "`${it.name}`" }}) VALUES (${columns.joinToString { "?" }})" to Array(columns.size) { bound(row.get(it)) }
+                            }
                         }
                     }
+                    insertions.forEach { (sql, arguments) -> db.execSQL(sql, arguments) }
+                    db.query("PRAGMA foreign_key_check").use { requireBackup(!it.moveToFirst()) { "Ungültige Beziehungen in der Sicherung." } }
+                    database.managedDocumentDao().getAll().forEach { document ->
+                        database.managedDocumentDao().deleteSearchEntry(document.documentId)
+                        database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
+                    }
+                    PersistentPreferenceInventory.restorePayload(context, root.getJSONObject("preferences"), RestoreMode.MERGE)
+                    validateRelationships()
                 }
-                insertions.forEach { (sql, arguments) -> db.execSQL(sql, arguments) }
-                db.query("PRAGMA foreign_key_check").use { requireBackup(!it.moveToFirst()) { "Ungültige Beziehungen in der Sicherung." } }
-                database.managedDocumentDao().getAll().forEach { document ->
-                    database.managedDocumentDao().deleteSearchEntry(document.documentId)
-                    database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
-                }
-                PersistentPreferenceInventory.restorePayload(context, root.getJSONObject("preferences"), RestoreMode.MERGE)
-                validateRelationships()
+            } catch (error: Exception) {
+                PersistentPreferenceInventory.restorePayload(context, preferencesBefore, RestoreMode.REPLACE_FULL)
+                throw error
             }
-        } catch (error: Exception) {
-            PersistentPreferenceInventory.restorePayload(context, preferencesBefore, RestoreMode.REPLACE_FULL)
-            throw error
         }
     }
 }

@@ -56,6 +56,87 @@ class OfflineBackupCoordinatorTest {
 
     private fun quietCapture() { coordinator.completeCapture(coordinator.beginCapture()) }
 
+    @Test fun preferenceRestoreKeepsOneRegistrationAcrossStores() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shared = OfflineBackupCoordinator.shared
+        val rent = context.getSharedPreferences("rent_plan_prefs", 0)
+        val notes = context.getSharedPreferences("bank_transaction_notes", 0)
+        rent.edit().clear().commit(); notes.edit().clear().commit()
+        val payload = JSONObject()
+            .put("rentPlanPrefs", JSONObject().put("v2_P_U_nk", JSONObject().put("type", "float").put("value", 80.0)))
+            .put("bankTransactionNotes", JSONObject().put("T", JSONObject().put("type", "string").put("value", "restored")))
+        val observed = mutableListOf<Boolean>()
+        val probe = object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+                val result = super.getSharedPreferences(name, mode)
+                if (name == "bank_transaction_notes" && rent.getFloat("v2_P_U_nk", 0f) == 80f) {
+                    observed += runCatching { shared.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                }
+                return result
+            }
+        }
+        val before = shared.beginCapture()
+        PersistentPreferenceInventory.restorePayload(probe, payload, RestoreMode.REPLACE_FULL)
+        assertEquals(listOf(true), observed)
+        assertEquals(80f, rent.getFloat("v2_P_U_nk", 0f), 0f)
+        assertEquals("restored", notes.getString("T", null))
+        assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(before) }
+        shared.completeCapture(shared.beginCapture())
+    }
+
+    @Test fun supplementalRestoreIsRegisteredBeforePropertyImagePublication() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        database.propertyDao().insertPropertyMetadata(PropertyMetadata(propertyId = StableDocumentIdentity.LEGACY_PROPERTY_ID, name = "Legacy"))
+        val bytes = "synthetic property image".toByteArray()
+        val photo = File.createTempFile("coordinator-property-", ".jpg", context.cacheDir).apply { writeBytes(bytes) }
+        database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 101, propertyId = "photo-owner", name = "Photo", bildPfad = photo.absolutePath))
+        val payload = SupplementalDriveBackup.createPayload(context, database)
+        val shared = OfflineBackupCoordinator.shared
+        var observing = false
+        val observed = mutableListOf<Boolean>()
+        val probe = object : ContextWrapper(context) {
+            override fun getFilesDir(): File {
+                if (observing) observed += runCatching { shared.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                return context.filesDir
+            }
+        }
+        try {
+            observing = true
+            try { SupplementalDriveBackup.restorePayload(probe, database, payload, replaceManagedDocuments = true) }
+            finally { observing = false }
+            assertEquals(listOf(true), observed)
+            val restored = database.propertyDao().getPropertyByPropertyId("photo-owner")!!
+            assertEquals(101, restored.id)
+            assertNotEquals(photo.absolutePath, restored.bildPfad)
+            assertArrayEquals(bytes, File(restored.bildPfad).readBytes())
+            shared.completeCapture(shared.beginCapture())
+        } finally { photo.delete() }
+    }
+
+    @Test fun localRestoreIsRegisteredBeforeOriginalStoragePublication() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        database.propertyDao().insertPropertyMetadata(PropertyMetadata(propertyId = StableDocumentIdentity.LEGACY_PROPERTY_ID, name = "Legacy"))
+        val service = OfflineBackupService(context, database)
+        val bytes = java.io.ByteArrayOutputStream().also { service.create(it) }.toByteArray()
+        val shared = OfflineBackupCoordinator.shared
+        var observing = false
+        val observed = mutableListOf<Boolean>()
+        val probe = object : ContextWrapper(context) {
+            override fun getFilesDir(): File {
+                if (observing) observed += runCatching { shared.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                return context.filesDir
+            }
+        }
+        val target = OfflineBackupService(probe, database)
+        service.inspect(bytes.inputStream()).use { prepared ->
+            observing = true
+            try { target.restore(prepared) } finally { observing = false }
+        }
+        assertEquals(listOf(true), observed)
+        assertEquals(receipt, database.receiptDao().getReceiptById(7))
+        shared.completeCapture(shared.beginCapture())
+    }
+
     @Test fun repositoryInsertKeepsRegistrationBetweenCommittedReceiptAndItsProjections() = runBlocking {
         val shared = OfflineBackupCoordinator.shared
         val entered = CompletableDeferred<Unit>()

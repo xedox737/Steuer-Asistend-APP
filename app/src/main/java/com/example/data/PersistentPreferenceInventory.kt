@@ -129,54 +129,56 @@ internal object PersistentPreferenceInventory {
         root: JSONObject,
         mode: RestoreMode = RestoreMode.MERGE
     ) {
-        stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
-            val values = root.optJSONObject(requireNotNull(store.payloadKey)) ?: return@forEach
-            val prefs = open(context, store.name)
-            val editor = prefs.edit()
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
+                val values = root.optJSONObject(requireNotNull(store.payloadKey)) ?: return@forEach
+                val prefs = open(context, store.name)
+                val editor = prefs.edit()
 
-            if (mode == RestoreMode.REPLACE_FULL) {
-                prefs.all.keys.filter { permits(store, it) }.forEach(editor::remove)
-            }
-
-            values.keys().forEach entryLoop@ { key ->
-                if (!permits(store, key)) return@entryLoop
-                val value = values.optJSONObject(key) ?: return@entryLoop
-
-                if (mode == RestoreMode.MERGE &&
-                    prefs.contains(key) &&
-                    store.name in setOf("tenant_history_prefs", "property_tasks_prefs")
-                ) {
-                    val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
-                    if (merged != null) editor.putString(key, merged)
-                    return@entryLoop
+                if (mode == RestoreMode.REPLACE_FULL) {
+                    prefs.all.keys.filter { permits(store, it) }.forEach(editor::remove)
                 }
 
-                // No per-field version exists in the remaining stores. A snapshot must not
-                // roll back unit values, rent, assignments, notes, drafts or settings.
-                if (mode == RestoreMode.MERGE && prefs.contains(key)) {
-                    if (value.optString("type") == "stringSet" && prefs.all[key] is Set<*>) {
-                        val array = value.getJSONArray("value")
-                        editor.putStringSet(key, prefs.getStringSet(key, emptySet()).orEmpty() +
-                            (0 until array.length()).map { array.getString(it) })
+                values.keys().forEach entryLoop@ { key ->
+                    if (!permits(store, key)) return@entryLoop
+                    val value = values.optJSONObject(key) ?: return@entryLoop
+
+                    if (mode == RestoreMode.MERGE &&
+                        prefs.contains(key) &&
+                        store.name in setOf("tenant_history_prefs", "property_tasks_prefs")
+                    ) {
+                        val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
+                        if (merged != null) editor.putString(key, merged)
+                        return@entryLoop
                     }
-                    return@entryLoop
-                }
 
-                when (value.optString("type")) {
-                    "string" -> editor.putString(key, value.getString("value"))
-                    "int" -> editor.putInt(key, value.getInt("value"))
-                    "long" -> editor.putLong(key, value.getLong("value"))
-                    "float" -> editor.putFloat(key, NumericWriteBoundary.float(value.getDouble("value"),
-                        nonNegative = store.name in setOf("wohneinheiten_prefs", "rent_plan_prefs")))
-                    "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
-                    "stringSet" -> {
-                        val array = value.getJSONArray("value")
-                        editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
+                    // No per-field version exists in the remaining stores. A snapshot must not
+                    // roll back unit values, rent, assignments, notes, drafts or settings.
+                    if (mode == RestoreMode.MERGE && prefs.contains(key)) {
+                        if (value.optString("type") == "stringSet" && prefs.all[key] is Set<*>) {
+                            val array = value.getJSONArray("value")
+                            editor.putStringSet(key, prefs.getStringSet(key, emptySet()).orEmpty() +
+                                (0 until array.length()).map { array.getString(it) })
+                        }
+                        return@entryLoop
                     }
-                    else -> error("Unbekannter Preference-Typ in der Sicherung.")
+
+                    when (value.optString("type")) {
+                        "string" -> editor.putString(key, value.getString("value"))
+                        "int" -> editor.putInt(key, value.getInt("value"))
+                        "long" -> editor.putLong(key, value.getLong("value"))
+                        "float" -> editor.putFloat(key, NumericWriteBoundary.float(value.getDouble("value"),
+                            nonNegative = store.name in setOf("wohneinheiten_prefs", "rent_plan_prefs")))
+                        "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
+                        "stringSet" -> {
+                            val array = value.getJSONArray("value")
+                            editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
+                        }
+                        else -> error("Unbekannter Preference-Typ in der Sicherung.")
+                    }
                 }
+                check(editor.commit()) { "Einstellungen konnten nicht dauerhaft wiederhergestellt werden." }
             }
-            check(editor.commit()) { "Einstellungen konnten nicht dauerhaft wiederhergestellt werden." }
         }
     }
 

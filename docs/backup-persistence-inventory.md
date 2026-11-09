@@ -1327,3 +1327,46 @@ geänderten Methoden nach dem Testlauf bereinigt; kein Verhalten verändert.
 `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
 (`/tmp/immopilot-drive-download-coordination-build.log`), Lint ohne Error/Fatal;
 `git diff --check` bestanden. Kein Push und kein Emulatorlauf.
+
+### Schritt 4: zusammenhängende Restore-Veröffentlichungen
+
+Fünf Dateien: PersistentPreferenceInventory, SupplementalDriveBackup,
+OfflineBackupService, OfflineBackupCoordinatorTest und dieses Dokument.
+Die bestehenden restorePayload-/restore-Aufrufe melden alle ihre Datei-,
+Room- und Preference-Phasen gemeinsam an. Keine Änderung an MERGE/REPLACE,
+Validierung, Reihenfolge oder bisherigen Fehler-/Rollbackpfaden; das dauerhafte
+Wiederanlaufjournal und der Wartungsmodus aus Schritt 8 bleiben eine spätere,
+gesonderte Implementierung. Drei reale Beobachtungen prüfen den Zwischenraum
+zwischen Preference-Stores sowie den Eintritt vor Objektbild-/Originalspeicher-
+Veröffentlichung. Kontextprobes beobachten nur; Speicher und Room bleiben echt.
+
+Vorab: alle drei neuen Methoden erreichten ihre tatsächlichen Grenzen
+und scheiterten mit `expected:<[true]> but was:<[false]>`, ohne zusätzliche
+Fehler/Skips/Timeouts (`/tmp/immopilot-restore-publications-red.xml`,
+`/tmp/immopilot-restore-publications-red.log`). Danach jeweils die komplette
+Restore-Funktion angemeldet. Sämtliche ursprünglichen Bodies und unveränderten
+Dateibereiche nach Abzug nur der Hülle/Einrückungen exakt verglichen.
+
+Prüfumgebung korrigiert: Die zusätzlich ausgewählte PreferenceBackupCompletenessTest-
+Klasse verwendet AndroidJUnit4 ohne SDK-Override und damit den Standard-SDK 36.
+Der zunächst mit Java 17 gestartete kombinierte Lauf wurde nach Erkennen dieser
+Voraussetzung vor testDebugUnitTest beendet (Client 143; keine Testmethode lief).
+Dieselben unveränderten zwölf Fälle werden mit Java 21 geprüft; kein SDK-Filter,
+keine Teständerung und keine Wiederholung zur Verdeckung eines Produktfehlers.
+
+Der anschließende Umgebungsneustart beendete den Java-21-Prozess nach der
+Testkompilierung und vor der testDebugUnitTest-Aufgabe. Kein Gradle-Prozess
+blieb aktiv und es lag noch kein Ergebnis dieses Laufs vor. Derselbe eng
+gefilterte Prüflauf wird nach Wiederverfügbarkeit fortgesetzt; Infrastruktur-
+unterbrechung, keine ausgeblendete Testfehlermeldung.
+
+Abnahme: zwölf exakt ausgewählte Methoden bestanden; XML ohne Fehler,
+Skips oder Duplikate geprüft (`/tmp/immopilot-restore-publications-results`,
+`/tmp/immopilot-restore-publications-verified-tests-resumed.log`). Alle drei
+vorher beobachteten Grenzen sind gesperrt; Roundtrip, Konfliktabbruch,
+Objektbilder, ungültige Payloads, Credentials, höhere Schemaversion und
+vollständige Preferences bestehen weiterhin. `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-restore-publications-build.log`), Lint ohne Error/Fatal,
+`git diff --check` bestanden. Keine neue Journal-/Wartungssemantik in diesem
+Teilschritt, kein GitHub-Upload und kein Emulatorlauf.
