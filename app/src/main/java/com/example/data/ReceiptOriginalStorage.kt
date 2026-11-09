@@ -22,6 +22,14 @@ class ReceiptOriginalStorage(private val context: Context) {
         check(document.fileSizeBytes <= 0 || document.fileSizeBytes == bytes.size.toLong()) {
             "Die Größe des heruntergeladenen Originals stimmt nicht überein."
         }
+        val version = storeDownloadedVersion(bytes, document.storedFilename)
+        return document.copy(localUri = version.absolutePath, sha256 = hash,
+            fileSizeBytes = bytes.size.toLong(), updatedAt = Instant.now().toString())
+    }
+
+    /** Complete a private file before returning its new path to a metadata writer. */
+    fun storeDownloadedVersion(bytes: ByteArray, filename: String): File {
+        check(bytes.isNotEmpty()) { "Das heruntergeladene Original ist leer." }
         val directory = File(context.filesDir, "managed_documents")
         check(directory.isDirectory || directory.mkdirs()) { "Der lokale Belegspeicher konnte nicht angelegt werden." }
         val staging = File.createTempFile("document-download-", ".tmp", directory)
@@ -30,7 +38,7 @@ class ReceiptOriginalStorage(private val context: Context) {
                 output.write(bytes)
                 output.fd.sync()
             }
-            val extension = document.storedFilename.substringAfterLast('.', "bin")
+            val extension = filename.substringAfterLast('.', "bin")
                 .takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) } ?: "bin"
             val version = File(directory, "${UUID.randomUUID()}.$extension")
             check(!version.exists() && staging.renameTo(version)) {
@@ -38,8 +46,7 @@ class ReceiptOriginalStorage(private val context: Context) {
             }
             // Keep previous versions, including on a later database failure. Deletion needs
             // snapshot-aware ownership; it must never invalidate an existing reader or row.
-            return document.copy(localUri = version.absolutePath, sha256 = hash,
-                fileSizeBytes = bytes.size.toLong(), updatedAt = Instant.now().toString())
+            return version
         } finally {
             staging.delete()
         }

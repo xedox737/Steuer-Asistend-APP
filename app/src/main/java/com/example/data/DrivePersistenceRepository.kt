@@ -3894,7 +3894,7 @@ class DrivePersistenceRepository(
         if (documents.isNotEmpty() || references.size > 1) return downloadReceiptOriginals(accessToken, receipt, documents, references)
         val fileId = receipt.driveFileId ?: throw Exception("Keine Drive-ID für diesen Beleg vorhanden.")
         try {
-            val fileBytes = GoogleDriveClient.downloadFileBytes(accessToken, fileId) 
+            val fileBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
                 ?: throw Exception("Datei in Google Drive nicht gefunden oder unlesbar.")
                 
             if (fileBytes.isEmpty()) {
@@ -3939,20 +3939,7 @@ class DrivePersistenceRepository(
                 filename = "$base.$ext"
             }
             
-            val outputDir = java.io.File(context.filesDir, "restored_receipts/${receipt.internalId}")
-            if (!outputDir.exists()) {
-                outputDir.mkdirs()
-            }
-            val targetFile = java.io.File(outputDir, filename)
-            
-            java.io.FileOutputStream(targetFile).use { output ->
-                output.write(fileBytes)
-                output.flush()
-            }
-            
-            if (!targetFile.exists() || targetFile.length() == 0L) {
-                throw Exception("Fehler: Heruntergeladene Datei konnte nicht geschrieben werden oder ist leer.")
-            }
+            val targetFile = ReceiptOriginalStorage(context).storeDownloadedVersion(fileBytes, filename)
 
             // Make sure we only update the local fields, not anything that would trigger sync
             val updatedReceipt = receipt.copy(imageUrl = targetFile.absolutePath, lastSyncedAt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))

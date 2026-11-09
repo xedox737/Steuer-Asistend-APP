@@ -502,7 +502,7 @@ Gemischte und technische Preference-Wege sind ausdrücklich zu unterscheiden:
 | ui/ReceiptViewModel.kt / analyzeReceipt | schreibt receipt_page_*.jpg | FILE + zugehöriger Beleg-/Dokumentimport |
 | ui/ReceiptViewModel.kt / forceDocumentDownload | löscht vorhandene lokale Belegpfade vor erneutem Download | FILE + REMOTE; vor Löschung alte Snapshot-Version schützen |
 | ui/ImmobilienManagerFeature.kt / PropertyImagePicker | kopiert Objektbild nach property-images, startet Metadatenupdate | FILE + DB; keine Kopf-/Navigationsänderung |
-| data/DrivePersistenceRepository.kt / downloadDocumentOnDemand | schreibt restored_receipts | FILE + DB, falls referenzierter Bestand betroffen ist |
+| data/DrivePersistenceRepository.kt / downloadDocumentOnDemand | Legacy-Einzelbeleg wird über ReceiptOriginalStorage.storeDownloadedVersion neu veröffentlicht; bisherige restored_receipts bleiben erhalten | FILE + DB; Mehrseitenpfad gesondert erfasst, gemeinsames Gate noch offen |
 | data/DrivePersistenceRepository.kt / downloadReceiptOriginals | Staging und rename nach managed_documents | FILE + DB |
 | data/DrivePersistenceRepository.kt / repairAndUploadOriginalDocument | copyTo(overwrite=true) nach receipt_documents, Beleg-Update und Drive-Schreiben | FILE + DB + REMOTE |
 | data/SupplementalDriveBackup.kt / restorePayload | Objektbild-Staging und rename nach property-images | FILE + DB + PREF |
@@ -643,6 +643,43 @@ aus Staging; unbekannte externe Version; Startup-/Sync-Schreiber. Erfolgreich is
 ein vollständig konsistenter Stand oder ein sichtbarer Abbruch. Eine hohe
 Schreibaktivität darf die Sicherung verhindern, aber niemals das UI für die
 Dauer einer großen Dateikopie blockieren oder einen Mischstand veröffentlichen.
+
+### Dateiversionsgrenze für Legacy-Einzelbeleg-Downloads (09.11.2026)
+
+Konkreter weiterer Bedarf aus der Matrix: der Legacy-Zweig von
+`DrivePersistenceRepository.downloadDocumentOnDemand` schrieb direkt in
+`restored_receipts/internalId/filename`, auch wenn dieser Pfad bereits referenziert
+war. Nur dieser Veröffentlichungspunkt wird auf die gemeinsam verwendete
+`ReceiptOriginalStorage.storeDownloadedVersion` umgestellt. Die vorhandene
+Speicherfunktion wird dafür aufgeteilt, ohne den Validierungsvertrag des
+ManagedDocument-Downloads zu ändern. Neue Bytes werden vollständig geschrieben,
+per fsync gesichert und unter neuem UUID-Pfad in managed_documents veröffentlicht;
+die Metadaten werden anschließend über den bestehenden Repository-Aufruf angepasst.
+Bestehende restored_receipts-Dateien und fachliche IDs/Dateinamen bleiben erhalten.
+
+Der Download verwendet die bereits vorhandene `ManagedDocumentDriveGateway`-
+Schnittstelle. Deren Produktivadapter ruft weiterhin dieselbe vorhandene
+GoogleDriveClient-Downloadfunktion auf; die Änderung ermöglicht isolierte Tests
+ohne echte Konten, Netzwerk, neue Berechtigungen oder Cloud-Schreiboperationen.
+Keine Änderung an allgemeinem Sync, Formatdetektion oder Mehrseiten-Auswahl.
+
+Gezielte Nachweise: zwei neue Methoden in `DrivePersistenceManagedDocumentE2eTest`
+für Legacy-Download mit weiterhin lesbarer alter Version, stabile Zuordnungen,
+Wiederholung ohne Dubletten und fehlende/leere Downloads ohne veränderte Referenz
+oder neue Datei. Zusätzlich dessen bestehender Mehrseiten-Roundtrip und die fünf
+Methoden von `ReceiptOriginalStorageVersionTest`, da deren Speicherpfad jetzt
+gemeinsam genutzt wird. Alle acht ausgewählten Methoden bestanden, ohne Fehler,
+Skips oder Platzhalter; exakte Methodennamen im JUnit-XML geprüft und Ergebnisse
+unter `/tmp/immopilot-legacy-version-results` gesichert. Testprotokoll:
+`/tmp/immopilot-legacy-version-tests.log` (Java 21, Gradle 9.3.1, Roborazzi-Verify).
+Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-legacy-version-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Kein Emulatorlauf, echter Cloud-Test, Push oder CI-Eingriff.
+
+Die alte Vorablöschung in `ReceiptViewModel.forceDocumentDownload` und die übrigen
+Schreib-/Löschgrenzen der Matrix sind damit noch nicht koordiniert. Die oben
+festgelegte globale Snapshot-Alternative bleibt bis zur vollständigen Anbindung
+und ihren Nebenläufigkeitsnachweisen inaktiv.
 
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)

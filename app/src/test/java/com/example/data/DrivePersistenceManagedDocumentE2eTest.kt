@@ -61,6 +61,73 @@ class DrivePersistenceManagedDocumentE2eTest {
         database.close()
     }
 
+    private suspend fun legacyReceiptWithOriginal(): Pair<Receipt, java.io.File> {
+        val file = java.io.File(context.filesDir, "restored_receipts/legacy-version/Original.pdf")
+        check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
+        file.writeText("previous original bytes")
+        val receipt = Receipt(id = 700, internalId = "legacy-version", aussteller = "Legacy",
+            datum = "2026-10-08", uhrzeit = "", bruttobetrag = 100.0,
+            hauptkategorie = "Renovierung", unterkategorie = "Material", kontoNr = "4800",
+            beschreibung = "Original", propertyId = "property-test", unitId = "unit-test-01",
+            imageUrl = file.absolutePath, driveFileId = "legacy-remote", storedFilename = file.name,
+            originalMimeType = "application/pdf")
+        // A real legacy row has not yet been projected into managed_documents.
+        database.receiptDao().insertReceipt(receipt)
+        assertTrue(localRepository.getAllManagedDocuments().isEmpty())
+        return receipt to file
+    }
+
+    @Test fun legacyReceiptDownloadPublishesNewVersionWithoutOverwritingPreviousOriginal() = runTest {
+        val (receipt, previous) = legacyReceiptWithOriginal()
+        val bytes = SyntheticDocumentFixtureFactory.create().first().bytes
+        fakeDrive.put("legacy-remote", "receipts", "Original.pdf", bytes)
+        var published: java.io.File? = null
+        try {
+            val path = driveRepository.downloadDocumentOnDemand("test-token", receipt)
+            published = java.io.File(path)
+            assertNotEquals(previous.absolutePath, path)
+            assertEquals("previous original bytes", previous.readText())
+            assertArrayEquals(bytes, published.readBytes())
+            val saved = localRepository.getReceiptByInternalId(receipt.internalId)!!
+            assertEquals(path, saved.imageUrl)
+            assertEquals(receipt.id, saved.id)
+            assertEquals(receipt.propertyId, saved.propertyId)
+            assertEquals(receipt.unitId, saved.unitId)
+            assertEquals(receipt.driveFileId, saved.driveFileId)
+            assertEquals(receipt.storedFilename, saved.storedFilename)
+            assertEquals(path, localRepository.getAllManagedDocuments().single().localUri)
+            assertEquals(path, driveRepository.downloadDocumentOnDemand("test-token", saved))
+            assertEquals(1, localRepository.getAllReceiptsList().size)
+            assertEquals(1, localRepository.getAllManagedDocuments().size)
+            assertEquals(0, fakeDrive.uploadCalls)
+            assertEquals(0, fakeDrive.indexWrites)
+        } finally {
+            published?.delete()
+            previous.delete()
+        }
+    }
+
+    @Test fun missingOrEmptyLegacyDownloadPreservesExistingBytesAndReferences() = runTest {
+        val (receipt, previous) = legacyReceiptWithOriginal()
+        val directory = java.io.File(context.filesDir, "managed_documents")
+        val filesBefore = directory.listFiles()?.map { it.name }?.sorted().orEmpty()
+        try {
+            // Missing remote content, then an empty response: neither may publish a version.
+            repeat(2) { attempt ->
+                if (attempt == 1) fakeDrive.put("legacy-remote", "receipts", "Original.pdf", byteArrayOf())
+                assertTrue(runCatching {
+                    driveRepository.downloadDocumentOnDemand("test-token", receipt)
+                }.isFailure)
+                assertEquals(receipt, localRepository.getReceiptByInternalId(receipt.internalId))
+                assertEquals("previous original bytes", previous.readText())
+                assertTrue(localRepository.getAllManagedDocuments().isEmpty())
+                assertEquals(filesBefore, directory.listFiles()?.map { it.name }?.sorted().orEmpty())
+            }
+            assertEquals(0, fakeDrive.uploadCalls)
+            assertEquals(0, fakeDrive.indexWrites)
+        } finally { previous.delete() }
+    }
+
     @Test fun receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata() = runTest {
         val fixtures = SyntheticDocumentFixtureFactory.create().filter { it.number in setOf(1, 5) }
         val originals = fixtures.mapIndexed { index, fixture ->
