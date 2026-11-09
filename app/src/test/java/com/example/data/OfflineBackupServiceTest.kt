@@ -210,6 +210,42 @@ class OfflineBackupServiceTest {
         assertEquals(1, sourceDatabase.managedDocumentDao().getAll().size)
     }
 
+    @Test fun missingOriginalReportsDocumentIdentityWithoutPrivateDirectory() = runBlocking {
+        seedPortfolio(missingOriginal = true)
+        assertOriginalFailure("fehlt")
+    }
+
+    @Test fun emptyOriginalHasItsOwnCauseAndDoesNotChangeTheSource() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        File(document.localUri).writeBytes(byteArrayOf())
+        assertOriginalFailure("leer")
+        assertEquals(0L, File(document.localUri).length())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+    }
+
+    @Test fun oversizedOriginalReportsTheLimitWithoutReadingItsBytes() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        java.io.RandomAccessFile(document.localUri, "rw").use { it.setLength(1024L * 1024 * 1024 + 1) }
+        assertOriginalFailure("1 GiB")
+        assertEquals(1024L * 1024 * 1024 + 1, File(document.localUri).length())
+    }
+
+    private suspend fun assertOriginalFailure(cause: String) {
+        val output = ByteArrayOutputStream()
+        val failure = runCatching { sourceService.create(output) }.exceptionOrNull()
+        assertTrue(failure is OfflineBackupValidationException)
+        val message = failure!!.message.orEmpty()
+        assertTrue(message, message.contains(cause))
+        assertTrue(message, message.contains("Synthetic invoice"))
+        assertTrue(message, message.contains("offline-document"))
+        assertTrue(message, message.contains("invoice.pdf"))
+        assertFalse(message, message.contains(source.filesDir.absolutePath))
+        assertEquals("Validation must precede writing an archive", 0, output.size())
+        assertEquals(receipt, sourceDatabase.receiptDao().getReceiptById(receipt.id))
+    }
+
     @Test fun changedSourceOriginalMustMatchThePreviouslyRecordedDocumentChecksum() = runBlocking {
         seedPortfolio()
         val before = sourceDatabase.managedDocumentDao().getById("offline-document")!!

@@ -62,6 +62,45 @@ internal class OfflineBackupService(private val context: Context, private val da
     }
     private val pathColumns = setOf("imageUrl", "pdfPath", "bildPfad", "localUri")
 
+    private fun originalOwner(table: String, columns: JSONArray, row: JSONArray, path: String): String {
+        fun field(name: String): String = (0 until columns.length())
+            .firstOrNull { columns.getString(it) == name }?.let { text(row.opt(it)) }.orEmpty()
+        val kind = when (table) {
+            "managed_documents" -> "Dokument"
+            "property_metadata" -> "Immobilie"
+            else -> "Beleg"
+        }
+        val title = listOf("title", "aussteller", "name", "beschreibung").firstNotNullOfOrNull {
+            field(it).takeIf(String::isNotBlank)
+        }.orEmpty()
+        val id = listOf("documentId", "internalId", "propertyId", "id").firstNotNullOfOrNull {
+            field(it).takeIf(String::isNotBlank)
+        }.orEmpty()
+        val filename = field("originalFilename").ifBlank { field("storedFilename") }.ifBlank { path }
+            .substringAfterLast('/').substringAfterLast('\\')
+        return "$kind „$title“ (ID: $id, Objekt: ${field("propertyId")}, Datei: $filename)"
+    }
+
+    private fun copyOriginal(path: String, destination: File, owner: String): String {
+        try {
+            val source = File(path.removePrefix("file://"))
+            requireBackup(source.exists()) { "$owner: Originaldatei fehlt lokal. Bitte zuerst die Originale wiederherstellen." }
+            requireBackup(source.isFile && source.canRead()) { "$owner: Originaldatei ist nicht lesbar. Bitte den Zugriff prüfen." }
+            requireBackup(source.length() > 0) { "$owner: Originaldatei ist leer (0 Byte)." }
+            requireBackup(source.length() <= 1024L * 1024 * 1024) { "$owner: Originaldatei überschreitet die Grenze von 1 GiB." }
+            source.copyTo(destination)
+            val sha = com.example.util.ReceiptManifestService.calculateSha256(destination)
+            requireBackup(sha == com.example.util.ReceiptManifestService.calculateSha256(source)) {
+                "$owner: Originaldatei wurde während der Sicherung geändert. Bitte erneut versuchen."
+            }
+            return sha
+        } catch (error: java.io.IOException) {
+            throw OfflineBackupValidationException("$owner: Originaldatei konnte nicht vollständig gelesen werden. Bitte Datei und Zugriff prüfen.")
+        } catch (error: SecurityException) {
+            throw OfflineBackupValidationException("$owner: Zugriff auf die Originaldatei wurde verweigert.")
+        }
+    }
+
     suspend fun create(output: OutputStream) {
         val directory = File(context.cacheDir, "offline-export-${UUID.randomUUID()}").apply { check(mkdirs()) }
         try {
@@ -78,25 +117,26 @@ internal class OfflineBackupService(private val context: Context, private val da
                 JSONObject().put("format", "ImmoPilotOfflineBackup").put("version", 1).put("databaseVersion", db.version)
                     .put("tables", tables).put("preferences", JSONObject().also { PersistentPreferenceInventory.writePayload(context, it) })
             }
-            val paths = linkedSetOf<String>()
+            val paths = linkedMapOf<String, MutableSet<String>>()
             val tables = root.getJSONObject("tables")
             tables.keys().forEach { name ->
                 val table = tables.getJSONObject(name); val columns = table.getJSONArray("columns"); val rows = table.getJSONArray("rows")
                 for (c in 0 until columns.length()) if (columns.getString(c) in pathColumns) {
                     for (r in 0 until rows.length()) {
                         val raw = rows.getJSONArray(r).optString(c, "")
-                        if (raw.isNotBlank()) paths.addAll(if (columns.getString(c) == "localUri" || (name == "property_metadata" && columns.getString(c) == "bildPfad")) listOf(raw) else ReceiptOriginalChain.paths(raw))
+                        if (raw.isNotBlank()) {
+                            val originals = if (columns.getString(c) == "localUri" || (name == "property_metadata" && columns.getString(c) == "bildPfad")) listOf(raw) else ReceiptOriginalChain.paths(raw)
+                            originals.forEach { path ->
+                                paths.getOrPut(path) { linkedSetOf() }.add(originalOwner(name, columns, rows.getJSONArray(r), path))
+                            }
+                        }
                     }
                 }
             }
             val files = JSONArray()
-            paths.forEachIndexed { index, path ->
-                val source = File(path.removePrefix("file://"))
-                requireBackup(source.isFile && source.length() > 0 && source.length() <= 1024L * 1024 * 1024) { "Eine Originaldatei fehlt lokal. Bitte zuerst die Originale wiederherstellen." }
+            paths.entries.forEachIndexed { index, (path, owners) ->
                 val copied = File(directory, index.toString())
-                source.copyTo(copied)
-                val sha = com.example.util.ReceiptManifestService.calculateSha256(copied)
-                requireBackup(sha == com.example.util.ReceiptManifestService.calculateSha256(source)) { "Eine Datei wurde während der Sicherung geändert. Bitte erneut versuchen." }
+                val sha = copyOriginal(path, copied, owners.joinToString("; "))
                 files.put(JSONObject().put("path", path).put("entry", "files/$index").put("sha256", sha).put("size", copied.length()))
             }
             val originalsByPath = (0 until files.length()).associate {
