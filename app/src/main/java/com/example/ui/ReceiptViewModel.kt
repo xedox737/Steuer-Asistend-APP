@@ -122,7 +122,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     init { viewModelScope.launch { renovationStore.refresh() } }
 
     internal fun bankPhase2DServiceForUi(): com.example.data.BankPhase2DService = com.example.data.BankPhase2DService(
-        database, getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        database, com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
     )
     private val repository = ReceiptRepository(
         database.receiptDao(),
@@ -175,7 +175,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
 
-    private val sharedPrefs = application.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+    private val sharedPrefs = com.example.data.PersistentPreferenceInventory.open(application, "google_drive_prefs")
     private val _aiProviderState = MutableStateFlow(AiProviderSettings.loadState(application))
     val aiProviderState: StateFlow<AiProviderState> = _aiProviderState.asStateFlow()
 
@@ -253,7 +253,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun deleteGeminiKey() {
         _aiProviderState.value = AiProviderSettings.clearGeminiKey(getApplication())
     }
-    private val learnedRulesPrefs = application.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
+    private val learnedRulesPrefs = com.example.data.PersistentPreferenceInventory.open(application, "ki_learned_rules_prefs")
 
     // KI Adaptive Learning Rules State
     private val _learnedRules = MutableStateFlow<List<LearnedVendorRule>>(emptyList())
@@ -1013,7 +1013,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun loadUnits(metaUnitsStr: String, propertyId: String): List<WohneinheitStatus> {
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
         return com.example.data.UnitIdentity.read(metaUnitsStr, propertyId, unitPrefs).entries
             .map { loadUnitById(unitPrefs, propertyId, it.unitId, it.name) }
     }
@@ -1030,7 +1030,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     internal fun unitIdentityError(metadata: PropertyMetadata): String? =
         com.example.data.UnitIdentity.read(metadata.wohneinheiten, metadata.propertyId,
-            getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)).error
+            com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")).error
 
     private fun resolveReceiptUnitId(propertyId: String, unitName: String, existingUnitId: String = ""): String {
         val property = properties.value.firstOrNull { it.propertyId == propertyId }
@@ -1114,7 +1114,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     private fun updateWohneinheitForProperty(updated: WohneinheitStatus, targetProperty: PropertyMetadata) {
         com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
         com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
         val identities = com.example.data.UnitIdentity.read(targetProperty.wohneinheiten, targetProperty.propertyId, unitPrefs)
         if (identities.error != null) { _driveSyncStatus.value = identities.error; return }
         val identity = if (updated.unitId.isNotBlank()) identities.entries.singleOrNull { it.unitId == updated.unitId }
@@ -4038,7 +4038,7 @@ data class AiSearchUiState(
                 wohneinheiten = com.example.data.UnitIdentity.encode(units.map {
                     com.example.data.UnitIdentity.Entry(it.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, it.name) }, it.name)
                 }))
-            val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+            val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
             units.forEachIndexed { index, unit ->
                 val stableId = unit.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, unit.name) }
                 val prefix = scopedUnitPrefix(propertyId, stableId)
@@ -5112,7 +5112,7 @@ data class AiSearchUiState(
     }
 
     fun updatePropertyMetadata(metadata: PropertyMetadata, explicitUnitListEdit: Boolean = false) {
-        val prefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
         val previous = properties.value.singleOrNull { it.propertyId == metadata.propertyId }
             ?: propertyMetadata.value?.takeIf { it.propertyId == metadata.propertyId }
         if (previous != null && metadata.wohneinheiten != previous.wohneinheiten) {
@@ -5776,7 +5776,7 @@ data class AiSearchUiState(
         logbookBookingStore.correct(id, date, purpose, km, reason, time)
     suspend fun cancelLogbookTrip(id: Long, reason: String) = logbookBookingStore.cancel(id, reason)
 
-    private val logbookDraftPrefs = getApplication<Application>().getSharedPreferences("logbook_drafts", Context.MODE_PRIVATE)
+    private val logbookDraftPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "logbook_drafts")
     private val _logbookDrafts = MutableStateFlow(logbookDraftPrefs.all.mapNotNull { (key, value) -> (value as? String)?.let { key to it } }.toMap())
     val logbookDrafts = _logbookDrafts.asStateFlow()
     fun saveLogbookDraft(key: String, json: String) {

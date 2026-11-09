@@ -459,7 +459,7 @@ class DrivePersistenceRepository(
     }
 
     fun getWohneinheitenFromPrefs(metadata: PropertyMetadata?): List<WohneinheitStatus> {
-        val unitPrefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val unitPrefs = com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
         val propertyId = metadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID
         val read = UnitIdentity.read(metadata?.wohneinheiten.orEmpty(), propertyId, unitPrefs)
         check(read.error == null) { UnitIdentity.ERROR }
@@ -481,7 +481,7 @@ class DrivePersistenceRepository(
     }
 
     fun saveWohneinheitenToPrefs(units: List<WohneinheitStatus>, mode: RestoreMode = RestoreMode.MERGE, propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID) {
-        val unitPrefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val unitPrefs = com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
         val editor = unitPrefs.edit()
         fun putString(key: String, value: String) {
             if (mode != RestoreMode.MERGE || !unitPrefs.contains(key)) editor.putString(key, value)
@@ -510,7 +510,7 @@ class DrivePersistenceRepository(
     }
 
     fun getLearnedRulesFromPrefs(): List<LearnedVendorRule> {
-        val learnedRulesPrefs = context.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
+        val learnedRulesPrefs = com.example.data.PersistentPreferenceInventory.open(context, "ki_learned_rules_prefs")
         val rulesList = mutableListOf<LearnedVendorRule>()
         val allPrefs = learnedRulesPrefs.all
         for ((key, value) in allPrefs) {
@@ -522,7 +522,7 @@ class DrivePersistenceRepository(
     }
 
     fun saveLearnedRulesToPrefs(rules: List<LearnedVendorRule>, mode: RestoreMode = RestoreMode.MERGE) {
-        val learnedRulesPrefs = context.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
+        val learnedRulesPrefs = com.example.data.PersistentPreferenceInventory.open(context, "ki_learned_rules_prefs")
         val editor = learnedRulesPrefs.edit()
         learnedRulesPrefs.all.keys.forEach { k ->
             if (mode != RestoreMode.MERGE && k.startsWith("rule_")) editor.remove(k)
@@ -798,7 +798,7 @@ class DrivePersistenceRepository(
             if (datevFile != null) {
                 val json = GoogleDriveClient.downloadJson(accessToken, datevFile.id)
                 val profile = deserializeDatevProfile(json)
-                if (profile != null && !context.getSharedPreferences("datev_kanzleiprofil_prefs", Context.MODE_PRIVATE).contains("active_profile_json")) {
+                if (profile != null && !com.example.data.PersistentPreferenceInventory.open(context, "datev_kanzleiprofil_prefs").contains("active_profile_json")) {
                     DatevProfileService.saveActiveProfile(context, profile)
                     DiagnosticLog.d(TAG, "Restored DATEV Profile successfully.")
                 }
@@ -3574,7 +3574,7 @@ class DrivePersistenceRepository(
                 saveWohneinheitenToPrefs(snapshot.units, mode, snapshot.propertyMetadata?.propertyId ?: StableDocumentIdentity.LEGACY_PROPERTY_ID)
             }
             if (snapshot.datevProfiles.isNotEmpty() && (mode != RestoreMode.MERGE ||
-                !context.getSharedPreferences("datev_kanzleiprofil_prefs", Context.MODE_PRIVATE).contains("active_profile_json"))) {
+                !com.example.data.PersistentPreferenceInventory.open(context, "datev_kanzleiprofil_prefs").contains("active_profile_json"))) {
                 DatevProfileService.saveActiveProfile(context, snapshot.datevProfiles.first())
             }
             if (snapshot.aiLearnedRules.isNotEmpty()) {
@@ -4879,7 +4879,7 @@ class DrivePersistenceRepository(
 
     private fun localRepositoryUnitLabel(unitId: String?): String? {
         if (unitId.isNullOrBlank()) return null
-        val prefs = context.getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
         return prefs.all.keys.firstOrNull { it.startsWith("unit_id_") && prefs.getString(it, null) == unitId }
             ?.removePrefix("unit_id_")
     }

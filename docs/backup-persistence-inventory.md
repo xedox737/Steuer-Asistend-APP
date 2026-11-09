@@ -989,3 +989,36 @@ Namen und keine Fehler/Skips/Duplikate geprüft und unter
 `/tmp/immopilot-document-preferences-tests.log`. `lintDebug`, `assembleDebug`
 und `assembleDebugAndroidTest` bestanden; Lint ohne Error/Fatal. Build:
 `/tmp/immopilot-document-preferences-build.log`. `git diff --check` bestanden.
+
+### Schritt 4: Preference-Zugänge schließen und Umgehungen erkennen
+
+Vier Dateien: DrivePersistenceRepository, ReceiptViewModel,
+PersistentStorageInventoryTest und dieses Dokument. Die verbleibenden sieben
+fachlichen Öffnungen im Drive-Repository und neun im ViewModel werden über
+PersistentPreferenceInventory.open geführt. Technische LOCAL_ONLY-Journale
+bleiben gesondert. Der Inventarguard lehnt zusätzlich direkte Öffnungen aller
+BACKUP-Stores ab; ein gezielter Vorab-Lauf muss die bestehenden Umgehungen
+erkennen, bevor diese umgestellt werden. Werte, Schlüssel, Restore-Modi und
+Fachlogik bleiben unverändert. Anschließend Inventarguard und bestehende
+Preference-/Identitätsregressionen prüfen.
+
+Vorab-Nachweis: genau zwei Guard-Methoden ausgeführt, eine gezielte Assertion
+in everySharedPreferenceOpeningMustResolveToAnExplicitClassification:
+`DrivePersistenceRepository.kt: wohneinheiten_prefs umgeht die
+Snapshot-Schreibkoordination`. Die zweite Methode prüfte erfolgreich alle
+BACKUP-Stores gegen direkte Öffnung und den Inventarzugang. Keine Skips oder
+unerwarteten Fehler. Belege: `/tmp/immopilot-final-preferences-red.xml` und
+`/tmp/immopilot-final-preferences-red.log`. Anschließend ausschließlich die
+16 dokumentierten Öffnungen umgestellt; kein Wiederholungsversuch zum
+Verdecken eines Fehlers.
+
+Abnahme: sieben exakt ausgewählte Methoden bestanden, XML-Namen und keine
+Fehler/Skips/Duplikate geprüft. Ergebnisse:
+`/tmp/immopilot-final-preferences-results`, Testprotokoll:
+`/tmp/immopilot-final-preferences-tests.log`. Der Umgebungsneustart beendete
+den ersten Build vor Task-Ausführung; keine Tests wiederholt. Der danach
+gestartete Prüflauf bestand `lintDebug`, `assembleDebug` und
+`assembleDebugAndroidTest` (`/tmp/immopilot-final-preferences-build-resumed.log`),
+Lint ohne Error/Fatal; `git diff --check` bestanden. Alle derzeit inventarisierten
+fachlichen Preference-Öffnungen verwenden nun die koordinierte Factory. Das
+ersetzt weiterhin nicht die noch offene Anmeldung mehrteiliger Operationen.

@@ -70,6 +70,11 @@ class PersistentStorageInventoryTest {
                         .lastOrNull { it.groupValues[1] == argument }?.groupValues?.get(2)
                     assertNotNull("$owner: Speichername $argument muss für die Klassifizierung auflösbar sein", name)
                     assertTrue("$owner: $name nicht bewusst klassifiziert", name in classified)
+                    if (call.value.startsWith("getSharedPreferences")) {
+                        assertFalse("$owner: $name umgeht die Snapshot-Schreibkoordination",
+                            PersistentPreferenceInventory.stores.single { it.name == name }.kind ==
+                                PersistentPreferenceInventory.Kind.BACKUP)
+                    }
                     add(name!!)
                 }
             }
@@ -80,9 +85,20 @@ class PersistentStorageInventoryTest {
         val source = """
             private const val PREFS = "tenant_history_prefs"
             PersistentPreferenceInventory.open(context, PREFS)
-            context.getSharedPreferences("rent_plan_prefs", Context.MODE_PRIVATE)
+            context.getSharedPreferences("restore_journal_prefs", Context.MODE_PRIVATE)
         """.trimIndent()
-        assertEquals(setOf("tenant_history_prefs", "rent_plan_prefs"), preferenceNames(source, "fixture"))
+        assertEquals(setOf("tenant_history_prefs", "restore_journal_prefs"), preferenceNames(source, "fixture"))
+    }
+
+    @Test fun businessPreferenceOpeningsCannotBypassSnapshotCoordination() {
+        PersistentPreferenceInventory.stores.filter { it.kind == PersistentPreferenceInventory.Kind.BACKUP }
+            .forEach { store ->
+                assertThrows(AssertionError::class.java) {
+                    preferenceNames("context.getSharedPreferences(\"${store.name}\", 0)", "fixture")
+                }
+                assertEquals(setOf(store.name),
+                    preferenceNames("PersistentPreferenceInventory.open(context, \"${store.name}\")", "fixture"))
+            }
     }
 
     @Test fun unclassifiedAndComputedPreferenceNamesAreRejected() {
