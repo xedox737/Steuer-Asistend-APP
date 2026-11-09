@@ -1091,3 +1091,135 @@ Kennung/Werte/Legacy-Daten und den ruhigen anschließenden kanonischen Read.
 (`/tmp/immopilot-unit-read-migration-build.log`), Lint ohne Error/Fatal,
 `git diff --check` bestanden. Fachliche Ausgangslogik nach Abzug allein der
 Anmeldung/Hüllen/Einrückungen exakt verglichen. Kein GitHub-Upload.
+
+### Schritt 4: weitere endliche ViewModel-Mutationen
+
+Drei Dateien: ReceiptViewModel, OfflineBackupViewModelSnapshotTest und dieses
+Dokument. Mutierende Aufträge in Import, Bearbeitung, Bankzuordnung, Export,
+Löschen, Reparatur sowie Drive-/Firestore-Synchronisation werden vor der
+Einplanung angemeldet und bleiben bis zum Jobabschluss erfasst. Reine
+Such-/Analyseanzeigen und der unbegrenzte propertyMetadata-Collector bleiben
+Leseaufträge. Der Integrationstest hält Room vor dem ersten Datenbankzugriff
+einer echten createProperty-Anforderung an und prüft dort die Sperre. Nach
+Freigabe müssen stabile Einheiten-ID, Room-Zeile, Preferences und Auswahl
+vollständig veröffentlicht sein. Nur synthetische In-Memory-Daten.
+Die hier ausgewählten Robolectric-Klassen deklarieren SDK 35; für diese
+eng gefilterten Läufe genügt Java 17 (keine globale SDK-Erlaubnisliste).
+Java 21 bleibt für ausgewählte SDK-36-Fälle erforderlich.
+
+Vorab: genau die neue createProperty-Integrationsmethode scheiterte mit
+fehlender OfflineBackupValidationException vor Room-Eintritt; der Test
+ließ den angehaltenen Auftrag im finally vollständig fertiglaufen. Keine
+Timeout-/Infrastrukturursache, keine Skips. Belege:
+`/tmp/immopilot-viewmodel-mutations-red.xml` und
+`/tmp/immopilot-viewmodel-mutations-red.log` (Java 17, SDK 35).
+
+Angebunden: 88 weitere Coroutine-Starts in 88 ausdrücklich
+zugeordneten mutierenden Funktionen. Vollständige Liste dieser Anbindungen:
+
+- `ReceiptViewModel.acceptBankRule`
+- `ReceiptViewModel.analyzeManagedDocument`
+- `ReceiptViewModel.analyzeReceipt`
+- `ReceiptViewModel.analyzeReceiptDuplicates`
+- `ReceiptViewModel.applyBankBatchAction`
+- `ReceiptViewModel.applyDescriptionBackfill`
+- `ReceiptViewModel.backfillPaymentMethods`
+- `ReceiptViewModel.changePhase2DAllocation`
+- `ReceiptViewModel.checkForDriveRestore`
+- `ReceiptViewModel.classifyBankTransaction`
+- `ReceiptViewModel.clearAll`
+- `ReceiptViewModel.clearAllLearnedRules`
+- `ReceiptViewModel.confirmBankAccountImport`
+- `ReceiptViewModel.confirmBankLoanAssignment`
+- `ReceiptViewModel.confirmBankReceiptLink`
+- `ReceiptViewModel.confirmBankRentSuggestion`
+- `ReceiptViewModel.confirmBankTransferPair`
+- `ReceiptViewModel.confirmDocumentStorageMigration`
+- `ReceiptViewModel.confirmDuplicateMerge`
+- `ReceiptViewModel.confirmManagedDocumentReview`
+- `ReceiptViewModel.confirmManualBankRentAssignment`
+- `ReceiptViewModel.confirmManyBankTransactionsForReceipt`
+- `ReceiptViewModel.confirmMetadataDuplicateCleanup`
+- `ReceiptViewModel.confirmPhase2DCombination`
+- `ReceiptViewModel.confirmWholeDuplicateGroupDeletion`
+- `ReceiptViewModel.correctReceiptMetadata`
+- `ReceiptViewModel.createProperty`
+- `ReceiptViewModel.deleteBankRule`
+- `ReceiptViewModel.deleteLearnedRule`
+- `ReceiptViewModel.deleteProperty`
+- `ReceiptViewModel.deleteReceipt`
+- `ReceiptViewModel.deleteStandardRoute`
+- `ReceiptViewModel.diagnoseAndFixAllReceipts`
+- `ReceiptViewModel.downloadManagedDocument`
+- `ReceiptViewModel.downloadReceiptDocument`
+- `ReceiptViewModel.ensureManagedDocumentReady`
+- `ReceiptViewModel.executePhase2DSafeBatch`
+- `ReceiptViewModel.executeWizardExport`
+- `ReceiptViewModel.exportRenovationReport`
+- `ReceiptViewModel.forceDocumentDownload`
+- `ReceiptViewModel.importBankFile`
+- `ReceiptViewModel.importManagedDocument`
+- `ReceiptViewModel.initializeDrivePersistence`
+- `ReceiptViewModel.insertReceiptQuietly`
+- `ReceiptViewModel.learnVendorRule`
+- `ReceiptViewModel.markBankTransactionForReview`
+- `ReceiptViewModel.markBankTransactionNoReceiptRequired`
+- `ReceiptViewModel.performFullRestoreConfirmation`
+- `ReceiptViewModel.permanentlyDeleteReceipt`
+- `ReceiptViewModel.proposeBankRuleFromConfirmedReceipt`
+- `ReceiptViewModel.proposeBankRuleFromRecurringPattern`
+- `ReceiptViewModel.rejectBankRule`
+- `ReceiptViewModel.rejectBankRuleMatch`
+- `ReceiptViewModel.removeBankReceiptLink`
+- `ReceiptViewModel.reopenBankTransaction`
+- `ReceiptViewModel.repairReceiptDocument`
+- `ReceiptViewModel.requestDuplicateMerge`
+- `ReceiptViewModel.requestWholeDuplicateGroupDeletion`
+- `ReceiptViewModel.resetLocalReceiptData`
+- `ReceiptViewModel.resolvePossibleDocumentDuplicate`
+- `ReceiptViewModel.restoreReceipt`
+- `ReceiptViewModel.resumeDuplicateCleanupOperation`
+- `ReceiptViewModel.runDocumentOcr`
+- `ReceiptViewModel.runOriginalReceiptAudit`
+- `ReceiptViewModel.runRealDriveTest`
+- `ReceiptViewModel.runRestoreDryRun`
+- `ReceiptViewModel.saveBankRule`
+- `ReceiptViewModel.saveReceipt`
+- `ReceiptViewModel.saveRecurringPattern`
+- `ReceiptViewModel.saveRenovationMeasure`
+- `ReceiptViewModel.saveRenovationRelation`
+- `ReceiptViewModel.setBankRuleEnabled`
+- `ReceiptViewModel.setRecurringPatternEnabled`
+- `ReceiptViewModel.syncAllToDrive`
+- `ReceiptViewModel.syncManagedDocumentNow`
+- `ReceiptViewModel.syncReceiptManually`
+- `ReceiptViewModel.syncWithCloud`
+- `ReceiptViewModel.undoLastBankBatchAction`
+- `ReceiptViewModel.unlinkBankLoanAssignment`
+- `ReceiptViewModel.unlinkBankRentAssignment`
+- `ReceiptViewModel.unlinkBankTransferPair`
+- `ReceiptViewModel.unlinkPhase2DLink`
+- `ReceiptViewModel.updateBankLoanSplit`
+- `ReceiptViewModel.updateBankTransactionReviewState`
+- `ReceiptViewModel.updateManagedDocumentPresentation`
+- `ReceiptViewModel.updatePropertyMetadata`
+- `ReceiptViewModel.updateReceipt`
+- `ReceiptViewModel.uploadReceiptToDriveInternal`
+
+Die unveränderten Lese-/Anzeige- und Übergabeaufträge sind explizit
+klassifiziert; init-Feld-Refresh, propertyMetadata-Collector und Starttimer
+gehören dazu. Timer, Consent- und Anmeldeübergaben starten ihre tatsächlichen
+Mutationen über die jeweils angemeldeten Methoden. Alle ausstehenden
+viewModelScope.launch-Stellen sind so zugeordnet. Nach Rücknahme nur dieser
+Launch-Ersetzungen stimmt die gesamte Quelldatei exakt mit dem Ausgangsstand
+überein; keine fachlichen Bodies oder Parameter verändert.
+
+Abnahme: acht ausgewählte Methoden unter Java 17/SDK 35 bestanden,
+exakte XML-Namen und keine Fehler/Skips/Duplikate geprüft
+(`/tmp/immopilot-viewmodel-mutations-results`,
+`/tmp/immopilot-viewmodel-mutations-tests.log`). Der angehaltene tatsächliche
+Immobilien-Auftrag ist vor Datenbankeintritt angemeldet; nach Freigabe sind
+Room-Zeile, stabile Einheit, Preferences und Auswahl vollständig vorhanden.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-viewmodel-mutations-build.log`), Lint ohne Error/Fatal,
+`git diff --check` bestanden. Keine Änderung an SDK-Auswahl oder Prüfregeln.
