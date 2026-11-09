@@ -500,10 +500,10 @@ Gemischte und technische Preference-Wege sind ausdrücklich zu unterscheiden:
 | data/ManagedDocumentService.kt / persistPrepared | schreibt managed_documents und persistiert Dokumentmetadaten | FILE + DB; mögliche In-place-Schreibweise vor einer Unveränderlichkeitsbehauptung prüfen |
 | ui/ReceiptViewModel.kt / downloadManagedDocument | veröffentlicht über ReceiptOriginalStorage.storeDownloadedOriginal eine neue physische Version und aktualisiert danach lokale Referenz | FILE + DB; alte Version bleibt erhalten, gemeinsames Gate noch offen |
 | ui/ReceiptViewModel.kt / analyzeReceipt | schreibt receipt_page_*.jpg | FILE + zugehöriger Beleg-/Dokumentimport |
-| ui/ReceiptViewModel.kt / forceDocumentDownload | löscht vorhandene lokale Belegpfade vor erneutem Download | FILE + REMOTE; vor Löschung alte Snapshot-Version schützen |
+| ui/ReceiptViewModel.kt / forceDocumentDownload | fordert Remote-Neuabruf ohne Vorablöschung an | FILE + DB + REMOTE; Versionsübergabe nach vollständiger Prüfung, gemeinsames Gate offen |
 | ui/ImmobilienManagerFeature.kt / PropertyImagePicker | kopiert Objektbild nach property-images, startet Metadatenupdate | FILE + DB; keine Kopf-/Navigationsänderung |
 | data/DrivePersistenceRepository.kt / downloadDocumentOnDemand | Legacy-Einzelbeleg wird über ReceiptOriginalStorage.storeDownloadedVersion neu veröffentlicht; bisherige restored_receipts bleiben erhalten | FILE + DB; Mehrseitenpfad gesondert erfasst, gemeinsames Gate noch offen |
-| data/DrivePersistenceRepository.kt / downloadReceiptOriginals | Staging und rename nach managed_documents | FILE + DB |
+| data/DrivePersistenceRepository.kt / downloadReceiptOriginals | vorhandene lokale Bytes oder expliziter Remote-Neuabruf; neue Versionen über ReceiptOriginalStorage, Referenzübergabe nach Seitenprüfung | FILE + DB; gemeinsame Erfassung/Mutation noch zu koordinieren |
 | data/DrivePersistenceRepository.kt / repairAndUploadOriginalDocument | copyTo(overwrite=true) nach receipt_documents, Beleg-Update und Drive-Schreiben | FILE + DB + REMOTE |
 | data/SupplementalDriveBackup.kt / restorePayload | Objektbild-Staging und rename nach property-images | FILE + DB + PREF |
 | data/OfflineBackupService.kt / restore | kopiert Original-Staging, rename nach offline-originals, wendet SQL/Preferences an | FILE + DB + PREF, Restore-Wartungsmodus |
@@ -676,10 +676,64 @@ Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
 (`/tmp/immopilot-legacy-version-build.log`), Lint ohne Error/Fatal;
 `git diff --check` bestanden. Kein Emulatorlauf, echter Cloud-Test, Push oder CI-Eingriff.
 
-Die alte Vorablöschung in `ReceiptViewModel.forceDocumentDownload` und die übrigen
-Schreib-/Löschgrenzen der Matrix sind damit noch nicht koordiniert. Die oben
+Die zu diesem Prüfstand noch vorhandene Vorablöschung in
+`ReceiptViewModel.forceDocumentDownload` wird im nachfolgenden Schritt bearbeitet;
+die übrigen Schreib-/Löschgrenzen der Matrix sind noch nicht koordiniert. Die oben
 festgelegte globale Snapshot-Alternative bleibt bis zur vollständigen Anbindung
 und ihren Nebenläufigkeitsnachweisen inaktiv.
+
+### Keine Vorablöschung beim erzwungenen Belegdownload (09.11.2026)
+
+Konkreter Bedarf aus der Matrix: `ReceiptViewModel.forceDocumentDownload` löscht
+löschte alle lokalen Originalpfade, bevor Anmeldung, Remote-Verfügbarkeit und
+Prüfsummen geklärt sind. Dadurch zerstört schon ein fehlgeschlagener Neuversuch
+vorhandene Dateien und gegebenenfalls eine gerade erfasste Live-Referenz.
+`ReceiptOriginalPersistenceTest.forcedDownloadWithoutAccountPreservesEveryExistingOriginal`
+weist diesen Fehler ohne Anmeldung oder Netzwerk mit zwei synthetischen Originalen nach.
+Der Test schlug vor der Korrektur genau an der Assertion zum Erhalt der alten
+Dateien fehl (ein ausgeführter Test, ein Assertion-Fehler, keine Skips;
+`/tmp/immopilot-force-download-before.log` und zugehörige gesicherte XML-Datei).
+
+Die kleinste notwendige Verdrahtung ist in `forceDocumentDownload`,
+`downloadReceiptDocument`, `DrivePersistenceRepository.downloadDocumentOnDemand`
+und `downloadReceiptOriginals` vorgenommen: expliziter Remote-Neuabruf ohne
+Vorablöschung, Veröffentlichung neuer physischer Versionen über den vorhandenen
+Originalspeicher, Referenzübergabe erst nach Prüfung aller Seiten. Normale Aufrufe
+verwenden weiterhin vorhandene gültige lokale Originale. Zusätzliche gezielte
+Repository-Tests prüfen korruptes lokales Original mit gültigem Remote-Ersatz,
+fehlenden Remote-Inhalt und Fehler der zweiten Seite vor Referenzübergabe.
+Das ist keine Freigabe für sonstige Sync-/UI- oder Navigationsänderungen.
+
+Neue Remote-Versionen werden auch für Mehrseitenbelege nur unter neuen UUID-Pfaden
+veröffentlicht. Vorherige Bytes bleiben unverändert, auch wenn die zweite Seite
+fehlschlägt. Die bestehende Reihenfolge bleibt erhalten: erst alle Seiten prüfen,
+dann Dokument- und Belegreferenzen aktualisieren. Ein Fehler bei späteren DB-
+Schritten ist damit noch kein transaktionaler Gesamt-Rollback; das gemeinsame
+Mutationsfenster und der Restore-Wiederanlauf sind weiterhin gesondert umzusetzen.
+Nach einem Fehler können neue unreferenzierte Dateien verbleiben; es gibt keine
+automatische Bereinigung und keinen irreführenden erfolgreichen Snapshot-Status.
+Der erste kombinierte Lauf enthielt einen Synchronisationsfehler des neuen UI-
+Tests: `runTest` ließ den virtuellen 5000-ms-Timer vor dem echten IO-Job ablaufen.
+Die Prüfung wartet jetzt innerhalb von `withContext(Dispatchers.Default)` mit
+demselben 5000-ms-Limit auf den abschließenden Fehlerstatus. Keine Assertion,
+Produktions-Timeouts oder Synchronisierungsbedingung wurden abgeschwächt.
+Protokoll des ersten Laufs: `/tmp/immopilot-force-download-tests.log`.
+
+Alle 18 gezielten Methoden sind abschließend bestanden: sieben Methoden aus
+`ReceiptOriginalPersistenceTest`, fünf Speicher-Versionsmethoden, fünf gezielt
+ausgewählte Repository-Methoden und
+`Phase10DRestoreMetadataTest.originalDownloadMustPreserveVersionAndSubsequentMergeOrdering`.
+Die zehn bereits bestandenen unveränderten Speicher-/Repository-Methoden wurden
+nach der reinen UI-Testkorrektur nicht erneut ausgeführt. Der zweite Lauf prüfte
+die sieben betroffenen UI-Methoden und die zusätzlich identifizierte Metadaten-
+Regression (`/tmp/immopilot-force-download-final-tests.log`). Alle endgültigen
+JUnit-XML-Dateien liegen unter `/tmp/immopilot-force-download-results`; exakte
+Methoden, Klassen, Fehler/Skips und Platzhalter wurden geprüft.
+Java 21 / Gradle 9.3.1, Roborazzi-Verify. Java 17: `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden (`/tmp/immopilot-force-download-build.log`),
+Lint ohne Error/Fatal; `git diff --check` bestanden. Debug-Signatur unverändert:
+SHA-256 `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
+Keine Emulatorausführung, kein echter Cloud-Zugriff, Push, Merge oder CI-Eingriff.
 
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)

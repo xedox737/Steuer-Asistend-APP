@@ -128,6 +128,82 @@ class DrivePersistenceManagedDocumentE2eTest {
         } finally { previous.delete() }
     }
 
+    private fun forcedOriginal(receipt: Receipt, file: java.io.File, bytes: ByteArray, index: Int = 0) = ManagedDocument(
+        documentId = if (index == 0) StableDocumentIdentity.receiptDocumentId(receipt.internalId) else "forced-page-$index",
+        receiptInternalId = receipt.internalId, propertyId = receipt.propertyId, unitId = receipt.unitId,
+        localUri = file.absolutePath,
+        storedFilename = if (index == 0) receipt.storedFilename!! else "Original-$index.pdf",
+        originalFilename = "Original-$index.pdf",
+        mimeType = "application/pdf", sha256 = StableDocumentIdentity.sha256(bytes), fileSizeBytes = bytes.size.toLong(),
+        driveFileId = if (index == 0) receipt.driveFileId else "forced-remote-$index",
+        extractedFieldsJson = JSONObject().put("_receiptOriginalOrder", index).toString()
+    )
+
+    @Test fun forcedDownloadPublishesVerifiedReplacementWhileKeepingCorruptLocalVersion() = runTest {
+        val (receipt, previous) = legacyReceiptWithOriginal()
+        val bytes = SyntheticDocumentFixtureFactory.create().first().bytes
+        val original = forcedOriginal(receipt, previous, bytes)
+        localRepository.upsertManagedDocument(original)
+        fakeDrive.put(original.driveFileId!!, "receipts", original.storedFilename, bytes)
+        var published: java.io.File? = null
+        try {
+            val path = driveRepository.downloadDocumentOnDemand("test-token", receipt, forceRemote = true)
+            published = java.io.File(path)
+            assertNotEquals(previous.absolutePath, path)
+            assertEquals("previous original bytes", previous.readText())
+            assertArrayEquals(bytes, published.readBytes())
+            assertEquals(original.copy(localUri = path), localRepository.getManagedDocument(original.documentId))
+            assertEquals(path, localRepository.getReceiptByInternalId(receipt.internalId)!!.imageUrl)
+            assertEquals(0, fakeDrive.uploadCalls)
+        } finally {
+            published?.delete()
+            previous.delete()
+        }
+    }
+
+    @Test fun missingForcedRemoteOriginalKeepsLocalBytesAndAllReferences() = runTest {
+        val (receipt, previous) = legacyReceiptWithOriginal()
+        val original = forcedOriginal(receipt, previous, previous.readBytes())
+        localRepository.upsertManagedDocument(original)
+        try {
+            assertTrue(runCatching {
+                driveRepository.downloadDocumentOnDemand("test-token", receipt, forceRemote = true)
+            }.isFailure)
+            assertEquals("previous original bytes", previous.readText())
+            assertEquals(original, localRepository.getManagedDocument(original.documentId))
+            assertEquals(receipt, localRepository.getReceiptByInternalId(receipt.internalId))
+            assertEquals(previous.absolutePath, driveRepository.downloadDocumentOnDemand("test-token", receipt))
+            assertEquals(0, fakeDrive.uploadCalls)
+        } finally { previous.delete() }
+    }
+
+    @Test fun failedSecondForcedPageDoesNotPublishAnyNewReferenceOrDeletePreviousPages() = runTest {
+        val (receipt, previous) = legacyReceiptWithOriginal()
+        val second = java.io.File(previous.parentFile, "Second.pdf").apply { writeText("second previous bytes") }
+        val current = receipt.copy(imageUrl = ReceiptOriginalChain.encodePaths(listOf(previous.absolutePath, second.absolutePath)))
+        database.receiptDao().insertReceipt(current)
+        val fixtures = SyntheticDocumentFixtureFactory.create().take(2)
+        val originals = listOf(previous, second).mapIndexed { index, file ->
+            forcedOriginal(current, file, fixtures[index].bytes, index)
+        }
+        originals.forEach { localRepository.upsertManagedDocument(it) }
+        fakeDrive.put(originals.first().driveFileId!!, "receipts", "Original.pdf", fixtures.first().bytes)
+        try {
+            assertTrue(runCatching {
+                driveRepository.downloadDocumentOnDemand("test-token", current, forceRemote = true)
+            }.isFailure)
+            assertEquals("previous original bytes", previous.readText())
+            assertEquals("second previous bytes", second.readText())
+            assertEquals(current, localRepository.getReceiptByInternalId(current.internalId))
+            assertEquals(originals.associateBy { it.documentId }, localRepository.getAllManagedDocuments().associateBy { it.documentId })
+            assertEquals(0, fakeDrive.uploadCalls)
+        } finally {
+            java.io.File(context.filesDir, "managed_documents").deleteRecursively()
+            previous.delete()
+            second.delete()
+        }
+    }
+
     @Test fun receiptAttachmentSyncBackupAndDownloadRetainAllOriginalsAndStableMetadata() = runTest {
         val fixtures = SyntheticDocumentFixtureFactory.create().filter { it.number in setOf(1, 5) }
         val originals = fixtures.mapIndexed { index, fixture ->

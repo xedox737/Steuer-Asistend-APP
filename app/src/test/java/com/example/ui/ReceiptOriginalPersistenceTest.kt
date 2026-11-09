@@ -151,6 +151,22 @@ class ReceiptOriginalPersistenceTest {
     @Test fun manualWebpWithoutAiRetainsOriginalBytes() = runTest { assertOriginalSurvivesReload("webp", "image/webp") }
     @Test fun manualJpgWithoutAiRetainsOriginalBytes() = runTest { assertOriginalSurvivesReload("jpg", "image/jpeg") }
 
+    @Test fun forcedDownloadWithoutAccountPreservesEveryExistingOriginal() = runTest {
+        val originals = listOf(importOriginal("pdf"), importOriginal("png"))
+        val receipt = saveWithoutAi(originals.map { it.first })
+        vm.forceDocumentDownload(receipt)
+        kotlinx.coroutines.withContext(Dispatchers.Default) {
+            kotlinx.coroutines.withTimeout(5000) {
+                vm.documentDownloadStatus.first { it[receipt.internalId]?.state == DocumentState.ERROR }
+            }
+        }
+        originals.forEach { (document, bytes) ->
+            assertTrue("Existing original must survive a failed forced download", File(document.localUri).isFile)
+            assertArrayEquals(bytes, File(document.localUri).readBytes())
+        }
+        assertEquals(receipt.imageUrl, db.receiptDao().getReceiptById(receipt.id)!!.imageUrl)
+    }
+
     @Test fun twoOriginalsPersistAsStableOrderedDocumentsAndSupplementalRestoreIsIdempotent() = runTest {
         val first = importOriginal("pdf").first
         val second = importOriginal("png").first

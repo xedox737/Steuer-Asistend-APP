@@ -3888,10 +3888,12 @@ class DrivePersistenceRepository(
         return true
     }
 
-    suspend fun downloadDocumentOnDemand(accessToken: String, receipt: Receipt): String {
+    suspend fun downloadDocumentOnDemand(accessToken: String, receipt: Receipt, forceRemote: Boolean = false): String {
         val documents = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
         val references = localRepository.getDocumentsForReceipt(receipt.internalId)
-        if (documents.isNotEmpty() || references.size > 1) return downloadReceiptOriginals(accessToken, receipt, documents, references)
+        if (documents.isNotEmpty() || references.size > 1) {
+            return downloadReceiptOriginals(accessToken, receipt, documents, references, forceRemote = forceRemote)
+        }
         val fileId = receipt.driveFileId ?: throw Exception("Keine Drive-ID für diesen Beleg vorhanden.")
         try {
             val fileBytes = managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
@@ -3956,7 +3958,8 @@ class DrivePersistenceRepository(
         accessToken: String,
         receipt: Receipt,
         knownDocuments: List<ManagedDocument>? = null,
-        references: List<ReceiptDocumentReference>? = null
+        references: List<ReceiptDocumentReference>? = null,
+        forceRemote: Boolean = false
     ): String {
         val candidates = (knownDocuments ?: localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }).toMutableList()
         (references ?: localRepository.getDocumentsForReceipt(receipt.internalId)).forEachIndexed { index, reference ->
@@ -3977,7 +3980,8 @@ class DrivePersistenceRepository(
         check(candidates.isNotEmpty()) { "Keine Originalreferenzen für diesen Beleg vorhanden." }
         val downloaded = ReceiptOriginalChain.ordered(candidates).map { document ->
             val local = File(document.localUri)
-            val bytes = if (local.isFile) local.readBytes() else {
+            val reuseLocal = local.isFile && !forceRemote
+            val bytes = if (reuseLocal) local.readBytes() else {
                 val fileId = document.driveFileId ?: error("Eine Originalseite besitzt keine gesicherte Dateireferenz.")
                 managedDocumentDriveGateway.downloadFileBytes(accessToken, fileId)
                     ?: error("Eine Originalseite konnte nicht aus Google Drive geladen werden.")
@@ -3985,18 +3989,9 @@ class DrivePersistenceRepository(
             check(bytes.isNotEmpty()) { "Eine Originalseite ist leer." }
             val sha = getSha256(bytes)
             check(document.sha256.isBlank() || document.sha256 == sha) { "Prüfsumme einer Originalseite stimmt nicht überein." }
-            val directory = File(context.filesDir, "managed_documents").apply { mkdirs() }
-            val extension = document.storedFilename.substringAfterLast('.', "bin").lowercase().takeIf { it in setOf("pdf", "jpg", "jpeg", "png", "webp") } ?: "bin"
-            val owner = UUID.nameUUIDFromBytes(document.documentId.toByteArray(Charsets.UTF_8))
-            val target = if (local.isFile) local else File(directory, "$owner-$sha.$extension")
-            if (!target.isFile) {
-                val staging = File.createTempFile("restore-original-", ".tmp", directory)
-                try {
-                    staging.writeBytes(bytes)
-                    check(staging.renameTo(target)) { "Eine Originalseite konnte nicht lokal gesichert werden." }
-                } finally { staging.delete() }
-            }
-            document.copy(localUri = target.absolutePath, sha256 = sha, fileSizeBytes = bytes.size.toLong())
+            val targetPath = if (reuseLocal) local.absolutePath else
+                ReceiptOriginalStorage(context).storeDownloadedOriginal(document, bytes).localUri
+            document.copy(localUri = targetPath, sha256 = sha, fileSizeBytes = bytes.size.toLong())
         }
         // All pages have passed validation before any receipt reference is changed.
         downloaded.forEach { localRepository.upsertManagedDocument(it) }

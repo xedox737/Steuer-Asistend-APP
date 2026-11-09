@@ -1672,21 +1672,9 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun forceDocumentDownload(receipt: Receipt) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Delete existing local files if they exist to force redownload
-                if (!receipt.imageUrl.isNullOrEmpty()) {
-                    val paths = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl)
-                    paths.forEach { path ->
-                        val file = java.io.File(path)
-                        if (file.exists()) {
-                            file.delete()
-                            DiagnosticLog.d("ReceiptViewModel", "Deleted corrupted or empty local file at")
-                        }
-                    }
-                }
-                
-                // Clear the status and trigger download
+                // Keep previous versions until all remote originals have passed validation.
                 _documentDownloadStatus.value = _documentDownloadStatus.value.toMutableMap().apply { remove(receipt.internalId) }
-                downloadReceiptDocument(receipt)
+                downloadReceiptDocument(receipt, forceRemote = true)
             } catch (e: Exception) {
                 DiagnosticLog.e("ReceiptViewModel", "Error in forceDocumentDownload")
             }
@@ -1803,7 +1791,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun downloadReceiptDocument(receipt: Receipt) {
+    fun downloadReceiptDocument(receipt: Receipt, forceRemote: Boolean = false) {
         val email = _googleAccountEmail.value
         if (email.isNullOrEmpty()) {
             _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Nicht an Google Drive angemeldet."))
@@ -1820,7 +1808,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     val token = getValidToken(email)
                     _driveSyncStatus.value = "Lade Dokument für Beleg '${receipt.displayId}' herunter..."
                     
-                    val localPath = drivePersistenceRepository.downloadDocumentOnDemand(token, receipt)
+                    val localPath = drivePersistenceRepository.downloadDocumentOnDemand(token, receipt, forceRemote = forceRemote)
                     
                     val endTime = System.currentTimeMillis()
                     val targetFile = java.io.File(localPath)
