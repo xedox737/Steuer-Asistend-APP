@@ -803,6 +803,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "receipt_database"
                 )
+                .openHelperFactory(OfflineBackupCoordinator.shared.sqliteFactory())
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
                 .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
@@ -813,11 +814,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-            private class AppDatabaseCallback(
-                private val scope: CoroutineScope
+            internal class AppDatabaseCallback(
+                private val scope: CoroutineScope,
+                private val coordinator: OfflineBackupCoordinator = OfflineBackupCoordinator.shared
             ) : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
+                    val initialization = coordinator.beginInitialization()
                     scope.launch(Dispatchers.IO) {
                         try {
                             db.query("SELECT id, displayId, datum FROM receipts WHERE internalId IS NULL OR internalId = ''").use { cursor ->
@@ -835,8 +838,11 @@ abstract class AppDatabase : RoomDatabase() {
                                 }
                             }
                         } catch (e: Exception) {
+                            coordinator.initializationFailed()
                             DiagnosticLog.e("AppDatabase", "Error migrating internalIds on open")
                         }
+                    }.invokeOnCompletion { error ->
+                        initialization.finish(failed = error != null)
                     }
                 }
 

@@ -444,7 +444,7 @@ Zusätzliche SQL-Wege außerhalb der DAO-Mutatoren:
 | Datei / Funktion | Wirkung | Bedarf / Koordination |
 |---|---|---|
 | ReceiptDatabase.kt / MIGRATION_10_11 bis MIGRATION_33_34 | DDL und Datenübernahmen beim Öffnen alter Schemata | normalen Schemaaufbau vor Snapshot abschließen; keine neue Migration für das Gate |
-| ReceiptDatabase.kt / AppDatabaseCallback.onOpen | startet asynchron UPDATE receipts für internalId/displayId | DB; Startreparatur ausdrücklich erfassen und Identitäten vor Erfolg prüfen |
+| ReceiptDatabase.kt / AppDatabaseCallback.onOpen | startet asynchron UPDATE receipts für internalId/displayId; Anmeldung vor dem Einplanen, Abschluss-/Fehlerbarriere im Coordinator | DB; Initialisierung vor Erfassung abwarten, Fehler sperrt koordinierte Snapshots |
 | OfflineBackupService.kt / restore | direkte INSERT-Statements in Room-Transaktion, FTS-Neuaufbau | DB + PREF + FILE, gemeinsamer Restore-Wartungsmodus |
 | SupplementalDriveBackup.kt / restorePayload, clearSnapshotDomains | DAO-Import, Ersetzen/Löschen, Preferences und Objektbilder | DB + PREF + FILE; darf nicht am lokalen Restore vorbeilaufen |
 | DrivePersistenceRepository.kt / executeFullDriveRestore und Restore-Aufrufer | orchestrieren fachlichen Import und Journal | dieselbe Wartungsgrenze wie lokaler Restore; bestehende Semantik erhalten |
@@ -734,6 +734,95 @@ Java 21 / Gradle 9.3.1, Roborazzi-Verify. Java 17: `lintDebug`, `assembleDebug`,
 Lint ohne Error/Fatal; `git diff --check` bestanden. Debug-Signatur unverändert:
 SHA-256 `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
 Keine Emulatorausführung, kein echter Cloud-Zugriff, Push, Merge oder CI-Eingriff.
+
+### Zentrale Anbindung: SQLite und Startup-Reparatur (09.11.2026)
+
+Die Writer-Matrix benennt `ReceiptDatabase.kt/AppDatabase.getDatabase` als einzigen
+produktiven Room-Einstieg. Hier wird die vorhandene Framework-OpenHelper-Factory
+mit einer delegierenden Mutationsverfolgung verbunden. Sie erfasst direkte SQL-
+Aufrufe, DAO-Statements und Transaktionsenden, ohne SQL, Schema, Migrationen oder
+Konfliktregeln zu ändern. Bei verschachtelten Transaktionen bleibt ein begonnener
+Schreiber bis zum Ende der äußeren Transaktion aktiv, auch bei Rollback.
+Readonly-Erfassung selbst darf die Generation nicht verändern.
+
+`AppDatabaseCallback.onOpen` besitzt zusätzlich eine vom Start des asynchronen
+Reparaturjobs bis zu dessen Abschluss gehaltene Schreibanmeldung. Fehler oder
+Abbruch der Initialisierung sperren neue koordinierte Snapshots; ein nur
+bereits eingeplanter Job gilt nicht als ruhender Datenstand. Die bestehende
+V1-Exportfunktion wird hier noch nicht auf eine unvollständig angebundene
+Koordination umgeschaltet. Preferences, Dateien, Sync und mehrteilige fachliche
+Operationen bleiben anschließend ausdrücklich anzubinden.
+
+Versionsnachweis: `gradle/libs.versions.toml` verwendet Room 2.7.0; dessen
+API-Abhängigkeiten enthalten SQLite/SQLite-Framework 2.5.0. Originalquellen:
+[Room 2.7.0 Sources](https://dl.google.com/dl/android/maven2/androidx/room/room-runtime-android/2.7.0/room-runtime-android-2.7.0-sources.jar),
+Einträge `RoomDatabase.android.kt`, `RoomConnectionManager.android.kt` und
+`driver/SupportSQLiteStatement.android.kt`;
+[SQLite 2.5.0 Sources](https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-android/2.5.0/sqlite-android-2.5.0-sources.jar),
+Einträge `SupportSQLiteDatabase.android.kt`, `SupportSQLiteOpenHelper.android.kt`.
+Die Definitionen sind zusätzlich gegen die tatsächlich eingebundenen Klassen
+geprüft (`/tmp/immopilot-sqlite-2.5-api.txt`). Room dokumentiert
+`openHelperFactory` als austauschbaren Datenbankzugang mit Framework-Default;
+SQLite dokumentiert `inTransaction()` für den aktuellen Thread und Commit/Rollback
+am Ende der äußeren Transaktion. Factory-Flags, Callback-Reihenfolge und
+Rückgabewerte sind unverändert zu delegieren. Gezielte Tests müssen echte Room-
+DAOs, direkte/kompilierte Statements, verschachtelte Transaktion/Rollback,
+Readonly-Erfassung sowie den erfolgreichen und abgebrochenen Startup-Job prüfen.
+
+Implementiert in `OfflineBackupCoordinator`: atomare Generation mit aktiven
+Schreibern, idempotentes Schließen einer Anmeldung, Prüfung der Erfassungsmarke
+und getrennte Initialisierungs-Abschlussbarriere. `awaitInitialization` wartet die
+bekannten Jobs ab; `beginCapture` prüft anschließend Fehler und aktive Schreiber.
+Die Fortsetzung wartender Coroutinen erfolgt außerhalb des Monitors. SQL und
+Dateikopien laufen nicht unter dem Monitor. Neue spätere Schreibanmeldungen
+entwerten eine laufende Erfassung; es gibt keine automatische Wiederholung.
+
+Die Factory behält den Framework-Delegate, Datenbanknamen, Flags, Ergebnisse und
+Exceptions bei. Schreibende Statements bleiben während äußerer Transaktionen
+registriert. Nicht als reine SELECT-/bekannte Lese-PRAGMA erkannte Cursor werden
+vorsorglich bis zum Schließen registriert. Die App und die geprüften Room-2.7.0-
+Quellen haben keinen Aufruf von `execPerConnectionSQL`; sollte dieser künftig
+auftreten, bleiben die Delegate-Semantik erhalten und koordinierte Snapshots
+werden gesperrt, da diese API SQL erst auf später geöffneten Verbindungen ausführen
+kann. Das ist keine stille Annahme über künftig unbekannte Schreibwege.
+
+Zusätzliche versionsgenaue Quelle:
+[SQLite-Framework 2.5.0 Sources](https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-framework-android/2.5.0/sqlite-framework-android-2.5.0-sources.jar),
+Einträge `FrameworkSQLiteDatabase.android.kt` und `FrameworkSQLiteOpenHelper.android.kt`.
+Zwei geprüfte Besonderheiten: der Cancellation-Overload dereferenziert trotz
+nullable Interface-Signatur das Signal; bei null wird deshalb der ursprüngliche
+Overload ohne Signal verwendet. Nach Migration öffnet der Helper erneut und ruft
+`onConfigure` ein zweites Mal auf. Native Create-/Migrationstransaktionen enden
+außerhalb des Support-Interfaces. Ihre Schreibanmeldungen werden beim Öffnungs-
+abschluss auch nach dem nativen Schließen einer alten Verbindung aufgelöst.
+
+13 gezielte Methoden aus `OfflineBackupCoordinatorTest` bestanden: zwölf
+Koordinations-/Integrationsfälle und ein anschließend ergänzter V1-Kompatibilitäts-
+fall. Exakte Methoden und Klassen, Fehler/Skips, Duplikate und Platzhalter im
+JUnit-XML geprüft; Ergebnisse `/tmp/immopilot-sql-coordination-results`.
+Protokolle: `/tmp/immopilot-sql-coordination-verification.log` (zwölf Methoden),
+`/tmp/immopilot-sql-coordination-v1-tests.log` (V1). Die bereits bestandenen zwölf
+unveränderten Methoden wurden nach Ergänzung des V1-Falls nicht erneut ausgeführt.
+Java 21 / Gradle 9.3.1, Roborazzi-Verify; Java 17: `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden (`/tmp/immopilot-sql-coordination-build.log`),
+Lint ohne Error/Fatal; `git diff --check` bestanden. Debug-Signatur unverändert.
+
+Die vorangehenden Läufe sind nachvollziehbar getrennt: eine neue Testsignatur
+benötigte explizites Unit; danach fand der erste Runtime-Lauf den null-Signal-
+Fehler im Adapter. Die zusätzliche Integrationsprüfung fand eine falsche neue
+Erwartung zur Callback-Anzahl; diese wurde anhand der Originalquelle auf die
+exakte tatsächliche Reihenfolge korrigiert. Keine Assertion entfernt, kein
+Timeout erhöht, keine Testwiederholung ohne zugehörige Änderung. Die Protokolle
+`immopilot-sql-coordination-tests.log`, `-final-tests.log`, `-overload-tests.log`
+und `-integration-tests.log` bleiben unter `/tmp` erhalten.
+
+Diese vier Dateien bilden **nur die SQL-/Startup-Grundlage**. Auch bei erfassten
+SQL-Statements benötigen mehrteilige Repository-/Fachoperationen noch durchgehende
+Anmeldungen über ihre Teiltransaktionen hinweg. Preference-, Datei- und Sync-
+Schreibwege sind ebenfalls noch anzubinden. Der bestehende Export wird weiterhin
+nicht über eine teilweise angebundene Koordination als konsistenter Vollsnapshot
+ausgegeben. Keine Schema-/Migrationsänderung, neue Produktionstabelle, CI-Änderung,
+Emulatorausführung, echter Nutzer-/Cloud-Test, Push oder Merge.
 
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
