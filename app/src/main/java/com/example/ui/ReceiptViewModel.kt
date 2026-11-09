@@ -4182,13 +4182,9 @@ data class AiSearchUiState(
             try {
                 val bytes = GoogleDriveClient.downloadFileBytes(getValidToken(email), fileId)
                     ?: throw IllegalStateException("Original nicht gefunden")
-                if (document.sha256.isNotBlank() && com.example.data.StableDocumentIdentity.sha256(bytes) != document.sha256) {
-                    throw IllegalStateException("Sicherheitsprüfung des Originals fehlgeschlagen")
-                }
-                val extension = document.storedFilename.substringAfterLast('.', "bin")
-                val file = java.io.File(getApplication<Application>().filesDir, "managed_documents/${document.documentId}.$extension")
-                file.parentFile?.mkdirs(); file.outputStream().use { it.write(bytes) }
-                repository.upsertManagedDocument(document.copy(localUri = file.absolutePath, fileSizeBytes = bytes.size.toLong(), updatedAt = java.time.Instant.now().toString()))
+                val downloaded = com.example.data.ReceiptOriginalStorage(getApplication<Application>())
+                    .storeDownloadedOriginal(document, bytes)
+                repository.upsertManagedDocument(downloaded)
                 document.receiptInternalId?.let { receiptId ->
                     repository.getReceiptByInternalId(receiptId)?.let { receipt ->
                         val paths = com.example.data.ReceiptOriginalChain.localPaths(receipt,

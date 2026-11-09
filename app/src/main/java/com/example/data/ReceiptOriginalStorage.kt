@@ -12,6 +12,39 @@ import java.util.UUID
 
 /** Copy before decoding/AI. A picker URI or a normalized analysis bitmap is never the archive. */
 class ReceiptOriginalStorage(private val context: Context) {
+    /** Publish a new physical version; readers of the previous path keep its original bytes. */
+    fun storeDownloadedOriginal(document: ManagedDocument, bytes: ByteArray): ManagedDocument {
+        check(bytes.isNotEmpty()) { "Das heruntergeladene Original ist leer." }
+        val hash = StableDocumentIdentity.sha256(bytes)
+        check(document.sha256.isBlank() || hash.equals(document.sha256, ignoreCase = true)) {
+            "Sicherheitsprüfung des Originals fehlgeschlagen."
+        }
+        check(document.fileSizeBytes <= 0 || document.fileSizeBytes == bytes.size.toLong()) {
+            "Die Größe des heruntergeladenen Originals stimmt nicht überein."
+        }
+        val directory = File(context.filesDir, "managed_documents")
+        check(directory.isDirectory || directory.mkdirs()) { "Der lokale Belegspeicher konnte nicht angelegt werden." }
+        val staging = File.createTempFile("document-download-", ".tmp", directory)
+        try {
+            FileOutputStream(staging).use { output ->
+                output.write(bytes)
+                output.fd.sync()
+            }
+            val extension = document.storedFilename.substringAfterLast('.', "bin")
+                .takeIf { it.matches(Regex("[A-Za-z0-9]{1,10}")) } ?: "bin"
+            val version = File(directory, "${UUID.randomUUID()}.$extension")
+            check(!version.exists() && staging.renameTo(version)) {
+                "Das Original konnte nicht dauerhaft gespeichert werden."
+            }
+            // Keep previous versions, including on a later database failure. Deletion needs
+            // snapshot-aware ownership; it must never invalidate an existing reader or row.
+            return document.copy(localUri = version.absolutePath, sha256 = hash,
+                fileSizeBytes = bytes.size.toLong(), updatedAt = Instant.now().toString())
+        } finally {
+            staging.delete()
+        }
+    }
+
     fun importOriginal(uri: Uri, filename: String? = null): ManagedDocument {
         val resolver = context.contentResolver
         val name = filename ?: runCatching {

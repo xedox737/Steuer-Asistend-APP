@@ -498,7 +498,7 @@ Gemischte und technische Preference-Wege sind ausdrücklich zu unterscheiden:
 |---|---|---|
 | data/ReceiptOriginalStorage.kt / importOriginal | schreibt Staging, veröffentlicht managed_documents/UUID.ext per rename | FILE: vollständige Veröffentlichung und zugehörige Metadatenzuordnung |
 | data/ManagedDocumentService.kt / persistPrepared | schreibt managed_documents und persistiert Dokumentmetadaten | FILE + DB; mögliche In-place-Schreibweise vor einer Unveränderlichkeitsbehauptung prüfen |
-| ui/ReceiptViewModel.kt / downloadManagedDocument | schreibt managed_documents und aktualisiert lokale Referenz | FILE + DB |
+| ui/ReceiptViewModel.kt / downloadManagedDocument | veröffentlicht über ReceiptOriginalStorage.storeDownloadedOriginal eine neue physische Version und aktualisiert danach lokale Referenz | FILE + DB; alte Version bleibt erhalten, gemeinsames Gate noch offen |
 | ui/ReceiptViewModel.kt / analyzeReceipt | schreibt receipt_page_*.jpg | FILE + zugehöriger Beleg-/Dokumentimport |
 | ui/ReceiptViewModel.kt / forceDocumentDownload | löscht vorhandene lokale Belegpfade vor erneutem Download | FILE + REMOTE; vor Löschung alte Snapshot-Version schützen |
 | ui/ImmobilienManagerFeature.kt / PropertyImagePicker | kopiert Objektbild nach property-images, startet Metadatenupdate | FILE + DB; keine Kopf-/Navigationsänderung |
@@ -551,6 +551,98 @@ ein ausschließlich auf Drive begrenzter Wartungsmodus wäre unvollständig.
 Der Katalog nennt die bei dieser Basis gefundenen Grenzen. Er beweist noch keine
 lückenlose instrumentierte Writer-Abdeckung; diese ist vor einer Erfolgsaussage
 für den neuen Snapshot zwingend durch Implementierung und gezielte Tests zu belegen.
+
+### Dateiversionsgrenze für einzelne Dokument-Downloads (09.11.2026)
+
+Konkreter Bedarf aus der Writer-Matrix: `ReceiptViewModel.downloadManagedDocument`
+schrieb bisher unmittelbar in `managed_documents/documentId.ext`. Ein Leser einer
+bereits erfassten Referenz konnte dadurch während des Downloads verkürzte oder
+neue Bytes erhalten. Die minimale Verdrahtung dieser Funktion verwendet jetzt
+`ReceiptOriginalStorage.storeDownloadedOriginal`; kein Umbau des ViewModels oder
+des allgemeinen Drive-Syncs.
+
+Die Speicherfunktion prüft nichtleeren Inhalt, vorhandenen SHA-256 und eine
+vorhandene positive Größenangabe, schreibt zunächst privates Staging, synchronisiert
+den Dateideskriptor und veröffentlicht per Rename auf einen neuen UUID-Pfad im
+selben Verzeichnis. Erst danach erhält der bestehende Repository-Aufruf die neue
+Referenz. Dokument-ID, Objekt-/Einheiten-/Belegzuordnung, Drive-ID und fachlicher
+Dateiname bleiben erhalten. Auch Legacy-Dokumente ohne Inhaltsnachweise erhalten
+Hash und Größe. Pfaderweiterungen aus Metadaten werden begrenzt und validiert.
+
+Vorherige Versionen werden hier weder überschrieben noch gelöscht. Auch ein Fehler
+nach der Veröffentlichung darf keine möglicherweise bereits referenzierte Datei
+entfernen. Es gibt bewusst noch keine automatische Bereinigung oder Aufbewahrung;
+zusätzliche Downloads benötigen daher zusätzlichen lokalen Speicher. Das ist keine
+globale Löschsperre: andere erfasste Schreib-/Löschwege sind weiterhin einzubinden.
+
+Gezielter Nachweis: `ReceiptOriginalStorageVersionTest` prüft unveränderte alte
+Bytes, mehrere gleichzeitig lesbare Versionen, Identitäts-/Metadatenerhalt,
+Hash-/Größen-/Leerdateifehler ohne Veröffentlichung, Legacy-Nachweise, sichere
+Pfadbildung und nicht verfügbaren Speicher. `OfflineBackupResolverTest` und
+`ReceiptOriginalPersistenceTest` sichern die unmittelbar betroffenen Lese- und
+Originalpersistenzpfade ab. Alle 17 ausgewählten Methoden bestanden, ohne Fehler,
+Skips oder Platzhalter (JUnit-XML geprüft, Kopien unter
+`/tmp/immopilot-original-version-results`). Java 21 / Gradle 9.3.1,
+Roborazzi-Verify: `/tmp/immopilot-original-version-tests.log`.
+Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-original-version-build.log`), Lint ohne Error/Fatal.
+`git diff --check` bestanden. Kein Emulatorlauf, Push oder CI-Eingriff.
+
+Diese Grenze ist eine Voraussetzung für die im Folgenden festgelegte, noch
+umzusetzende Snapshot-Fixierung. Sie koordiniert weder Room mit Preferences noch andere
+Dateiproduzenten und belegt deshalb **noch keinen global konsistenten Snapshot**.
+
+### Festgelegte Snapshot-Alternative für Schritt 4: geprüfte Mutationsgeneration
+
+Für die weitere Umsetzung wird eine optimistische Erfassungsphase mit gemeinsamer
+Mutationsgeneration festgelegt. Sie vermeidet eine UI-Sperre über das Kopieren
+großer Originale. Das folgende Verfahren ist **noch nicht implementiert**; der
+bestehende V1-Exporter erhält durch diese Festlegung keine Konsistenzgarantie.
+
+1. Jeder fachliche Schreibweg aus der Matrix meldet Beginn und Ende an derselben
+   prozessweiten Koordination. Ein atomar geschützter Zustand enthält eine monoton
+   wachsende Generation und die Zahl aktiver Schreiber. Jede Mutation einschließlich
+   fehlgeschlagener/abgebrochener Versuche verändert die Generation. Eine fachliche
+   Operation über mehrere Stores bleibt vom ersten möglichen Schreibzugriff bis
+   zum Abschluss aller Teiländerungen aktiv; zwischen DB und Preference-/Dateischritt
+   darf keine scheinbar ruhende Lücke entstehen. Verschachtelte Schreiber sind erlaubt.
+2. Erfassung startet nur bei null aktiven Schreibern und merkt sich die Generation.
+   Sie liest Room in konsistenter Lesetransaktion, materialisiert die inventarisierten
+   Preferences und kopiert sämtliche referenzierten Originalbytes in eigenes privates
+   Staging. Die Room-Transaktion muss nicht über große Dateikopien gehalten werden:
+   jede zwischenzeitliche Mutation macht die gesamte Erfassung ungültig.
+3. Nach vollständiger Fixierung aller Bytes prüft die Koordination atomar dieselbe
+   Generation und erneut null aktive Schreiber. Schon ein einziger Schreibbeginn
+   erzwingt Abbruch und Entfernung ausschließlich des laufbezogenen Stagings.
+   Keine automatische Wiederholung und keine Aktualisierung des letzten Erfolgs.
+   Bei unveränderter Generation gab es im gesamten Erfassungsintervall keine
+   registrierte fachliche Mutation; Room, Preferences und Originalzuordnungen
+   stammen deshalb aus demselben ruhenden Stand.
+4. Erst dieser Abschluss gibt das unveränderliche Staging zur Archivierung frei.
+   Änderungen danach sind erlaubt und betreffen ausschließlich spätere Sicherungen.
+   Archivierung, Verschlüsselung und Zielkopie verwenden keine Live-Dateien mehr.
+   Bei Prozessende wird ein unvollständiges Staging niemals als Erfolg übernommen.
+5. Für externe/Content-URI-Originale reicht eine Generation der App nicht: vorab in
+   den erfassten Metadaten vorhandene Inhaltsnachweise müssen die kopierten Bytes
+   eindeutig identifizieren. Fehlen belastbare Nachweise einer nicht vollständig
+   koordinierten Quelle, wird abgebrochen. Hashes, die erst nach der Erfassung an
+   einer veränderlichen Live-Quelle berechnet werden, ersetzen diese Bedingung nicht.
+
+Die Aktivierung des neuen Snapshots ist gesperrt, bis die gesamte Matrix angebunden
+und geprüft ist: alle DAO-/Repository-Zugänge, direkte SQL-Schreiber einschließlich
+Startup-Reparatur, Preference-Editoren einschließlich Migrationen beim Lesen,
+Dateiproduzenten/-löscher und laufender Drive-/Firestore-Sync. Ein nur teilweise
+angebundener Zähler wäre genauso unzureichend wie ein alleiniger Backup-Mutex.
+Die Originalveröffentlichung oben ist nur eine vorbereitende Dateigrenze.
+
+Verpflichtende gezielte Nachweise bei der Anbindung: aktiver Schreiber vor Beginn;
+DB-, Preference- und Originaländerung während Erfassung; mehrteiliger Schreiber
+zwischen seinen Store-Schritten; Fehler und Abbruch ohne hängenden Aktivzähler;
+Originaländerung direkt nach Freigabe bei anschließendem Lesen ausschließlich
+aus Staging; unbekannte externe Version; Startup-/Sync-Schreiber. Erfolgreich ist
+ein vollständig konsistenter Stand oder ein sichtbarer Abbruch. Eine hohe
+Schreibaktivität darf die Sicherung verhindern, aber niemals das UI für die
+Dauer einer großen Dateikopie blockieren oder einen Mischstand veröffentlichen.
 
 
 ### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
