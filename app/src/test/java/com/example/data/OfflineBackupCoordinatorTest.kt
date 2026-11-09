@@ -56,6 +56,62 @@ class OfflineBackupCoordinatorTest {
 
     private fun quietCapture() { coordinator.completeCapture(coordinator.beginCapture()) }
 
+    @Test fun repositoryInsertKeepsRegistrationBetweenCommittedReceiptAndItsProjections() = runBlocking {
+        val shared = OfflineBackupCoordinator.shared
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val delegate = database.receiptEntityDao()
+        val projection = object : ReceiptEntityDao by delegate {
+            override suspend fun insert(receipt: ReceiptEntity): Long {
+                entered.complete(Unit)
+                release.await()
+                return delegate.insert(receipt)
+            }
+        }
+        val repository = ReceiptRepository(database.receiptDao(), database.propertyDao(), projection,
+            database.belegDao(), database.exportAuditDao(), database.receiptDocumentDao(), database.managedDocumentDao())
+        val capture = shared.beginCapture()
+        val updated = receipt.copy(aussteller = "Coordinated")
+        val job = launch(Dispatchers.IO) { repository.insert(updated) }
+        try {
+            entered.await()
+            assertEquals(updated, database.receiptDao().getReceiptById(7))
+            assertNull(delegate.getEntityById(7))
+            assertThrows(OfflineBackupValidationException::class.java) { shared.beginCapture() }
+        } finally { release.complete(Unit); job.join() }
+        assertEquals("Coordinated", delegate.getEntityById(7)!!.kreditor)
+        sql.query("SELECT anbieter FROM belege WHERE id = 7").use {
+            assertTrue(it.moveToFirst()); assertEquals("Coordinated", it.getString(0))
+        }
+        assertEquals("KEEP", repository.getReceiptById(7)!!.displayId)
+        assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(capture) }
+        shared.completeCapture(shared.beginCapture())
+    }
+
+    @Test fun originalFilePublicationsInvalidateCaptureAndReleaseRegistrationAfterCompletion() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shared = OfflineBackupCoordinator.shared
+        val storage = ReceiptOriginalStorage(context)
+        val bytes = "%PDF-1.4\nsynthetic original\n%%EOF".toByteArray()
+        val source = File.createTempFile("coordinator-original-", ".pdf", context.cacheDir).apply { writeBytes(bytes) }
+        val published = mutableListOf<File>()
+        try {
+            val downloadCapture = shared.beginCapture()
+            val downloaded = storage.storeDownloadedVersion(bytes, "receipt.pdf").also { published += it }
+            assertArrayEquals(bytes, downloaded.readBytes())
+            assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(downloadCapture) }
+            shared.completeCapture(shared.beginCapture())
+            val importCapture = shared.beginCapture()
+            val imported = storage.importOriginal(android.net.Uri.fromFile(source), "Original.pdf")
+            val original = File(imported.localUri).also { published += it }
+            assertArrayEquals(bytes, original.readBytes())
+            assertEquals(StableDocumentIdentity.sha256(bytes), imported.sha256)
+            assertEquals(bytes.size.toLong(), imported.fileSizeBytes)
+            assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(importCapture) }
+            shared.completeCapture(shared.beginCapture())
+        } finally { source.delete(); published.forEach { it.delete() } }
+    }
+
     @Test fun queuedMutationIsRegisteredBeforeEntryAndAcrossSuspension() = kotlinx.coroutines.test.runTest {
         val dispatcher = kotlinx.coroutines.test.StandardTestDispatcher(testScheduler)
         val release = CompletableDeferred<Unit>()

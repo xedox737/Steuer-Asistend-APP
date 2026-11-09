@@ -1253,3 +1253,46 @@ Originalbytes, stabile IDs und Beziehungen auch beim zweiten Restore.
 (`/tmp/immopilot-retired-root-inventory-build.log`), Lint ohne Error/Fatal;
 `git diff --check` bestanden. Ausschließlich zwei Testdateien und Dokument
 geändert; Backend-Fortsetzung folgt mit unveränderten gesicherten Dateien.
+
+### Schritt 4: Repository- und Originalspeicher-Grenzen
+
+Fünf Dateien: ReceiptDatabase (ReceiptRepository), ReceiptOriginalStorage,
+ManagedDocumentService, OfflineBackupCoordinatorTest und dieses Dokument.
+Mehrteilige Repository-Veröffentlichungen werden vom ersten bis zum letzten
+DAO-Aufruf angemeldet; direkte Aufrufe müssen denselben Schutz besitzen.
+Original-Import/-Download meldet Staging, Veröffentlichung und Aufräumen an.
+ManagedDocumentService hält mehrphasige Import-/OCR-/Analyse-/Review-Vorgänge
+zusammen; Dateischreiben wird vor Metadatenveröffentlichung synchronisiert.
+Prüfung: reale Unterbrechung nach Commit der Belegzeile vor Projektion,
+Dateiveröffentlichungen sowie bestehende Originalversions-/Dokumenttests.
+
+Vorab: beide neuen Methoden scheiterten erwartungsgemäß an fehlender
+OfflineBackupValidationException. Beim Repository war die Belegzeile bereits
+committed, die Projektion noch nicht geschrieben; beim Dateitest war eine
+Downloadversion vollständig veröffentlicht. Keine Skips/Timeouts/unerwarteten
+Fehler (`/tmp/immopilot-backend-writers-red.xml`,
+`/tmp/immopilot-backend-writers-red.log`). Danach neun Repository-, drei
+Originalspeicher- und vier ManagedDocumentService-Grenzen angebunden.
+Importanmeldung im privaten persistPrepared umfasst Datei und Upsert;
+reines URI-Lesen und Duplikatvorprüfung ändern keinen Bestand. Der Dateistream
+wird vor dem Upsert per fd.sync synchronisiert. Abgesehen davon wurden alle
+ursprünglichen Funktions-Bodies nach Abzug von Hüllen/Einrückungen exakt
+verglichen. Keine fachlichen Rückgaben, Werte oder Aufrufparameter geändert.
+
+Backend-Fortsetzung: die vier gesicherten Quelldateien wurden nach dem
+separaten Inventar-Commit bytegenau aus dem eigenen Stash wiederaufgenommen;
+die korrigierte Legacy-Klassifikation und ihr zusätzlicher Test bleiben
+erhalten. Erneute gezielte Abnahme mit dem korrigierten Inventarguard folgt.
+
+Abnahme der Backend-Fortsetzung: zwölf exakt ausgewählte Methoden bestanden,
+XML ohne Fehler/Skips/Duplikate geprüft
+(`/tmp/immopilot-backend-writers-verified-results`,
+`/tmp/immopilot-backend-writers-verified-tests.log`). Der zuvor fehlgeschlagene
+Inventarfall wurde in `5f57308` mit Legacy-Roundtrip separat behoben; sämtliche
+ursprünglichen Backend-Funktions-Bodies blieben währenddessen unverändert
+gesichert. Aktuell bestehen Repository-Zwischenraum, Original-Publikation,
+alle fünf Versions-/Fehlerfälle, tatsächlicher Fünf-Format-Import, geprüfter
+Dokument-Restore, beide Inventarguards und Legacy-Roundtrip.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-backend-writers-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Kein Push und kein Emulatorlauf.
