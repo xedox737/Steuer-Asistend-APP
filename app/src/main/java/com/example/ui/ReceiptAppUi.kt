@@ -45,6 +45,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import androidx.compose.animation.core.*
 import androidx.compose.animation.*
 import androidx.camera.core.CameraSelector
@@ -8588,6 +8589,7 @@ fun CameraActiveView(
 
                                         val capture = ImageCapture.Builder()
                                             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                                            .setIoExecutor(com.example.data.OfflineBackupCoordinator.shared.executor(Dispatchers.IO.asExecutor()))
                                             .build()
 
                                         imageCapture = capture

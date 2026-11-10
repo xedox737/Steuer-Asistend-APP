@@ -291,6 +291,55 @@ class OfflineBackupCoordinatorTest {
         quietCapture()
     }
 
+    @Test fun queuedFileExecutorStaysRegisteredThroughNestedQueuedPublication() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val file = java.io.File(context.cacheDir, "temp_receipt_executor-test.jpg")
+        val queue = java.util.ArrayDeque<Runnable>()
+        val executor = coordinator.executor(java.util.concurrent.Executor { queue.add(it) })
+        val before = coordinator.beginCapture()
+        try {
+            executor.execute {
+                file.writeText("first")
+                executor.execute { file.appendText("-complete") }
+            }
+            assertFalse(file.exists())
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginCapture() }
+            queue.removeFirst().run()
+            assertEquals("first", file.readText())
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginCapture() }
+            queue.removeFirst().run()
+            assertEquals("first-complete", file.readText())
+            assertTrue(queue.isEmpty())
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(before) }
+            quietCapture()
+        } finally {
+            while (queue.isNotEmpty()) queue.removeFirst().run()
+            file.delete()
+        }
+    }
+
+    @Test fun rejectedFileExecutorSubmissionInvalidatesCaptureAndReleasesRegistration() {
+        val failure = java.util.concurrent.RejectedExecutionException("synthetic rejected writer")
+        val executor = coordinator.executor(java.util.concurrent.Executor { throw failure })
+        val before = coordinator.beginCapture()
+        var entered = false
+        assertSame(failure, assertThrows(java.util.concurrent.RejectedExecutionException::class.java) {
+            executor.execute { entered = true }
+        })
+        assertFalse(entered)
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(before) }
+        quietCapture()
+    }
+
+    @Test fun throwingInlineFileExecutorTaskReleasesRegistrationAndPreservesFailure() {
+        val executor = coordinator.executor(java.util.concurrent.Executor { it.run() })
+        val failure = AssertionError("synthetic file task failure")
+        val before = coordinator.beginCapture()
+        assertSame(failure, assertThrows(AssertionError::class.java) { executor.execute { throw failure } })
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(before) }
+        quietCapture()
+    }
+
     @Test fun readonlyRoomTransactionDoesNotInvalidateCapture() = runBlocking {
         val capture = coordinator.beginCapture()
         database.withTransaction {

@@ -1599,3 +1599,41 @@ keine Error/Fatal-Lintbefunde. `git diff --check` bestanden. Erfasst werden alle
 getesteten erhaltenen Versionen/Exporte, einschließlich der Rohkamera-Datei;
 private Dateisystempfade gelangen auch bei Fehlern nicht in die Meldung.
 Keine Aktivierung des Snapshots, kein Emulatorlauf und kein GitHub-Upload.
+
+### Schritt 4: tatsächliche CameraX-I/O-Veröffentlichung
+
+Vier Dateien: OfflineBackupCoordinator, dessen Tests, ReceiptAppUi und dieses
+Dokument. Die vorhandene CameraX-Version 1.5.0 wurde anhand ihres offiziellen
+Sources-JARs geprüft:
+https://dl.google.com/dl/android/maven2/androidx/camera/camera-core/1.5.0/camera-core-1.5.0-sources.jar
+ImageCapture.Builder.setIoExecutor wird über ImagePipeline an ProcessingNode
+weitergegeben. Dessen I/O-Auftrag umfasst JpegBytes2Disk, EXIF-Änderung und das
+abschließende Umbenennen aus FileUtil. RequestWithCallback kann bei Abbruch
+bereits onError senden, während diese Verarbeitung noch ausläuft; ein bloßer
+Callback-Zähler wäre daher kein vollständiger Nachweis.
+
+Geplant ist eine Anmeldung vor Einplanung des tatsächlichen Executor-Auftrags,
+die bis zu dessen Rückkehr oder Fehler aktiv bleibt. Der vorhandene IO-Dispatcher
+wird weiterverwendet; keine neuen Threads, kein CameraX-Upgrade und keine Änderung
+an UI oder Aufnahmeformat. Drei deterministische Tests prüfen echte Dateipublikation
+mit eingeplanter Fortsetzung, Ablehnung vor Eintritt und Fehler bei synchroner
+Ausführung. Das Inventar bleibt für Kameraquellen vorerst bewusst konservativ;
+seine Freigabe erfolgt erst mit dem folgenden Snapshot-Nachweis.
+
+Vorab scheiterten alle drei neuen Tests ausschließlich an der fehlenden
+Capture-Sperre/Invalidierung; keine Fremdfehler oder Skips
+(`/tmp/immopilot-camera-io-coordination-red.xml`). Nun vor Executor-Einplanung
+anmelden, nach tatsächlicher I/O-Rückkehr im finally freigeben und Ablehnung
+unverändert weiterreichen. Der CameraX-Builder erhält nur diese Executor-Grenze;
+Import und Builderzeile sind die einzigen Änderungen in ReceiptAppUi. Alle
+bisherigen Aufnahme-/Fehler-/Callback-Bodies bleiben bytegenau erhalten.
+
+Abnahme: sieben echte ausgewählte Methoden bestanden; XML ohne Fehler, Skips,
+Duplikate oder Platzhalter geprüft (`/tmp/immopilot-camera-io-coordination-results`).
+Wartende und ineinander eingeplante Dateiveröffentlichung, Ablehnung und
+synchroner Fehler geben den Zähler korrekt frei; vorhandene Coroutine-Grenzen
+und der Cache-Guard bestehen. Lint und beide APK-Builds bestanden
+(`/tmp/immopilot-camera-io-coordination-build.log`), keine Error/Fatal-Lintbefunde.
+`git diff --check` bestanden. Originale UI-/Callback-Bodies bytegenau erhalten;
+CameraX I/O-Grenze durch offizielle Sources 1.5.0 nachvollzogen.
+Kein Kamera-/PDF-Emulatorlauf und kein GitHub-Upload.

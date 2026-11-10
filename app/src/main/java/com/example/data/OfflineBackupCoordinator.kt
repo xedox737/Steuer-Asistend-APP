@@ -79,6 +79,21 @@ internal class OfflineBackupCoordinator {
         }
     }
 
+    /** Registers before enqueue and through actual I/O completion, independently of callbacks. */
+    fun executor(delegate: java.util.concurrent.Executor): java.util.concurrent.Executor =
+        java.util.concurrent.Executor { command ->
+            val writer = beginWrite()
+            try {
+                delegate.execute {
+                    try { command.run() } finally { writer.close() }
+                }
+            } catch (error: Throwable) {
+                // Also safe for synchronous delegates: the registration closes only once.
+                writer.close()
+                throw error
+            }
+        }
+
     fun trackPreferences(preferences: SharedPreferences): SharedPreferences = synchronized(monitor) {
         this.preferences.getOrPut(preferences) { TrackedPreferences(preferences, this) }
     }
