@@ -49,6 +49,12 @@ Die Klasse erhält wegen SDK-übergreifender JNI-Zustände einen eigenen JVM-Wor
 es werden weiterhin alle Tests ausgeführt. Details und Feldvertrag:
 [`PHASE10D_RESTORE_METADATA_CONTRACT.md`](PHASE10D_RESTORE_METADATA_CONTRACT.md).
 
+## Prüfungen ohne unnötige Wiederholungen
+
+- Während der Implementierung zuerst nur die tatsächlich betroffenen Testklassen sowie erforderliche Kompilier-/Statikprüfungen ausführen. Bereits bestandene Prüfungen bei unverändertem Code nicht erneut starten; Ausnahme: neue relevante Änderungen, belegter Seiteneffekt, neue Diagnose oder verpflichtende Abschlussprüfung.
+- Vor PR/Merge gilt grundsätzlich weiterhin die unten definierte Standardprüfung einschließlich der verpflichtenden CI-Checks. Ein aufgabenspezifischer Codingplan mit engerem Testumfang ersetzt diese Vorgaben nicht automatisch. Wenn nur aufgabenrelevante automatische Tests gefordert sind, den Konflikt **vor dem Push** offenlegen und ein gleichwertiges, ausdrücklich freigegebenes CI-Profil mit unveränderten Branch-Schutzregeln festlegen; bis dahin keinen Push auslösen, der gegen den konkreten Auftrag verstößt. Keine Pflichtprüfung umgehen oder stillschweigend reduzieren.
+- Ergebnisprotokoll je relevantem Commit/Stand wiederverwenden: tatsächlich ausgeführte Testmethoden, Ergebnis, Umgebung und verbleibende Prüflücken. Bei einem roten Lauf zuerst gezielt Fehlerursache und betroffene Logs prüfen statt denselben Lauf blind zu wiederholen.
+
 ## Nach Änderungen mit besonderen Risiken
 
 Zusätzlich manuell prüfen:
