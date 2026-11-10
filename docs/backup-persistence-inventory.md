@@ -1637,3 +1637,60 @@ und der Cache-Guard bestehen. Lint und beide APK-Builds bestanden
 `git diff --check` bestanden. Originale UI-/Callback-Bodies bytegenau erhalten;
 CameraX I/O-Grenze durch offizielle Sources 1.5.0 nachvollzogen.
 Kein Kamera-/PDF-Emulatorlauf und kein GitHub-Upload.
+
+### Schritt 4: gestreamter V2-Metadatenvertrag
+
+Drei Dateien: neue OfflineBackupMetadataWriter, zugehöriger Nachweis und dieses
+Dokument. Der neue Serializer liefert ausdrücklich nur einen noch nicht global
+fixierten Entwurf. Er liest alle klassifizierten fachlichen Room-Tabellen und
+inventarisierten Preferences in derselben Lesetransaktion, erhält SQL-Werte und
+sqlite_sequence-Hochstände und schreibt Tabellenzeilen gestreamt in ein eigenes
+privates Metadatenfile. Keine Sammlung der gesamten Datenbank als JSONObject.
+Technischer document_migration_journal und abgeleitete FTS-Daten bleiben explizit
+lokal; unbekannte Tabellen müssen eine neue Klassifikation erzwingen.
+
+Dateiverweise werden als portable Alias-IDs ausgegeben; Live-Pfade, Besitzer,
+Hash-/Größenansprüche und geprüfte Alternativkandidaten bleiben ausschließlich
+im internen Entwurfsvertrag zur folgenden Originalfixierung. Der gesamte Snapshot
+wird erst nach Kopie aller Originalversionen und Generationsprüfung freigegeben.
+Metadaten bleiben auf 64 MiB, Referenzen auf 10.000 begrenzt; bestehende Grenzen
+werden nicht erhöht. Vorhandene Ziele werden nicht überschrieben; Fehler oder
+Abbruch entfernen nur das eigene neu erstellte Metadatenfile. Das V1-Format bleibt
+unverändert; weder Archivfreigabe noch Erfolgseintrag entstehen in diesem Schritt.
+
+Erster Testaufbau korrigiert: der Ausdrucksrumpf von setUp leitete Boolean statt
+JUnit-void ab. Der Lauf endete vor Ausführung der Methoden und zählt ausdrücklich
+nicht als Verhaltens-RED (`/tmp/immopilot-streamed-metadata-invalid-fixture.xml`).
+Nur die Setup-Signatur wurde zu Unit korrigiert; die fünf Assertionsfälle bleiben
+unverändert und werden vor der Implementierung erneut ausgeführt.
+
+Nach Setup-Korrektur: alle fünf echten Methoden erreichten die beabsichtigten
+fehlenden Eigenschaften (leere Tabellen-/Referenzdaten, fehlende Ablehnung bzw.
+falscher Zielkonflikttyp), ohne Skips oder Fremdfehler
+(`/tmp/immopilot-streamed-metadata-red-valid-fixture.xml`). Der Serializer ist
+nun implementiert: Zeilen einzeln schreiben, UTF-8 strikt kodieren, 64-MiB-Grenze
+vor Ausgabe prüfen, Encoder schließen und Dateideskriptor danach synchronisieren.
+Technische Tabellen bleiben explizit klassifiziert. Gefilterte Preferences und
+SQLite-Zählerstände stammen aus derselben Lesetransaktion. Der Entwurf ersetzt
+Live-Pfade durch Alias-IDs; Originalbytes werden erst im folgenden Schritt fixiert.
+
+Erster Implementierungslauf: sieben von acht Methoden bestanden. Der
+Mehrseitennachweis wies auf die Live-Datei-Abhängigkeit der Legacy-Kommatrennung
+hin (`/tmp/immopilot-streamed-metadata-multipage-failure.xml`). Gemischte
+Datei-/Content-URI-Quellen werden im neuen Test ausdrücklich als JSON-Liste
+vorgegeben; V2 gibt mehrere Alias-IDs immer als JSON-Liste aus. Der Legacy-Helfer
+und bestehende Belegpfade werden nicht verändert. Zusätzlich SHA-256 direkt im
+Ausgabestrom berechnen: der alte allgemeine Dateihash-Helfer kann Fehler-Sentinels
+zurückgeben und wird für den neuen Metadatenvertrag deshalb nicht verwendet.
+Die vorhandene Prüfsummenassertion vergleicht weiterhin unabhängig die echten
+Dateibytes. Fertig-Markierung erst nach vollständiger Entwurfserstellung setzen.
+
+Abnahme: acht exakt ausgewählte Methoden bestanden, XML ohne Fehler, Skips,
+Duplikate oder Platzhalter geprüft (`/tmp/immopilot-streamed-metadata-results`).
+Quellwerte/OCR/Korrekturen, 64-Bit-Hochstand, Preferences/Credential-Sperre,
+Mehrseitenreihenfolge, private URI-Aliase, Grenzen, Zielkonflikt und Abbruchstart
+sind nachgewiesen. Metadatenlesung invalidiert keinen eigenen Capture-Token und
+ändert keine fachlichen Quellen. Lint und beide APK-Builds bestanden
+(`/tmp/immopilot-streamed-metadata-build.log`), keine Error/Fatal-Lintbefunde.
+`git diff --check` bestanden. Dies ist ein Metadatenentwurf, noch kein freigegebener
+gemeinsamer Snapshot. Kein Emulatorlauf, GitHub-Upload oder Erfolgseintrag.
