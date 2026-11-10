@@ -260,6 +260,7 @@ object DatevExporter {
         receipts: List<Receipt>,
         config: DatevConfig
     ): File {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         requireUniqueReceiptIdentities(receipts)
         val zipFile = File(context.cacheDir, "DATEV_Export_${config.wirtschaftsjahr}_${System.currentTimeMillis()}.zip")
 
@@ -294,6 +295,7 @@ object DatevExporter {
         }
 
         return zipFile
+      }
     }
 
     private fun createPdfForReceipt(context: Context, receipt: Receipt): ByteArray? {

@@ -36,6 +36,7 @@ object PdfExporter {
         metadata: PropertyMetadata?,
         includeTaxAdvisorSummary: Boolean = false
     ): File? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val filteredReceipts = receipts.filter {
             try {
                 it.datum.substring(0, 4).toInt() == taxYear
@@ -363,6 +364,7 @@ object PdfExporter {
             }
             null
         }
+      }
     }
 
     /** Uses the existing PDF/FileProvider path for a separate preparation report. */

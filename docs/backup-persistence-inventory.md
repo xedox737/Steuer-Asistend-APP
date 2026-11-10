@@ -1501,3 +1501,30 @@ Umgebungsneustart bestanden
 (`/tmp/immopilot-export-file-coordination-build-resumed.log`), Lint ohne
 Error/Fatal; `git diff --check` bestanden. Alle fünf alten Funktions-Bodies
 bytegenau erhalten. Kein GitHub-Upload und kein Emulatorlauf.
+
+### Schritt 4: eigenständige ZIP-/PDF-Datei-Erzeuger
+
+Fünf Dateien: DatevExporter, PdfExporter, Phase5BDatevOutputTest,
+OfflineBackupFilePublicationEmulatorTest und dieses Dokument. Beide verbleibenden
+ZIP-/PDF-Dateierzeuger melden ihre volle Lebensdauer an; die ursprünglichen
+Berechnungs- und Formatierungs-Bodies bleiben bytegenau erhalten.
+
+Der ZIP-Test scheiterte vorab gezielt an der fehlenden Anmeldung
+(expected [true], actual [false]). Der neue PDF-Nachweis wurde aus dem JVM-Test
+in einen geschützten Android-Test verlegt: Robolectric 4.16.1 enthält keinen
+PdfDocument-Shadow; selbst mit nativer Grafik ergibt startPage bereits
+"document is closed!". Eine vorübergehende Weitergabe der Originalausnahme
+wurde bytegenau entfernt. Der Android-Test prüft echte PDF-Bytes, Anmeldung vor
+Cache-Zugriff, Invalidierung älterer Capture-Tokens und Freigabe danach. Er nutzt
+ein eigenes Ausgabeverzeichnis und die vorhandene isolierte Emulator-Schutzregel.
+Dieser Android-Test ist bis zur tatsächlichen Emulatorausführung ausdrücklich
+nur implementiert, nicht als bestanden zu werten. PropertyImagePicker folgt im
+nächsten Inkrement zusammen mit dem verbleibenden Bank-CSV-Dateischreiber.
+
+Abnahme: vier echte JVM-Methoden in Phase5BDatevOutputTest bestanden, XML ohne
+Fehler/Skips/Duplikate (`/tmp/immopilot-leaf-file-coordination-green.xml`).
+Lint sowie App-/Test-APK-Build bestanden
+(`/tmp/immopilot-leaf-file-coordination-build.log`); keine Error/Fatal-Lintbefunde.
+Die zwei ursprünglichen Dateierzeuger-Bodies sind bytegenau erhalten.
+Der PDF-Android-Test kompiliert; Ausführung bleibt wegen fehlendem lokalem KVM
+bis zum gezielten isolierten Emulatorlauf offen. Kein GitHub-Upload.
