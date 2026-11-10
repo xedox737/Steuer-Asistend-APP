@@ -1694,3 +1694,41 @@ sind nachgewiesen. Metadatenlesung invalidiert keinen eigenen Capture-Token und
 (`/tmp/immopilot-streamed-metadata-build.log`), keine Error/Fatal-Lintbefunde.
 `git diff --check` bestanden. Dies ist ein Metadatenentwurf, noch kein freigegebener
 gemeinsamer Snapshot. Kein Emulatorlauf, GitHub-Upload oder Erfolgseintrag.
+
+### Schritt 4: gemeinsame Snapshot-Fixierung
+
+Fünf Dateien: neue OfflineBackupSnapshot, zugehöriger Nachweis,
+OfflineBackupFileInventory, dessen Test und dieses Dokument. Die neue Factory
+führt Metadatenentwurf und alle inventarisierten Original-/Exportversionen in
+app-privatem laufbezogenem Staging zusammen. Inhaltsgleiche Payloads dürfen
+zusammenfallen; jede physische Version behält ihren portablen Manifest-Eintrag.
+Externe Quellen erfordern einen bereits erfassten Inhaltsnachweis. Ein Archiv
+liest ausschließlich diese fixierten privaten Dateien und prüft Größe/Hash.
+
+Vorher DB öffnen und Initialisierungen abwarten. Die Dateiliste wird vollständig
+vor der ersten Kopie erfasst und nach der Fixierung erneut verglichen: auch ein
+OS-Cache-Unlink ohne App-Schreibanmeldung darf keinen gemischten Bestand ergeben.
+Kameraquellen werden jetzt als koordiniert klassifiziert, nachdem der tatsächliche
+CameraX-I/O-Auftrag nachweislich angebunden ist. Der gemeinsame Generationsnachweis
+wird erst nach den gezielten Zwischenraumtests aktiviert. Kein UI-Anschluss,
+keine Zielveröffentlichung und kein Erfolgseintrag in diesem Inkrement.
+
+Vorab: acht echte Methoden liefen; exakt drei scheiterten an der noch fehlenden
+gemeinsamen Capture-Grenze (aktiver Schreiber, DB-/Original-Zwischenraummutation,
+Preference-Publikation). Fünf bestanden bereits, einschließlich unveränderlicher
+Archivbytes nach späteren Live-Änderungen, Cache-Unlink, Payload-Deduplizierung,
+Grenzen/Abbruch und externer Quelle ohne Inhaltsnachweis
+(`/tmp/immopilot-global-snapshot-red.xml`). Nun beginCapture nach DB-Öffnung und
+Initialisierungsbarriere setzen und completeCapture erst nach geschlossenen,
+synchronisierten Metadaten-, Manifest- und Originalkopien ausführen. Keine
+Wiederholung bei Konflikt. Frühzeitige Framework-/Staging-Zugriffsfehler erhalten
+ebenfalls pfadfreie Meldungen. Der neue Snapshot bleibt bis zur V2-Verschlüsselung
+und geprüften Veröffentlichung intern; der V1-Bildschirm wird nicht umgestellt.
+
+Abnahme der gemeinsamen Fixierung: 17 echte ausgewählte Methoden bestanden;
+erhaltene XML-Ergebnisse nach Umgebungsneustart erneut ohne Fehler, Skips oder
+Duplikate geprüft (Snapshot 8, Dateiinventar 7, Quellcodeguards 2). Der abgebrochene
+Build wurde ohne Wiederholung bestandener Tests fortgesetzt. lintDebug,
+assembleDebug und assembleDebugAndroidTest bestanden
+(`/workspace/immopilot-global-snapshot-build-resumed.log`), Lint ohne Error/Fatal.
+`git diff --check` bestanden. Kein UI-Anschluss, Emulatorlauf oder GitHub-Upload.

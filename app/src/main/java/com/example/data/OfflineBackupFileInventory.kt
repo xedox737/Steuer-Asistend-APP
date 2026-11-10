@@ -64,7 +64,7 @@ internal class OfflineBackupFileInventory(context: Context, private val maximumF
         result.sortedBy { it.portablePath }
     }
 
-    /** CameraX callback publication is still pending; camera sources deliberately return false. */
+    /** App-owned sources whose complete producer I/O is connected to the coordinator. */
     fun isCoordinated(path: String): Boolean {
         return checkedAccess("Originalverweis") {
             val uri = Uri.parse(path)
@@ -83,7 +83,7 @@ internal class OfflineBackupFileInventory(context: Context, private val maximumF
             }
             val cacheRelative = relative(canonical, cache) ?: return@checkedAccess false
             return@checkedAccess cacheRelative.substringBefore('/') in exportRoots ||
-                ('/' !in cacheRelative && rootExports.any { it.matches(cacheRelative) })
+                ('/' !in cacheRelative && (rootExports.any { it.matches(cacheRelative) } || Regex("temp_receipt_.*\\.jpg").matches(cacheRelative)))
         }
     }
 

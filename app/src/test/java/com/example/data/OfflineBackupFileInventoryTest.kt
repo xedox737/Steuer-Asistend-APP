@@ -78,7 +78,7 @@ class OfflineBackupFileInventoryTest {
         assertTrue(inventory.isCoordinated(original.toURI().toString()))
         assertTrue(inventory.isCoordinated(saved.absolutePath))
         assertFalse(inventory.isCoordinated(preview.absolutePath))
-        assertFalse(inventory.isCoordinated(camera.absolutePath)) // Until CameraX callbacks are connected.
+        assertTrue(inventory.isCoordinated(camera.absolutePath)) // Actual CameraX I/O is coordinated.
         assertFalse(inventory.isCoordinated(external.absolutePath))
         assertFalse(inventory.isCoordinated("content://synthetic/original"))
         assertFalse(inventory.isCoordinated(original.toURI().toString() + "?token=synthetic"))
