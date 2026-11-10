@@ -442,7 +442,7 @@ private fun PropertyReferenceDetail(property: PropertyMetadata, summary: Propert
 
 @Composable private fun PropertyImagePicker(property: PropertyMetadata, viewModel: ReceiptViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) scope.launch(Dispatchers.IO) {
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> if (uri != null) com.example.data.OfflineBackupCoordinator.shared.launch(scope, Dispatchers.IO) {
         val target = File(File(context.filesDir, "property-images").apply { mkdirs() }, "${property.propertyId}-${System.currentTimeMillis()}.jpg")
         runCatching { context.contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } } }.onSuccess { viewModel.updatePropertyMetadata(property.copy(bildPfad = target.absolutePath)) }
     } }

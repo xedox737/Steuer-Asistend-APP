@@ -1528,3 +1528,28 @@ Lint sowie App-/Test-APK-Build bestanden
 Die zwei ursprünglichen Dateierzeuger-Bodies sind bytegenau erhalten.
 Der PDF-Android-Test kompiliert; Ausführung bleibt wegen fehlendem lokalem KVM
 bis zum gezielten isolierten Emulatorlauf offen. Kein GitHub-Upload.
+
+### Schritt 4: Objektbild- und Bank-CSV-Veröffentlichung
+
+Geplant sind vier Dateien: ImmobilienManagerFeature, ReceiptAppUi,
+OfflineBackupBankExportCoordinationTest und dieses Dokument. Der Bildauftrag
+wird vor dem Einplanen bis zum strukturierten Abschluss angemeldet; die bereits
+koordinierte Metadatenfortsetzung überlappt damit. Der Bank-CSV-Erzeuger erhält
+eine äußere Anmeldung. Die vorhandenen Bodies, CSV-Inhalte und UI bleiben
+unverändert. Der neue synthetische Test prüft echte gespeicherte CSV-Bytes,
+Freigabe-Intent, Anmeldung vor Dateizugriff und saubere Freigabe danach.
+Der bereits geprüfte launch-Helfer deckt Einplanung, Kindaufträge und Abbruch ab.
+
+Vorab scheiterte genau die Anmeldung vor Cache-Publikation (Testzeile 43),
+nach bereits erfolgreichem Inhalts- und Freigabe-Intent-Nachweis.
+Kein Fixture-, Format- oder Providerfehler; RED-XML gesichert unter
+`/tmp/immopilot-ui-file-coordination-red.xml`. Nun nur die äußere Bank-CSV-
+Lebensdauer und den koordinierten Bildauftrag ergänzt. Beide bestehenden
+Bodies einschließlich gemischter Zeilenenden bytegenau erhalten.
+
+Abnahme: vier ausgewählte Methoden bestanden, XML ohne Fehler, Skips oder
+Duplikate geprüft (`/tmp/immopilot-ui-file-coordination-results`). CSV-Bytes,
+Freigabe-Intent sowie Lebensdauer vor Einplanung, über Kindaufträge und bei
+Abbruch sind nachgewiesen. Lint und beide APK-Builds bestanden
+(`/tmp/immopilot-ui-file-coordination-build.log`), keine Error/Fatal-Lintbefunde.
+`git diff --check` bestanden; kein Emulatorlauf oder GitHub-Upload.

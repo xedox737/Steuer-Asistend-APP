@@ -9585,6 +9585,7 @@ fun exportBankStatementToCsv(
     statementText: String,
     result: com.example.api.BankStatementReconciliationResult?
 ) {
+    com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
     try {
         val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
         val file = File(exportDir, "Kontoauszug_Bankabgleich.csv")
@@ -9605,6 +9606,7 @@ fun exportBankStatementToCsv(
         context.startActivity(Intent.createChooser(intent, "Kontoauszug als CSV exportieren"))
     } catch (e: Exception) {
         android.widget.Toast.makeText(context, "Fehler beim CSV-Export: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+    }
     }
 }
 
