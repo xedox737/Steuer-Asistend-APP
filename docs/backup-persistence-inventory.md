@@ -1370,3 +1370,95 @@ vollständige Preferences bestehen weiterhin. `lintDebug`, `assembleDebug`,
 (`/tmp/immopilot-restore-publications-build.log`), Lint ohne Error/Fatal,
 `git diff --check` bestanden. Keine neue Journal-/Wartungssemantik in diesem
 Teilschritt, kein GitHub-Upload und kein Emulatorlauf.
+
+### Schritt 4: weitere Drive-Mutationsgrenzen
+
+Drei Dateien: DrivePersistenceRepository, DrivePersistenceManagedDocumentE2eTest
+und dieses Dokument. Die verbleibenden mutierenden Backend-Einstiege für
+Initialisierung/Import, Stammdaten, Sync/Index, Löschen/Restore, Originalreparatur
+und Dokumentmigration werden vor ihrer Persistenzphase gemeinsam angemeldet.
+Reine Inventar-, Vorschau-, Parser- und Lesewege bleiben Lesewege. Ein direkter
+Preference-Mutationsaufruf prüft die frühzeitige Anmeldung bereits beim Öffnen
+des Stores; zahlreiche bestehende Fake-Drive-Regressionen sichern die bisherige
+Fach- und Konfliktsemantik. Netzwerk-/Ordnerlogik wird dabei nicht geändert.
+
+Vor dem Schreiben weiterer Dateien wird dieser Drive-Schritt auf fünf Dateien
+erweitert und vollständig abgegrenzt: zusätzlich RestoreSafety und der vorhandene
+Coordinator-Test. FullRestoreCoordinator.execute hält auch die Übergabe zwischen
+fertigem Core-Import und beginnendem Zusatzimport zusammen. Der Test liest dort
+die bereits geänderte echte Belegzeile und die noch alten Preferences und prüft
+die Erfassungssperre; nur die äußeren Drive-Ergebnisobjekte sind synthetisch.
+Ein zweites paralleles Restore-Journal wird dadurch nicht eingeführt.
+
+Vorab: der direkte Preference-Aufruf erreichte den Store ohne Anmeldung
+(`expected:<[true]> but was:<[false]>`). Der zusätzliche tatsächliche
+Core-/Supplemental-Übergang war ebenfalls offen (`expected:<true> but
+was:<false>`); geänderte Core-Zeile und alte Preferences wurden davor
+erfolgreich beobachtet. Keine Skips/Timeouts oder unerwarteten Fehler.
+Belege: `/tmp/immopilot-drive-mutations-red.xml`,
+`/tmp/immopilot-drive-restore-handoff-red.xml` und zugehörige .log-Dateien.
+
+Angebunden sind 37 weitere Drive-Funktions-/Gate-Grenzen sowie
+FullRestoreCoordinator.execute. Bei Ausdrucksbodies beginnt die Anmeldung
+im bestehenden Mutex-/Sync-Gate-/Trace-Block vor der Persistenzphase; diese
+Gate-Semantik bleibt erhalten. Queued ViewModel-Anforderungen besitzen
+bereits ihre äußere Anmeldung. GetDriveAppConfig ist ausdrücklich keine
+reine Leseoperation: es delegiert an die angemeldete Initialisierung.
+GetExistingDriveAppConfigReadOnly, Inventar/Vorschau und Parser bleiben
+Lesewege. Privat-Metadaten-Upsert ist innerhalb seines Trace-Blocks angemeldet;
+sein öffentlicher Overload delegiert unverändert dorthin. Vollständige Liste:
+
+- `DrivePersistenceRepository.saveWohneinheitenToPrefs`
+- `DrivePersistenceRepository.saveLearnedRulesToPrefs`
+- `DrivePersistenceRepository.initializeDriveStorage`
+- `DrivePersistenceRepository.initializeDriveStorageForSync`
+- `DrivePersistenceRepository.initializeDriveStorageLocked`
+- `DrivePersistenceRepository.saveStammdatenToDrive`
+- `DrivePersistenceRepository.restoreStammdatenFromDrive`
+- `DrivePersistenceRepository.saveDriveAppConfig`
+- `DrivePersistenceRepository.updateReceiptIndexInDrive`
+- `DrivePersistenceRepository.syncReceiptOriginalAttachments`
+- `DrivePersistenceRepository.validateSynchronizationInventory`
+- `DrivePersistenceRepository.syncReceiptToDrive`
+- `DrivePersistenceRepository.getOrCreateDeletionsFolder`
+- `DrivePersistenceRepository.uploadTombstone`
+- `DrivePersistenceRepository.deleteReceiptWithSync`
+- `DrivePersistenceRepository.processPendingDeletions`
+- `DrivePersistenceRepository.restoreDeletedReceipt`
+- `DrivePersistenceRepository.permanentlyDeleteReceipt`
+- `DrivePersistenceRepository.executeFullDriveRestore`
+- `DrivePersistenceRepository.restoreReceiptOriginalMetadata`
+- `DrivePersistenceRepository.auditOriginalReceipts`
+- `DrivePersistenceRepository.correctReceiptMetadata`
+- `DrivePersistenceRepository.runFullRestoreEndToEndTest`
+- `DrivePersistenceRepository.restoreReceiptsFromDrive`
+- `DrivePersistenceRepository.retireLegacyDriveDiagnostic`
+- `DrivePersistenceRepository.testDriveReceiptStorage`
+- `DrivePersistenceRepository.upsertReceiptMetadata`
+- `DrivePersistenceRepository.uploadReceiptMetadata`
+- `DrivePersistenceRepository.repairAndUploadOriginalDocument`
+- `DrivePersistenceRepository.replaceReceiptIndexEntries`
+- `DrivePersistenceRepository.ensureDocumentFolder`
+- `DrivePersistenceRepository.ensurePropertyDocumentStructure`
+- `DrivePersistenceRepository.syncManagedDocumentToDrive`
+- `DrivePersistenceRepository.acknowledgeOriginalBackupChanges`
+- `DrivePersistenceRepository.updateManagedDocumentIndex`
+- `DrivePersistenceRepository.executeReceiptDocumentMigration`
+- `DrivePersistenceRepository.resumeInterruptedDocumentMigration`
+- `FullRestoreCoordinator.execute`
+
+Alle ursprünglichen Bodies nach Entfernen nur der äußeren Anmeldung bytegenau
+verglichen; keine Triple-Quote-Literale in diesen geänderten Bodies. Keine
+Änderungen an Parametern, Ergebnissen, Netzwerkprotokoll, Konfliktlogik oder
+Restore-Reihenfolge. Es werden weder neue Journale noch neue Replay-Wege gebaut.
+
+Abnahme: sechzehn exakt ausgewählte Methoden bestanden; XML ohne Fehler,
+Skips oder Duplikate geprüft (`/tmp/immopilot-drive-mutations-results`,
+`/tmp/immopilot-drive-mutations-tests.log`). Erfolgs-/Konflikt-/Hash-/404-/429-/
+Timeoutfälle, vorhandene Restore-Sicherheitsfälle und beide Inventarguards
+bestehen. Der Core-/Supplemental-Zwischenraum ist nun gesperrt.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-drive-mutations-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Alle 38 alten Bodies bytegenau erhalten,
+37 Drive-Hüllen und eine äußere Restore-Hülle ergänzt. Kein GitHub-Upload
+und kein Emulatorlauf.

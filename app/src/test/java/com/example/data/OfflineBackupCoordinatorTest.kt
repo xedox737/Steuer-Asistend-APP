@@ -56,6 +56,46 @@ class OfflineBackupCoordinatorTest {
 
     private fun quietCapture() { coordinator.completeCapture(coordinator.beginCapture()) }
 
+    @Test fun driveRestoreKeepsRegistrationAcrossCoreAndSupplementalHandoff() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shared = OfflineBackupCoordinator.shared
+        val notes = context.getSharedPreferences("bank_transaction_notes", 0)
+        notes.edit().putString("handoff", "old").commit()
+        val payload = JSONObject().put("bankTransactionNotes", JSONObject().put("handoff",
+            JSONObject().put("type", "string").put("value", "restored")))
+        val repository = ReceiptRepository(database.receiptDao(), database.propertyDao())
+        var coreWasUpdated = false
+        var supplementalWasOld = false
+        var blockedAtHandoff: Boolean? = null
+        val before = shared.beginCapture()
+        val outcome = FullRestoreCoordinator.execute(
+            coreRestore = {
+                repository.insert(receipt.copy(aussteller = "Restored core"))
+                DriveRestoreReport(isSuccess = true)
+            },
+            supplementalRestore = {
+                PersistentPreferenceInventory.restorePayload(context, payload, RestoreMode.REPLACE_FULL)
+                SupplementalDriveBackup.Result(true, "restored")
+            },
+            onPhase = { phase ->
+                if (phase == FullRestorePhase.SUPPLEMENTAL_IMPORT) {
+                    coreWasUpdated = sql.query("SELECT aussteller FROM receipts WHERE id = 7").use {
+                        it.moveToFirst() && it.getString(0) == "Restored core"
+                    }
+                    supplementalWasOld = notes.getString("handoff", null) == "old"
+                    blockedAtHandoff = runCatching { shared.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                }
+            }
+        )
+        assertTrue(coreWasUpdated)
+        assertTrue(supplementalWasOld)
+        assertEquals(true, blockedAtHandoff)
+        assertTrue(outcome.isSuccess)
+        assertEquals("restored", notes.getString("handoff", null))
+        assertThrows(OfflineBackupValidationException::class.java) { shared.completeCapture(before) }
+        shared.completeCapture(shared.beginCapture())
+    }
+
     @Test fun preferenceRestoreKeepsOneRegistrationAcrossStores() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val shared = OfflineBackupCoordinator.shared

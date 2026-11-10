@@ -481,6 +481,7 @@ class DrivePersistenceRepository(
     }
 
     fun saveWohneinheitenToPrefs(units: List<WohneinheitStatus>, mode: RestoreMode = RestoreMode.MERGE, propertyId: String = StableDocumentIdentity.LEGACY_PROPERTY_ID) {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val unitPrefs = com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
         val editor = unitPrefs.edit()
         fun putString(key: String, value: String) {
@@ -507,6 +508,7 @@ class DrivePersistenceRepository(
             putString("unit_id_${u.name}", stableId)
         }
         editor.apply()
+      }
     }
 
     fun getLearnedRulesFromPrefs(): List<LearnedVendorRule> {
@@ -522,6 +524,7 @@ class DrivePersistenceRepository(
     }
 
     fun saveLearnedRulesToPrefs(rules: List<LearnedVendorRule>, mode: RestoreMode = RestoreMode.MERGE) {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val learnedRulesPrefs = com.example.data.PersistentPreferenceInventory.open(context, "ki_learned_rules_prefs")
         val editor = learnedRulesPrefs.edit()
         learnedRulesPrefs.all.keys.forEach { k ->
@@ -534,6 +537,7 @@ class DrivePersistenceRepository(
             if (mode != RestoreMode.MERGE || !learnedRulesPrefs.contains(normalizedKey)) editor.putString(normalizedKey, serialized)
         }
         editor.apply()
+      }
     }
 
     private suspend fun uploadOrUpdateJson(
@@ -584,18 +588,23 @@ class DrivePersistenceRepository(
     }
 
     suspend fun initializeDriveStorage(accessToken: String): DriveInitializationResult {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         return initializationMutex.withLock {
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             initializeDriveStorageLocked(accessToken, allowMetadataRestore = true)
         }
+      }
     }
 
     suspend fun initializeDriveStorageForSync(accessToken: String): DriveInitializationResult = initializationMutex.withLock {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         kotlinx.coroutines.currentCoroutineContext().ensureActive()
         initializeDriveStorageLocked(accessToken, allowMetadataRestore = false)
+      }
     }
 
     private suspend fun initializeDriveStorageLocked(accessToken: String, allowMetadataRestore: Boolean): DriveInitializationResult {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             DiagnosticLog.d(TAG, "Initializing Google Drive storage...")
             // 1. Search for existing main folder "Steuerassistent Belege"
@@ -698,9 +707,11 @@ class DrivePersistenceRepository(
             return DriveInitializationResult.Failure(
                 if (e is com.example.api.DriveAccessFailure) e.message.orEmpty() else DriveConnectionFailure.from(e).message, e)
         }
+      }
     }
 
     suspend fun saveStammdatenToDrive(accessToken: String, config: DriveAppConfig): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             DiagnosticLog.d(TAG, "Backing up Stammdaten to Google Drive...")
 
@@ -758,6 +769,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Error backing up Stammdaten")
             return false
         }
+      }
     }
 
     private suspend fun restorePropertyMetadata(metadata: PropertyMetadata, mode: RestoreMode = RestoreMode.MERGE) {
@@ -770,6 +782,7 @@ class DrivePersistenceRepository(
     }
 
     suspend fun restoreStammdatenFromDrive(accessToken: String, config: DriveAppConfig): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             DiagnosticLog.d(TAG, "Restoring Stammdaten from Google Drive...")
 
@@ -819,6 +832,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Error restoring Stammdaten from Drive")
             return false
         }
+      }
     }
 
     // --- Core Drive Persistence Models (Step 3) ---
@@ -1323,6 +1337,7 @@ class DrivePersistenceRepository(
     }
 
     suspend fun saveDriveAppConfig(accessToken: String, config: DriveAppConfig): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         return try {
             val appConfigFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "appConfig")
             val jsonStr = config.toJson()
@@ -1346,6 +1361,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Error saving DriveAppConfig")
             false
         }
+      }
     }
 
     fun upsertReceiptIndexEntry(
@@ -1434,6 +1450,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         newEntry: ReceiptIndexEntry
     ): Boolean = receiptIndexMutex.withLock {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             val indexFile = GoogleDriveClient.findFileByAppProperty(accessToken, config.systemFolderId, "receiptIndex", failOnError = true)
             var indexEntries = mutableListOf<ReceiptIndexEntry>()
@@ -1545,6 +1562,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Exception during index update")
             false
         }
+      }
     }
 
     private fun getSha256(bytes: ByteArray): String {
@@ -1563,6 +1581,7 @@ class DrivePersistenceRepository(
     }
 
     internal suspend fun syncReceiptOriginalAttachments(accessToken: String, config: DriveAppConfig, receipt: Receipt): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val documents = ReceiptOriginalChain.ordered(localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId })
         val primaryId = StableDocumentIdentity.receiptDocumentId(receipt.internalId)
         for (document in documents.filter { it.documentId != primaryId }) {
@@ -1577,6 +1596,7 @@ class DrivePersistenceRepository(
             ))
         }
         return documents.size >= com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl).filter { it.isNotBlank() }.distinct().size
+      }
     }
 
     private suspend fun filelessEvidenceFor(receipt: Receipt): String? {
@@ -1629,6 +1649,7 @@ class DrivePersistenceRepository(
     /** A readable complete active index is required before the first backup write. Historical
      * DELETED entries and unavailable supplemental originals remain untouched. */
     suspend fun validateSynchronizationInventory(token: String, config: DriveAppConfig, local: List<Receipt>) {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val indexFile = GoogleDriveClient.findFileByAppProperty(token, config.systemFolderId, "receiptIndex", failOnError = true)
         val entries = if (indexFile == null) pendingInitialReceiptEntries(token, config, local)
         else JSONObject(GoogleDriveClient.downloadSyncJsonSnapshot(token, indexFile.id).read.json).getJSONArray("entries")
@@ -1735,6 +1756,7 @@ class DrivePersistenceRepository(
                     throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
             }
         }
+      }
     }
 
     /** An absent first index is recoverable only for journal-proven, unfinished creations.
@@ -2040,6 +2062,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         receipt: Receipt
     ): Boolean = receiptSyncGate.run {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             DiagnosticLog.d(TAG, "Syncing receipt to Drive. ID")
             
@@ -2571,6 +2594,7 @@ class DrivePersistenceRepository(
             localRepository.updateDriveSyncFields(updatedReceipt)
             return@run false
         }
+      }
     }
 
     suspend fun checkDriveInventoryForRestore(accessToken: String, config: DriveAppConfig): DriveRestorePreviewResult =
@@ -2841,7 +2865,9 @@ class DrivePersistenceRepository(
     }
 
     suspend fun getOrCreateDeletionsFolder(accessToken: String, config: DriveAppConfig): String? {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         return GoogleDriveClient.getOrCreateFolder(accessToken, "deletions", config.systemFolderId)
+      }
     }
 
     suspend fun uploadTombstone(
@@ -2849,6 +2875,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         tombstone: ReceiptTombstone
     ): DriveFileResult {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             val deletionsFolderId = getOrCreateDeletionsFolder(accessToken, config)
                 ?: return DriveFileResult(false, null, "Deletions folder could not be created")
@@ -2908,6 +2935,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Error uploading tombstone for")
             return DriveFileResult(false, null, e.message ?: e.toString())
         }
+      }
     }
 
     suspend fun getAllTombstonesFromDrive(accessToken: String, config: DriveAppConfig): Map<String, ReceiptTombstone> {
@@ -2935,6 +2963,7 @@ class DrivePersistenceRepository(
         deletedBy: String = "LocalUser",
         deletionReason: String = "Vom Nutzer gelöscht"
     ): DeletionResult {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
         val deletionUuid = java.util.UUID.randomUUID().toString()
 
@@ -3047,9 +3076,11 @@ class DrivePersistenceRepository(
             )
             return DeletionResult.PendingOffline(tombstone, e.message ?: e.toString())
         }
+      }
     }
 
     suspend fun processPendingDeletions(accessToken: String, config: DriveAppConfig): Int {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val pendingList = localRepository.getPendingDeletionReceipts()
         var count = 0
         for (receipt in pendingList) {
@@ -3065,6 +3096,7 @@ class DrivePersistenceRepository(
             }
         }
         return count
+      }
     }
 
     suspend fun restoreDeletedReceipt(
@@ -3072,6 +3104,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig?,
         receipt: Receipt
     ): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
 
         if (!accessToken.isNullOrBlank() && config != null) {
@@ -3135,6 +3168,7 @@ class DrivePersistenceRepository(
             reason = ""
         )
         return true
+      }
     }
 
     suspend fun permanentlyDeleteReceipt(
@@ -3142,6 +3176,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig?,
         receipt: Receipt
     ): PermanentDeleteResult {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         if (!accessToken.isNullOrBlank() && config != null) {
             try {
                 GoogleDriveClient.validateStorageConfig(accessToken, config)
@@ -3208,6 +3243,7 @@ class DrivePersistenceRepository(
 
         localRepository.deleteById(receipt.id)
         return PermanentDeleteResult.Success
+      }
     }
 
     private class RejectedRestoreConfiguration(val error: RestoreError) : Exception()
@@ -3437,6 +3473,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         requestedMode: RestoreMode = RestoreMode.REPLACE_FULL
     ): DriveRestoreReport {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
         // Empty receipts do not mean empty properties, bank assignments, trips or preferences.
         val mode = requestedMode
@@ -3606,6 +3643,7 @@ class DrivePersistenceRepository(
             errors = reportErrors,
             isSuccess = true
         )
+      }
     }
 
     internal suspend fun restoreReceiptOriginalMetadata(
@@ -3615,6 +3653,7 @@ class DrivePersistenceRepository(
         mode: RestoreMode,
         localOriginalsBefore: Map<String, ManagedDocument>
     ) {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         originals.forEach { original ->
             val mapped = original.copy(receiptInternalId = resolvedReceipt.internalId,
                 documentId = if (original.documentId == StableDocumentIdentity.receiptDocumentId(sourceReceiptId))
@@ -3623,12 +3662,14 @@ class DrivePersistenceRepository(
             localRepository.upsertManagedDocument(SupplementalDriveBackup.mergeManagedDocument(
                 context, localOriginalsBefore[mapped.documentId], mapped, mode))
         }
+      }
     }
 
     suspend fun auditOriginalReceipts(
         accessToken: String,
         config: DriveAppConfig
     ): OriginalReceiptAuditReport {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val nowStr = SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date())
         DiagnosticLog.i(TAG, "Starting read-only Originalbelege Magic-Bytes Audit...")
 
@@ -3867,6 +3908,7 @@ class DrivePersistenceRepository(
             items = auditItems,
             timestamp = nowStr
         )
+      }
     }
 
     suspend fun correctReceiptMetadata(
@@ -3876,6 +3918,7 @@ class DrivePersistenceRepository(
         newMimeType: String,
         newFilename: String
     ): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val local = localRepository.getAllReceiptsList().find { it.internalId == internalId } ?: return false
         val updated = local.copy(
             originalMimeType = newMimeType,
@@ -3886,6 +3929,7 @@ class DrivePersistenceRepository(
             syncReceiptToDrive(accessToken, config, updated)
         }
         return true
+      }
     }
 
     suspend fun downloadDocumentOnDemand(accessToken: String, receipt: Receipt, forceRemote: Boolean = false): String {
@@ -4006,6 +4050,7 @@ class DrivePersistenceRepository(
     }
 
     suspend fun runFullRestoreEndToEndTest(accessToken: String, config: DriveAppConfig): DriveRestoreReport {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         DiagnosticLog.d(TAG, "Starting E2E Non-Destructive Restore Test...")
         val snapshot = buildRestoreSnapshot(accessToken, config)
         val blockingErrors = snapshot.errors.filter { it.isBlocking }
@@ -4042,20 +4087,25 @@ class DrivePersistenceRepository(
             errors = snapshot.warnings.map { "Warnung: ${it.message}" },
             isSuccess = true
         )
+      }
     }
 
     suspend fun restoreReceiptsFromDrive(accessToken: String, config: DriveAppConfig): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val report = executeFullDriveRestore(accessToken, config)
         return report.isSuccess
+      }
     }
 
     /** Reversible local retirement of the exact synthetic row written by the legacy probe. */
     internal suspend fun retireLegacyDriveDiagnostic() {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val row = localRepository.getReceiptById(999999) ?: return
         if (!isLegacyDriveDiagnostic(row) || row.deletionStatus == "DELETED") return
         localRepository.insert(row.copy(deletionStatus = "DELETED", syncStatus = "SYNCED", syncError = null,
             deletedAt = java.time.Instant.now().toString(), deletedBy = "Drive-Diagnose",
             deletionReason = "Technischer Testbeleg der früheren Drive-Prüfung; keine Buchung. Datensatz bleibt lokal erhalten."))
+      }
     }
 
     internal fun isLegacyDriveDiagnostic(row: Receipt): Boolean = row.id == 999999 &&
@@ -4063,6 +4113,7 @@ class DrivePersistenceRepository(
         row.beschreibung == "E2E Testbeleg für Google Drive Speichertest" && row.bruttobetrag == 119.0 && row.uhrzeit == "12:00"
 
     suspend fun testDriveReceiptStorage(accessToken: String, config: DriveAppConfig): DriveReceiptTestResult = try {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         GoogleDriveClient.validateStorageConfig(accessToken, config)
         val folder = GoogleDriveClient.getOrCreateFolder(accessToken, "drive-diagnostics", config.systemFolderId)
             ?: throw IOException("Diagnoseordner konnte nicht bereitgestellt werden.")
@@ -4089,6 +4140,7 @@ class DrivePersistenceRepository(
         DriveReceiptTestResult(success = true, testInternalId = "drive-diagnostic-v1",
             mainDriveFileId = originalId, metadataFileId = metadataId,
             metadataPath = "_BelegApp-Daten/drive-diagnostics/drive-probe.json")
+      }
     } catch (e: Exception) {
         e.rethrowDriveControlFailure()
         DriveReceiptTestResult(success = false,
@@ -4137,6 +4189,7 @@ class DrivePersistenceRepository(
         sourceSnapshot: com.example.api.DriveJsonSnapshot?
     ): String? = com.example.api.DriveSyncTrace.step(com.example.api.DriveSyncPhase.METADATA, receipt.internalId,
         outcome = { id: String? -> if (id == null) com.example.api.DriveSyncOutcome.FAILED else com.example.api.DriveSyncOutcome.SUCCESS }) {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val mutex = getMetadataMutex(receipt.internalId)
         mutex.withLock {
             try {
@@ -4273,6 +4326,7 @@ class DrivePersistenceRepository(
                 null
             }
         }
+      }
     }
 
     private suspend fun uploadReceiptMetadata(
@@ -4280,7 +4334,9 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         receipt: Receipt
     ): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         return upsertReceiptMetadata(accessToken, config, receipt) != null
+      }
     }
 
     suspend fun repairAndUploadOriginalDocument(
@@ -4291,6 +4347,7 @@ class DrivePersistenceRepository(
         localFile: File,
         validationResult: com.example.ui.FileValidationResult
     ): RepairResult {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             DiagnosticLog.d(TAG, "Starting repair and upload for receipt internalId")
 
@@ -4446,6 +4503,7 @@ class DrivePersistenceRepository(
             DiagnosticLog.e(TAG, "Error in repairAndUploadOriginalDocument")
             return RepairResult(false, errorMessage = "Exception während Reparatur: ${e.message}")
         }
+      }
     }
 
     suspend fun replaceReceiptIndexEntries(
@@ -4453,6 +4511,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         entries: List<ReceiptIndexEntry>
     ): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val validation = validateIndex(entries)
         if (!validation.isValid) {
             throw IllegalStateException(
@@ -4492,6 +4551,7 @@ class DrivePersistenceRepository(
             "receipt-index.json",
             indexJson
         ).success
+      }
     }
 
     private fun calculateSha256Bytes(bytes: ByteArray): String {
@@ -4641,6 +4701,7 @@ class DrivePersistenceRepository(
         unitId: String? = null,
         unitLabel: String? = null
     ): String? {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val route = DocumentDrivePathResolver.route(property.propertyId, property.name, property.adresse, type, date, unitId, unitLabel)
         var parent = config.rootFolderId
         route.segments.forEachIndexed { index, segment ->
@@ -4652,9 +4713,11 @@ class DrivePersistenceRepository(
             ) ?: return null
         }
         return parent
+      }
     }
 
     suspend fun ensurePropertyDocumentStructure(accessToken: String, config: DriveAppConfig): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val property = localRepository.getPropertyMetadata() ?: PropertyMetadata()
         val rootName = DocumentDrivePathResolver.propertyFolderName(property.name, property.adresse)
         val root = GoogleDriveClient.getOrCreateFolder(
@@ -4676,6 +4739,7 @@ class DrivePersistenceRepository(
             }
         }
         return true
+      }
     }
 
     /** Uploads a non-receipt document exactly once. Existing originals are only verified, never overwritten. */
@@ -4684,6 +4748,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         documentId: String
     ): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val document = localRepository.getManagedDocument(documentId) ?: return false
         val property = localRepository.getPropertyByPropertyId(document.propertyId)
             ?: localRepository.getPropertyMetadata()
@@ -4837,6 +4902,7 @@ class DrivePersistenceRepository(
             fileSizeBytes = bytes.size.toLong(), migrationStatus = "SYNCED"
         ))
         return updateManagedDocumentIndex(accessToken, config)
+      }
     }
 
     private fun rememberBackupOriginal(token: String, config: DriveAppConfig, document: ManagedDocument,
@@ -4847,6 +4913,7 @@ class DrivePersistenceRepository(
 
     /** Called only after BOTH backup manifests acknowledged the complete current run. */
     suspend fun acknowledgeOriginalBackupChanges(token: String, config: DriveAppConfig) {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val scope = DriveEnvironment.currentReadProof(token)?.takeIf { it.syncCacheEnabled } ?: return
         val pending = DrivePendingWrites(context)
         for (document in localRepository.getAllManagedDocuments()) {
@@ -4855,9 +4922,11 @@ class DrivePersistenceRepository(
                 document.sha256 == proof.sha256 && document.fileSizeBytes == proof.size)
                 pending.completedBackupOriginal(config.rootFolderId, proof.fileId)
         }
+      }
     }
 
     suspend fun updateManagedDocumentIndex(accessToken: String, config: DriveAppConfig): Boolean {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val documents = localRepository.getAllManagedDocuments()
         val json = JSONObject().apply {
             put("schemaVersion", 1)
@@ -4879,6 +4948,7 @@ class DrivePersistenceRepository(
             "document-index.json",
             json.toString(4)
         ).success
+      }
     }
 
     private fun localRepositoryUnitLabel(unitId: String?): String? {
@@ -5017,6 +5087,7 @@ class DrivePersistenceRepository(
         config: DriveAppConfig,
         preview: DocumentMigrationPreview
     ): DocumentMigrationPreview {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val property = localRepository.getPropertyMetadata() ?: PropertyMetadata()
         val results = preview.items.map { planned ->
             val candidate = planned.candidate
@@ -5074,11 +5145,14 @@ class DrivePersistenceRepository(
             concretePlan
         }
         return preview.copy(items = results)
+      }
     }
 
     suspend fun resumeInterruptedDocumentMigration(accessToken: String, config: DriveAppConfig): DocumentMigrationPreview {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         val pending = DocumentStorageMigrationPlanner.resume(localRepository.getDocumentMigrationJournal())
         return executeReceiptDocumentMigration(accessToken, config, pending)
+      }
     }
 }
 

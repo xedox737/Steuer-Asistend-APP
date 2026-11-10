@@ -61,6 +61,34 @@ class DrivePersistenceManagedDocumentE2eTest {
         database.close()
     }
 
+    @Test fun drivePreferenceMutationIsRegisteredBeforeOpeningItsStore() {
+        val coordinator = OfflineBackupCoordinator.shared
+        val observed = mutableListOf<Boolean>()
+        var observing = false
+        val probe = object : android.content.ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int): android.content.SharedPreferences {
+                if (observing && name == "wohneinheiten_prefs") {
+                    observed += runCatching { coordinator.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                }
+                return super.getSharedPreferences(name, mode)
+            }
+        }
+        val repository = DrivePersistenceRepository(probe, localRepository, fakeDrive)
+        val unit = com.example.ui.WohneinheitStatus("WE_01", "Wohnung", "Vermietet", "Tenant", 80.0, 45.0,
+            mietvertragsstart = "2026-01-01", unitId = "unit-test-01")
+        val capture = coordinator.beginCapture()
+        observing = true
+        try { repository.saveWohneinheitenToPrefs(listOf(unit), RestoreMode.REPLACE_FULL, "property-test") }
+        finally { observing = false }
+        assertEquals(listOf(true), observed)
+        val prefs = context.getSharedPreferences("wohneinheiten_prefs", 0)
+        assertEquals("Tenant", prefs.getString("property_property-test_unitid_unit-test-01_mieter", null))
+        assertEquals(80f, prefs.getFloat("property_property-test_unitid_unit-test-01_rent", 0f), 0f)
+        assertEquals(45f, prefs.getFloat("property_property-test_unitid_unit-test-01_area", 0f), 0f)
+        org.junit.Assert.assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(capture) }
+        coordinator.completeCapture(coordinator.beginCapture())
+    }
+
     private suspend fun legacyReceiptWithOriginal(): Pair<Receipt, java.io.File> {
         val file = java.io.File(context.filesDir, "restored_receipts/legacy-version/Original.pdf")
         check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
