@@ -117,6 +117,67 @@ class PersistentStorageInventoryTest {
         }
     }
 
+    // These rules classify app-owned producers, not arbitrary library cache contents.
+    private val cacheRules = mapOf(
+        "com/example/util/PdfExporter.kt" to mapOf("saved-pdf" to """File\(context\.cacheDir,\s*filename\)"""),
+        "com/example/util/DatevExporter.kt" to mapOf("saved-datev-zip" to """File\(context\.cacheDir,\s*"DATEV_Export_[^"\n]+\.zip"\)"""),
+        "com/example/util/DatevCsvOutput.kt" to mapOf("saved-datev-csv" to """File\(context\.cacheDir,\s*"EXTF_Buchungsstapel_[^"\n]+\.csv"\)"""),
+        "com/example/util/AdvisorPackageBuilder.kt" to mapOf("saved-advisor-zip" to """File\(context\.cacheDir,\s*zipFileName\)"""),
+        "com/example/ui/ReceiptViewModel.kt" to mapOf(
+            "saved-renovation-report" to """File\(getApplication<Application>\(\)\.cacheDir,\s*"reports"\)""",
+            "saved-datev-csv" to """File\(context\.cacheDir,\s*"EXTF_Buchungsstapel_[^"\n]+\.csv"\)""",
+            "saved-datev-xml" to """File\(context\.cacheDir,\s*"document\.xml"\)""",
+            "saved-datev-pdf" to """File\(context\.cacheDir,\s*"datev_export\.pdf"\)"""),
+        "com/example/ui/ReceiptDetailScreen.kt" to mapOf("temporary-replacement" to
+            """File\.createTempFile\("receipt_replacement_",\s*"\.tmp",\s*context\.cacheDir\)"""),
+        "com/example/ui/ReceiptAppUi.kt" to mapOf(
+            "temporary-repair" to """File\(context\.cacheDir,\s*"repair_file_[^"\n]+"\)""",
+            "temporary-scan-repair" to """File\(context\.cacheDir,\s*"repair_scan_[^"\n]+\.jpg"\)""",
+            "retained-camera-original" to """File\(context\.cacheDir,\s*"temp_receipt_[^"\n]+\.jpg"\)""",
+            "saved-bank-export" to """File\(context\.cacheDir,\s*"exports"\)""",
+            "temporary-overview-repair" to """File\(context\.cacheDir,\s*"overview_repair_[^"\n]+"\)"""),
+        "com/example/data/OfflineBackupService.kt" to mapOf(
+            "technical-export-staging" to """File\(context\.cacheDir,\s*"offline-export-[^"\n]+"\)""",
+            "technical-import-staging" to """File\(context\.cacheDir,\s*"offline-import-[^"\n]+"\)"""),
+        "com/example/data/OfflineBackupFileInventory.kt" to mapOf("classified-inventory-reader" to
+            """context\.cacheDir\.canonicalFile""")
+    )
+
+    private fun classifiedCacheUses(source: String, owner: String): Map<String, Int> {
+        val clean = source.replace(Regex("(?s)/\\*.*?\\*/|//[^\\n]*"), "")
+        val matches = cacheRules[owner].orEmpty().mapValues { (_, pattern) -> Regex(pattern).findAll(clean).toList() }
+        Regex("\\b(cacheDir|externalCacheDir|getCacheDir|getExternalCacheDir|getExternalCacheDirs)\\b").findAll(clean).forEach { use ->
+            assertTrue("$owner: Cache-Zugriff braucht eine ausdrückliche Sicherungszuordnung",
+                matches.values.flatten().count { use.range.first in it.range } == 1)
+        }
+        return matches.mapValues { it.value.size }.filterValues { it > 0 }
+    }
+
+    @Test fun everyAppCacheAccessRequiresExplicitSavedExportOrTemporaryClassification() {
+        val root = sources()
+        val found = root.walkTopDown().filter { it.extension in setOf("kt", "java") }.mapNotNull { file ->
+            val owner = file.relativeTo(root).invariantSeparatorsPath
+            classifiedCacheUses(file.readText(), owner).takeIf { it.isNotEmpty() }?.let { owner to it }
+        }.toMap()
+        val expected = cacheRules.mapValues { (owner, rules) -> rules.mapValues { (kind, _) ->
+            if (owner == "com/example/ui/ReceiptDetailScreen.kt" && kind == "temporary-replacement") 2 else 1
+        } }
+        assertEquals("Cache-Inventar enthält veraltete oder fehlende aktive Eigentümer", expected, found)
+    }
+
+    @Test fun newOrComputedCacheProducersCannotSilentlyBypassClassification() {
+        listOf(
+            "new/Unknown.kt" to "File(context.cacheDir, \"new-business-data\")",
+            "com/example/ui/ReceiptAppUi.kt" to "File(context.cacheDir, \"unknown-output\")",
+            "com/example/ui/ReceiptAppUi.kt" to "File(context.cacheDir, runtimeName)",
+            "com/example/ui/ReceiptAppUi.kt" to "context.externalCacheDir"
+        ).forEach { (owner, source) ->
+            assertThrows(AssertionError::class.java) { classifiedCacheUses(source, owner) }
+        }
+        assertEquals(mapOf("saved-bank-export" to 1),
+            classifiedCacheUses("File(context.cacheDir, \"exports\")", "com/example/ui/ReceiptAppUi.kt"))
+    }
+
     @Test fun productionLogsAcceptOnlyStaticEventsAndNeverThrowables() {
         val calls = Regex("DiagnosticLog\\.[diew]\\s*\\(([^\\n]*)\\)")
         sources().walkTopDown().filter { it.extension == "kt" && it.name != "DiagnosticLog.kt" }

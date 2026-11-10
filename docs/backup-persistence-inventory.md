@@ -1553,3 +1553,49 @@ Freigabe-Intent sowie Lebensdauer vor Einplanung, über Kindaufträge und bei
 Abbruch sind nachgewiesen. Lint und beide APK-Builds bestanden
 (`/tmp/immopilot-ui-file-coordination-build.log`), keine Error/Fatal-Lintbefunde.
 `git diff --check` bestanden; kein Emulatorlauf oder GitHub-Upload.
+
+### Schritt 4: verfügbare Originalversionen und gespeicherte Exporte
+
+Vier Dateien: neue OfflineBackupFileInventory, deren gezielte Nachweistests,
+PersistentStorageInventoryTest und dieses Dokument. Das neue Inventar erfasst
+alle vorhandenen Versionen in fachlichen Originalverzeichnissen sowie noch
+vorhandene gespeicherte Export-/Berichtsdateien, auch ohne aktuelle Zeilenreferenz.
+Einträge erhalten portable relative Zuordnung und Original-/Exportklassifikation;
+Originale werden dabei weder gelesen, verändert noch entfernt. Nur ausdrücklich
+klassifiziertes unreferenziertes Staging wird ausgelassen. Null-Byte-Dateien bleiben
+sichtbar, damit die spätere Inhaltsprüfung gezielt abbricht. Verzeichnisfehler,
+unsichere Links und Mengenüberschreitung dürfen keinen Teilerfolg ergeben.
+Ein zusätzlicher Quellcodeguard ordnet alle eigenen Cache-Zugriffe bewusst zu.
+Das aktiviert noch keinen Snapshot und ändert das V1-Archivformat nicht.
+
+Vorab: alle sechs neuen Verhaltensfälle scheiterten an den noch fehlenden
+Inventareigenschaften, ohne Skips oder Fremdfehler
+(`/tmp/immopilot-complete-file-inventory-red.xml`). Anschließend Erfassung,
+sichere relative Zuordnung, Quellenklassifikation und begrenzte Dateimenge ergänzt.
+
+Zusätzlicher Quellcodebefund: CameraX hält `cacheDir/temp_receipt_*.jpg` nach dem
+Einlesen weiter vor; analyzeReceipt erstellt daraus gegebenenfalls verkleinerte
+JPEGs in filesDir. Diese noch vorhandenen ursprünglichen Aufnahmebytes sind
+kein rekonstruierbarer Vorschaucache. Sie werden als ORIGINAL mit erfasst.
+Die asynchrone CameraX-Veröffentlichung wird vor Snapshot-Aktivierung separat
+koordiniert; bis dahin meldet isCoordinated für diese Quelle ausdrücklich false.
+Der neue Vollständigkeitstest umfasst die erhaltenen Kamerabytes zusätzlich.
+Der Exporter bleibt unverändert und verwendet das neue Inventar noch nicht.
+
+Review-Korrektur vor Commit: ein zusätzlicher Fehlertest wies eine rohe
+IOException mit privatem absoluten Pfad bereits beim Öffnen des Inventars nach
+(`/tmp/immopilot-file-inventory-privacy-red.xml`). Konstruktion, Aufzählung und
+Quellenprüfung normalisieren nun ausschließlich IO-/Berechtigungsfehler zu
+pfadfreien Validierungsmeldungen. Die Originalausnahme wird weder angehängt
+noch protokolliert. Der Test prüft IO- und SecurityException sowohl beim
+Initialisieren als auch beim späteren Verzeichnislesen. Frühere bestandene
+Neunerprüfung und Builds gelten noch nicht als Abnahme dieser Korrektur.
+
+Abnahme des endgültigen Standes: zehn echte Methoden bestanden, ohne Fehler,
+Skips, Duplikate oder Platzhalter
+(`/tmp/immopilot-complete-file-inventory-final-results`). Lint und beide APK-
+Builds bestanden (`/tmp/immopilot-complete-file-inventory-final-build.log`);
+keine Error/Fatal-Lintbefunde. `git diff --check` bestanden. Erfasst werden alle
+getesteten erhaltenen Versionen/Exporte, einschließlich der Rohkamera-Datei;
+private Dateisystempfade gelangen auch bei Fehlern nicht in die Meldung.
+Keine Aktivierung des Snapshots, kein Emulatorlauf und kein GitHub-Upload.
