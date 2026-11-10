@@ -20,6 +20,37 @@ class Phase5BDatevOutputTest {
         beschreibung = "Reparatur", bruttobetrag = 100.0, sollHaben = "S", sachkonto = "4800", gegenkonto = "1200",
         belegfeld1 = "BELEG-$id", hauptkategorie = "Renovierung", objektId = "property", kost1 = "property", steuerlichesJahr = 2026) }
 
+    @Test fun savedCsvAndAdvisorZipAreRegisteredBeforeCachePublication() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val coordinator = OfflineBackupCoordinator.shared
+        val observed = mutableListOf<Boolean>()
+        val probe = object : android.content.ContextWrapper(context) {
+            override fun getCacheDir(): java.io.File {
+                observed += runCatching { coordinator.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                return context.cacheDir
+            }
+        }
+        val bookings = records
+        val report = BookingValidationService.validateRecords(bookings, profile)
+        val creators: List<() -> AdvisorPackageResult> = listOf(
+            { DatevCsvOutput.create(probe, bookings, profile, report, "2026") },
+            { AdvisorPackageBuilder.buildPackage(probe, bookings, emptyList(), emptyList(), false, profile, report) }
+        )
+        creators.forEach { create ->
+            observed.clear()
+            val before = coordinator.beginCapture()
+            val result = create()
+            try {
+                assertEquals(listOf(true), observed)
+                assertTrue(result.outputFile.isFile && result.outputFile.length() > 0)
+                assertEquals(ReceiptManifestService.calculateSha256(result.outputFile), result.sha256Checksum)
+                assertEquals(2, result.totalRecords)
+                org.junit.Assert.assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(before) }
+                coordinator.completeCapture(coordinator.beginCapture())
+            } finally { result.outputFile.delete() }
+        }
+    }
+
     @Test fun csvOutputIsDirectExtfWithCorrectMimeAndTwoRecordsWithoutOriginals() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val bookings = records

@@ -3537,6 +3537,7 @@ data class AiSearchUiState(
     suspend fun executeWizardExport(
         context: Context
     ): com.example.util.AdvisorPackageResult? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val currentReceipts = database.receiptDao().getAllReceiptsList()
         recalculateWizardStepData(currentReceipts)
         val records = _wizardMappedRecords.value
@@ -3641,6 +3642,7 @@ data class AiSearchUiState(
 
         _wizardStep.value = 6
         return packageResult
+      }
     }
 
     // DATEV Export State
@@ -3665,6 +3667,7 @@ data class AiSearchUiState(
         mandantenName: String = "",
         wirtschaftsjahr: Int = java.time.LocalDate.now().year
     ): File? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val metaName = propertyMetadata.value?.name.orEmpty()
         val propName = metaName
         val propShort = metaName.take(15)
@@ -3765,12 +3768,15 @@ data class AiSearchUiState(
             DiagnosticLog.e("ReceiptViewModel", "Error exporting to DATEV")
             null
         }
+      }
     }
 
     fun exportToPdf(context: Context, taxYear: Int, includeTaxAdvisorSummary: Boolean = false): File? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val currentReceipts = receipts.value
         val currentMeta = propertyMetadata.value
         return PdfExporter.exportReceiptsToPdf(context, taxYear, currentReceipts, currentMeta, includeTaxAdvisorSummary)
+      }
     }
 
     // Preloaded templates for mock scanning

@@ -1347,12 +1347,14 @@ Fehler/Skips/Timeouts (`/tmp/immopilot-restore-publications-red.xml`,
 Restore-Funktion angemeldet. Sämtliche ursprünglichen Bodies und unveränderten
 Dateibereiche nach Abzug nur der Hülle/Einrückungen exakt verglichen.
 
-Prüfumgebung korrigiert: Die zusätzlich ausgewählte PreferenceBackupCompletenessTest-
-Klasse verwendet AndroidJUnit4 ohne SDK-Override und damit den Standard-SDK 36.
-Der zunächst mit Java 17 gestartete kombinierte Lauf wurde nach Erkennen dieser
-Voraussetzung vor testDebugUnitTest beendet (Client 143; keine Testmethode lief).
-Dieselben unveränderten zwölf Fälle werden mit Java 21 geprüft; kein SDK-Filter,
-keine Teständerung und keine Wiederholung zur Verdeckung eines Produktfehlers.
+Prüfumgebung nachträglich gegen die Projektkonfiguration abgeglichen:
+PreferenceBackupCompletenessTest verwendet AndroidJUnit4 ohne SDK-Override;
+app/src/test/resources/robolectric.properties legt standardmäßig SDK 35 fest.
+Die damalige Annahme eines Standard-SDK 36 war falsch. Der Java-17-Start wurde
+deshalb unnötig, aber vor testDebugUnitTest beendet (Client 143; keine Methode
+lief). Der Folgelauf mit Java 21 führte dieselben zwölf Fälle mit ihren echten
+SDKs vollständig aus. Keine SDK-Erlaubnisliste oder Teständerung. Explizite
+SDK-36-Klassen, etwa RestoreSafetyTest, benötigen weiterhin Java 21.
 
 Der anschließende Umgebungsneustart beendete den Java-21-Prozess nach der
 Testkompilierung und vor der testDebugUnitTest-Aufgabe. Kein Gradle-Prozess
@@ -1462,3 +1464,40 @@ bestehen. Der Core-/Supplemental-Zwischenraum ist nun gesperrt.
 `git diff --check` bestanden. Alle 38 alten Bodies bytegenau erhalten,
 37 Drive-Hüllen und eine äußere Restore-Hülle ergänzt. Kein GitHub-Upload
 und kein Emulatorlauf.
+
+### Schritt 4: gespeicherte Exportdateien und direkte ViewModel-Einstiege
+
+Fünf Dateien: DatevCsvOutput, AdvisorPackageBuilder, ReceiptViewModel,
+Phase5BDatevOutputTest und dieses Dokument. CSV-/Beraterpaket-Dateien erhalten
+eine Anmeldung über Erstellung, Schließen und Prüfsumme. Die direkten Methoden
+executeWizardExport(context), exportToDatev und exportToPdf melden ebenfalls
+vor ihrer Persistenzphase an; beim Assistenten bleibt die Anmeldung bis zur
+bereits koordiniert eingeplanten Audit-/Statusfortsetzung überlappend aktiv.
+Der neue Cache-Kontexttest erzeugt gültige CSV-/ZIP-Dateien aus vorhandenen
+synthetischen Buchungsfixtures und prüft den Eintritt vor Dateianlage sowie
+vollständige Ausgabe und Freigabe danach. Fachliche Freigaben, Mapping,
+Serialisierung, Statuslogik und UI bleiben unverändert.
+
+Vorab: eine neue Methode erreichte die gültige CSV-Dateierstellung ohne
+Anmeldung (`expected:<[true]> but was:<[false]>`), ohne Skips/Timeouts oder
+unverwandte Fehler (`/tmp/immopilot-export-file-coordination-red.xml` und
+.log). Danach zwei Dateierzeuger und drei direkte ViewModel-Einstiege
+angemeldet. Alle fünf ursprünglichen Bodies bytegenau erhalten; nur äußere
+Lebensdauerzeilen ergänzt. Die bestehende Audit-Fortsetzung wird bereits
+vor Einplanung angemeldet und überlappt jetzt mit der direkten Exportphase.
+
+Umgebungsunterbrechung beim Exportdatei-Schritt: beide APK-Aufgaben waren
+beendet, der Gesamtabschluss einschließlich Lint fehlte. Nach Neustart kein
+Gradle-Prozess aktiv; die neun bestandenen Test-XMLs bleiben gesichert. Nur
+lintDebug und die beiden APK-Aufgaben werden mit unverändertem Quellcode
+fortgesetzt, ohne Wiederholung bestandener Tests.
+
+Abnahme: neun exakt ausgewählte Methoden bestanden; XML ohne Fehler,
+Skips oder Duplikate geprüft (`/tmp/immopilot-export-file-coordination-results`,
+`/tmp/immopilot-export-file-coordination-tests.log`). Gültige CSV-/ZIP-Ausgaben,
+Hashes, Originalmanifest/Reihenfolge sowie Freigabe-/Formatregressionen
+bestehen. `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` nach
+Umgebungsneustart bestanden
+(`/tmp/immopilot-export-file-coordination-build-resumed.log`), Lint ohne
+Error/Fatal; `git diff --check` bestanden. Alle fünf alten Funktions-Bodies
+bytegenau erhalten. Kein GitHub-Upload und kein Emulatorlauf.
