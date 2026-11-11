@@ -1883,3 +1883,32 @@ Dateiroot-Klassifizierung bestanden, XML ohne Fehler oder Skips geprüft.
 `git diff --check` sauber. Nachweise: /workspace/immopilot-generation-store-tests.log
 und /workspace/immopilot-generation-store-build.log. Keine Geräte-/Hardware-
 Abnahme, kein UI-Anschluss und kein GitHub-Upload.
+
+### Schritt 5: geprüfte Einrichtung und koordinierter Passwortwechsel
+
+Drei Dateien: KeyManager, dessen gezielter Integrationstest und dieses Dokument.
+Ein globaler Coroutine-Mutex umfasst vollständige Archivverschlüsselung und
+Einrichtung/Rotation über alle Manager-Instanzen. Einrichtung validiert doppelte
+Passworteingabe und prüft vor der Veröffentlichung ein kleines Testarchiv durch
+passwortbasierte Entschlüsselung bis zum authentifizierten EOF, ausschließlich
+im Speicher. Ein Wechsel verlangt die erwartete aktuelle Generation, lehnt das
+bisherige Passwort ab und erzeugt einen unabhängigen MK. Alte Archive bleiben
+unverändert. Alle übergebenen Passwortpuffer werden auch bei Dispatcher- oder
+Lock-Abbruch gelöscht. UI-Warnhinweis und tatsächliche Worker-Anbindung folgen
+in ihren Planabschnitten; hier noch keine vollständige Benutzereinrichtung.
+
+Gezielt prüfen: Einrichtung/portabler Recovery-Roundtrip, abweichende Bestätigung,
+Altes-Passwort-/Alt-MK-Ausschluss nach Wechsel, unverändertes Passwort und
+Abbruch eines hinter einer Archivverschlüsselung wartenden Wechsels.
+
+Abnahme KeyManager: erster Lauf fand einen JUnit-Initialisierungsfehler wegen
+eines inferierten Nicht-Unit-Rückgabetyps einer Coroutine-Testmethode. Explizites
+runBlocking<Unit> korrigiert ausschließlich die Testsignatur. Anschließend alle
+fünf echten Methoden bestanden, XML ohne Fehler/Skips geprüft. Altes Passwort
+und alter MK können das neue Archiv nicht entschlüsseln; alte Archive bleiben
+lesbar. Bestätigungsfehler, gleiches Passwort und Abbruch während einer laufenden
+Archivverschlüsselung verändern den gespeicherten Record nicht. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-key-manager-tests-fixed.log und
+/workspace/immopilot-key-manager-build.log. Noch kein Credential-Abschnitt,
+UI-Anschluss, physischer Keystore-Nachweis oder GitHub-Upload.
