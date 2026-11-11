@@ -1854,3 +1854,32 @@ und manipulierte Records sind nachgewiesen. lintDebug und assembleDebug bestande
 (/workspace/immopilot-device-key-build.log), keine Error/Fatal-Lintbefunde.
 Keystore-Simulation mit realem AES-GCM; kein physischer Hardware-Nachweis,
 keine persistente Record-Ablage, kein UI-Anschluss oder GitHub-Upload.
+
+### Schritt 5: persistente geschützte Schlüsselgeneration
+
+Vier Dateien: GenerationStore, gezielte Tests, Speicherinventar-Test und dieses
+Dokument. `noBackupFilesDir/offline-backup-keys` ist LOCAL_ONLY und wird nicht als
+portabler Nutzdatenbestand exportiert. Der Record enthält ausschließlich den
+öffentlichen Recovery-Kontext und die Keystore-Umhüllung des MK. Keine Passwörter
+oder ungeschützten MKs auf Datenträger. Begrenztes Lesen, kanonische Headerprüfung,
+AEAD-Prüfung und exaktes EOF verhindern unbemerkte Record-Manipulation.
+
+Explizite Ersteinrichtung und Austausch mit erwarteter Generationskennung sind
+getrennt. Globaler Prozess-Lock verhindert konkurrierende lokale Austausche.
+Temporäre Datei im selben Verzeichnis, fsync, erneutes Entschlüsseln und MK-
+Vergleich liegen vor atomarem Rename. Anders als SharedPreferences.commit
+veröffentlicht der Pfad keinen fehlgeschlagenen Schreibversuch im Speicher.
+Keine Zusage für Stromausfall-Durabilität des Verzeichnis-Rename; kein
+prozessübergreifender Lock. Einrichtungstestarchiv, UI, Worker-Koordination und
+vollständige Passwortwechsel-Orchestrierung bleiben nachfolgende Arbeiten.
+
+Gezielt prüfen: Installation und Wiederöffnen, kein implizites Anlegen/kein
+Klartext-MK, CAS-Austausch mit veralteter Kennung, manipulierte/verkürzte Records,
+fehlender Keystore-Alias sowie die unmittelbar betroffene Dateiroot-Klassifizierung.
+
+Abnahme Schlüsselablage: vier echte Store-Testmethoden und die betroffene
+Dateiroot-Klassifizierung bestanden, XML ohne Fehler oder Skips geprüft.
+`lintDebug` und `assembleDebug` bestanden, keine Error/Fatal-Lintbefunde;
+`git diff --check` sauber. Nachweise: /workspace/immopilot-generation-store-tests.log
+und /workspace/immopilot-generation-store-build.log. Keine Geräte-/Hardware-
+Abnahme, kein UI-Anschluss und kein GitHub-Upload.
