@@ -1834,3 +1834,23 @@ Dispatcher-Abbruch und ZIP-/Cipher-Abschluss sind nachgewiesen. lintDebug und
 assembleDebug bestanden (/workspace/immopilot-archive-crypto-build.log), keine
 Error/Fatal-Lintbefunde. Nur unmittelbar betroffene Tests ausgeführt. Noch kein
 Keystore, Manifest-/Probe-Restore-Nachweis, UI-Anschluss oder GitHub-Upload.
+
+### Schritt 5: Geräte-Keystore-Adapter
+
+Drei Dateien: OfflineBackupDeviceKey, dessen gezielter Test und dieses Dokument.
+Explizite Einrichtung eines 256-Bit-AES-Keystore-Schlüssels mit GCM, zufälliger
+Provider-IV und ohne interaktive Authentisierung für später autorisierte Worker.
+Der Keystore-Schlüssel wird niemals exportiert. MK-Umhüllung bindet den gesamten
+Recovery-Kontext als AAD. Öffnen fehlender/defekter Schlüssel erzeugt keinen
+Ersatz; erneute Einrichtung ersetzt keinen vorhandenen Eintrag. Temporäre MK-
+Kopien werden gelöscht. Noch keine persistente Ablage der geschützten Records.
+Fünf unmittelbar relevante Methoden auf Mindest-API 24 und API 35 ausführen;
+Keystore-Adapter ist simuliert, AES-GCM real. Keine Geräte-/Hardware-Abnahme behaupten.
+
+Abnahme Geräteadapter: fünf Methoden auf API 24 und 35, zehn echte Ausführungen
+bestanden; XML ohne Fehler/Skips und mit beiden SDK-Fällen geprüft. Frische IVs,
+identischer wiedergeöffneter MK, unveränderter vorhandener Alias, fehlender Alias
+und manipulierte Records sind nachgewiesen. lintDebug und assembleDebug bestanden
+(/workspace/immopilot-device-key-build.log), keine Error/Fatal-Lintbefunde.
+Keystore-Simulation mit realem AES-GCM; kein physischer Hardware-Nachweis,
+keine persistente Record-Ablage, kein UI-Anschluss oder GitHub-Upload.
