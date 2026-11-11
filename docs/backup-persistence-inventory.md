@@ -1751,3 +1751,20 @@ nach Wiederaufnahme bestanden (/workspace/immopilot-stream-cipher-build-resumed.
 Lint ohne Error/Fatal. Der neue Runtime-Graph und EOF-/Manipulationsnachweise
 liegen in /workspace/immopilot-stream-cipher-tests.log. Keine Wiederholung
 unveränderter Tests. Envelope und Recovery-Schlüssel bleiben nächster Teilschritt.
+
+### Schritt 5: Recovery-Passwortableitung
+
+Vier Dateien: direkte BC-Abhängigkeit 1.86, OfflineBackupPasswordKdf, dessen
+gezielter Test und dieses Dokument. Offizielle Sources bestätigen den expliziten
+SHA256Digest im PKCS5S2ParametersGenerator; dessen SHA-1-Standardkonstruktor wird
+nicht verwendet. PBKDF2 erzeugt genau 32 Bytes bei 600.000 bis 2.000.000 Iterationen;
+Salt 16–32 Bytes und Passwort 16–1024 Zeichen werden vor Ableitung geprüft.
+Passwort- und UTF-8-Eingangspuffer werden auch bei Ablehnung gelöscht. Kein
+Passwortspeicher, keine Logs, keine API-Aufrufe. Der unabhängige 600.000er Testwert
+wurde mit Python hashlib.pbkdf2_hmac erzeugt. Nur drei neue KDF-Methoden prüfen.
+
+Abnahme KDF: ausschließlich drei neue Methoden bestanden, XML ohne Fehler/Skips
+geprüft. Unabhängiger 600.000er SHA256-Vektor stimmt überein, Parametergrenzen
+und Löschen der Eingangspuffer sind nachgewiesen. lintDebug und assembleDebug
+bestanden (/workspace/immopilot-password-kdf-build.log), keine Error/Fatal-
+Lintbefunde. Kein Envelope-/Keystore-Anschluss oder GitHub-Upload.

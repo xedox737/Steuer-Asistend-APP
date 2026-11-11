@@ -102,6 +102,7 @@ googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.W
 
 dependencies {
   implementation("com.google.crypto.tink:tink-android:1.24.0")
+  implementation("org.bouncycastle:bcprov-jdk18on:1.86")
   coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
