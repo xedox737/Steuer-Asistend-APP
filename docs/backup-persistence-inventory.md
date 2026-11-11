@@ -1804,3 +1804,33 @@ ohne Fehler/Skips geprüft. Exakte AAD-Bytes und Ciphertext-Position, Header-/KD
 Grenzen, Versions-/Suite-Sperre, Trunkierung und zusätzliche Daten nachgewiesen.
 lintDebug und assembleDebug bestanden (/workspace/immopilot-archive-header-build.log),
 keine Error/Fatal-Lintbefunde. Kein Entschlüsselungs-/Restore-Anschluss oder Push.
+
+### Schritt 5: verschlüsselter Archiv-Datenstrom
+
+Drei Dateien: OfflineBackupArchiveCrypto, dessen vier neue Integrationstests und
+dieses Dokument. Pro Archiv zufälligen 256-Bit-DEK erzeugen, unter MK umhüllen,
+Header voranstellen und alle Headerbytes als Streaming-AAD binden. Entschlüsselung
+liefert erst nach authentifiziertem EOF und fsync erfolgreich zurück; nur ein
+neuer privater Staging-Platz, maximal 2 GiB Klartext. Fehler/Abbruch löschen nur
+diesen eigenen Platz, vorhandene Dateien bleiben erhalten. Passwort/DEK-Puffer
+auch bei ungültigem Header löschen. Authentifiziert bedeutet noch nicht
+manifest-/schema-/beziehungsgeprüft. API-Credentials werden hier nicht eingebaut;
+eine spätere Credential-Sektion muss auch im entschlüsselten ZIP selbst
+verschlüsselt bleiben und ausschließlich im Speicher geöffnet werden.
+Nur vier neue Crypto-Integrationstests ausführen.
+
+Erster Viererlauf bestanden. Zusätzlicher gezielter Abbruchtest wies danach
+nach, dass Cancellation vor Eintritt in withContext den Passwortpuffer noch
+nicht löschte (/workspace/immopilot-archive-crypto-cancel-red.xml). Bereinigung
+liegt nun zusätzlich außerhalb des Dispatcher-Wechsels; vor Dateianlage
+Cancellation erneut prüfen. Ein sechster Test prüft den echten ZIP-Abschluss
+innerhalb des Cipher-Streams einschließlich erneutem äußeren Close. Nach der
+Korrektur nur diese sechs unmittelbar betroffenen Crypto-Methoden ausführen.
+
+Abnahme Archiv-Krypto: sechs echte Integrationstests bestanden, XML ohne Fehler
+oder Skips geprüft. Vollständiger Wire-Roundtrip, Passwort-/Headerfehler,
+fehlendes Schlusssegment, Größenbegrenzung, Schutz vorhandener Daten,
+Dispatcher-Abbruch und ZIP-/Cipher-Abschluss sind nachgewiesen. lintDebug und
+assembleDebug bestanden (/workspace/immopilot-archive-crypto-build.log), keine
+Error/Fatal-Lintbefunde. Nur unmittelbar betroffene Tests ausgeführt. Noch kein
+Keystore, Manifest-/Probe-Restore-Nachweis, UI-Anschluss oder GitHub-Upload.
