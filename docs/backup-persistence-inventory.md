@@ -1768,3 +1768,22 @@ geprüft. Unabhängiger 600.000er SHA256-Vektor stimmt überein, Parametergrenze
 und Löschen der Eingangspuffer sind nachgewiesen. lintDebug und assembleDebug
 bestanden (/workspace/immopilot-password-kdf-build.log), keine Error/Fatal-
 Lintbefunde. Kein Envelope-/Keystore-Anschluss oder GitHub-Upload.
+
+### Schritt 5: MK-/DEK-Schlüsselumhüllung
+
+Drei Dateien: OfflineBackupKeyEnvelope, dessen fünf gezielte Methoden und dieses
+Dokument. Zufälliger neuer 256-Bit-MK je Generation, AES-256-GCM mit 12-Byte-IV und
+128-Bit-Tag. Recovery bindet Generation, Formatkontext, Salt und Iterationen;
+DEK-Umhüllung bindet Generation und Archivkennung. Keine eigene Cipher- oder
+KDF-Implementierung; JCA AES/GCM und geprüfte PBKDF2-Schicht verwenden.
+Neue Generationen erzeugen unabhängig neues Material; alte MKs werden nicht nur
+neu umhüllt. Geöffnete Generationen sind schließbar, temporäre Schlüsselkopien
+werden gelöscht. Noch kein persistenter Schlüssel-/Passwortspeicher und kein
+Exportanschluss. Nur fünf neue Envelope-Tests ausführen.
+
+Abnahme Envelope: ausschließlich fünf echte Methoden bestanden, XML ohne
+Fehler/Skips geprüft. Passwort-Roundtrip, AAD-/Ciphertext-Manipulation,
+unabhängiger neuer MK trotz gleicher neuer Kontextkennung beim Negativtest,
+altes Passwort für alte Generation und geschlossene Generation nachgewiesen.
+lintDebug und assembleDebug bestanden (/workspace/immopilot-key-envelope-build.log),
+keine Error/Fatal-Lintbefunde. Kein persistenter Store, Archivanschluss oder Push.
