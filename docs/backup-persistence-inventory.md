@@ -1787,3 +1787,20 @@ unabhängiger neuer MK trotz gleicher neuer Kontextkennung beim Negativtest,
 altes Passwort für alte Generation und geschlossene Generation nachgewiesen.
 lintDebug und assembleDebug bestanden (/workspace/immopilot-key-envelope-build.log),
 keine Error/Fatal-Lintbefunde. Kein persistenter Store, Archivanschluss oder Push.
+
+### Schritt 5: begrenzter binärer Archivheader
+
+Drei Dateien: OfflineBackupArchiveHeader, dessen vier gezielte Methoden und
+Inventardokument. Magic/Version/Länge, feste Crypto-Suite, Generation/Archiv-ID,
+KDF-Parameter und verschlüsselte MK-/DEK-Umhüllungen werden binär kodiert.
+Header insgesamt maximal 64 KiB; Längenprüfung vor Allokation, KDF-Grenzen vor
+jeder späteren Ableitung. Unbekannte Versionen/Suites und zusätzliche Felder
+ablehnen. Exakte gelesene Headerbytes werden zur Streaming-AAD weitergereicht;
+Ciphertext bleibt beim Headerlesen unangetastet. Noch keine Entschlüsselungs-
+oder Restore-Freigabe durch erfolgreiches Headerparsen allein.
+
+Abnahme Header: nur vier neue echte Methoden ausgeführt und bestanden, XML
+ohne Fehler/Skips geprüft. Exakte AAD-Bytes und Ciphertext-Position, Header-/KDF-
+Grenzen, Versions-/Suite-Sperre, Trunkierung und zusätzliche Daten nachgewiesen.
+lintDebug und assembleDebug bestanden (/workspace/immopilot-archive-header-build.log),
+keine Error/Fatal-Lintbefunde. Kein Entschlüsselungs-/Restore-Anschluss oder Push.
