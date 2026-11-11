@@ -1732,3 +1732,22 @@ Build wurde ohne Wiederholung bestandener Tests fortgesetzt. lintDebug,
 assembleDebug und assembleDebugAndroidTest bestanden
 (`/workspace/immopilot-global-snapshot-build-resumed.log`), Lint ohne Error/Fatal.
 `git diff --check` bestanden. Kein UI-Anschluss, Emulatorlauf oder GitHub-Upload.
+
+### Schritt 5: authentifizierte Streaming-Schicht
+
+Vier Dateien: direkte Tink-Abhängigkeit, OfflineBackupStreamCipher, dessen
+gezielter Test und dieses Dokument. Offizielle Sources von tink-android 1.24.0
+bestätigen AesGcmHkdfStreaming mit 256-Bit-Eingangsschlüssel, HmacSha256,
+1-MiB-Segmenten und Offset 0. Der vorhandene Runtime-Graph enthielt bislang
+Tink Android 1.5.0 über Security-Crypto/ReCAPTCHA; der neue Graph wird geprüft.
+Diese innere Schicht akzeptiert authentifizierte Headerbytes und verlangt beim
+Lesen vollständigen EOF-Nachweis. Envelope, Recovery-KDF, Keystore und UI werden
+in den folgenden Teilschritten angeschlossen; noch keine neue Exportfreigabe.
+Nur die vier neuen unmittelbar relevanten Streaming-Tests werden ausgeführt.
+
+Abnahme der Streaming-Schicht: ausschließlich vier neue Kryptotests bestanden,
+JUnit-XML auf echte Methoden ohne Fehler/Skips geprüft. Lint und assembleDebug
+nach Wiederaufnahme bestanden (/workspace/immopilot-stream-cipher-build-resumed.log),
+Lint ohne Error/Fatal. Der neue Runtime-Graph und EOF-/Manipulationsnachweise
+liegen in /workspace/immopilot-stream-cipher-tests.log. Keine Wiederholung
+unveränderter Tests. Envelope und Recovery-Schlüssel bleiben nächster Teilschritt.

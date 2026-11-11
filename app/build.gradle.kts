@@ -101,6 +101,7 @@ secrets {
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 dependencies {
+  implementation("com.google.crypto.tink:tink-android:1.24.0")
   coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
