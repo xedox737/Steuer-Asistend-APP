@@ -111,6 +111,32 @@ internal object OfflineBackupArchiveValidator {
             }
         }
     }
+    /** Mandatory passwordless reread gate for a newly encrypted private engine result. */
+    suspend fun verifyPrepared(context: Context, archive: File, generation: OfflineBackupKeyEnvelope.Generation,
+        expected: OfflineBackupSnapshot.Summary): Unit = withContext(Dispatchers.IO) {
+        var owned: File? = null
+        try {
+            val parent = File(context.filesDir, "offline-backup-staging")
+            require(parent.isDirectory || parent.mkdirs())
+            val directory = File(parent, "reread-${UUID.randomUUID()}")
+            require(directory.mkdir()); owned = directory
+            val plaintext = File(directory, "archive.zip")
+            archive.inputStream().use { OfflineBackupArchiveCrypto.decryptToPrivateStaging(it, generation, plaintext) }
+            stageZip(context, plaintext).use { staged ->
+                OfflineBackupRoomProbe.prepare(context, staged, generation).use { probe ->
+                    require(probe.manifest.rowCounts == expected.rowCounts && probe.manifest.versions.size == expected.files &&
+                        probe.manifest.payloads.size == expected.payloads && staged.parts.values.sumOf { it.bytes } == expected.bytes)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: OfflineBackupValidationException) { throw error }
+        catch (_: IOException) { invalid() }
+        catch (_: IllegalArgumentException) { invalid() }
+        catch (_: SecurityException) { invalid() }
+        finally { owned?.let { if (it.exists() && !it.deleteRecursively()) invalid() } }
+    }
+
     private fun validName(name: String) = name in setOf("manifest.json", "metadata.json", "credentials.bin") ||
         Regex("files/(0|[1-9][0-9]{0,3})").matches(name)
     private fun entryLimit(name: String, limits: Limits): Long = when {

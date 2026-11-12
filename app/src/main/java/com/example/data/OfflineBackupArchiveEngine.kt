@@ -42,6 +42,7 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
                             currentCoroutineContext().ensureActive()
                             output.fd.sync()
                         }
+                        OfflineBackupArchiveValidator.verifyPrepared(context, file, generation, snapshot.summary)
                         result
                     }
                 }

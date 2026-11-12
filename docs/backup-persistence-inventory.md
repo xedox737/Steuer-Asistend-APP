@@ -2173,3 +2173,39 @@ alle sechs betroffenen Probe-Methoden ausgeführt, keine unveränderten Relation
 wiederholt. lintDebug und assembleDebug bestanden, keine Error/Fatal-Lintbefunde;
 git diff --check sauber. Buildnachweis: /workspace/immopilot-room-probe-build.log.
 Keine Live-Änderung, keine Geräte-Abnahme oder externe Veröffentlichung.
+
+### Schritt 6: verbindliche Rückprüfung vor Engine-Rückgabe
+
+Vier Dateien: ArchiveValidator, ArchiveEngine, bestehender SnapshotTest und
+dieses Dokument. Gezielter RED-Test zeigte: bisher konnte ein verschlüsseltes
+Arbeitsarchiv mit ungültiger Objektbeziehung zurückgegeben werden. Nachweis:
+/workspace/immopilot-engine-probe-gate-red-results.xml. Die Engine ruft nun nach
+ZIP/Cipher-Abschluss, Dateischließen und fsync zwingend verifyPrepared auf,
+weiterhin innerhalb derselben gehaltenen Schlüsselgeneration. Kein Passwort
+für Worker-Rückprüfung und kein Generationswechsel zwischen Schreiben/Prüfen.
+
+Rückprüfung liest das fertige verschlüsselte Archiv vollständig bis zum
+Streaming-AEAD-Ende in ein eindeutig eigenes privates Reread-Verzeichnis. Dann
+begrenzte Containerprüfung, erneutes tatsächliches Staging-Hashlesen, strikter
+Manifestvertrag und echte isolierte Room-/Preference-/Beziehungsprobe. Der
+festgestellte Umfang muss zusätzlich mit Snapshot-Tabellenzahlen, Dateiversionen,
+Payloadanzahl und gesamter Entry-Bytesumme übereinstimmen. Erst danach darf
+Prepared zurückgegeben werden. Jede Fehler-/Abbruchgrenze schließt private Probe
+und Staging; Engine entfernt ihr eigenes verschlüsseltes Arbeitsarchiv, alte
+Archive bleiben erhalten. Keine Veröffentlichung oder Erfolgshistorie hier.
+
+Alle 13 Snapshot-/Engine-Methoden prüfen, da prepare nun den vollständigen
+Probe-Pfad umfasst. Neuer Fall: ungültige, aber verschlüsselbare Objektbeziehung
+verhindert Rückgabe und hinterlässt weder Cipher-Arbeitsarchiv noch Probe-/
+Reread-/Verify-Verzeichnis. Unveränderte separate Probe-/Manifest-/Crypto-Tests
+nicht zusätzlich wiederholen. SAF-Zielwahl, Zielrücklesen und vollständiger
+Ressourcen-Preflight bleiben folgende Teile von Schritt 6.
+
+Abnahme Engine-Vollprüfung: 13 echte Snapshot-/Engine-Methoden bestanden, XML
+mit eindeutigen Methoden ohne Fehler/Skips geprüft. Der vorher rote Beziehungs-
+Gate-Test ist nach der Verdrahtung grün; auch bestehende Snapshot-/Credential-
+Fälle und vollständige Aufräumgrenzen sind nachgewiesen. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-engine-full-probe-tests.log und
+/workspace/immopilot-engine-full-probe-build.log. origin/main erneut geprüft:
+bfbee32. Noch keine SAF-Zielveröffentlichung, kein GitHub-Upload.

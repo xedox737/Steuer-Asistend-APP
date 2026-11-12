@@ -245,7 +245,10 @@ class OfflineBackupSnapshotTest {
     }
     private fun noPreparedArchiveLeft() {
         noOwnedRunLeft()
-        assertTrue(File(context.filesDir, "offline-backup-staging").listFiles()!!.none { it.name.startsWith("encrypted-") })
+        val staging = File(context.filesDir, "offline-backup-staging")
+        assertTrue(staging.listFiles()!!.none { it.name.startsWith("encrypted-") })
+        assertTrue(staging.walkTopDown().none { it.isDirectory &&
+            (it.name.startsWith("verify-") || it.name.startsWith("reread-") || it.name.startsWith("probe-")) })
     }
 
     @Test fun enginePreparesCompleteEncryptedSnapshotWithCredentialsExcludedByDefault() = runBlocking<Unit> {
@@ -321,6 +324,19 @@ class OfflineBackupSnapshotTest {
             assertEquals(before, prefs.all)
         }
         noPreparedArchiveLeft()
+    }
+
+    @Test fun engineCannotReturnAnArchiveWhoseRealRoomProbeRejectsRelationships() = runBlocking<Unit> {
+        database.receiptDao().insertReceipt(receipt.copy(propertyId = "missing-house", imageUrl = original.absolutePath))
+        withEngineKeys { keyContext ->
+            val error = assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineBackupArchiveEngine(keyContext, database).prepare()
+            } }
+            assertTrue(error.message.orEmpty(), error.message.orEmpty().contains("Objekt- oder Einheitenbeziehung"))
+        }
+        noPreparedArchiveLeft()
+        assertEquals("missing-house", database.receiptDao().getAllReceiptsIncludingDeletedList().single().propertyId)
+        assertArrayEquals(bytes, original.readBytes())
     }
 
 }
