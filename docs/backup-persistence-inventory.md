@@ -2428,3 +2428,27 @@ bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-backup-controller-tests.log und
 /workspace/immopilot-backup-controller-build.log. Keine realen Systemgrants,
 keine Compose-/Emulator-Abnahme oder echte Zielveröffentlichung.
+
+### Schritt 6 – verschlüsselte Bedienelemente (Darstellung)
+
+`EncryptedBackupControls` ergänzt die reine Compose-Darstellung mit separaten
+Callbacks: passwortgeschützte Einrichtung/Rotation, menschenlesbarer Zielordner,
+standardmäßig ausgeschaltete manuelle Schlüssel-Einwilligung, Save-Sperren,
+Fortschritt, Abbruch und Fehlermeldungen. Passwörter liegen ausschließlich im
+flüchtigen Dialogzustand (`remember`, kein SavedState); maskierte Felder,
+16–1024 Zeichen, übereinstimmende Bestätigung, ausdrücklicher Verlusthinweis.
+Der Dialog ist für begrenzte Höhe scrollbar. Bestätigte CharArrays gehen in die
+Verantwortung des Controllers; beim Schließen wird kein Passwort übernommen.
+
+Vier Compose-Methoden prüfen Bestätigung/Maskierung, verworfene Eingaben,
+Opt-in/Callbacks/Rotation und Busy/Cancel/Schlüsselfehler. Erster Lauf:
+3 Dialogfälle scheiterten am bekannten Native-Robolectric-Wrap-Content-
+Fensterproblem (AppNotIdle); die vorhandene begrenzte Android-Fenster-Testhilfe
+wurde übernommen, keine Zeitlimits oder Assertions abgeschwächt. Danach alle
+vier Methoden bestanden. Kein Emulator-/Gerätenachweis. Verbindung zur
+Sicherungskarte folgt im nächsten Inkrement.
+
+Abnahme Darstellung: finaler Lauf einschließlich scrollbarerer Dialogdarstellung
+mit vier echten Methoden ohne Fehler/Skips, lintDebug ohne Error/Fatal und
+assembleDebug erfolgreich; git diff --check sauber. Nachweise:
+/workspace/immopilot-backup-controls-verify.log sowie die Test-/Lint-XML-Berichte.
