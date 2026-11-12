@@ -2077,3 +2077,39 @@ Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-archive-container-tests.log und
 /workspace/immopilot-archive-container-build.log. Kein vollständiger Backup-
 Erfolg; Manifest-/Schema-/Room-Probe und Veröffentlichung noch offen.
+
+### Schritt 6: strikter Manifestvertrag und Credential-Authentifizierung
+
+Drei Dateien: neues OfflineBackupManifest, vier Ergänzungen in der bestehenden
+ArchiveValidatorTest und dieses Dokument. Streaming-JsonReader mit strengem
+UTF-8, festen Feldmengen, Duplikatprüfung, begrenzten Listen und Texten sowie
+kanonischen nichtnegativen Ganzzahlen. Vor dem Parsen konservativer Heap-
+Preflight anhand tatsächlicher Manifestgröße; keine vollständige JSON-Baumkopie.
+Neue Version verlangt App-Aktualisierung. Keine unerkannten Zusatzfelder oder
+nachgestellten JSON-Dokumente. Metadata-/Payload-/Credential-Referenzen müssen
+mit tatsächlicher Größe und SHA-256 übereinstimmen; tatsächliche Entry-Menge
+muss exakt zum Manifest passen. Payload-Indizes und Originalaliase sind kanonisch
+und lückenlos, Dateiversionen eindeutig, alle Payloads besitzen eine Version,
+alle Aliase lösen auf. Portable Pfade nur für vorhandene Original-/Export-
+Verantwortlichkeiten; technische Staging- und Traversalpfade sind unzulässig.
+
+Credential-Inhalt bleibt im StagedContents-Speicher und wird bei deklariertem
+Abschnitt mit der gehaltenen Generation authentifiziert und strukturell geprüft.
+Entschlüsselte Schlüssel werden unmittelbar geschlossen/gelöscht; Ergebnis enthält
+nur Anbietermenge. Kein Passwortspeicher oder Credential-Dateischreiben. Checked
+ist ausschließlich der Manifestnachweis; exakte Tabellen-/Zeilenzahlen, Schema,
+IDs, Beziehungen und echte isolierte Room-Probe bleiben zwingend nachfolgend.
+
+Nur vier neue manifest*-Methoden prüfen: konsistente Referenzen/Versionen/Aliase,
+Vertrags- und Pfadfehler, doppelte JSON-Felder/ungültiges UTF-8/angehängtes JSON,
+sowie echte Credential-Authentifizierung mit richtiger/falscher/fehlender
+Generation und Ablehnung unverschlüsselter Credential-Daten. Unveränderte sechs
+Container-Tests nicht erneut ausführen.
+
+Abnahme Manifestprüfung: genau vier neue manifest*-Methoden bestanden, XML ohne
+Fehler/Skips geprüft. Referenz-/Hash-/Größen-/Pfad-/JSON-Vertragsfehler und
+Credential-Authentifizierung sind nachgewiesen. lintDebug und assembleDebug
+bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-manifest-validation-tests.log und
+/workspace/immopilot-manifest-validation-build.log. Kein vollständiger Backup-
+oder Probe-Erfolg; Schema-/Room-/Beziehungsprüfung und Veröffentlichung folgen.

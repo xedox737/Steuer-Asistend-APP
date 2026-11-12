@@ -11,6 +11,8 @@ import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -132,4 +134,96 @@ class OfflineBackupArchiveValidatorTest {
         } }
         noOwnedDirectoryLeft()
     }
+    private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {
+        (it.toInt() and 255).toString(16).padStart(2, '0') }
+    private fun reference(entry: String, bytes: ByteArray) = JSONObject().put("entry", entry).put("size", bytes.size).put("sha256", hash(bytes))
+    private fun manifest(): JSONObject = JSONObject().put("format", "ImmoPilotSnapshot").put("version", 2)
+        .put("metadata", reference("metadata.json", "{}".toByteArray()))
+        .put("rowCounts", JSONObject().put("receipts", 1)).put("credentials", JSONObject.NULL)
+        .put("aliases", JSONObject().put("original-0", "files/0"))
+        .put("payloads", JSONArray().put(reference("files/0", payload)))
+        .put("files", JSONArray().put(JSONObject().put("id", "files/managed_documents/example.pdf")
+            .put("portablePath", "files/managed_documents/example.pdf").put("kind", "ORIGINAL").put("entry", "files/0")))
+    private suspend fun verifyManifest(manifest: JSONObject, extras: Map<String, ByteArray> = emptyMap(),
+        generation: OfflineBackupKeyEnvelope.Generation? = null): OfflineBackupManifest.Checked {
+        val entries = regular().apply { put("manifest.json", manifest.toString().toByteArray()); putAll(extras) }
+        return OfflineBackupArchiveValidator.stageZip(context, source(zip(entries))).use { OfflineBackupManifest.verify(it, generation) }
+    }
+
+    @Test fun manifestChecksExactContainerHashesVersionsAliasesAndCounts() = runBlocking<Unit> {
+        val checked = verifyManifest(manifest())
+        assertEquals(1L, checked.rowCounts["receipts"])
+        assertEquals("files/0", checked.aliases["original-0"])
+        assertEquals(1, checked.versions.size); assertEquals(1, checked.payloads.size)
+        assertTrue(checked.credentialProviders.isEmpty()); assertNull(checked.credentials)
+        val external = manifest().apply { getJSONArray("files").put(JSONObject().put("id", "external/original-0")
+            .put("portablePath", JSONObject.NULL).put("kind", "ORIGINAL").put("entry", "files/0")) }
+        assertEquals(2, verifyManifest(external).versions.size)
+        noOwnedDirectoryLeft()
+    }
+
+    @Test fun manifestRejectsMismatchedMissingOrDuplicateDeclarationsAndUnsafePortablePaths() = runBlocking<Unit> {
+        val variants = listOf<(JSONObject) -> Unit>(
+            { it.getJSONObject("metadata").put("sha256", "0".repeat(64)); Unit },
+            { it.getJSONArray("payloads").getJSONObject(0).put("size", 999); Unit },
+            { it.getJSONArray("payloads").getJSONObject(0).put("entry", "files/1"); Unit },
+            { it.getJSONArray("files").getJSONObject(0).put("entry", "files/9"); Unit },
+            { it.getJSONObject("aliases").put("original-0", "files/9"); Unit },
+            { it.getJSONArray("files").put(it.getJSONArray("files").getJSONObject(0)); Unit },
+            { it.getJSONObject("rowCounts").put("receipts", -1); Unit },
+            { it.getJSONObject("rowCounts").put("receipts", 1.5); Unit },
+            { it.getJSONObject("rowCounts").put("receipts", "1"); Unit },
+            { it.getJSONObject("rowCounts").put("receipts", Long.MAX_VALUE); Unit },
+            { it.put("version", 3); Unit }, { it.put("unknown", true); Unit }
+        )
+        variants.forEach { mutate ->
+            val value = manifest(); mutate(value)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking { verifyManifest(value) } }
+            noOwnedDirectoryLeft()
+        }
+        for (path in listOf("files/../escape", "files/offline-backup-staging/private", "cache/offline-backup-keys/key",
+                "files/managed_documents/document-download-owned.tmp", "files/managed_documents/" + "x".repeat(8193))) {
+            val value = manifest().apply { getJSONArray("files").getJSONObject(0).put("id", path).put("portablePath", path) }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking { verifyManifest(value) } }
+            noOwnedDirectoryLeft()
+        }
+        assertThrows(OfflineBackupValidationException::class.java) { runBlocking { verifyManifest(manifest(), mapOf("files/1" to payload)) } }
+        noOwnedDirectoryLeft()
+    }
+
+    @Test fun manifestRejectsDuplicateJsonKeysMalformedUtf8AndTrailingDocument() = runBlocking<Unit> {
+        val raw = manifest().toString()
+        val duplicate = raw.replace("\"version\":2", "\"version\":2,\"version\":2")
+        assertNotEquals(raw, duplicate)
+        val malformed = raw.toByteArray().apply { this[4] = 0xff.toByte() }
+        for (bytes in listOf(duplicate.toByteArray(), (raw + " {}").toByteArray(), malformed)) {
+            val entries = regular().apply { put("manifest.json", bytes) }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineBackupArchiveValidator.stageZip(context, source(zip(entries))).use { OfflineBackupManifest.verify(it) }
+            } }
+            noOwnedDirectoryLeft()
+        }
+    }
+
+    @Test fun manifestAuthenticatesCredentialsInMemoryAndRejectsMissingOrWrongGeneration() = runBlocking<Unit> {
+        OfflineBackupKeyEnvelope.create("synthetic-recovery-password".toCharArray()).use { generation ->
+            val secret = "synthetic-key-for-manifest-test".toCharArray()
+            val sealed = requireNotNull(OfflineBackupCredentialSection.seal(generation,
+                mapOf(OfflineBackupCredentialSection.Provider.GEMINI to secret), OfflineBackupCredentialSection.Consent(manual = true)))
+            val value = manifest().put("credentials", reference("credentials.bin", sealed))
+            val extras = mapOf("credentials.bin" to sealed)
+            assertEquals(setOf(OfflineBackupCredentialSection.Provider.GEMINI), verifyManifest(value, extras, generation).credentialProviders)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking { verifyManifest(value, extras) } }
+            OfflineBackupKeyEnvelope.create("synthetic-other-recovery-password".toCharArray()).use { wrong ->
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking { verifyManifest(value, extras, wrong) } }
+            }
+            val unencrypted = "synthetic unencrypted key must never reach disk".toByteArray()
+            val invalid = manifest().put("credentials", reference("credentials.bin", unencrypted))
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                verifyManifest(invalid, mapOf("credentials.bin" to unencrypted), generation)
+            } }
+        }
+        noOwnedDirectoryLeft()
+    }
+
 }
