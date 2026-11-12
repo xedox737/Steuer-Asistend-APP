@@ -29,6 +29,7 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
                     OfflineBackupSnapshot.capture(context, database, credentials =
                         OfflineBackupSnapshot.CredentialCapture(generation, consent, trigger), progress = progress).use { snapshot ->
                         val parent = File(context.filesDir, "offline-backup-staging")
+                        OfflineBackupResourceBudget.checkPrepared(parent, snapshot)
                         val file = File(parent, "encrypted-${UUID.randomUUID()}.immopilot")
                         check(file.createNewFile()) { "Ein eindeutiger verschlüsselter Arbeitsplatz konnte nicht angelegt werden." }
                         val result = Prepared(file, snapshot.summary)

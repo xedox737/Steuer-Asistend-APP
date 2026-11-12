@@ -33,6 +33,7 @@ internal class OfflineBackupSnapshot private constructor(
         val consent: OfflineBackupCredentialSection.Consent, val trigger: OfflineBackupCredentialSection.Trigger)
     private data class FixedFile(val entry: String, val file: File, val sha256: String, val bytes: Long)
     private data class Version(val id: String, val portablePath: String?, val kind: OfflineBackupFileInventory.Kind, val payload: FixedFile)
+    internal val metadataBytes: Long get() = fixed.filterNot { it.entry.startsWith("files/") }.sumOf { it.bytes }
     private var closed = false
 
     suspend fun writeArchive(output: OutputStream): Unit = withContext(Dispatchers.IO) {
@@ -116,6 +117,7 @@ internal class OfflineBackupSnapshot private constructor(
                     progress(Progress(Stage.METADATA_CAPTURED, 0, 0))
                     val inventory = OfflineBackupFileInventory(context, maximumFiles)
                     val available = inventory.available()
+                    OfflineBackupResourceBudget.checkCapture(directory, metadata, available, credentialBytes)
                     val byCanonical = available.associateBy { it.source.canonicalPath }
                     val resolver = OfflineBackupResolver(context)
                     val payloads = linkedMapOf<String, FixedFile>()

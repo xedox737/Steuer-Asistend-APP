@@ -2209,3 +2209,45 @@ assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
 Nachweise: /workspace/immopilot-engine-full-probe-tests.log und
 /workspace/immopilot-engine-full-probe-build.log. origin/main erneut geprüft:
 bfbee32. Noch keine SAF-Zielveröffentlichung, kein GitHub-Upload.
+
+### Schritt 6: privater Speicher-Preflight mit konkreten Größen
+
+Fünf Dateien: ResourceBudget, dessen Test, minimale Snapshot-/Engine-Anbindung
+und dieses Dokument. Nach privater Metadatenerfassung, vor Originalkopien,
+Archivdateianlage und jeder externen Zieländerung konservative Abschätzung der
+weiteren privaten Belegung. Berücksichtigt Snapshot-Kopien/Manifest, ZIP- und
+Cipher-Expansion, vollständiges Reread-ZIP, extrahierte Payloads/Metadaten,
+SQLite-/Index-/Kontrollmetadatenplatz und 16 MiB Reserve. Bekannte bereits
+inventarisierte Originale nicht nochmals als externe Kopie zählen. Fehlende
+externe Größen werden mit der erlaubten Einzeldateigrenze abgeschätzt und im
+Fehlertext gezählt; Gesamtabschätzung bleibt innerhalb des unterstützten
+vollständigen Payloadbudgets. Überlange Einzeloriginale werden abgelehnt.
+
+Nach Fixierung vor Anlegen des verschlüsselten Archivs erneute Prüfung mit
+actual Snapshot-Payload-/Metadatenbytes und tatsächlicher Payloadanzahl. Die
+bereits belegten Snapshot-Bytes werden dabei nicht nochmals als künftiger Platz
+gezählt. Fehlermeldung enthält benötigte/verfügbare Bytes und Reserve. Keine
+Bestandsänderung, keine Teilsicherung und kein Löschen älterer Archive. Schätzungen
+können konservativ zu hoch liegen; konkurrierender Platzverbrauch bleibt ein
+späterer IO-Fehler mit bestehender eigener Aufräumgrenze. Geschätzte Zielarchivgröße
+wird bereitgestellt, die konkrete SAF-Zielplatzprüfung gehört zur Destination.
+
+Gezielt vier Budgetmethoden und die 13 durch die beiden Guards unmittelbar
+betroffenen Snapshot-/Engine-Methoden prüfen. Budgetfälle: gleichzeitige
+Prüfartefakte, ausstehende/bereits fixierte Kopien, kein doppeltes Zählen von
+Originalreferenzen, bekannte/unbekannte Größen/Versionkandidaten, Defizitmeldung
+mit Zahlen, Überlauf-/Größengrenzen und unverändertes Vorarchiv.
+
+Abnahme privater Preflight: vier echte Budget- und 13 Snapshot-/Engine-Methoden
+bestanden, XML ohne Fehler/Skips geprüft. lintDebug und assembleDebug bestanden,
+keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-resource-preflight-tests.log und
+/workspace/immopilot-resource-preflight-build.log.
+
+Offene optionale Produktklärung für konkrete Destination: Androids offizieller
+DocumentsContract.Root-Vertrag erlaubt fehlende/null available_bytes-Werte
+(https://github.com/aosp-mirror/platform_frameworks_base/blob/master/core/java/android/provider/DocumentsContract.java).
+User nach striktem Abbruch oder ausdrücklicher Ausnahme bei unbekanntem Zielplatz
+gefragt. Bis zu einer abweichenden Antwort strikt nach Plan: vor Zieländerung
+abbrechen, wenn freier Zielplatz nicht zuverlässig bestimmbar ist. Privater
+Preflight und weitere unabhängige Implementierung werden dadurch nicht blockiert.
