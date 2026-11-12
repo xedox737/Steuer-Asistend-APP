@@ -12,7 +12,8 @@ import kotlinx.coroutines.withContext
 
 /** Prepares a complete private encrypted archive; publication and probe validation follow separately. */
 internal class OfflineBackupArchiveEngine(private val context: Context, private val database: AppDatabase) {
-    class Prepared internal constructor(val file: File, val summary: OfflineBackupSnapshot.Summary) : AutoCloseable {
+    class Prepared internal constructor(val file: File, val summary: OfflineBackupSnapshot.Summary,
+        internal val resources: OfflineBackupResourceBudget.Estimate) : AutoCloseable {
         override fun close() {
             if (file.exists() && !file.delete()) throw OfflineBackupValidationException("Das private verschlüsselte Arbeitsarchiv konnte nicht entfernt werden.")
         }
@@ -29,10 +30,10 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
                     OfflineBackupSnapshot.capture(context, database, credentials =
                         OfflineBackupSnapshot.CredentialCapture(generation, consent, trigger), progress = progress).use { snapshot ->
                         val parent = File(context.filesDir, "offline-backup-staging")
-                        OfflineBackupResourceBudget.checkPrepared(parent, snapshot)
+                        val resources = OfflineBackupResourceBudget.checkPrepared(parent, snapshot)
                         val file = File(parent, "encrypted-${UUID.randomUUID()}.immopilot")
                         check(file.createNewFile()) { "Ein eindeutiger verschlüsselter Arbeitsplatz konnte nicht angelegt werden." }
-                        val result = Prepared(file, snapshot.summary)
+                        val result = Prepared(file, snapshot.summary, resources)
                         pending = result
                         FileOutputStream(file).use { output ->
                             val unclosed = object : FilterOutputStream(output) {

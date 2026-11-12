@@ -2251,3 +2251,50 @@ User nach striktem Abbruch oder ausdrücklicher Ausnahme bei unbekanntem Zielpla
 gefragt. Bis zu einer abweichenden Antwort strikt nach Plan: vor Zieländerung
 abbrechen, wenn freier Zielplatz nicht zuverlässig bestimmbar ist. Privater
 Preflight und weitere unabhängige Implementierung werden dadurch nicht blockiert.
+
+### Schritt 6: sichere Ziel-Destination und vollständiges Rücklesen
+
+Vier Dateien: neue Destination und deren Tests, Prepared-Ressourcenmodell der
+Engine und dieses Dokument. Backend-Grenze trennt SAF-Zugriffe von testbaren
+Fehler-/Abbruchabläufen. Android-Adapter prüft persistierte Read+Write-Tree-Grants,
+Verzeichnistyp und Erstellungsflag. Freier Platz wird nur aus einem echten
+Verzeichnis-FD per fstatvfs bestimmt; Pipes sind kein Speicherplatznachweis.
+Nicht bestimmbare Zielkapazität führt gemäß bisheriger strikter Planvorgabe vor
+Dateierstellung zum Abbruch. Rückfrage an User für eine ausdrückliche Ausnahme
+bleibt optional offen; keine Ausnahme still implementiert.
+
+Vor Zielanlage Zielbytes+Reserve und weiterer privater Reread-/Probe-/Cipher-
+Spoolplatz prüfen. Nur neue zufällige .partial-Datei anlegen. Keine bestehenden
+Archive öffnen, überschreiben oder nach Dateinamen bereinigen. Schreibstream
+flushen/schließen; Android-FD bei regulären Dateien vor Schließen synchronisieren.
+Danach Ziel vollständig in privates begrenztes Cipher-Spool rücklesen, tatsächliche
+Länge und SHA-256 mit geschriebenem Ciphertext vergleichen und unabhängig die
+vollständige AuthEOF-/Container-/Manifest-/Room-Prüfung ausführen. Erst dann auf
+neuen zufälligen fertigen Namen umbenennen; endgültige URI nochmals vollständig
+lesen und Hash/Länge vergleichen. Published erst nach letztem Streamschluss.
+Sicherungs-ID kommt aus dem Archivheader, Zielnamen besitzen zusätzliche frische
+zufällige Komponenten. Neue URI bei Rename berücksichtigen.
+
+Fehler/Abbruch löschen ausschließlich die aus eigener Erzeugung/Umbenennung
+bekannte URI, nie alte oder fremde URIs. Fehlgeschlagene Bereinigung wird separat
+als Fehler gemeldet, unvermeidliche Restdatei bleibt .partial. Backend-Adapter
+braucht für sicheren Abschluss Rename-Unterstützung. Alle eigenen Cipher-
+Spool-/Verify-/Reread-/Probe-Verzeichnisse schließen und entfernen. Gen muss vom
+Aufrufer während der gesamten Veröffentlichung gehalten werden; Engine-Publish-
+Anbindung folgt separat. Noch keine UI-/History-Veröffentlichung angebunden.
+
+Sechs neue Destination-Methoden prüfen mit echtem Archiv-/Room-Kern und simuliertem
+Provider: Erfolg/Reihenfolge/finale neue URI, Rechte/Kapazitätsfehler/Foreign-URI,
+Schreib-/Close-/Read-/Trunkierungs-/Manipulations-/Rename-/Finalreadfehler,
+Abbruch in jeder Phase, fehlender Rename/fehlgeschlagene Löschung und tatsächliche
+Room-Ablehnung trotz passender Cipher-Hashkopie. Nur synthetische Inhalte;
+Android-SAF-/fstatvfs-Adapter ist hier noch kein physischer Geräte-Nachweis.
+
+Abnahme Destination: sechs echte Methoden bestanden, XML ohne Fehler/Skips
+geprüft (/workspace/immopilot-destination-initial-results.xml). Fehlermatrix um
+native Android-Errno-Dateideskriptorfehler ergänzt, statisch abgefangen und nur
+diese betroffene Methode erneut bestanden. Nachweis:
+/workspace/immopilot-destination-native-failures-tests.log. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber
+(/workspace/immopilot-destination-build.log). Reale SAF-Kernel-/Anbieterprüfung
+bleibt Emulatorarbeit; kein echter Zielordner oder GitHub-Upload verwendet.
