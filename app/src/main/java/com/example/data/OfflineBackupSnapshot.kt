@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.api.AiProviderSettings
 import android.content.Context
 import android.database.sqlite.SQLiteException
 import android.net.Uri
@@ -28,6 +29,8 @@ internal class OfflineBackupSnapshot private constructor(
     enum class Stage { METADATA_CAPTURED, ORIGINALS_FIXED, SNAPSHOT_FIXED }
     data class Progress(val stage: Stage, val completed: Int, val total: Int)
     data class Summary(val rowCounts: Map<String, Long>, val files: Int, val payloads: Int, val bytes: Long)
+    internal data class CredentialCapture(val generation: OfflineBackupKeyEnvelope.Generation,
+        val consent: OfflineBackupCredentialSection.Consent, val trigger: OfflineBackupCredentialSection.Trigger)
     private data class FixedFile(val entry: String, val file: File, val sha256: String, val bytes: Long)
     private data class Version(val id: String, val portablePath: String?, val kind: OfflineBackupFileInventory.Kind, val payload: FixedFile)
     private var closed = false
@@ -86,6 +89,7 @@ internal class OfflineBackupSnapshot private constructor(
             database: AppDatabase,
             maximumPayloadBytes: Long = MAX_PAYLOAD,
             maximumFiles: Int = MAX_FILES,
+            credentials: CredentialCapture? = null,
             progress: (Progress) -> Unit = {}
         ): OfflineBackupSnapshot = withContext(Dispatchers.IO) {
             try {
@@ -99,6 +103,15 @@ internal class OfflineBackupSnapshot private constructor(
                 if (!directory.mkdir()) invalid("Ein eindeutiger Snapshot-Arbeitsplatz konnte nicht angelegt werden.")
                 var complete = false
                 try {
+                    val credentialFile = credentials?.let { configuration ->
+                        AiProviderSettings.exportBackupCredentials(context, configuration.generation,
+                            configuration.consent, configuration.trigger)?.let { sealed ->
+                            val file = File(directory, "credentials.bin")
+                            FileOutputStream(file).use { output -> output.write(sealed); output.fd.sync() }
+                            FixedFile("credentials.bin", file, hex(MessageDigest.getInstance("SHA-256").digest(sealed)), sealed.size.toLong())
+                        }
+                    }
+                    val credentialBytes = credentialFile?.bytes ?: 0L
                     val metadata = OfflineBackupMetadataWriter(context, database).write(File(directory, "metadata.json"))
                     progress(Progress(Stage.METADATA_CAPTURED, 0, 0))
                     val inventory = OfflineBackupFileInventory(context, maximumFiles)
@@ -164,7 +177,7 @@ internal class OfflineBackupSnapshot private constructor(
                             private val digest = DigestOutputStream(output, manifestDigest)
                             override fun write(value: Int) { write(byteArrayOf(value.toByte()), 0, 1) }
                             override fun write(bytes: ByteArray, offset: Int, length: Int) {
-                                if (length.toLong() > MAX_METADATA - metadata.bytes - manifestBytes) invalid("Snapshot-Metadaten überschreiten die Grenze von 64 MiB.")
+                                if (length.toLong() > MAX_METADATA - metadata.bytes - credentialBytes - manifestBytes) invalid("Snapshot-Metadaten überschreiten die Grenze von 64 MiB.")
                                 digest.write(bytes, offset, length); manifestBytes += length
                             }
                             override fun flush() = digest.flush()
@@ -174,6 +187,10 @@ internal class OfflineBackupSnapshot private constructor(
                             writer.beginObject().name("format").value("ImmoPilotSnapshot").name("version").value(2L)
                             writer.name("metadata").beginObject().name("entry").value(metadataFile.entry)
                                 .name("sha256").value(metadataFile.sha256).name("size").value(metadataFile.bytes).endObject()
+                            writer.name("credentials")
+                            if (credentialFile == null) writer.nullValue() else writer.beginObject()
+                                .name("entry").value(credentialFile.entry).name("sha256").value(credentialFile.sha256)
+                                .name("size").value(credentialFile.bytes).endObject()
                             writer.name("rowCounts").beginObject()
                             metadata.rowCounts.forEach { (name, count) -> writer.name(name).value(count) }
                             writer.endObject().name("aliases").beginObject()
@@ -191,8 +208,8 @@ internal class OfflineBackupSnapshot private constructor(
                     }
                     val manifestFile = FixedFile("manifest.json", manifest, hex(manifestDigest.digest()), manifestBytes)
                     OfflineBackupCoordinator.shared.completeCapture(capture)
-                    val result = OfflineBackupSnapshot(directory, listOf(manifestFile, metadataFile) + payloads.values,
-                        Summary(metadata.rowCounts, versions.size, payloads.size, metadata.bytes + manifestBytes + payloadBytes))
+                    val result = OfflineBackupSnapshot(directory, listOf(manifestFile, metadataFile) + listOfNotNull(credentialFile) + payloads.values,
+                        Summary(metadata.rowCounts, versions.size, payloads.size, metadata.bytes + manifestBytes + credentialBytes + payloadBytes))
                     progress(Progress(Stage.SNAPSHOT_FIXED, versions.size, versions.size))
                     complete = true
                     result

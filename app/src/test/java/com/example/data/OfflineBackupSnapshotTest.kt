@@ -1,6 +1,9 @@
 package com.example.data
 
 import android.content.Context
+import com.example.api.AiProviderSettings
+import com.example.api.TestAndroidKeyStore
+import java.security.MessageDigest
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import androidx.room.Room
@@ -219,4 +222,105 @@ class OfflineBackupSnapshotTest {
         noOwnedRunLeft()
         assertArrayEquals(bytes, original.readBytes())
     }
+    private suspend fun withEngineKeys(block: suspend (Context) -> Unit) {
+        TestAndroidKeyStore.register()
+        val keyContext = object : ContextWrapper(context) {
+            override fun getNoBackupFilesDir() = File(root, "key-records").apply { check(isDirectory || mkdirs()) }
+        }
+        try {
+            OfflineBackupKeyManager(keyContext).initialize("synthetic-recovery-password".toCharArray(),
+                "synthetic-recovery-password".toCharArray())
+            block(keyContext)
+        } finally { TestAndroidKeyStore.remove() }
+    }
+    private suspend fun decryptedEntries(prepared: OfflineBackupArchiveEngine.Prepared): Map<String, ByteArray> {
+        val plain = File(root, "plain-${UUID.randomUUID()}.zip")
+        try {
+            prepared.file.inputStream().use { OfflineBackupArchiveCrypto.decryptToPrivateStaging(it,
+                "synthetic-recovery-password".toCharArray(), plain) }
+            return ZipInputStream(plain.inputStream()).use { zip -> buildMap {
+                while (true) { val entry = zip.nextEntry ?: break; put(entry.name, zip.readBytes()) }
+            } }
+        } finally { plain.delete() }
+    }
+    private fun noPreparedArchiveLeft() {
+        noOwnedRunLeft()
+        assertTrue(File(context.filesDir, "offline-backup-staging").listFiles()!!.none { it.name.startsWith("encrypted-") })
+    }
+
+    @Test fun enginePreparesCompleteEncryptedSnapshotWithCredentialsExcludedByDefault() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            OfflineBackupArchiveEngine(keyContext, database).prepare().use { prepared ->
+                assertTrue(prepared.file.isFile)
+                assertEquals(1L, prepared.summary.rowCounts["receipts"])
+                original.writeText("later live content")
+                val fixed = decryptedEntries(prepared)
+                val manifest = JSONObject(fixed.getValue("manifest.json").toString(Charsets.UTF_8))
+                assertTrue(manifest.isNull("credentials")); assertFalse("credentials.bin" in fixed)
+                val metadata = JSONObject(fixed.getValue("metadata.json").toString(Charsets.UTF_8))
+                assertEquals("old metadata", field(metadata, "receipts", "beschreibung"))
+                val alias = field(metadata, "managed_documents", "localUri") as String
+                assertArrayEquals(bytes, fixed.getValue(manifest.getJSONObject("aliases").getString(alias)))
+            }
+        }
+        noPreparedArchiveLeft()
+    }
+
+    @Test fun enginePinsOnlyEncryptedCredentialsAndBindsTheirSizeAndHashInManifest() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            val synthetic = "test-only-synthetic-gemini-key-12345"
+            AiProviderSettings.storeGeminiKey(keyContext, synthetic.toCharArray())
+            val prefs = context.getSharedPreferences("ai_provider_settings", 0)
+            val before = prefs.all.toMap()
+            OfflineBackupArchiveEngine(keyContext, database).prepare(OfflineBackupCredentialSection.Consent(manual = true)).use { prepared ->
+                val fixed = decryptedEntries(prepared)
+                val manifest = JSONObject(fixed.getValue("manifest.json").toString(Charsets.UTF_8))
+                val credential = manifest.getJSONObject("credentials")
+                val sealed = fixed.getValue(credential.getString("entry"))
+                assertEquals(sealed.size.toLong(), credential.getLong("size"))
+                val sha = MessageDigest.getInstance("SHA-256").digest(sealed).joinToString("") {
+                    (it.toInt() and 255).toString(16).padStart(2, '0') }
+                assertEquals(sha, credential.getString("sha256"))
+                val needles = listOf(synthetic.toByteArray().toList(), synthetic.toByteArray(Charsets.UTF_16BE).toList())
+                fixed.values.forEach { content -> needles.forEach { needle ->
+                    assertFalse(content.toList().windowed(needle.size).any { it == needle })
+                } }
+                val header = prepared.file.inputStream().use { OfflineBackupArchiveHeader.read(it) }
+                OfflineBackupKeyEnvelope.recover(header.recovery, "synthetic-recovery-password".toCharArray()).use { recovered ->
+                    OfflineBackupCredentialSection.open(recovered, sealed).use { opened ->
+                        assertArrayEquals(synthetic.toCharArray(), opened.values[OfflineBackupCredentialSection.Provider.GEMINI])
+                    }
+                }
+            }
+            assertEquals(before, prefs.all)
+        }
+        noPreparedArchiveLeft()
+    }
+
+    @Test fun engineRejectsCredentialMutationDuringCaptureAndKeepsPriorArchive() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            AiProviderSettings.storeGeminiKey(keyContext, "test-only-synthetic-gemini-key-before".toCharArray())
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineBackupArchiveEngine(keyContext, database).prepare(OfflineBackupCredentialSection.Consent(manual = true)) { progress ->
+                    if (progress.stage == OfflineBackupSnapshot.Stage.METADATA_CAPTURED)
+                        AiProviderSettings.storeGeminiKey(keyContext, "test-only-synthetic-gemini-key-after".toCharArray())
+                }
+            } }
+        }
+        noPreparedArchiveLeft()
+    }
+
+    @Test fun engineCredentialFailureLeavesSettingsAndPriorArchiveUntouched() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            val prefs = context.getSharedPreferences("ai_provider_settings", 0)
+            prefs.edit().putString("gemini_key_ciphertext", "damaged").commit()
+            val before = prefs.all.toMap()
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineBackupArchiveEngine(keyContext, database).prepare(OfflineBackupCredentialSection.Consent(manual = true))
+            } }
+            assertEquals(before, prefs.all)
+        }
+        noPreparedArchiveLeft()
+    }
+
 }

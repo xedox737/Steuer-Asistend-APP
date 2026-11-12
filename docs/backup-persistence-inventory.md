@@ -1975,3 +1975,43 @@ Nachweise: /workspace/immopilot-credential-export-tests.log und
 /workspace/immopilot-credential-export-build.log. Keine echten Schlüssel oder
 Anbieteraufrufe. Snapshot-/Engine-Integration und UI-Persistenz noch offen;
 Schritt 5 und der Gesamtplan sind noch nicht vollständig abgeschlossen.
+
+### Schritt 5: verschlüsselte Snapshot-Engine und Credential-Fixierung
+
+Fünf Dateien: Snapshot, KeyManager, neue ArchiveEngine, SnapshotTest und dieses
+Dokument. Die Engine hält die gemeinsame Generationssperre während vollständiger
+Erfassung und Verschlüsselung. Der Snapshot erfasst optionale Credentials nach
+Beginn seiner Generationserfassung über den seiteneffektfreien Export und legt
+nur den bereits separat verschlüsselten Abschnitt privat ab. Manifest enthält
+Entry, SHA-256 und Größe; ausgeschlossene Credentials bleiben null/abwesend.
+Credential-Bytes zählen zur Metadatengrenze und Gesamtsumme. Auch Änderungen der
+Schlüssel während der Erfassung invalidieren den gesamten Capture-Vertrag.
+
+Das äußere Arbeitsarchiv entsteht ausschließlich privat in der bereits lokalen
+Staging-Root. ZIP/Cipher-Abschluss schließen über einen NonClosing-Adapter nicht
+den FileDescriptor; fsync erfolgt anschließend auf offenem Deskriptor. Ausgabe
+wird erst danach übergeben. Neue verschlüsselte Datei gehört bis zur erfolgreichen
+Übergabe der Engine und wird auch bei Dispatch-Rückgabeabbruch entfernt. Snapshot
+wird separat geschlossen; frühere Archive und Quelldaten bleiben erhalten.
+Prepared ist ausdrücklich noch kein veröffentlichtes oder vollständig probe-
+validiertes Backup. Vollständiges Wiederlesen/Manifestprüfung und echter Room-
+Probe-Restore bleiben Schritt 6 vor jeder externen Veröffentlichung.
+
+Gezielt SnapshotTest (acht bisherige plus vier Engine-Fälle) und KeyManagerTest
+(fünf unmittelbar durch den gemeinsamen Generationszugriff betroffene Fälle)
+ausführen. Neue Nachweise: vollständiges verschlüsseltes Archiv, konsistent
+fixierter Altbestand, standardmäßig keine Credentials, separater Ciphertext im
+entschlüsselten ZIP mit Manifest-Hash/Größe und portablem Öffnen, Credential-
+Mutation und kaputte Credentials brechen ohne verwaiste eigene Ausgabe ab.
+
+Abnahme Engine-Integration: zwölf echte Snapshot-/Engine-Methoden und fünf
+Schlüsselmanager-Methoden bestanden; XML ohne Fehler/Skips geprüft. APK-Build im
+ursprünglichen kombinierten Lauf abgeschlossen. Umgebung während Lint neu
+ gestartet; ursprünglicher Lint-Lauf hat keinen Abschlussnachweis. Nur lintDebug
+fortgesetzt, keine bestandenen Tests oder APK-Build wiederholt. Fortgesetztes
+Lint bestanden, XML ohne Error/Fatal; git diff --check sauber. Nachweise:
+/workspace/immopilot-archive-engine-tests.log,
+/workspace/immopilot-archive-engine-build.log und
+/workspace/immopilot-archive-engine-lint-resumed.log. Kein GitHub-Upload, kein
+physischer Geräte-Nachweis, noch keine Veröffentlichung oder vollständige
+Probe-Validierung des Arbeitsarchivs.

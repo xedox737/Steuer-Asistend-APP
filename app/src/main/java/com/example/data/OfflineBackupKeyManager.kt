@@ -51,11 +51,14 @@ internal class OfflineBackupKeyManager(context: Context) {
     } finally { password.fill('\u0000'); confirmation.fill('\u0000') }
 
     suspend fun encryptCurrent(output: OutputStream, writePlaintext: suspend (OutputStream) -> Unit): Unit =
+        withCurrentGeneration { OfflineBackupArchiveCrypto.encrypt(it, output, writePlaintext) }
+
+    internal suspend fun <T> withCurrentGeneration(block: suspend (OfflineBackupKeyEnvelope.Generation) -> T): T =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 val generation = store.loadCurrent()
                     ?: throw OfflineBackupValidationException("Bitte zuerst ein Wiederherstellungspasswort einrichten.")
-                generation.use { OfflineBackupArchiveCrypto.encrypt(it, output, writePlaintext) }
+                generation.use { block(it) }
             }
         }
 
