@@ -2395,3 +2395,36 @@ assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
 Nachweise: /workspace/immopilot-folder-settings-tests.log und
 /workspace/immopilot-folder-settings-build.log. Keine echten Grants oder
 persönlichen Daten; UI und vollständiger Verlauf bleiben nachfolgend.
+
+### Schritt 6: UI-Aktionscontroller ohne Passwortpersistenz
+
+Drei Dateien: neuer OfflineBackupController, dessen gezielter Test und dieses
+Dokument. ViewModel-scope-fähige StateFlow-Steuerung für Laden, Einrichtung/
+Rotation, Ordnerwahl, manuelles Opt-in, Export und expliziten Abbruch. Nur ein
+eigener aktiver Auftrag; doppelte Anforderungen werden nicht eingereiht. Passwort-
+CharArrays sind niemals Bestandteil von State/Settings/Publish; zusätzlich zu
+Kern-Finally-Grenzen Job-Completion-Löschung auch bei gar nicht gestarteter oder
+wegen Busy abgelehnter Anfrage. UI-brauchbare Bestätigungs-/Längenfehler statisch.
+
+Neue Ordnerrechte zuerst übernehmen und echten Ziel-Preflight ausführen, erst
+danach atomar speichern. Bei Fehlschlag nur einen gerade neu übernommenen Grant
+freigeben, keine bereits vorhandenen/alten Zielrechte entziehen. Zielstatus und
+Label erneut lesen; gespeicherte URI ist kein Verfügbarkeitsnachweis. Schlüssel-
+Ladefehler werden angezeigt statt stiller Neueinrichtung. Publish verwendet den
+vollständigen gemeinsamen Kern ohne Passwort und getrennte manuelle Einwilligung.
+Erfolg erst nach Published; späterer Fehler ersetzt letzten erfolgreichen
+Controller-Nachweis nicht. Dauerhafte Historie folgt weiter in Schritt 9.
+
+Fünf Methoden prüfen mit echten Room-/Keystore-/Archive-Kernen, synthetischen
+Daten und simulierter Ordner-/Anbietergrenze: Setup/Rotation/Wischen, Grant-
+Fehler und vorherige Konfiguration, erfolgreicher Export und Folgefehler,
+Passwortpuffer bei vorher abgebrochenem Scope sowie Busy/Cancel ohne Doppelauftrag
+und ohne Löschen alter Dokumente. Noch keine Compose-/ReceiptViewModel-Anbindung.
+
+Abnahme UI-Controller: fünf echte Methoden bestanden, XML ohne Fehler/Skips
+geprüft. Tatsächlicher Exportkern samt Folgefehler, Busy/Cancel, Grant-Rollback,
+Setup/Rotation und Pufferlöschung sind nachgewiesen. lintDebug und assembleDebug
+bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-backup-controller-tests.log und
+/workspace/immopilot-backup-controller-build.log. Keine realen Systemgrants,
+keine Compose-/Emulator-Abnahme oder echte Zielveröffentlichung.
