@@ -2041,3 +2041,39 @@ keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-passwordless-validation-build.log. Bestehender Passwort-
 Restore inklusive Abbruch-Pufferlöschung unverändert nachgewiesen. Noch kein
 vollständiger Validierungs- oder Veröffentlichungserfolg durch diesen Einstieg.
+
+### Schritt 6: begrenzte Containerprüfung ohne Bestandsänderung
+
+Drei Dateien: ArchiveValidator, dessen neue Testklasse und dieses Dokument.
+Erster Validator-Teil ist stageZip und gibt ausdrücklich nur StagedContents
+zurück, keinen erfolgreichen Probe-Nachweis. Erwartete Namen sind manifest.json,
+metadata.json, optional credentials.bin und kanonische files/0..9999. Keine
+Verzeichnis-, Traversal-, unbekannten oder doppelten Einträge. Zentralverzeichnis
+und tatsächlich gelesene Einträge müssen vollständig übereinstimmen; tatsächliche
+Größe und CRC sowie SHA-256 werden beim begrenzten Lesen geprüft. Eigene Dateien
+haben ausschließlich generierte flache Namen in eindeutig eigenem verify-Staging.
+Harte Grenzen: 10003 Einträge, 1 GiB je Payload, 2 GiB insgesamt, 64 MiB für
+Manifest+Metadaten+Credential-Abschnitt, Credentials höchstens 128 KiB. Testlimits
+dürfen ausschließlich verschärfen. Abbruch bleibt Cancellation; fehlgeschlagenes
+oder nicht übergebenes Staging wird nur im eigenen Verzeichnis entfernt.
+
+Credential-Inhalt wird bei Containerprüfung niemals auf Datenträger geschrieben,
+auch nicht bei absichtlich unverschlüsseltem/maliziösem credentials.bin. Er bleibt
+begrenzt im Speicher, wird bei Fehler und StagedContents.close gelöscht und muss
+vor einem späteren vollständigen Validierungserfolg im Speicher authentifiziert
+und strukturell geprüft werden. Manifest-/Schema-/Room-Probe fehlen hier bewusst
+noch; keine UI-/Zielveröffentlichung und keine Erfolgsmarkierung.
+
+Gezielt sechs neue Container-Testmethoden: normales Staging mit tatsächlichem
+Hash/Größe, Credentials ausschließlich im löschbaren Speicher, Pfad-/Namens-/
+Duplikat-/Zentralverzeichnisfehler, CRC/verkürztes ZIP, getrennte Quoten und
+komprimierter übergroßer Inhalt sowie Abbruch ohne verwaiste eigene Dateien.
+
+Abnahme Containerprüfung: sechs echte Testmethoden bestanden, XML ohne Fehler
+oder Skips geprüft. Pfad-/Duplikat-/Zentralverzeichnis-/CRC-/Trunkierungsfehler,
+getrennte Ressourcenlimits, Credential-Speicherhaltung und Abbruchbereinigung
+sind nachgewiesen. lintDebug und assembleDebug bestanden, keine Error/Fatal-
+Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-archive-container-tests.log und
+/workspace/immopilot-archive-container-build.log. Kein vollständiger Backup-
+Erfolg; Manifest-/Schema-/Room-Probe und Veröffentlichung noch offen.
