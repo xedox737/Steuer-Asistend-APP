@@ -2364,3 +2364,34 @@ Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-engine-publishing-tests.log und
 /workspace/immopilot-engine-publishing-build.log. Kein realer SAF-Zugriff,
 keine Emulator-Abnahme, keine UI-/History-Anbindung oder GitHub-Veröffentlichung.
+
+### Schritt 6: dauerhafte lokale Ordnerauswahl und manuelles Opt-in
+
+Vier Dateien: OfflineBackupSettings, dessen Test, Speicherinventar-Test und
+dieses Dokument. Gerätegebundene Konfiguration unter noBackupFilesDir/
+offline-backup-state ist LOCAL_ONLY. Keine Room-Tabelle oder Migration, keine
+portable Ordnerberechtigung. Gespeicherte Tree-URI ersetzt nie die Laufprüfung
+persistierter Grants/Erreichbarkeit/Kapazität. Manuelle Credentials standardmäßig
+aus; getrennte Konfigurationsfelder folgen für Automatik in ihren Planabschnitten.
+
+AtomicFile mit fsync, Finish, Readback, keinem langlebigen In-Memory-Cache und
+prozessweitem kurzen Lock über Store-Instanzen. Eng begrenztes UTF-8/JSON mit
+Version und exakter Feldmenge, keine Duplikate/Typumdeutung/angehängten Dokumente.
+Unterbrochene AtomicFile-Writes werden über openRead zur letzten vollständigen
+Konfiguration zurückgeführt. Fehlende Datei bedeutet sichere Defaults; beschädigte
+vorhandene Konfiguration führt zu Fehler statt Rücksetzen oder Weiterschreiben.
+Target-/Opt-in-Updates erhalten jeweils die anderen Felder.
+
+Fünf Methoden auf API 24 und 35 plus ausschließlich betroffene Speicherroot-
+Klassifizierung prüfen: Defaults ohne Anlage, Instanz-/Neustartpersistenz,
+unterbrochener Write, defekte/überlange/duplizierte/falsch typisierte Konfiguration
+und ungültige neue URI ohne Veränderung des vorherigen gültigen Datensatzes.
+Keine echten Ordner-/Systemgrants oder persönlichen Daten verwenden.
+
+Abnahme lokale Ordner-/Opt-in-Einstellungen: fünf Methoden auf API 24 und 35,
+zehn echte Ausführungen, sowie betroffene Speicherroot-Klassifizierung bestanden.
+XML ohne Fehler/Skips und mit beiden SDK-Fällen geprüft. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-folder-settings-tests.log und
+/workspace/immopilot-folder-settings-build.log. Keine echten Grants oder
+persönlichen Daten; UI und vollständiger Verlauf bleiben nachfolgend.

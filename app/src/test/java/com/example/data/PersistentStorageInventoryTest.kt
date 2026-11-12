@@ -11,7 +11,7 @@ class PersistentStorageInventoryTest {
     @Test fun persistentFileRootsAndDataStoreOwnersRequireExplicitClassification() {
         val classifiedRoots = setOf("filesDir/managed_documents", "filesDir/property-images", "filesDir/offline-originals",
             "filesDir/restored_receipts", "filesDir/receipt_documents", "filesDir/receipt_page_", "filesDir/offline-backup-staging",
-            "noBackupFilesDir/drive-pending-writes", "noBackupFilesDir/offline-backup-keys")
+            "noBackupFilesDir/drive-pending-writes", "noBackupFilesDir/offline-backup-keys", "noBackupFilesDir/offline-backup-state")
         // No current producer opens this legacy directory; existing referenced bytes remain backup data.
         val retiredProducerRoots = setOf("filesDir/restored_receipts")
         assertTrue(classifiedRoots.containsAll(retiredProducerRoots))
