@@ -24,7 +24,8 @@ import kotlinx.coroutines.withContext
 internal class OfflineBackupSnapshot private constructor(
     private val directory: File,
     private val fixed: List<FixedFile>,
-    val summary: Summary
+    val summary: Summary,
+    val archiveInfo: OfflineBackupArchiveInfo
 ) : AutoCloseable {
     enum class Stage { METADATA_CAPTURED, ORIGINALS_FIXED, SNAPSHOT_FIXED }
     data class Progress(val stage: Stage, val completed: Int, val total: Int)
@@ -98,6 +99,7 @@ internal class OfflineBackupSnapshot private constructor(
                 database.openHelper.writableDatabase
                 OfflineBackupCoordinator.shared.awaitInitialization()
                 val capture = OfflineBackupCoordinator.shared.beginCapture()
+                val archiveInfo = OfflineBackupArchiveInfo.create()
                 val parent = File(context.filesDir, "offline-backup-staging")
                 if (!parent.isDirectory && !parent.mkdirs()) invalid("Privates Snapshot-Staging ist nicht verfügbar.")
                 val directory = File(parent, "snapshot-${UUID.randomUUID()}")
@@ -187,6 +189,8 @@ internal class OfflineBackupSnapshot private constructor(
                         }
                         JsonWriter(OutputStreamWriter(bounded, Charsets.UTF_8)).use { writer ->
                             writer.beginObject().name("format").value("ImmoPilotSnapshot").name("version").value(2L)
+                            writer.name("archive").beginObject().name("createdAt").value(archiveInfo.createdAt)
+                                .name("appVersionCode").value(archiveInfo.appVersionCode).name("appVersionName").value(archiveInfo.appVersionName).endObject()
                             writer.name("metadata").beginObject().name("entry").value(metadataFile.entry)
                                 .name("sha256").value(metadataFile.sha256).name("size").value(metadataFile.bytes).endObject()
                             writer.name("credentials")
@@ -211,7 +215,7 @@ internal class OfflineBackupSnapshot private constructor(
                     val manifestFile = FixedFile("manifest.json", manifest, hex(manifestDigest.digest()), manifestBytes)
                     OfflineBackupCoordinator.shared.completeCapture(capture)
                     val result = OfflineBackupSnapshot(directory, listOf(manifestFile, metadataFile) + listOfNotNull(credentialFile) + payloads.values,
-                        Summary(metadata.rowCounts, versions.size, payloads.size, metadata.bytes + manifestBytes + credentialBytes + payloadBytes))
+                        Summary(metadata.rowCounts, versions.size, payloads.size, metadata.bytes + manifestBytes + credentialBytes + payloadBytes), archiveInfo)
                     progress(Progress(Stage.SNAPSHOT_FIXED, versions.size, versions.size))
                     complete = true
                     result

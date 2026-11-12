@@ -16,7 +16,7 @@ internal object OfflineBackupManifest {
     data class Reference(val entry: String, val sha256: String, val size: Long)
     data class Version(val id: String, val portablePath: String?, val kind: OfflineBackupFileInventory.Kind, val entry: String)
     data class Checked(val rowCounts: Map<String, Long>, val aliases: Map<String, String>, val versions: List<Version>,
-        val payloads: List<Reference>, val credentials: Reference?, val credentialProviders: Set<OfflineBackupCredentialSection.Provider>)
+        val payloads: List<Reference>, val credentials: Reference?, val credentialProviders: Set<OfflineBackupCredentialSection.Provider>, val archiveInfo: OfflineBackupArchiveInfo)
 
     suspend fun verify(contents: OfflineBackupArchiveValidator.StagedContents,
         generation: OfflineBackupKeyEnvelope.Generation? = null): Checked = withContext(Dispatchers.IO) {
@@ -83,9 +83,17 @@ internal object OfflineBackupManifest {
         fun read(contents: OfflineBackupArchiveValidator.StagedContents, generation: OfflineBackupKeyEnvelope.Generation?): Checked {
             var format: String? = null; var version: Long? = null; var metadata: Reference? = null; var credentials: Reference? = null
             var payloads: List<Reference>? = null; var versions: List<Version>? = null
+            var info: OfflineBackupArchiveInfo? = null
             val counts = linkedMapOf<String, Long>(); val aliases = linkedMapOf<String, String>()
-            fields(setOf("format", "version", "metadata", "rowCounts", "aliases", "files", "payloads"), setOf("credentials")) { when (it) {
+            fields(setOf("format", "version", "archive", "metadata", "rowCounts", "aliases", "files", "payloads"), setOf("credentials")) { when (it) {
                 "format" -> format = text(); "version" -> version = number(); "metadata" -> metadata = reference()
+                "archive" -> {
+                    var created: String? = null; var code: Long? = null; var name: String? = null
+                    fields(setOf("createdAt", "appVersionCode", "appVersionName")) { key -> when (key) {
+                        "createdAt" -> created = text(); "appVersionCode" -> code = number(); "appVersionName" -> name = text()
+                    } }
+                    info = OfflineBackupArchiveInfo(requireNotNull(created), requireNotNull(code), requireNotNull(name))
+                }
                 "credentials" -> if (reader.peek() == JsonToken.NULL) reader.nextNull() else credentials = reference()
                 "payloads" -> payloads = array { reference() }; "files" -> versions = array { version() }
                 "rowCounts" -> {
@@ -133,7 +141,7 @@ internal object OfflineBackupManifest {
             } ?: emptySet()
             val expected = setOf("manifest.json", "metadata.json") + entries + listOfNotNull(credentials?.entry)
             require(contents.parts.keys == expected)
-            return Checked(counts, aliases, fixedVersions, fixedPayloads, credentials, providers)
+            return Checked(counts, aliases, fixedVersions, fixedPayloads, credentials, providers, requireNotNull(info))
         }
         private fun checkReference(reference: Reference, contents: OfflineBackupArchiveValidator.StagedContents) {
             val actual = contents.parts.getValue(reference.entry)

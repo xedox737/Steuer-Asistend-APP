@@ -2298,3 +2298,35 @@ diese betroffene Methode erneut bestanden. Nachweis:
 assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber
 (/workspace/immopilot-destination-build.log). Reale SAF-Kernel-/Anbieterprüfung
 bleibt Emulatorarbeit; kein echter Zielordner oder GitHub-Upload verwendet.
+
+### Archivvertrag: Erstellungszeit und App-Version vervollständigen
+
+Fünf Dateien: neue ArchiveInfo, Snapshot, Manifest, bestehende Validator-Tests
+und dieses Dokument. Snapshot erfasst einmal UTC-Instant, tatsächlichen
+BuildConfig.VERSION_CODE und VERSION_NAME. Verschlüsseltes Manifest enthält
+verpflichtenden archive-Abschnitt; Schema-/Formatversion und authentifizierte
+Sicherungs-ID bleiben in ihren vorhandenen Metadaten-/Envelope-Feldern. Zeit
+wird kanonisch als Instant validiert, App-Code begrenzt und Name ohne Controls
+auf 128 Zeichen begrenzt. Metadaten sind beschreibend und erteilen niemals
+Lösch- oder Eigentumsrechte. Snapshot hält unveränderliche ArchiveInfo auch für
+spätere Engine-/History-Anbindung bereit.
+
+Strikter V2-Manifestparser prüft alle drei Angaben, fehlende/ungültige Angaben
+verwerfen das Archiv vor Room-/Zielerfolg. V2 ist in diesem Branch bislang nicht
+veröffentlicht; V1-Service und dessen Importvertrag bleiben unverändert. Kein
+zusätzliches paralleles Verschlüsselungsverfahren und kein Password-/Keymaterial
+in den Versionsangaben.
+
+Gezielt vier geänderte Manifest-Methoden und 13 Snapshot-/Engine-Methoden prüfen,
+weil Erzeugung und Pflichtfelder gemeinsam verändert wurden. Zusätzliche Fälle
+innerhalb bestehender Tests: Info-Roundtrip, fehlender Abschnitt, ungültige Zeit,
+negativer Versionscode und überlanger Name. Unveränderte Probe-/Destination-
+Fehlermatrizen nicht zusätzlich erneut ausführen.
+
+Abnahme ArchiveInfo: vier echte Manifest- und 13 Snapshot-/Engine-Methoden
+bestanden, XML ohne Fehler/Skips geprüft. Zeit-/Versionspflichtfelder und ihre
+ungültigen Formen sind nachgewiesen. lintDebug und assembleDebug bestanden,
+keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-archive-info-tests.log und
+/workspace/immopilot-archive-info-build.log. Keine weiteren alten Testgruppen
+wiederholt, kein GitHub-Upload oder echtes Ziel verwendet.

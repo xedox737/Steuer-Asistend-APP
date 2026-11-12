@@ -138,6 +138,7 @@ class OfflineBackupArchiveValidatorTest {
         (it.toInt() and 255).toString(16).padStart(2, '0') }
     private fun reference(entry: String, bytes: ByteArray) = JSONObject().put("entry", entry).put("size", bytes.size).put("sha256", hash(bytes))
     private fun manifest(): JSONObject = JSONObject().put("format", "ImmoPilotSnapshot").put("version", 2)
+        .put("archive", JSONObject().put("createdAt", "2026-11-12T00:00:00Z").put("appVersionCode", 1).put("appVersionName", "synthetic-test"))
         .put("metadata", reference("metadata.json", "{}".toByteArray()))
         .put("rowCounts", JSONObject().put("receipts", 1)).put("credentials", JSONObject.NULL)
         .put("aliases", JSONObject().put("original-0", "files/0"))
@@ -153,6 +154,9 @@ class OfflineBackupArchiveValidatorTest {
     @Test fun manifestChecksExactContainerHashesVersionsAliasesAndCounts() = runBlocking<Unit> {
         val checked = verifyManifest(manifest())
         assertEquals(1L, checked.rowCounts["receipts"])
+        assertEquals("2026-11-12T00:00:00Z", checked.archiveInfo.createdAt)
+        assertEquals(1L, checked.archiveInfo.appVersionCode)
+        assertEquals("synthetic-test", checked.archiveInfo.appVersionName)
         assertEquals("files/0", checked.aliases["original-0"])
         assertEquals(1, checked.versions.size); assertEquals(1, checked.payloads.size)
         assertTrue(checked.credentialProviders.isEmpty()); assertNull(checked.credentials)
@@ -174,7 +178,11 @@ class OfflineBackupArchiveValidatorTest {
             { it.getJSONObject("rowCounts").put("receipts", 1.5); Unit },
             { it.getJSONObject("rowCounts").put("receipts", "1"); Unit },
             { it.getJSONObject("rowCounts").put("receipts", Long.MAX_VALUE); Unit },
-            { it.put("version", 3); Unit }, { it.put("unknown", true); Unit }
+            { it.put("version", 3); Unit }, { it.put("unknown", true); Unit },
+            { it.remove("archive"); Unit },
+            { it.getJSONObject("archive").put("createdAt", "not-a-time"); Unit },
+            { it.getJSONObject("archive").put("appVersionCode", -1); Unit },
+            { it.getJSONObject("archive").put("appVersionName", "x".repeat(129)); Unit }
         )
         variants.forEach { mutate ->
             val value = manifest(); mutate(value)
