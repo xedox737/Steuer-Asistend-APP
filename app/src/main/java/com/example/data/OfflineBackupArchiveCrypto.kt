@@ -29,9 +29,25 @@ internal object OfflineBackupArchiveCrypto {
         } finally { key.fill(0) }
     }
 
-    /** New caller-owned PRIVATE staging only. Never exposes a result before authenticated EOF. */
+    /** Portable restore; consumes password even if dispatch is cancelled before entry. */
     suspend fun decryptToPrivateStaging(input: InputStream, password: CharArray, output: File,
-        maximumPlaintextBytes: Long = MAX_PLAINTEXT): Unit = try { withContext(Dispatchers.IO) {
+        maximumPlaintextBytes: Long = MAX_PLAINTEXT): Unit = try {
+        decryptToStaging(input, output, maximumPlaintextBytes) { header ->
+            OfflineBackupKeyEnvelope.recover(header.recovery, password).use { generation ->
+                OfflineBackupKeyEnvelope.unwrapDataKey(generation, header.dataKey)
+            }
+        }
+    } finally { password.fill('\u0000') }
+
+    /** Passwordless verification of a worker's own archive while its generation is held. */
+    suspend fun decryptToPrivateStaging(input: InputStream, generation: OfflineBackupKeyEnvelope.Generation,
+        output: File, maximumPlaintextBytes: Long = MAX_PLAINTEXT): Unit =
+        decryptToStaging(input, output, maximumPlaintextBytes) { header ->
+            OfflineBackupKeyEnvelope.unwrapDataKey(generation, header.dataKey)
+        }
+
+    private suspend fun decryptToStaging(input: InputStream, output: File, maximumPlaintextBytes: Long,
+        unwrap: (OfflineBackupArchiveHeader.Parsed) -> ByteArray): Unit = withContext(Dispatchers.IO) {
         var owned = false
         var complete = false
         var key: ByteArray? = null
@@ -39,9 +55,7 @@ internal object OfflineBackupArchiveCrypto {
             require(maximumPlaintextBytes in 1..MAX_PLAINTEXT)
             currentCoroutineContext().ensureActive()
             val header = OfflineBackupArchiveHeader.read(input)
-            OfflineBackupKeyEnvelope.recover(header.recovery, password).use { generation ->
-                key = OfflineBackupKeyEnvelope.unwrapDataKey(generation, header.dataKey)
-            }
+            key = unwrap(header)
             currentCoroutineContext().ensureActive()
             if (!output.createNewFile()) throw OfflineBackupValidationException("Der private Entschlüsselungsplatz ist bereits belegt.")
             owned = true
@@ -75,12 +89,11 @@ internal object OfflineBackupArchiveCrypto {
             throw OfflineBackupValidationException("Der Zugriff auf den privaten Entschlüsselungsplatz wurde verweigert.")
         } finally {
             key?.fill(0)
-            password.fill('\u0000')
             if (owned && !complete) {
                 try { output.delete() } catch (_: SecurityException) {
                     throw OfflineBackupValidationException("Unvollständige private Entschlüsselungsdaten konnten nicht entfernt werden.")
                 }
             }
         }
-    } } finally { password.fill('\u0000') }
+    }
 }

@@ -2015,3 +2015,29 @@ Lint bestanden, XML ohne Error/Fatal; git diff --check sauber. Nachweise:
 /workspace/immopilot-archive-engine-lint-resumed.log. Kein GitHub-Upload, kein
 physischer Geräte-Nachweis, noch keine Veröffentlichung oder vollständige
 Probe-Validierung des Arbeitsarchivs.
+
+### Schritt 6: passwortlose authentifizierte Rückprüfung eigener Archive
+
+Drei Dateien: ArchiveCrypto, dessen gezielt erweiterter Test und dieses Dokument.
+Neuer interner Entschlüsselungseinstieg nimmt die während Vorbereitung gehaltene
+Generation entgegen. Kein Passwortspeicher und keine neue Schlüsselablage.
+Passwortbasierter portabler Restore und Geräte-Rückprüfung teilen denselben
+begrenzten Staging-/EOF-/fsync-/Abbruch-/Aufräumpfad. Der neue Einstieg besitzt
+die übergebene Generation nicht und schließt/löscht sie nicht. Unpassende
+Generation, Größenüberschreitung und fehlender authentifizierter Abschluss
+verwerfen nur neue eigene Staging-Dateien; vorhandene Dateien bleiben erhalten.
+Die äußere Passwort-Finally-Grenze bleibt auch bei Dispatch-Abbruch bestehen.
+
+Gezielt acht ArchiveCrypto-Methoden ausführen: sechs vorhandene Regressionen
+wegen des gemeinsamen Pfads sowie zwei neue Tests mit gehaltenem MK ohne
+Passwort, abweichender Generation, abgeschnittenem Abschluss, Größenlimit und
+vorhandenem Ausgangspfad. Noch keine Manifest-/Schema-/Room-Probe-Validierung
+oder externe Veröffentlichung durch diesen Kryptoeinstieg.
+
+Abnahme passwortlose Rückprüfung: acht echte ArchiveCrypto-Testmethoden
+bestanden, XML ohne Fehler/Skips geprüft. lintDebug und assembleDebug bestanden,
+keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-passwordless-validation-tests.log und
+/workspace/immopilot-passwordless-validation-build.log. Bestehender Passwort-
+Restore inklusive Abbruch-Pufferlöschung unverändert nachgewiesen. Noch kein
+vollständiger Validierungs- oder Veröffentlichungserfolg durch diesen Einstieg.

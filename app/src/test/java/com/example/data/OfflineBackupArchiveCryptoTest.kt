@@ -115,4 +115,52 @@ class OfflineBackupArchiveCryptoTest {
             assertFalse(missing.exists())
         } finally { directory.deleteRecursively() }
     }
+    @Test fun heldGenerationVerifiesOwnArchiveWithoutPasswordAndRemainsUsable() = runBlocking<Unit> {
+        val directory = directory()
+        try {
+            OfflineBackupKeyEnvelope.create(password()).use { generation ->
+                val encrypted = ByteArrayOutputStream()
+                OfflineBackupArchiveCrypto.encrypt(generation, encrypted) { it.write(plaintext) }
+                val output = File(directory, "worker-private.zip")
+                OfflineBackupArchiveCrypto.decryptToPrivateStaging(encrypted.toByteArray().inputStream(), generation, output)
+                assertArrayEquals(plaintext, output.readBytes())
+                val key = generation.masterCopy()
+                try { assertEquals(32, key.size) } finally { key.fill(0) }
+            }
+        } finally { directory.deleteRecursively() }
+    }
+
+    @Test fun passwordlessVerificationRejectsWrongGenerationTruncationAndLimits() = runBlocking<Unit> {
+        val directory = directory()
+        try {
+            OfflineBackupKeyEnvelope.create(password()).use { generation ->
+                val encrypted = ByteArrayOutputStream()
+                OfflineBackupArchiveCrypto.encrypt(generation, encrypted) { it.write(plaintext) }
+                val bytes = encrypted.toByteArray()
+                val wrong = File(directory, "wrong-generation.zip")
+                OfflineBackupKeyEnvelope.create(password()).use { unrelated ->
+                    assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                        OfflineBackupArchiveCrypto.decryptToPrivateStaging(bytes.inputStream(), unrelated, wrong)
+                    } }
+                }
+                assertFalse(wrong.exists())
+                val truncated = File(directory, "truncated-worker.zip")
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineBackupArchiveCrypto.decryptToPrivateStaging(bytes.copyOf(bytes.size - 1).inputStream(), generation, truncated)
+                } }
+                assertFalse(truncated.exists())
+                val limited = File(directory, "limited-worker.zip")
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineBackupArchiveCrypto.decryptToPrivateStaging(bytes.inputStream(), generation, limited, maximumPlaintextBytes = 16)
+                } }
+                assertFalse(limited.exists())
+                val existing = File(directory, "existing-worker.zip").apply { writeText("preserved") }
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineBackupArchiveCrypto.decryptToPrivateStaging(bytes.inputStream(), generation, existing)
+                } }
+                assertEquals("preserved", existing.readText())
+            }
+        } finally { directory.deleteRecursively() }
+    }
+
 }
