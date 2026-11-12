@@ -33,6 +33,12 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val service = remember(viewModel) { viewModel.offlineBackupServiceForUi() }
+    val controller = remember(viewModel) { viewModel.offlineBackupControllerForUi() }
+    val backupState by controller.state.collectAsState()
+    var legacyOptions by remember { mutableStateOf(false) }
+    val folder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) controller.selectFolder(uri)
+    }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var exportStatus by remember { mutableStateOf<String?>(null) }
@@ -61,7 +67,7 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
         }
     }
     val import = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null && !busy) scope.launch {
+        if (uri != null && !busy && !backupState.busy) scope.launch {
             busy = true
             try {
                 prepared?.close(); prepared = null
@@ -79,33 +85,45 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
         colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White)) {
         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Lokale Vollsicherung", color = DarkNavy)
-            Text("Belege, Originaldateien, Immobilien, Mieten, Bank, AfA, Fahrtenbuch und Einstellungen – ohne Google-Konto. Zugangsschlüssel werden ausgelassen.", color = SlateGray)
-            OutlinedButton(onClick = {
-                busy = true
-                exportStatus = null
-                scope.launch {
-                    var temporary: File? = null
-                    var handedToPicker = false
-                    try {
-                        withContext(Dispatchers.IO) {
-                            temporary = service.prepareExport()
-                        }
-                        exportArchive = temporary
-                        export.launch("ImmoPilot-Sicherung-${LocalDate.now()}-${java.util.UUID.randomUUID()}.zip")
-                        handedToPicker = true
-                    } catch (error: CancellationException) { throw error
-                    } catch (error: OfflineBackupValidationException) { exportStatus = error.message
-                    } catch (error: Exception) { exportStatus = "Die lokale Sicherung konnte nicht vorbereitet werden. Es wurde keine Zieldatei angelegt. Bitte prüfe den lokalen Speicher und versuche es erneut."
-                    } finally {
-                        if (!handedToPicker) {
-                            temporary?.delete(); exportArchive = null; busy = false
+            Text("Belege, Originaldateien, Immobilien, Mieten, Bank, AfA, Fahrtenbuch und Einstellungen – ohne Google-Konto. Neue Sicherungen sind passwortgeschützt. Persönliche API-Schlüssel werden nur mit ausdrücklicher Einwilligung mitgesichert.", color = SlateGray)
+            EncryptedBackupControls(backupState, blocked = busy || prepared != null,
+                onFolder = { folder.launch(backupState.config.targetUri?.let(android.net.Uri::parse)) },
+                onConfigure = { password, confirmation, change -> controller.configure(password, confirmation, change) },
+                onManualCredentials = { controller.setManualCredentials(it) },
+                onSave = { controller.save() }, onCancel = { controller.cancel() }, onReload = { controller.reload() })
+            TextButton(onClick = { legacyOptions = !legacyOptions }, enabled = !busy && !backupState.busy,
+                modifier = Modifier.testTag("offline_backup_legacy_options")) {
+                Text(if (legacyOptions) "V1-Optionen schließen" else "Ältere V1-ZIP-Sicherungen")
+            }
+            if (legacyOptions) {
+                Text("V1-ZIP ist unverschlüsselt und enthält keine Zugangsschlüssel. Nur an einem geschützten Ort speichern.", color = SlateGray)
+                OutlinedButton(onClick = {
+                    busy = true
+                    exportStatus = null
+                    scope.launch {
+                        var temporary: File? = null
+                        var handedToPicker = false
+                        try {
+                            withContext(Dispatchers.IO) {
+                                temporary = service.prepareExport()
+                            }
+                            exportArchive = temporary
+                            export.launch("ImmoPilot-Sicherung-${LocalDate.now()}-${java.util.UUID.randomUUID()}.zip")
+                            handedToPicker = true
+                        } catch (error: CancellationException) { throw error
+                        } catch (error: OfflineBackupValidationException) { exportStatus = error.message
+                        } catch (error: Exception) { exportStatus = "Die lokale Sicherung konnte nicht vorbereitet werden. Es wurde keine Zieldatei angelegt. Bitte prüfe den lokalen Speicher und versuche es erneut."
+                        } finally {
+                            if (!handedToPicker) {
+                                temporary?.delete(); exportArchive = null; busy = false
+                            }
                         }
                     }
-                }
-            }, enabled = !busy,
-                modifier = Modifier.fillMaxWidth().testTag("offline_backup_export")) { Text("Vollsicherung speichern") }
-            OutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, enabled = !busy,
-                modifier = Modifier.fillMaxWidth().testTag("offline_backup_import")) { Text("Lokale Sicherung prüfen") }
+                }, enabled = !busy && !backupState.busy,
+                    modifier = Modifier.fillMaxWidth().testTag("offline_backup_legacy_export")) { Text("Unverschlüsselte V1-ZIP speichern") }
+                OutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, enabled = !busy && !backupState.busy,
+                    modifier = Modifier.fillMaxWidth().testTag("offline_backup_import")) { Text("V1-ZIP prüfen und ergänzen") }
+            }
             if (busy) Text("Sicherung wird verarbeitet …")
             listOfNotNull(exportStatus, status).takeIf { it.isNotEmpty() }?.let {
                 Text(it.joinToString("\n\n"), modifier = Modifier.testTag("offline_backup_status"))

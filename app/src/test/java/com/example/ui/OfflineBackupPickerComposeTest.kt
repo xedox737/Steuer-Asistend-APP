@@ -7,7 +7,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
@@ -45,6 +50,7 @@ class OfflineBackupPickerComposeTest {
     private lateinit var model: ReceiptViewModel
     private lateinit var selectedUri: Uri
     private var pickerLaunches = 0
+    private var pickerContract: String? = null
     private var cancelPicker = false
     private val property = PropertyMetadata(id = 7, propertyId = "picker-backup-house", name = "Lokales Haus")
     private val receipt = Receipt(id = 41, internalId = "picker-backup-receipt", propertyId = property.propertyId,
@@ -53,8 +59,9 @@ class OfflineBackupPickerComposeTest {
     private val picker = object : ActivityResultRegistry() {
         override fun <I, O> onLaunch(requestCode: Int, contract: ActivityResultContract<I, O>, input: I, options: ActivityOptionsCompat?) {
             pickerLaunches++
+            pickerContract = contract.javaClass.name
             dispatchResult(requestCode, if (cancelPicker) Activity.RESULT_CANCELED else Activity.RESULT_OK,
-                Intent().setData(selectedUri))
+                Intent().apply { if (!cancelPicker) data = selectedUri })
         }
     }
 
@@ -74,9 +81,11 @@ class OfflineBackupPickerComposeTest {
         val owner = object : ActivityResultRegistryOwner { override val activityResultRegistry = picker }
         ui.setContent {
             CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-                MaterialTheme { OfflineBackupCard(model) }
+                MaterialTheme { Column(Modifier.verticalScroll(rememberScrollState())) { OfflineBackupCard(model) } }
             }
         }
+        ui.waitUntil(10_000) { model.offlineBackupControllerForUi().state.value.loaded }
+        ui.onNodeWithTag("offline_backup_legacy_options").performScrollTo().performClick()
     }
 
     private fun select(file: File) {
@@ -94,9 +103,24 @@ class OfflineBackupPickerComposeTest {
         assertEquals(listOf(receipt), database.receiptDao().getAllReceiptsList())
     }
 
+    @Test fun encryptedDefaultUsesFolderPickerAndCancellationKeepsConfiguration() {
+        ui.onNodeWithTag("offline_backup_legacy_options").performScrollTo().performClick()
+        ui.onNodeWithTag("offline_backup_legacy_export").assertDoesNotExist()
+        ui.onNodeWithTag("offline_backup_export").assertIsNotEnabled()
+        ui.onNodeWithTag("offline_backup_include_credentials").assertIsOff()
+        cancelPicker = true
+        ui.onNodeWithTag("offline_backup_folder").performScrollTo().performClick()
+        ui.runOnIdle {
+            assertEquals(1, pickerLaunches)
+            assertEquals(ActivityResultContracts.OpenDocumentTree::class.java.name, pickerContract)
+            assertNull(com.example.data.OfflineBackupSettings(ui.activity).load().targetUri)
+            assertFalse(model.offlineBackupControllerForUi().state.value.busy)
+        }
+    }
+
     @Test fun emptyFileReturnedByDocumentPickerShowsReadableErrorAndCannotStartRestore() {
         select(File(ui.activity.cacheDir, "empty-selected-backup.zip").apply { writeBytes(byteArrayOf()) })
-        ui.onNodeWithTag("offline_backup_import").performClick()
+        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
         waitForStatus("vollständige ImmoPilot-Vollsicherung")
         ui.onNodeWithTag("offline_backup_status").assertTextEquals("Die Datei enthält keine vollständige ImmoPilot-Vollsicherung. Bitte wähle die ZIP-Datei aus „Vollsicherung speichern“.")
         ui.onAllNodes(hasText("offline-import-", substring = true)).assertCountEquals(0)
@@ -107,7 +131,7 @@ class OfflineBackupPickerComposeTest {
 
     @Test fun inaccessibleDocumentPickerUriDoesNotExposeRawProviderOrFileSystemErrors() {
         selectedUri = Uri.parse("content://unavailable-backup-provider/private/snapshot.json")
-        ui.onNodeWithTag("offline_backup_import").performClick()
+        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
         waitForStatus("Die Sicherung konnte nicht gelesen werden")
         ui.onAllNodes(hasText("content://", substring = true)).assertCountEquals(0)
         ui.onAllNodes(hasText("snapshot.json", substring = true)).assertCountEquals(0)
@@ -118,13 +142,13 @@ class OfflineBackupPickerComposeTest {
     @Test fun backupSavedThroughContentUriCanBeCheckedAndRestoredWithoutDuplicates() {
         val file = File(ui.activity.cacheDir, "selected-backup.zip").apply { writeBytes(byteArrayOf()) }
         select(file)
-        ui.onNodeWithTag("offline_backup_export").performClick()
+        ui.onNodeWithTag("offline_backup_legacy_export").performScrollTo().performClick()
         waitForStatus("Vollständige lokale Sicherung gespeichert")
         ZipFile(file).use { zip ->
             assertNotNull(zip.getEntry("snapshot.json"))
             assertNotNull(zip.getEntry("snapshot.sha256"))
         }
-        ui.onNodeWithTag("offline_backup_import").performClick()
+        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
         ui.waitUntil(10_000) {
             ui.onAllNodesWithText("Lokale Sicherung wiederherstellen?").fetchSemanticsNodes().isNotEmpty()
         }
@@ -141,14 +165,14 @@ class OfflineBackupPickerComposeTest {
         runBlocking(Dispatchers.IO) { database.receiptDao().insertReceipt(withMissingOriginal) }
         val previous = File(ui.activity.cacheDir, "keep-existing-backup.zip").apply { writeText("previous backup") }
         select(previous)
-        ui.onNodeWithTag("offline_backup_export").performClick()
+        ui.onNodeWithTag("offline_backup_legacy_export").performScrollTo().performClick()
         waitForStatus("fehlt")
         assertEquals("A failed preparation must not create a target document", 0, pickerLaunches)
         assertEquals("previous backup", previous.readText())
         ui.onNodeWithText("picker-backup-receipt", substring = true).assertExists()
 
         select(File(ui.activity.cacheDir, "empty-import-after-export-error.zip").apply { writeBytes(byteArrayOf()) })
-        ui.onNodeWithTag("offline_backup_import").performClick()
+        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
         waitForStatus("vollständige ImmoPilot-Vollsicherung")
         ui.onNodeWithText("picker-backup-receipt", substring = true).assertExists()
         ui.onNodeWithText("Wiederherstellen").assertDoesNotExist()
@@ -162,11 +186,11 @@ class OfflineBackupPickerComposeTest {
         select(previous)
         cancelPicker = true
         val staging = File(ui.activity.filesDir, "offline-backup-staging")
-        ui.onNodeWithTag("offline_backup_export").performClick()
+        ui.onNodeWithTag("offline_backup_legacy_export").performScrollTo().performClick()
         ui.waitUntil(10_000) {
             pickerLaunches == 1 && staging.isDirectory && staging.listFiles()?.isEmpty() == true
         }
-        ui.onNodeWithTag("offline_backup_export").assertIsEnabled()
+        ui.onNodeWithTag("offline_backup_legacy_export").assertIsEnabled()
         ui.onAllNodes(hasText("Vollständige lokale Sicherung gespeichert", substring = true)).assertCountEquals(0)
         assertEquals("previous backup", previous.readText())
         assertLocalDataUnchanged()

@@ -2452,3 +2452,32 @@ Abnahme Darstellung: finaler Lauf einschließlich scrollbarerer Dialogdarstellun
 mit vier echten Methoden ohne Fehler/Skips, lintDebug ohne Error/Fatal und
 assembleDebug erfolgreich; git diff --check sauber. Nachweise:
 /workspace/immopilot-backup-controls-verify.log sowie die Test-/Lint-XML-Berichte.
+
+### Schritt 6 – Einbindung in die bestehende Sicherungskarte
+
+ReceiptViewModel besitzt den Controller lazy und lädt seinen lokalen Zustand
+bei erstmaliger Benutzung. Die bestehende Karte sammelt dessen StateFlow und
+verbindet Einrichtung, Rotation, Einwilligung, Start/Abbruch und erneute Prüfung.
+OpenDocumentTree liefert die Ordnerauswahl an die geprüfte Grant-/Settings-
+Grenze. Ein abgebrochener Picker verändert keine Konfiguration.
+
+V2 ist die sichtbare Standardsicherung. Der unveränderte V1-Kern bleibt unter
+expliziten erweiterten Optionen erreichbar, mit Warnung vor unverschlüsseltem
+ZIP und eindeutiger Beschriftung des ergänzenden Imports. Gegenseitige Busy-
+Sperren verhindern parallele Aufträge über diese Karte. Die bestehende V1-
+Fehleranzeige bleibt von V2-Status getrennt. Header/Navigation unverändert.
+
+Die betroffenen Picker-Compose-Tests verwenden jetzt den vorhandenen
+scrollbaren Bildschirmaufbau und öffnen V1 ausdrücklich. Ein zusätzlicher
+Fall prüft den Tree-Vertrag, ausgeschaltetes Opt-in und unveränderte Settings
+bei abgebrochener Ordnerwahl. Reale SAF-Anbieter-/Emulatorprüfung steht aus.
+
+Abnahme Anbindung: fünf bisherige Picker-Methoden im ersten Lauf bestanden
+(/workspace/immopilot-backup-card-first.xml); nur der neue Abbruchfall hatte eine
+uninitialisierte Test-URI in der Picker-Fixture. Korrektur: RESULT_CANCELED
+liefert keine URI, wie beim Android-Vertrag. Danach beide betroffenen
+Abbruchmethoden ohne Fehler/Skips bestanden. Final lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check erfolgreich. Logs:
+/workspace/immopilot-backup-card-tests.log und
+/workspace/immopilot-backup-card-verify.log. Native visuelle Geräteprüfung und
+SAF-Anbietermatrix folgen in Schritt 12; keine Aussage über echte Grants.
