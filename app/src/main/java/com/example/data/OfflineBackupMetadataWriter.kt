@@ -270,7 +270,7 @@ internal class OfflineBackupMetadataWriter(
 
     private fun invalid(message: String): Nothing = throw OfflineBackupValidationException(message)
 
-    private companion object {
+    internal companion object {
         const val MAX_BYTES = 64L * 1024 * 1024
         val PATH_COLUMNS = setOf("imageUrl", "pdfPath", "bildPfad", "localUri")
         val SYSTEM_TABLES = setOf("room_master_table", "android_metadata")

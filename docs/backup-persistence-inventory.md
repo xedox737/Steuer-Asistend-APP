@@ -2113,3 +2113,63 @@ bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-manifest-validation-tests.log und
 /workspace/immopilot-manifest-validation-build.log. Kein vollständiger Backup-
 oder Probe-Erfolg; Schema-/Room-/Beziehungsprüfung und Veröffentlichung folgen.
+
+### Schritt 6: isolierte echte Room-Prüfdatenbank
+
+Fünf Dateien: neue RoomProbe und deren Tests, minimale Wiederverwendung in
+MetadataWriter/OfflineBackupService sowie dieses Dokument. Probe erstellt eine
+neue Room-Datenbank ausschließlich im eigenen Unterverzeichnis des privaten
+Stagings. Kein Live-DB-Öffnen, keine Live-Preference-Writes oder Editor-Zugriffe.
+Streaming-Import bindet Werte gegen die tatsächliche aktuelle Room-Spaltenstruktur,
+prüft Version, Typen, Pflichtfelder, vollständige Tabellen und exakte Zeilenzahlen.
+Metadaten folgen der vom V2-Writer erzeugten kanonischen Feldreihenfolge, insbesondere
+Spaltendeklaration vor Rows. Beliebige SQL-Namen werden nicht aus Eingaben ausgeführt.
+Originalaliase werden ausschließlich auf bereits geprüfte private Payloads abgebildet,
+auch mehrseitige JSON-Ketten. Keine Live-Pfad-Auflösung als fehlender Originalersatz.
+
+Foreign Keys werden aktiviert und für den vollständigen Import aufgeschoben;
+Unterstützung wird explizit geprüft. SQLite integrity_check und foreign_key_check,
+tatsächliche Zeilenzahlen und wiederhergestellte sqlite_sequence-Stände sind
+Pflicht. Nachgelagerter MetadataWriter-Lauf prüft vollständige Originalansprüche
+und stellt sicher, dass alle auflösbaren Originale private geprüfte Payloads sind.
+Bestehende fachliche Beziehungsprüfung wird wiederverwendet; sie erhält optional
+explizite archivierte Einheiten-Preferences. Ihr bestehender Default-Pfad bleibt
+für V1 unverändert. Konstanten des Writer-Inventars sind nun intern wiederverwendbar.
+
+Alle archivierten fachlichen Preference-Stores sind erforderlich, Typen werden
+streng gelesen. Read-only Preferences bleiben rein im Speicher. Bestehende
+Payload-Validierung und erneuter Exportfilter werden verwendet; weggefilterte
+Credential-/unerlaubte Schlüssel führen hier zu Fehler statt stiller Übernahme.
+Heap-/Platz-Preflight vor dem DB-Aufbau. Prepared besitzt nur die private Room-DB
+und löscht beim Schließen eigene DB/WAL/SHM-Dateien. Fehler und Dispatch-Abbruch
+schließen/entfernen ausschließlich die eigene Prüfdatenbank.
+
+Gezielt zunächst fünf neue Probe-Methoden und vier bestehende Relation-Methoden ausführen,
+weil die gemeinsame Beziehungsfunktion um die explizite Pref-Quelle ergänzt wurde.
+Neue Fälle: echte Tabellen-/Original-/ID-/Zähler-/Preference-Isolation, Schema/
+Typ-/PK-/Zählfehler, Beziehungs-/Originalhashfehler, unerlaubte/fehlende Preferences
+und Abbruchbereinigung. Noch keine Engine-/Zielveröffentlichungs-Anbindung.
+
+Zusätzlicher belegter Integritätsfall: gezielter neuer Regressionstest zeigte,
+dass ein nachträglich geändertes privates Manifest trotz fachlich plausibler
+Daten zunächst akzeptiert wurde (echtes RED, XML unter
+/workspace/immopilot-room-probe-staging-red-results.xml). Vor Manifest-/DB-Prüfung
+werden nun alle tatsächlich fixierten Staging-Dateien erneut vollständig gelesen
+und gegen erfasste Größe/SHA-256 geprüft, einschließlich Manifest und Metadaten.
+Credential-Puffer werden ausschließlich im Speicher gehasht. Neuer sechster Test
+prüft geändertes Manifest, geänderte Metadaten mit gleicher Größe und geändertes
+Original. Wegen geändertem Probe-Pfad alle sechs Probe-Methoden ausführen;
+unveränderte gemeinsame Relationstests nicht erneut starten.
+
+Abnahme Room-Probe: sechs aktuelle echte Probe-Testmethoden bestanden, XML ohne
+Fehler/Skips geprüft (/workspace/immopilot-room-probe-final-tests.log). Vier
+unveränderte gemeinsame Relationstests bereits bestanden; erhaltenes XML unter
+/workspace/immopilot-room-probe-relations-results.xml. Ein anfänglicher Test-
+Vorlagenfehler verwendete einen falschen Preference-Payloadnamen; ausschließlich
+dieser Test wurde nach Inventar-Lookup-Korrektur erneut geprüft und bestanden
+(/workspace/immopilot-room-probe-preference-test-fixed.log). Nach dem separaten
+belegten Staging-Integritätsfehler und dessen Quellcodekorrektur wurden gezielt
+alle sechs betroffenen Probe-Methoden ausgeführt, keine unveränderten Relationen
+wiederholt. lintDebug und assembleDebug bestanden, keine Error/Fatal-Lintbefunde;
+git diff --check sauber. Buildnachweis: /workspace/immopilot-room-probe-build.log.
+Keine Live-Änderung, keine Geräte-Abnahme oder externe Veröffentlichung.

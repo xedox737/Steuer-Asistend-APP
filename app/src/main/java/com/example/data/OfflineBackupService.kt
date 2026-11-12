@@ -298,10 +298,10 @@ internal class OfflineBackupService(private val context: Context, private val da
         return (0 until rows.length()).map { r -> (0 until columns.length()).associate { c -> columns.getString(c) to rows.getJSONArray(r).get(c) } }
     }
 
-    private suspend fun validateRelationships() {
+    internal suspend fun validateRelationships(unitPreferences: android.content.SharedPreferences? = null) {
         val properties = database.propertyDao().getAllProperties()
         requireBackup(properties.map { it.propertyId }.distinct().size == properties.size) { "Doppelte stabile Immobilien-ID in der Sicherung." }
-        val prefs = com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
+        val prefs = unitPreferences ?: com.example.data.PersistentPreferenceInventory.open(context, "wohneinheiten_prefs")
         val units = properties.associate { property -> property.propertyId to UnitIdentity.read(property.wohneinheiten, property.propertyId, prefs).also {
             requireBackup(it.error == null) { UnitIdentity.ERROR }
         }.entries.map { it.unitId }.toSet() }
