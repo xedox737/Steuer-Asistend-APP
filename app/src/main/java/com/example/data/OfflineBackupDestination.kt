@@ -23,7 +23,7 @@ internal class OfflineBackupDestination(private val context: Context, private va
     private val backend: Backend = SafBackend(context)) {
     data class Access(val persistedReadWrite: Boolean, val directory: Boolean, val canCreate: Boolean, val availableBytes: Long?)
     data class Created(val uri: Uri, val canRename: Boolean)
-    data class Published(val uri: Uri, val backupId: String, val bytes: Long, val sha256: String)
+    data class Published(val uri: Uri, val backupId: String, val bytes: Long, val sha256: String, val archiveInfo: OfflineBackupArchiveInfo)
     enum class Stage { WRITING, VERIFYING, FINALIZING }
     interface Backend {
         fun access(tree: Uri): Access
@@ -41,12 +41,7 @@ internal class OfflineBackupDestination(private val context: Context, private va
             currentCoroutineContext().ensureActive()
             val bytes = source.file.length()
             require(source.file.isFile && bytes in 1..(2L * 1024 * 1024 * 1024 + 64L * 1024 * 1024))
-            val access = backend.access(tree)
-            if (!access.persistedReadWrite || !access.directory || !access.canCreate)
-                fail("Der Sicherungsordner ist nicht mehr mit dauerhaften Lese- und Schreibrechten verfügbar.")
-            val available = access.availableBytes?.takeIf { it >= 0 } ?: fail("Der Ordneranbieter meldet keinen zuverlässig bestimmbaren freien Zielplatz. Es wurde keine Zieldatei angelegt.")
-            val needed = bytes + OfflineBackupResourceBudget.RESERVE_BYTES
-            if (available < needed) fail("Zu wenig Zielspeicher: benötigt $needed Byte einschließlich Reserve, verfügbar $available Byte.")
+            preflight(bytes)
             val parent = File(context.filesDir, "offline-backup-staging")
             require(parent.isDirectory || parent.mkdirs())
             OfflineBackupResourceBudget.requireAvailable(source.resources.copy(privateBytes = source.resources.privateBytes + bytes), parent.usableSpace)
@@ -80,7 +75,7 @@ internal class OfflineBackupDestination(private val context: Context, private va
             require(finalSha == sha)
             currentCoroutineContext().ensureActive()
             complete = true
-            Published(finalized, id, bytes, sha)
+            Published(finalized, id, bytes, sha, source.archiveInfo)
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (error: OfflineBackupValidationException) { throw error }
         catch (_: android.system.ErrnoException) { fail("Die neue Zieldatei konnte nicht sicher synchronisiert oder geschlossen werden.") }
@@ -96,6 +91,23 @@ internal class OfflineBackupDestination(private val context: Context, private va
             directory?.let { if (it.exists() && !it.deleteRecursively()) cleanupFailed = true }
             if (cleanupFailed) fail("Die neue unvollständige Sicherung oder ihr eigenes Arbeitsverzeichnis konnte nicht entfernt werden. Ältere Sicherungen wurden nicht gelöscht.")
         }
+    }
+
+    /** Read-only provider/space gate, called before snapshot work and again with measured sizes. */
+    fun preflight(expectedCipherBytes: Long = 0) {
+        try {
+            require(expectedCipherBytes in 0..(2L * 1024 * 1024 * 1024 + 64L * 1024 * 1024))
+            val access = backend.access(tree)
+            if (!access.persistedReadWrite || !access.directory || !access.canCreate)
+                fail("Der Sicherungsordner ist nicht mehr mit dauerhaften Lese- und Schreibrechten verfügbar.")
+            val available = access.availableBytes?.takeIf { it >= 0 }
+                ?: fail("Der Ordneranbieter meldet keinen zuverlässig bestimmbaren freien Zielplatz. Es wurde keine Zieldatei angelegt.")
+            val needed = expectedCipherBytes + OfflineBackupResourceBudget.RESERVE_BYTES
+            if (available < needed) fail("Zu wenig Zielspeicher: benötigt $needed Byte einschließlich Reserve, verfügbar $available Byte.")
+        } catch (error: OfflineBackupValidationException) { throw error }
+        catch (_: IOException) { fail("Der Sicherungsordner konnte nicht geprüft werden.") }
+        catch (_: SecurityException) { fail("Der Zugriff auf den Sicherungsordner wurde verweigert.") }
+        catch (_: IllegalArgumentException) { fail("Der Sicherungsordner oder seine Kapazitätsangabe ist ungültig.") }
     }
 
     private suspend fun copyExactly(input: InputStream, output: OutputStream?, expected: Long): String {

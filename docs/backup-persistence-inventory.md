@@ -2330,3 +2330,37 @@ keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-archive-info-tests.log und
 /workspace/immopilot-archive-info-build.log. Keine weiteren alten Testgruppen
 wiederholt, kein GitHub-Upload oder echtes Ziel verwendet.
+
+### Schritt 6: gemeinsame Engine hält Generation bis zur Zielverifikation
+
+Fünf Dateien: Engine, Destination, beide vorhandenen Tests und dieses Dokument.
+Engine.publish führt Ziel-Preflight vor Snapshot-Arbeit aus, hält die gemeinsame
+Generation während prepareHeld UND Destination.publish und gibt erst endgültig
+geprüftes Published zurück. prepareHeld besitzt eigene Fehlerräumung; öffentlicher
+prepare behält zusätzlich Dispatch-Rückgabe-Cancellation-Schutz. Snapshot ist vor
+Zieldateianlage geschlossen, damit seine Kopien nicht unnötig neben Ziel/Reread
+belegt bleiben. Nach Fixierung Ziel-Preflight nochmals mit konservativer
+Cipher-Größenschätzung vor privater Archivdateianlage, beim tatsächlichen
+Publizieren erneut mit gemessener Größe. Rechte/Platz dürfen zwischenzeitlich
+verloren gehen; Fehler erzeugt keinen Erfolg und entfernt nur eigene Artefakte.
+
+Prepared/Published führen die einmal erfasste ArchiveInfo für spätere Historie
+mit. Keine Passwortübergabe an publish nötig, keine vorzeitige Generationsfreigabe
+und keine separate schwächere Automatik-Pipeline. History/Settings/UI bleiben
+nachfolgende Anbindung; dies erzeugt noch keinen Verlaufseintrag.
+
+Gezielt 15 Snapshot-/Engine-Methoden (13 bestehende plus zwei Integrationen) und
+sechs Destination-Methoden prüfen. Neue Integrationen: passwortlose echte
+Pipeline, Snapshot-Freigabe vor erster Zielanlage, aktuelle Generation während
+Zielzugriffen, portabel lesbares fertiges Archiv samt identischer Erstellungsinfo,
+keine privaten Artefakte nach Erfolg und unavailable Ziel vor erster Erfassung.
+Separate unveränderte Crypto-/Manifest-/Probe-Tests nicht zusätzlich starten.
+
+Abnahme Engine-Publish: 15 echte Snapshot-/Engine- und sechs Destination-Methoden
+bestanden, XML ohne Fehler/Skips geprüft. Durchgehende passwortlose Pipeline,
+Descriptor-Erhaltung, frühe Zielablehnung und eigene Ressourcenfreigabe sind
+nachgewiesen. lintDebug und assembleDebug bestanden, keine Error/Fatal-
+Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-engine-publishing-tests.log und
+/workspace/immopilot-engine-publishing-build.log. Kein realer SAF-Zugriff,
+keine Emulator-Abnahme, keine UI-/History-Anbindung oder GitHub-Veröffentlichung.

@@ -65,7 +65,7 @@ class OfflineBackupDestinationTest {
                 val resources = OfflineBackupResourceBudget.checkPrepared(parent, snapshot)
                 val file = File(parent, "prepared-${UUID.randomUUID()}.immopilot")
                 file.outputStream().use { OfflineBackupArchiveCrypto.encrypt(generation, it) { output -> snapshot.writeArchive(output) } }
-                OfflineBackupArchiveEngine.Prepared(file, snapshot.summary, resources).use { block(it, generation) }
+                OfflineBackupArchiveEngine.Prepared(file, snapshot.summary, resources, snapshot.archiveInfo).use { block(it, generation) }
             }
         }
     }
@@ -140,6 +140,7 @@ class OfflineBackupDestinationTest {
             assertArrayEquals(source.file.readBytes(), backend.nodes.getValue(published.uri).bytes)
             val sha = MessageDigest.getInstance("SHA-256").digest(source.file.readBytes()).joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
             assertEquals(source.file.length(), published.bytes); assertEquals(sha, published.sha256)
+            assertEquals(source.archiveInfo, published.archiveInfo)
             assertEquals(source.file.inputStream().use { OfflineBackupArchiveHeader.read(it).dataKey.archiveId }, published.backupId)
             assertTrue(backend.nodes.getValue(published.uri).name.endsWith(".immopilot"))
             assertEquals(OfflineBackupDestination.Stage.entries, stages)

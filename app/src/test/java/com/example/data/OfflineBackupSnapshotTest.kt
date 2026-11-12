@@ -339,4 +339,67 @@ class OfflineBackupSnapshotTest {
         assertArrayEquals(bytes, original.readBytes())
     }
 
+    private class PublishingBackend(private val beforeCreate: () -> Unit, private val beforeRead: () -> Unit) : OfflineBackupDestination.Backend {
+        var access = OfflineBackupDestination.Access(true, true, true, Long.MAX_VALUE)
+        var created = 0
+        val documents = linkedMapOf<android.net.Uri, ByteArray>()
+        override fun access(tree: android.net.Uri) = access
+        override fun create(tree: android.net.Uri, name: String): OfflineBackupDestination.Created {
+            beforeCreate(); created++
+            val uri = android.net.Uri.parse("content://engine.test/document/${UUID.randomUUID()}")
+            documents[uri] = byteArrayOf(); return OfflineBackupDestination.Created(uri, true)
+        }
+        override fun write(uri: android.net.Uri): java.io.OutputStream = object : ByteArrayOutputStream() {
+            override fun close() { documents[uri] = toByteArray() }
+        }
+        override fun read(uri: android.net.Uri): java.io.InputStream { beforeRead(); return documents.getValue(uri).inputStream() }
+        override fun rename(uri: android.net.Uri, name: String): android.net.Uri {
+            val renamed = android.net.Uri.parse("content://engine.test/document/${UUID.randomUUID()}")
+            documents[renamed] = documents.remove(uri)!!; return renamed
+        }
+        override fun delete(uri: android.net.Uri) = documents.remove(uri) != null
+    }
+
+    @Test fun enginePublishesWithoutPasswordAndReleasesSnapshotBeforeTargetCreation() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            val id = OfflineBackupGenerationStore(keyContext).loadCurrent()!!.use { it.recovery.generationId }
+            fun assertCurrentGeneration() {
+                OfflineBackupGenerationStore(keyContext).loadCurrent()!!.use { assertEquals(id, it.recovery.generationId) }
+            }
+            val backend = PublishingBackend(beforeCreate = { noOwnedRunLeft(); assertCurrentGeneration() }, beforeRead = { assertCurrentGeneration() })
+            val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
+            val result = OfflineBackupArchiveEngine(keyContext, database).publish(destination)
+            assertEquals(1, backend.created); assertEquals(1, backend.documents.size)
+            assertEquals(com.example.BuildConfig.VERSION_CODE.toLong(), result.archiveInfo.appVersionCode)
+            assertEquals(com.example.BuildConfig.VERSION_NAME, result.archiveInfo.appVersionName)
+            java.time.Instant.parse(result.archiveInfo.createdAt)
+            val plain = File(root, "published.zip")
+            try {
+                OfflineBackupArchiveCrypto.decryptToPrivateStaging(backend.documents.getValue(result.uri).inputStream(),
+                    "synthetic-recovery-password".toCharArray(), plain)
+                val manifest = ZipInputStream(plain.inputStream()).use { zip ->
+                    var found: JSONObject? = null
+                    while (true) { val entry = zip.nextEntry ?: break
+                        if (entry.name == "manifest.json") found = JSONObject(zip.readBytes().toString(Charsets.UTF_8)) }
+                    requireNotNull(found)
+                }
+                assertEquals(result.archiveInfo.createdAt, manifest.getJSONObject("archive").getString("createdAt"))
+            } finally { plain.delete() }
+            noPreparedArchiveLeft()
+        }
+    }
+
+    @Test fun engineRejectsUnavailableDestinationBeforeStartingSnapshotWork() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            val backend = PublishingBackend({}, {}).apply { access = access.copy(availableBytes = null) }
+            val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
+            var captured = false
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineBackupArchiveEngine(keyContext, database).publish(destination, snapshotProgress = { captured = true })
+            } }
+            assertFalse(captured); assertEquals(0, backend.created); assertTrue(backend.documents.isEmpty())
+            noPreparedArchiveLeft()
+        }
+    }
+
 }
