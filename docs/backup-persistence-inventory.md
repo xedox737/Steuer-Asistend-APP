@@ -1944,3 +1944,34 @@ Lintbefunde; git diff --check sauber. Nachweise:
 /workspace/immopilot-credential-section-tests.log und
 /workspace/immopilot-credential-section-build.log. Nur synthetische Schlüssel;
 keine Anbieteraufrufe, keine echten Credentials. Service-/UI-Anbindung folgt.
+
+### Schritt 5: seiteneffektfreier Export persönlicher API-Schlüssel
+
+Drei Dateien: AiProviderSettings, dessen gezielt ergänzter Sicherheitstest und
+dieses Dokument. Neues internes Exportverfahren prüft das getrennte Opt-in vor
+jedem Preference-/Keystore-Zugriff und liefert ausschließlich den verschlüsselten
+Credential-Abschnitt. Ein Snapshot der vorhandenen Preferences dient als Quelle.
+Bestehende interaktive Getter bleiben unverändert; deren Fehlerbereinigung wird
+beim Backup nicht aufgerufen. Kein neues Anlegen oder Ersetzen von Geräteschlüsseln,
+keine Preference-Schreibvorgänge, keine Anbieteraufrufe. Fehlende Einträge werden
+übersprungen; halbe, falsch typisierte, beschädigte, unlesbare oder übergroße
+vorhandene Einträge führen zu statischem Fehler ohne Bestandsänderung. Rohbytes
+und ausgegebene CharArrays werden nach Transport bzw. bei Fehlern gelöscht.
+
+Gezielt nur drei neue backupExport-Testmethoden ausführen: drei Anbieter samt
+unveränderten fachlichen Einstellungen, fehlendes/falsches Opt-in bei defekten
+Einträgen sowie kaputte Ciphertexte, halbe/falsch typisierte/überlange Einträge
+und fehlender Keystore-Alias ohne Löschen oder Ersetzen. Ausschließlich synthetische
+Schlüssel, simuliertes AndroidKeyStore mit echtem AES-GCM. UI-Einstellung und
+Snapshot-/Service-Anbindung bleiben folgende Arbeit.
+
+Abnahme Credential-Export: genau drei echte backupExport-Testmethoden bestanden,
+XML ohne Fehler/Skips geprüft. Alle drei Anbieter roundtripfähig, fachliche
+Einstellungen unverändert, ausgeschlossene Trigger greifen nicht auf defekte
+Schlüssel zu. Defekte/halbe/falsch typisierte/übergroße Einträge und fehlender
+Keystore-Alias bleiben unverändert; kein Ersatzschlüssel. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-credential-export-tests.log und
+/workspace/immopilot-credential-export-build.log. Keine echten Schlüssel oder
+Anbieteraufrufe. Snapshot-/Engine-Integration und UI-Persistenz noch offen;
+Schritt 5 und der Gesamtplan sind noch nicht vollständig abgeschlossen.

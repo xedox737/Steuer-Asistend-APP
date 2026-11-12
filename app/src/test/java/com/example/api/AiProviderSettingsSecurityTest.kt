@@ -1,6 +1,10 @@
 package com.example.api
 
 import android.content.Context
+import com.example.data.OfflineBackupCredentialSection
+import com.example.data.OfflineBackupKeyEnvelope
+import com.example.data.OfflineBackupValidationException
+import java.security.KeyStore
 import androidx.test.core.app.ApplicationProvider
 import org.junit.*
 import org.junit.Assert.*
@@ -55,4 +59,74 @@ class AiProviderSettingsSecurityTest {
         assertTrue(AiProviderSettings.isPlausibleGeminiKey(dummyGoogle()))
         assertTrue(AiProviderSettings.isPlausibleGoogleRoutesKey(dummyGoogle()))
     }
+    private fun backupGeneration() = OfflineBackupKeyEnvelope.create("synthetic-recovery-password".toCharArray())
+
+    @Test fun backupExportRoundTripsAllProvidersWithoutChangingSettings() {
+        AiProviderSettings.storeOpenAiKey(context, dummyOpenAi().toCharArray())
+        AiProviderSettings.storeGeminiKey(context, dummyGoogle().toCharArray())
+        AiProviderSettings.storeGoogleRoutesKey(context, (dummyGoogle() + "routes").toCharArray())
+        AiProviderSettings.saveSelection(context, ReceiptAnalysisProvider.OPENAI, "retained-model")
+        val before = prefs.all.toMap()
+        backupGeneration().use { generation ->
+            val section = requireNotNull(AiProviderSettings.exportBackupCredentials(context, generation,
+                OfflineBackupCredentialSection.Consent(manual = true)))
+            OfflineBackupCredentialSection.open(generation, section).use { opened ->
+                assertArrayEquals(dummyOpenAi().toCharArray(), opened.values[OfflineBackupCredentialSection.Provider.OPENAI])
+                assertArrayEquals(dummyGoogle().toCharArray(), opened.values[OfflineBackupCredentialSection.Provider.GEMINI])
+                assertArrayEquals((dummyGoogle() + "routes").toCharArray(), opened.values[OfflineBackupCredentialSection.Provider.GOOGLE_ROUTES])
+            }
+        }
+        assertEquals(before, prefs.all)
+    }
+
+    @Test fun backupExportExcludedTriggersDoNotReadOrRepairDamagedCredentials() {
+        prefs.edit().putInt("openai_key_ciphertext", 42).putString("openai_key_iv", "damaged").commit()
+        val before = prefs.all.toMap()
+        val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val aliases = keys.aliases().toList().toSet()
+        backupGeneration().use { generation ->
+            assertNull(AiProviderSettings.exportBackupCredentials(context, generation))
+            assertNull(AiProviderSettings.exportBackupCredentials(context, generation,
+                OfflineBackupCredentialSection.Consent(manual = true), OfflineBackupCredentialSection.Trigger.SCHEDULED))
+            assertNull(AiProviderSettings.exportBackupCredentials(context, generation,
+                OfflineBackupCredentialSection.Consent(scheduled = true)))
+        }
+        assertEquals(before, prefs.all)
+        assertEquals(aliases, keys.aliases().toList().toSet())
+    }
+
+    @Test fun backupExportFailuresPreserveEveryEntryAndNeverReplaceMissingDeviceKeys() {
+        AiProviderSettings.storeOpenAiKey(context, dummyOpenAi().toCharArray())
+        AiProviderSettings.storeGeminiKey(context, dummyGoogle().toCharArray())
+        val valid = prefs.all.toMap()
+        backupGeneration().use { generation ->
+            val consent = OfflineBackupCredentialSection.Consent(manual = true)
+            val mutations: List<() -> Unit> = listOf(
+                { prefs.edit().putString("gemini_key_ciphertext", "invalid").commit(); Unit },
+                { prefs.edit().remove("gemini_key_iv").commit(); Unit },
+                { prefs.edit().putInt("gemini_key_iv", 1).commit(); Unit },
+                { prefs.edit().putString("gemini_key_ciphertext", "x".repeat(25 * 1024)).commit(); Unit }
+            )
+            mutations.forEach { mutate ->
+                prefs.edit().clear().apply { valid.forEach { (name, value) -> putString(name, value as String) } }.commit()
+                mutate()
+                val before = prefs.all.toMap()
+                assertThrows(OfflineBackupValidationException::class.java) {
+                    AiProviderSettings.exportBackupCredentials(context, generation, consent)
+                }
+                assertEquals(before, prefs.all)
+            }
+            prefs.edit().clear().apply { valid.forEach { (name, value) -> putString(name, value as String) } }.commit()
+            val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            keys.deleteEntry("steuer_assistent_gemini_key_v1")
+            val aliases = keys.aliases().toList().toSet()
+            val before = prefs.all.toMap()
+            assertThrows(OfflineBackupValidationException::class.java) {
+                AiProviderSettings.exportBackupCredentials(context, generation, consent)
+            }
+            assertEquals(before, prefs.all)
+            assertEquals(aliases, keys.aliases().toList().toSet())
+        }
+    }
+
 }

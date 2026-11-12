@@ -5,6 +5,12 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.example.data.OfflineBackupCredentialSection
+import com.example.data.OfflineBackupKeyEnvelope
+import com.example.data.OfflineBackupValidationException
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.security.GeneralSecurityException
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -239,6 +245,56 @@ object AiProviderSettings {
 
     internal fun isPlausibleGoogleRoutesKey(value: String): Boolean =
         value.length >= 16 && value.none(Char::isWhitespace)
+
+    /** Read-only export: never calls getters that clear damaged entries or creates device keys. */
+    internal fun exportBackupCredentials(context: Context, generation: OfflineBackupKeyEnvelope.Generation,
+        consent: OfflineBackupCredentialSection.Consent = OfflineBackupCredentialSection.Consent(),
+        trigger: OfflineBackupCredentialSection.Trigger = OfflineBackupCredentialSection.Trigger.MANUAL): ByteArray? {
+        if (!consent.allows(trigger)) return null
+        val values = linkedMapOf<OfflineBackupCredentialSection.Provider, CharArray>()
+        try {
+            val snapshot = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).all
+            readBackupKey(snapshot, KEY_CIPHERTEXT, KEY_IV, ::getSecretKey)?.let {
+                values[OfflineBackupCredentialSection.Provider.OPENAI] = it
+            }
+            readBackupKey(snapshot, KEY_GEMINI_CIPHERTEXT, KEY_GEMINI_IV, ::getGeminiSecretKey)?.let {
+                values[OfflineBackupCredentialSection.Provider.GEMINI] = it
+            }
+            readBackupKey(snapshot, KEY_GOOGLE_ROUTES_CIPHERTEXT, KEY_GOOGLE_ROUTES_IV, ::getGoogleRoutesSecretKey)?.let {
+                values[OfflineBackupCredentialSection.Provider.GOOGLE_ROUTES] = it
+            }
+            return OfflineBackupCredentialSection.seal(generation, values, consent, trigger)
+        } catch (_: GeneralSecurityException) { backupCredentialFailure() }
+        catch (_: CharacterCodingException) { backupCredentialFailure() }
+        catch (_: IllegalArgumentException) { backupCredentialFailure() }
+        catch (_: IllegalStateException) { backupCredentialFailure() }
+        finally { values.values.forEach { it.fill('\u0000') } }
+    }
+
+    private fun readBackupKey(snapshot: Map<String, *>, ciphertextName: String, ivName: String,
+        loadKey: () -> SecretKey?): CharArray? {
+        if (!snapshot.containsKey(ciphertextName) && !snapshot.containsKey(ivName)) return null
+        val ciphertext = snapshot[ciphertextName] as? String
+        val iv = snapshot[ivName] as? String
+        require(ciphertext != null && ciphertext.length in 1..(24 * 1024) && iv != null && iv.length == 16)
+        val encrypted = Base64.decode(ciphertext, Base64.NO_WRAP)
+        val nonce = Base64.decode(iv, Base64.NO_WRAP)
+        require(encrypted.size in 16..(16 * 1024 + 16) && nonce.size == 12)
+        val key = loadKey() ?: backupCredentialFailure()
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, nonce))
+        val plaintext = cipher.doFinal(encrypted)
+        try {
+            val decoded = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(plaintext))
+            try {
+                require(decoded.remaining() in 1..4096)
+                return CharArray(decoded.remaining()).also { decoded.get(it) }
+            } finally { if (decoded.hasArray()) decoded.array().fill('\u0000') }
+        } finally { plaintext.fill(0) }
+    }
+
+    private fun backupCredentialFailure(): Nothing = throw OfflineBackupValidationException(
+        "Persönliche API-Schlüssel konnten nicht sicher exportiert werden. Gespeicherte Einstellungen wurden nicht verändert.")
 
     private fun hasStoredOpenAiKey(context: Context): Boolean {
         val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
