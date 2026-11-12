@@ -2481,3 +2481,32 @@ assembleDebug und git diff --check erfolgreich. Logs:
 /workspace/immopilot-backup-card-tests.log und
 /workspace/immopilot-backup-card-verify.log. Native visuelle Geräteprüfung und
 SAF-Anbietermatrix folgen in Schritt 12; keine Aussage über echte Grants.
+
+### Schritt 7 – portable, ausschließlich prüfende Wiederherstellungsvorbereitung
+
+`OfflineBackupRestoreInspector` öffnet den ausgewählten Eingabestrom erst im
+IO-Auftrag, begrenzt und prüft den Header vor der KDF und gewinnt die Generation
+ausschließlich aus Recovery-Blob und eingegebenem Passwort. Kein Geräte-Key,
+keine lokale Schlüsselinstallation, keine Änderung von Live-Room/Preferences.
+Der komplette authentifizierte Datenstrom wird privat begrenzt entschlüsselt,
+dann über die bestehenden ZIP-/Manifest- und echten Room-Probe-Prüfungen gelesen.
+Erst danach entsteht die Vorschau mit Backup-ID, Erstellungs-/App-Version,
+Tabellenumfang, Dateiversionen, Payloadbytes und enthaltenen Credential-Providern.
+
+Der Passwortpuffer wird auch bei vorzeitig abgebrochenem Dispatcher gewischt.
+Die Eingabe gehört einem einzigen `use`-Block; Crypto erhält nur einen geborgten
+Stream. Prepared besitzt Generation, versiegelte Credential-Puffer, isolierte
+Room-DB und private Dateien, räumt diese bei Schließen idempotent auf. Jeder
+Fehler vor Übergabe räumt dieselben Ressourcen auf. Für Entschlüsselung und
+Extraktion bleibt ein begrenztes privates Platzbudget samt Reserve; die Probe
+prüft ihren tatsächlichen zusätzlichen Metadaten-/DB-Platz vor dem Anlegen.
+Es wird noch kein Restore angewendet; Journal/Bestandsänderung folgt in Schritt 8.
+
+Abnahme Inspector: drei echte Methoden ohne Fehler/Skips bestanden. Nachweis
+umfasst getrennten Zielbestand und fehlenden ursprünglichen Test-Keystore,
+Credentials nur versiegelt im Speicher, unveränderte Live-Daten/Preferences/
+Snapshot-Generation, falsches Passwort, abgeschnittenen Stream, authentifizierte
+Nicht-ZIP-Daten, verweigerten Anbieterzugriff und Abbruch vor IO-Eintritt.
+lintDebug ohne Error/Fatal, assembleDebug und git diff --check erfolgreich.
+Logs: /workspace/immopilot-restore-inspector-tests.log und
+/workspace/immopilot-restore-inspector-build.log. Kein echter Gerätewechsel-Test.
