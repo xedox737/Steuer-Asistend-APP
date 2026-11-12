@@ -1912,3 +1912,35 @@ assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
 Nachweise: /workspace/immopilot-key-manager-tests-fixed.log und
 /workspace/immopilot-key-manager-build.log. Noch kein Credential-Abschnitt,
 UI-Anschluss, physischer Keystore-Nachweis oder GitHub-Upload.
+
+### Schritt 5: unabhängiger portabler Credential-Abschnitt
+
+Drei Dateien: CredentialSection, dessen gezielter Test und dieses Dokument.
+Separates Format IMMCRED2 mit dem begrenzten V2-Envelope-Header, zufälligem DEK,
+MK-Umhüllung und AES-256-GCM. Magic und vollständiger Header sind AAD. Der
+Abschnitt bleibt auch innerhalb eines entschlüsselten ZIPs verschlüsselt.
+Keine Dateizugriffe oder Preference-Schreibzugriffe im Codec. Öffnen gibt erst
+nach vollständiger AEAD- und Strukturprüfung einen schließbaren Speicherbesitzer
+zurück; Schließen löscht dessen CharArrays. Rohpuffer und temporäre DEKs werden
+auch bei Fehlern gelöscht. Binäre Char-Codierung: begrenzte UTF-16-Codeeinheiten
+als Big-Endian-16-Bit-Werte, ohne unveränderliche Schlüssel-Strings im Codec.
+Höchstens drei bekannte Anbieter, je 1..4096 Zeichen, keine doppelten Anbieter,
+keine unbekannten/trailing Felder. Eingangsgrößen vor Dekodierung begrenzen.
+
+Manuelles und geplantes Opt-in sind getrennt, beide standardmäßig aus. Ausgeschlossene
+Abschnitte erzeugen keinen Ciphertext und verbrauchen trotzdem übergebene
+Schlüsselpuffer. Noch keine UI-/Einstellungspersistenz oder Service-Anbindung.
+Bestehende AiProviderSettings-Getter löschen bei Fehlern einzelne Einträge;
+Export benötigt vor Integration einen nachweislich seiteneffektfreien Zugriff.
+Keine echten Credentials lesen und keine Anbieteraufrufe ausführen.
+
+Gezielt prüfen: portabler Drei-Anbieter-Roundtrip, Pufferlöschung, frische
+Verschlüsselung, getrennte Opt-ins, Manipulation/Abbruch/Anhang/Größenlimit,
+Alt-MK-Ausschluss sowie authentifizierte, aber unzulässige innere Strukturen.
+
+Abnahme Credential-Codec: sechs echte Testmethoden bestanden, XML ohne Fehler
+oder Skips geprüft. lintDebug und assembleDebug bestanden, keine Error/Fatal-
+Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-credential-section-tests.log und
+/workspace/immopilot-credential-section-build.log. Nur synthetische Schlüssel;
+keine Anbieteraufrufe, keine echten Credentials. Service-/UI-Anbindung folgt.
