@@ -2701,3 +2701,26 @@ meldete einen nicht-void Rückgabetyp der neuen Testmethode; nach Korrektur des
 Test-Rückgabetyps lief die unveränderte Prüfung erfolgreich. Nachweise:
 /workspace/immopilot-maintenance-coroutines-tests-fixed.log und
 /workspace/immopilot-maintenance-coroutines-build.log.
+
+### Schritt 8 – Rückfallkopien vorhandener app-eigener Dateien
+
+`OfflineRestoreOwnedFilesSnapshot` erfasst unter gemeinsamer Wartung die vom
+Dateiinventar gefundenen app-eigenen Originale, aufbewahrten Versionen und
+gespeicherten Exporte. Der private Rückfallbereich wird neu angelegt; belegte
+Verzeichnisse werden nicht überschrieben. Vor dem Kopieren werden Größen und
+Speicherreserve geprüft. Jede Kopie wird synchronisiert und vollständig
+rückgelesen; außerdem wird die Quelle nochmals gelesen und das Inventar am Ende
+erneut verglichen. Größenänderungen seit der Speicherprüfung führen zum Abbruch.
+Auch vorhandene leere Dateien bleiben für den Rückfall erhalten.
+
+Ein privates Manifest enthält portable Pfade, Kategorie, internen Dateinamen,
+Größe und SHA-256; es wird synchronisiert und rückgelesen. Beim Fehler wird nur
+der selbst angelegte Rückfallbereich entfernt. Dies ist bewusst erst der Anteil
+für vorhandene app-eigene Dateien: externe Referenzen, bereits fehlende Originale,
+Wiederanlaufvalidierung und die Verknüpfung mit dem Gesamtjournal müssen noch
+ergänzt werden. Die Kopie ist kein vollständiges Backup und führt keinen Restore aus.
+
+Abnahme app-eigene Dateirücklage: drei Methoden ohne Fehler/Skips, lintDebug ohne
+Error/Fatal, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-owned-files-verify.log. Noch kein vollständiger
+Dateirückfall oder Prozessneustarttest.
