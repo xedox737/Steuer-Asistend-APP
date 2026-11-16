@@ -2949,3 +2949,21 @@ gelöschte Eingabepuffer bei gesperrter Wartung. lintDebug ohne Error/Fatal,
 assembleDebug und git diff --check bestanden. Nachweise:
 /workspace/immopilot-credential-maintenance-tests.log und
 /workspace/immopilot-credential-maintenance-build.log.
+
+### Schritt 8 – verschlüsselter Credential-Rückfallstand
+
+Bei ausdrücklich benötigtem Credential-Rückfall werden ausschließlich die bereits
+mit Android-Keystore verschlüsselten Werte und ihre Initialisierungsvektoren in
+eine private, größenbegrenzte Datei geschrieben. Die ursprünglichen Geräteschlüssel
+werden nur lesend verwendet, die Chiffretexte authentifiziert und temporäre
+Klartextpuffer gelöscht. Unvollständige oder beschädigte Einträge und fehlende
+Keystore-Aliase führen zum Abbruch, ohne Einstellungen zu reparieren oder Schlüssel
+zu erzeugen. Die Datei wird synchronisiert, zurückgelesen und mit Größe und Hash
+geprüft. Eine Wiederherstellung und die Einbindung in das Rückfallpaket folgen;
+ohne ausdrücklich gewählten Credential-Import dürfen Schlüssel unverändert bleiben.
+
+Abnahme: zehn Snapshot-Tests auf Android API 24 und 35 sowie sieben bestehende
+Sicherheitstests ohne Fehler oder Skips; ausschließlich synthetische Schlüssel.
+lintDebug, assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-credential-rollback-tests.log und
+/workspace/immopilot-credential-rollback-build.log.

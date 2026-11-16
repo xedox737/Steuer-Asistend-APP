@@ -277,6 +277,49 @@ object AiProviderSettings {
         finally { values.values.forEach { it.fill('\u0000') } }
     }
 
+    /** Existing device ciphertext only; validation never clears entries or creates keys. */
+    internal data class RollbackCiphertext(val ciphertext: String, val iv: String)
+
+    internal fun captureRollbackCiphertexts(context: Context): Map<OfflineBackupCredentialSection.Provider, RollbackCiphertext?> = try {
+        val snapshot = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).all
+        val state = rollbackFields().mapValues { (_, names) ->
+            val (ciphertext, iv) = names
+            if (!snapshot.containsKey(ciphertext) && !snapshot.containsKey(iv)) null
+            else RollbackCiphertext(snapshot[ciphertext] as? String ?: throw IllegalArgumentException(),
+                snapshot[iv] as? String ?: throw IllegalArgumentException())
+        }
+        validateRollbackCiphertexts(state)
+        state
+    } catch (_: GeneralSecurityException) { rollbackCredentialFailure() }
+    catch (_: CharacterCodingException) { rollbackCredentialFailure() }
+    catch (_: IllegalArgumentException) { rollbackCredentialFailure() }
+    catch (_: IllegalStateException) { rollbackCredentialFailure() }
+    catch (_: SecurityException) { rollbackCredentialFailure() }
+
+    internal fun validateRollbackCiphertexts(state: Map<OfflineBackupCredentialSection.Provider, RollbackCiphertext?>) {
+        try {
+            val fields = rollbackFields(); require(state.keys == fields.keys)
+            val snapshot = mutableMapOf<String, String>()
+            state.forEach { (provider, value) -> if (value != null) {
+                val (ciphertext, iv) = fields.getValue(provider)
+                snapshot[ciphertext] = value.ciphertext; snapshot[iv] = value.iv
+            } }
+            readBackupKey(snapshot, KEY_CIPHERTEXT, KEY_IV, ::getSecretKey)?.fill('\u0000')
+            readBackupKey(snapshot, KEY_GEMINI_CIPHERTEXT, KEY_GEMINI_IV, ::getGeminiSecretKey)?.fill('\u0000')
+            readBackupKey(snapshot, KEY_GOOGLE_ROUTES_CIPHERTEXT, KEY_GOOGLE_ROUTES_IV, ::getGoogleRoutesSecretKey)?.fill('\u0000')
+        } catch (_: GeneralSecurityException) { rollbackCredentialFailure() }
+        catch (_: CharacterCodingException) { rollbackCredentialFailure() }
+        catch (_: IllegalArgumentException) { rollbackCredentialFailure() }
+        catch (_: IllegalStateException) { rollbackCredentialFailure() }
+        catch (_: SecurityException) { rollbackCredentialFailure() }
+    }
+    private fun rollbackFields() = mapOf(
+        OfflineBackupCredentialSection.Provider.OPENAI to (KEY_CIPHERTEXT to KEY_IV),
+        OfflineBackupCredentialSection.Provider.GEMINI to (KEY_GEMINI_CIPHERTEXT to KEY_GEMINI_IV),
+        OfflineBackupCredentialSection.Provider.GOOGLE_ROUTES to (KEY_GOOGLE_ROUTES_CIPHERTEXT to KEY_GOOGLE_ROUTES_IV))
+    private fun rollbackCredentialFailure(): Nothing = throw OfflineBackupValidationException(
+        "Die vorhandenen API-Schlüssel können nicht sicher für einen Rückfall geprüft werden. Die Schlüssel wurden nicht verändert.")
+
     private fun readBackupKey(snapshot: Map<String, *>, ciphertextName: String, ivName: String,
         loadKey: () -> SecretKey?): CharArray? {
         if (!snapshot.containsKey(ciphertextName) && !snapshot.containsKey(ivName)) return null
