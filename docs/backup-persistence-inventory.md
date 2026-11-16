@@ -2562,3 +2562,23 @@ bereits implementierten Sperre, Wiederanlaufprüfung oder Rückfallfunktion. Vor
 Bestandsänderungen müssen insbesondere Wiederanlauf, Speicherprüfung,
 Rollback auch bei bereits fehlenden Originalen und die Unterdrückung des
 anschließenden automatischen Drive-Sync nachgewiesen werden.
+
+### Schritt 8 – Grundlage der gemeinsamen Wartungssperre
+
+Der bestehende OfflineBackupCoordinator kann bei ruhendem Bestand eine exklusive
+Wartung aufnehmen. Bereits registrierte, auch nur vorgemerkte Schreiber verhindern
+den Eintritt. Während der Wartung werden neue registrierte Schreiber und Snapshot-
+Erfassungen abgewiesen; eine vorher begonnene Erfassung wird ungültig. Ein
+Wartungstoken erlaubt nur ausdrücklich darin ausgeführte synchrone Schreibarbeit
+auf dem jeweiligen Thread. Die Berechtigung überträgt sich nicht auf andere Threads;
+ein Token mit noch laufendem Schreibvorgang kann nicht freigegeben werden.
+
+Drei gezielte Tests prüfen aktiven Schreiber, Konkurrenz zu Sicherungen und
+Wartungen, eigene Schreiber, Threadisolation und Freigabe. Die Sperre wird vom
+lokalen Restore noch nicht betreten; Journal, Startwiederanlauf, gemeinsame
+Koordination mit sämtlichen Drive-Einstiegspunkten und Coroutine-Übergänge sind
+noch nachzuweisen. Diese Grundlage allein belegt keinen vollständigen Restore.
+
+Abnahme Wartungsgrundlage: drei Methoden ohne Fehler/Skips, lintDebug ohne
+Error/Fatal und assembleDebug erfolgreich; git diff --check sauber. Nachweise:
+/workspace/immopilot-maintenance-tests.log und /workspace/immopilot-maintenance-build.log.

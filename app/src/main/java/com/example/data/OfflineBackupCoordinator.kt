@@ -33,6 +33,8 @@ internal class OfflineBackupCoordinator {
     private var generation = 0L
     private var activeWriters = 0L
     private var blockedReason: String? = null
+    private var maintenance: Maintenance? = null
+    private val maintenanceWriter = ThreadLocal<Maintenance?>()
     private val initializations = mutableSetOf<CompletableDeferred<Unit>>()
     private val preferences = IdentityHashMap<SharedPreferences, SharedPreferences>()
 
@@ -43,7 +45,35 @@ internal class OfflineBackupCoordinator {
         else generation++
     }
 
+    internal inner class Maintenance internal constructor() : Closeable {
+        internal fun <T> writing(action: () -> T): T {
+            synchronized(monitor) {
+                check(maintenance === this) { "Wartung ist nicht mehr aktiv." }
+            }
+            val previous = maintenanceWriter.get()
+            maintenanceWriter.set(this)
+            try { return action() } finally { maintenanceWriter.set(previous) }
+        }
+        override fun close() = synchronized(monitor) {
+            if (maintenance === this) {
+                check(activeWriters == 0L) { "Wartungsschreibvorgänge laufen noch." }
+                maintenance = null
+                advance()
+            }
+        }
+    }
+
+    /** Enter only at a quiet boundary; pending and already-running writers count. */
+    fun beginMaintenance(): Maintenance = synchronized(monitor) {
+        blockedReason?.let { throw OfflineBackupValidationException(it) }
+        if (maintenance != null || activeWriters != 0L)
+            throw OfflineBackupValidationException("Daten werden gerade geändert. Bitte die Wiederherstellung später erneut starten.")
+        Maintenance().also { maintenance = it; advance() }
+    }
+
     fun beginWrite(): Closeable = synchronized(monitor) {
+        if (maintenance != null && maintenanceWriter.get() !== maintenance)
+            throw OfflineBackupValidationException("Wiederherstellung läuft. Änderungen und Sicherungen sind vorübergehend gesperrt.")
         advance()
         activeWriters++
         object : Closeable {
@@ -133,6 +163,7 @@ internal class OfflineBackupCoordinator {
     }
 
     fun beginCapture(): Capture = synchronized(monitor) {
+        if (maintenance != null) throw OfflineBackupValidationException("Während der Wiederherstellung ist keine Sicherung möglich.")
         blockedReason?.let { throw OfflineBackupValidationException(it) }
         if (activeWriters != 0L) throw OfflineBackupValidationException("Daten werden gerade geändert. Bitte die Sicherung später erneut starten.")
         Capture(this, generation)
@@ -140,6 +171,7 @@ internal class OfflineBackupCoordinator {
 
     /** Call only after all captured metadata and original bytes are fixed in private staging. */
     fun completeCapture(capture: Capture) = synchronized(monitor) {
+        if (maintenance != null) throw OfflineBackupValidationException("Während der Wiederherstellung ist keine Sicherung möglich.")
         blockedReason?.let { throw OfflineBackupValidationException(it) }
         if (capture.owner !== this || activeWriters != 0L || capture.generation != generation) {
             throw OfflineBackupValidationException("Daten wurden während der Erfassung geändert. Die Sicherung wurde abgebrochen.")
