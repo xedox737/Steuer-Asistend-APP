@@ -49,10 +49,15 @@ internal class OfflineBackupCoordinator {
         internal fun <T> writing(action: () -> T): T {
             synchronized(monitor) {
                 check(maintenance === this) { "Wartung ist nicht mehr aktiv." }
+                activeWriters++
+                advance()
             }
             val previous = maintenanceWriter.get()
             maintenanceWriter.set(this)
-            try { return action() } finally { maintenanceWriter.set(previous) }
+            try { return action() } finally {
+                maintenanceWriter.set(previous)
+                synchronized(monitor) { activeWriters--; advance() }
+            }
         }
         override fun close() = synchronized(monitor) {
             if (maintenance === this) {
@@ -69,6 +74,10 @@ internal class OfflineBackupCoordinator {
         if (maintenance != null || activeWriters != 0L)
             throw OfflineBackupValidationException("Daten werden gerade geändert. Bitte die Wiederherstellung später erneut starten.")
         Maintenance().also { maintenance = it; advance() }
+    }
+
+    internal fun requireMaintenance(token: Maintenance) = synchronized(monitor) {
+        check(maintenance === token) { "Die gemeinsame Wartungssperre ist nicht aktiv." }
     }
 
     fun beginWrite(): Closeable = synchronized(monitor) {

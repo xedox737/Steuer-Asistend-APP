@@ -31,6 +31,29 @@ class OfflineBackupMaintenanceTest {
         coordinator.completeCapture(coordinator.beginCapture())
     }
 
+    @Test fun cannotReleaseTokenWhileItsSynchronousActionIsStillRunning() {
+        val coordinator = OfflineBackupCoordinator()
+        val maintenance = coordinator.beginMaintenance()
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            val action = executor.submit {
+                maintenance.writing {
+                    entered.countDown()
+                    check(release.await(10, TimeUnit.SECONDS))
+                    coordinator.writing { }
+                }
+            }
+            assertTrue(entered.await(10, TimeUnit.SECONDS))
+            assertThrows(IllegalStateException::class.java) { maintenance.close() }
+            assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginWrite() }
+            release.countDown(); action.get(10, TimeUnit.SECONDS)
+            maintenance.close()
+            coordinator.writing { }
+        } finally { release.countDown(); executor.shutdownNow() }
+    }
+
     @Test fun maintenancePrivilegeDoesNotEscapeToOtherThreadsOrSurviveRelease() {
         val coordinator = OfflineBackupCoordinator()
         val executor = Executors.newSingleThreadExecutor()

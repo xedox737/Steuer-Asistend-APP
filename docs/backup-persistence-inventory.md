@@ -2627,3 +2627,34 @@ ohne Error/Fatal, assembleDebug und git diff --check bestanden. Ein anfängliche
 Test-Kompilierfehler durch zwei falsche Imports wurde korrigiert. Nachweise:
 /workspace/immopilot-restore-startup-tests-final.log und
 /workspace/immopilot-restore-startup-build.log. Kein Emulator-Gerätenachweis.
+
+### Schritt 8 – privater Datenbank-Rückfallstand
+
+`OfflineRestoreDatabaseSnapshot` erstellt unter der gemeinsamen Wartungssperre
+und nach konservativer Speicherprüfung eine eigene Room-Datenbank im lokalen
+Rückfallbereich. Die 18 fachlichen Tabellen und das lokale Migrationsjournal
+werden zeilenweise in einer Transaktion kopiert; `sqlite_sequence` wird ebenfalls
+übernommen. Bidirektionale Zeilenvergleiche und eine anschließende Room-/SQLite-
+Integritätsprüfung prüfen die Kopie. Ergebnis sind UUID, Dateigröße, SHA-256 und
+Tabellenzähler. Bereits belegte Pfade werden nicht überschrieben; Fehlschläge
+räumen nur die eigenen neu angelegten Dateien auf.
+
+Die Kopie übernimmt Dateipfade als Daten, ohne deren Existenz vorauszusetzen.
+Dadurch bleibt ein aktueller Bestand mit bereits fehlenden Originalen als
+Datenbank-Rückfallstand erfassbar; die fehlenden Originale sind gesondert im
+vollständigen Rückfalljournal zu dokumentieren. Die Kopie allein umfasst weder
+Preferences noch Originaldateien und ist keine vollständige Sicherung. Ihre
+Integrität und Zuordnung zum Journal müssen vor späterem Zurückspielen erneut
+geprüft werden.
+
+Das Wartungstoken registriert jetzt auch die gesamte Dauer seiner ausdrücklich
+berechtigten synchronen Aktion. Dadurch kann es nicht zwischen einzelnen
+Datenbankoperationen durch einen anderen Thread freigegeben werden. Sieben
+gezielte Testmethoden prüfen fehlende Pfade, IDs und Zählerstände, belegten
+Rückfallplatz, fremde/abgelaufene Tokens und konkurrierende Tokenfreigabe.
+
+Abnahme Datenbank-Rückfallkopie: drei Snapshot- und vier Wartungstests ohne
+Fehler/Skips; lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Nachweise: /workspace/immopilot-restore-db-maintenance-tests.log und
+/workspace/immopilot-restore-db-maintenance-build.log. Noch kein vollständiger
+Rollback oder Geräte-/Prozessneustarttest.
