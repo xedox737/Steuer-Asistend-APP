@@ -2582,3 +2582,26 @@ noch nachzuweisen. Diese Grundlage allein belegt keinen vollständigen Restore.
 Abnahme Wartungsgrundlage: drei Methoden ohne Fehler/Skips, lintDebug ohne
 Error/Fatal und assembleDebug erfolgreich; git diff --check sauber. Nachweise:
 /workspace/immopilot-maintenance-tests.log und /workspace/immopilot-maintenance-build.log.
+
+### Schritt 8 – lokales Wiederanlaufjournal
+
+`OfflineRestoreJournal` verwaltet unter dem bereits als LOCAL_ONLY eingestuften
+`noBackupFilesDir/offline-backup-state` einen eigenen atomaren Journaleintrag.
+Eine lokale Owner-Kennung und drei kanonische UUIDs binden Operation, Staging und
+Rückfallstand. Die einzigen erlaubten Phasen sind PREPARED, FILES, DATABASE,
+PREFERENCES, ROLLBACK, COMMITTED und ROLLED_BACK; Übergänge verlangen den genau
+zuletzt gelesenen Eintrag. Nur ein expliziter Endzustand darf entfernt werden.
+Schreiben verwendet AtomicFile, fsync und anschließendes erneutes Lesen.
+Unbekannte Felder/Owner/Phasen, doppelte Felder, ungültiges UTF-8, Übergröße und
+verwaiste unvollständige Erstschreibdateien werden als Fehler behandelt und
+nicht überschrieben. Kein Passwort oder Credential wird im Journal gespeichert.
+
+Der Journalbaustein bestätigt selbst keinen Restore und prüft nicht, ob die
+zugehörigen Rückfalldaten existieren. Die kommende Wiederanlauf-/Restore-Logik
+muss diese nachweisen, vor fachlichem App-Start auswerten und bei Problemen den
+Normalbetrieb sperren. Die bestehende Drive-Journal-Semantik bleibt getrennt.
+
+Abnahme Journalbaustein: drei Testmethoden jeweils auf API 24 und 35 ohne
+Fehler oder Skips, lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Nachweise: /workspace/immopilot-restore-journal-tests.log und
+/workspace/immopilot-restore-journal-build.log.
