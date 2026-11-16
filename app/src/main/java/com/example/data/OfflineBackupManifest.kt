@@ -149,7 +149,7 @@ internal object OfflineBackupManifest {
         }
     }
 
-    private fun portableKind(path: String): OfflineBackupFileInventory.Kind? {
+    internal fun portableKind(path: String): OfflineBackupFileInventory.Kind? {
         if ('\\' in path || '\u0000' in path) return null
         val parts = path.split('/')
         if (parts.size < 2 || parts.any { it.isEmpty() || it in setOf(".", "..") }) return null

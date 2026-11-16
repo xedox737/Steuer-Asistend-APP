@@ -2823,3 +2823,27 @@ Bestandteile und ungültigem gebundenem Index; lintDebug ohne Error/Fatal,
 assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-rollback-index-verify.log. Noch keine vollständige
 Payload-/Schema-Prüfung und kein Rückrollen.
+
+### Schritt 8 – Prüfung der Rückfall-Dateien und Referenzen
+
+`OfflineRestoreFileManifestVerifier` validiert nach dem journalgebundenen Index
+die beiden privaten Dateiverzeichnisse mit strengem UTF-8/JSON. Die bekannten
+portablen Wurzeln und Dateikategorien werden gegen denselben Vertrag wie beim
+Archivimport geprüft; doppelte Pfade, unbekannte Felder, ungültige Reihenfolgen,
+Traversal, unzulässige Zustände und falsche Referenzen auf app-eigene Kopien
+werden abgewiesen. Jede aufgeführte app-eigene und externe Datei wird über Größe
+und SHA-256 vollständig rückgelesen; zusätzliche unbekannte Dateien verhindern
+eine Freigabe. Journal und direkte Manifest-Hashes werden am Ende erneut geprüft.
+
+Der Baustein prüft Dateinutzdaten und ihre internen Zuordnungen. Er beweist noch
+nicht, dass sämtliche Pfad-Hashes vollständig zu den Zeilen des gesicherten
+Datenbankbestands passen; Datenbankschema, Preference-Struktur, Credentials und
+die tatsächliche Rückfallanwendung bleiben ebenfalls weitere Schritte.
+
+Abnahme Rückfall-Dateiprüfung: vier Methoden ohne Fehler/Skips, einschließlich
+manipulierter Payloads, Traversal und ungültiger Referenz bei angepassten
+Manifest-Hashes. lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Der erste Kompilierversuch meldete einen fehlenden expliziten Kotlin-
+Null-Check; danach bestanden die Tests. Nachweise:
+/workspace/immopilot-rollback-files-verify-tests-fixed.log und
+/workspace/immopilot-rollback-files-verify-build.log.
