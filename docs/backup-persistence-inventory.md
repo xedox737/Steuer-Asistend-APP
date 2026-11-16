@@ -2537,3 +2537,28 @@ Archivfall scheiterte am Activity-Zugriff aus dem IO-Testthread. Nach Zugriff
 auf dem Testthread bestand auch dieser gezielt erneut. lintDebug ohne Error/Fatal,
 assembleDebug und git diff --check erfolgreich. Logs: /workspace/immopilot-restore-preview-tests.log,
 /workspace/immopilot-restore-preview-fixed.log und /workspace/immopilot-restore-preview-build.log.
+
+### Schritt 8 – Zuständigkeit des Wiederanlaufjournals
+
+Der vorhandene Drive-Journal in `restore_journal_prefs/latest_journal` enthält
+`restoreId`, Modus, Phase, Zeitpunkte und Belegzähler. Er wird mit `apply()`
+geschrieben und sein Leser behandelt fehlerhaftes JSON wie einen fehlenden
+Eintrag. Er enthält weder Rückfallstand noch dessen Integritätsnachweis und
+besitzt keinen nachgewiesenen Wiederanlauf vor fachlicher Initialisierung.
+`FullRestoreCoordinator` meldet außerdem einen Fehler im Zusatzdatenimport,
+nachdem der Kern bereits übernommen worden sein kann. Diese Drive-Semantik
+reicht für einen atomaren lokalen Ersatz-Restore nicht aus.
+
+Für den lokalen Restore ist deshalb ein getrennt gekennzeichneter, dauerhaft
+atomar geschriebener Journalvertrag vorzusehen. Seine Operationskennung muss
+Phase, Staging und Rückfallstand eindeutig binden. Ein unlesbares oder offenes
+lokales Journal darf beim Start nicht als fehlend interpretiert werden. Der
+vorhandene Drive-Journal bleibt für seine bisherigen Drive-Abläufe zuständig;
+beide Restore-Wege müssen über dieselbe Wartungssperre koordiniert werden. Der
+bereits festgelegte Zeilenimport in einer Room-Transaktion bleibt verbindlich.
+
+Diese Festlegung ist eine Architekturentscheidung, keine Behauptung einer
+bereits implementierten Sperre, Wiederanlaufprüfung oder Rückfallfunktion. Vor
+Bestandsänderungen müssen insbesondere Wiederanlauf, Speicherprüfung,
+Rollback auch bei bereits fehlenden Originalen und die Unterdrückung des
+anschließenden automatischen Drive-Sync nachgewiesen werden.
