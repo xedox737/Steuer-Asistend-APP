@@ -2724,3 +2724,33 @@ Abnahme app-eigene Dateirücklage: drei Methoden ohne Fehler/Skips, lintDebug oh
 Error/Fatal, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-owned-files-verify.log. Noch kein vollständiger
 Dateirückfall oder Prozessneustarttest.
+
+### Schritt 8 – externe und bereits nicht verfügbare Originalreferenzen
+
+`OfflineRestoreReferenceSnapshot` liest die aktuellen Referenzen aus den
+Room-Metadaten unter der gemeinsamen Wartungssperre. Zuvor prüft es den
+zugehörigen app-eigenen Dateirückfallstand anhand von UUID, Manifest-Hash,
+Inventar und den Bytes beider Seiten. App-eigene Referenzen werden mit dessen
+fixierten Kopien verknüpft. Erreichbare externe Dateien und Content-URIs werden
+in einen eigenen privaten Bereich kopiert, synchronisiert sowie Quelle und Kopie
+vollständig rückgelesen. Nicht verfügbare Verweise werden ausdrücklich als
+UNAVAILABLE festgehalten; sie werden nicht durch andere Dateien ersetzt. Bei
+Anbieteränderung oder beschädigter eigener Kopie wird abgebrochen und nur der
+neu angelegte Referenzbereich entfernt.
+
+Vor externen Kopien werden bekannter lokaler Umfang und für Content-URIs je
+konservativ 1 GiB plus Reserve geprüft; ein größerer unbekannter Inhalt führt zum
+Abbruch. Der private Referenzindex enthält UUID, interne Referenzkennung,
+Pfad-Hash statt Klartextpfad, Beschreibung, Zustand sowie Kopie/Größe/Hash.
+Die benötigten ursprünglichen Pfade bleiben im bereits gesicherten Datenbank-
+Rückfallstand. Die durch die Metadatenerfassung erzeugte temporäre Datei wird vor
+Übergabe entfernt. Dies ist noch kein abgeschlossener Rollback: Journalbindung,
+Validierung bei erneutem App-Start, Credentials und tatsächlich transaktionales
+Anwenden/Zurückspielen fehlen weiterhin.
+
+Abnahme Referenzrücklage: drei Methoden ohne Fehler/Skips einschließlich
+lokaler und simulierter Content-URI, bereits nicht verfügbarer Verweise,
+beschädigter eigener Kopie und einer Anbieteränderung beim Rücklesen. lintDebug
+ohne Error/Fatal, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-references-verify.log. Keine echten Anbieter oder
+Nutzerdateien verwendet.
