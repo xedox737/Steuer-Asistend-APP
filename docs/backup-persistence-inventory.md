@@ -2798,3 +2798,28 @@ Startschutzmethoden ohne Fehler/Skips; lintDebug ohne Error/Fatal, assembleDebug
 und git diff --check bestanden. Nachweise:
 /workspace/immopilot-restore-journal-binding-tests.log und
 /workspace/immopilot-restore-journal-binding-build.log.
+
+### Schritt 8 – erste Prüfung des Rückfallverzeichnisses
+
+`OfflineRestoreRollbackVerifier.verifyIndex` prüft lesend den erwarteten
+aktuellen Journal vor und nach der Prüfung. Das über Größe und SHA-256 gebundene
+Rückfallverzeichnis wird begrenzt und mit strengem UTF-8/JSON gelesen: nur
+bekannte und genau einmal vorhandene Felder, kanonische Zahlen, begrenzte
+Anzahlen, gültige Hashes und passende Rückfall-UUID. Die daraus abgeleiteten
+privaten Pfade müssen reguläre, kanonisch zuordenbare Dateien sein. Datenbank,
+Preference-Datei und beide Dateimanifeste werden vollständig gestreamt und gegen
+ihre gebundenen Größen und Hashes geprüft. Ein Fehler verändert weder Journal
+noch den fachlichen Bestand.
+
+Dieses Ergebnis ist ausdrücklich noch keine vollständige Rückfallfreigabe:
+Inhalt und Schema der Datenbank, Preference-Struktur, die einzelnen Datei- und
+Referenzmanifeste samt sämtlicher Payloadbytes und deren Zuordnung zum Bestand
+müssen anschließend geprüft werden. Vor einer tatsächlichen Änderung müssen
+auch zwischenzeitliche Änderungen ausgeschlossen und der Journal weiterhin
+verbindlich sein.
+
+Abnahme Rückfallindex: drei Methoden ohne Fehler/Skips einschließlich manipulierter
+Bestandteile und ungültigem gebundenem Index; lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-rollback-index-verify.log. Noch keine vollständige
+Payload-/Schema-Prüfung und kein Rückrollen.
