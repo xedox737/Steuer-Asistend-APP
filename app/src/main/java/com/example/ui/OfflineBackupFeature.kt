@@ -19,10 +19,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.example.data.OfflineBackupRestoreInspector
 import com.example.data.OfflineBackupService
 import com.example.data.OfflineBackupValidationException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -44,7 +47,33 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
     var exportStatus by remember { mutableStateOf<String?>(null) }
     var exportArchive by remember { mutableStateOf<File?>(null) }
     var prepared by remember { mutableStateOf<OfflineBackupService.Prepared?>(null) }
-    DisposableEffect(Unit) { onDispose { prepared?.close(); exportArchive?.delete() } }
+    var restoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var inspected by remember { mutableStateOf<OfflineBackupRestoreInspector.Prepared?>(null) }
+    var inspectStatus by remember { mutableStateOf<String?>(null) }
+    var inspectJob by remember { mutableStateOf<Job?>(null) }
+    DisposableEffect(Unit) { onDispose {
+        inspectJob?.cancel()
+        val owned = inspected
+        if (owned != null) scope.launch(Dispatchers.IO + NonCancellable) {
+            try { owned.close() } catch (_: Exception) {
+                com.example.util.DiagnosticLog.e("OfflineBackup", "Private restore inspection cleanup failed")
+            }
+        }
+        prepared?.close(); exportArchive?.delete()
+    } }
+    fun closeInspected() {
+        val owned = inspected ?: return
+        inspected = null
+        busy = true
+        scope.launch(Dispatchers.IO + NonCancellable) {
+            try { owned.close() }
+            catch (_: Exception) { inspectStatus = "Die privaten Prüfdaten konnten nicht vollständig entfernt werden." }
+            finally { busy = false }
+        }
+    }
+    val inspectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && !busy && !backupState.busy && inspected == null) restoreUri = uri
+    }
     val export = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         val temporary = exportArchive
         if (uri == null || temporary == null) {
@@ -86,12 +115,20 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
         Column(Modifier.padding(Ui2.padding), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Lokale Vollsicherung", color = DarkNavy)
             Text("Belege, Originaldateien, Immobilien, Mieten, Bank, AfA, Fahrtenbuch und Einstellungen – ohne Google-Konto. Neue Sicherungen sind passwortgeschützt. Persönliche API-Schlüssel werden nur mit ausdrücklicher Einwilligung mitgesichert.", color = SlateGray)
-            EncryptedBackupControls(backupState, blocked = busy || prepared != null,
+            EncryptedBackupControls(backupState, blocked = busy || prepared != null || inspected != null || restoreUri != null,
                 onFolder = { folder.launch(backupState.config.targetUri?.let(android.net.Uri::parse)) },
                 onConfigure = { password, confirmation, change -> controller.configure(password, confirmation, change) },
                 onManualCredentials = { controller.setManualCredentials(it) },
                 onSave = { controller.save() }, onCancel = { controller.cancel() }, onReload = { controller.reload() })
-            TextButton(onClick = { legacyOptions = !legacyOptions }, enabled = !busy && !backupState.busy,
+            OutlinedButton(onClick = { inspectPicker.launch(arrayOf("application/octet-stream")) },
+                enabled = !busy && !backupState.busy && prepared == null && inspected == null && restoreUri == null,
+                modifier = Modifier.fillMaxWidth().testTag("offline_backup_restore_inspect")) { Text("Verschlüsselte Sicherung prüfen") }
+            if (inspectJob?.isActive == true) {
+                androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth())
+                TextButton(onClick = { inspectJob?.cancel() }, modifier = Modifier.testTag("offline_restore_cancel")) { Text("Prüfung abbrechen") }
+            }
+            inspectStatus?.let { Text(it, Modifier.testTag("offline_restore_status")) }
+            TextButton(onClick = { legacyOptions = !legacyOptions }, enabled = !busy && !backupState.busy && inspected == null && restoreUri == null,
                 modifier = Modifier.testTag("offline_backup_legacy_options")) {
                 Text(if (legacyOptions) "V1-Optionen schließen" else "Ältere V1-ZIP-Sicherungen")
             }
@@ -119,9 +156,9 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
                             }
                         }
                     }
-                }, enabled = !busy && !backupState.busy,
+                }, enabled = !busy && !backupState.busy && inspected == null && restoreUri == null,
                     modifier = Modifier.fillMaxWidth().testTag("offline_backup_legacy_export")) { Text("Unverschlüsselte V1-ZIP speichern") }
-                OutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, enabled = !busy && !backupState.busy,
+                OutlinedButton(onClick = { import.launch(arrayOf("application/zip", "application/octet-stream")) }, enabled = !busy && !backupState.busy && inspected == null && restoreUri == null,
                     modifier = Modifier.fillMaxWidth().testTag("offline_backup_import")) { Text("V1-ZIP prüfen und ergänzen") }
             }
             if (busy) Text("Sicherung wird verarbeitet …")
@@ -130,6 +167,30 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
             }
         }
     }
+    restoreUri?.let { uri ->
+        EncryptedRestorePasswordDialog(onDismiss = { restoreUri = null }, onConfirm = { password ->
+            restoreUri = null
+            busy = true
+            inspectStatus = "Sicherung wird vollständig entschlüsselt und geprüft …"
+            val job = scope.launch {
+                try {
+                    inspected = OfflineBackupRestoreInspector.inspect(context, password) {
+                        context.contentResolver.openInputStream(uri)
+                            ?: throw OfflineBackupValidationException("Die Sicherung konnte nicht geöffnet werden.")
+                    }
+                    inspectStatus = "Vollsicherung vollständig geprüft. Es wurden keine Daten übernommen."
+                } catch (error: CancellationException) {
+                    inspectStatus = "Prüfung abgebrochen. Es wurden keine Daten übernommen."
+                    throw error
+                } catch (error: OfflineBackupValidationException) { inspectStatus = error.message }
+                catch (_: Exception) { inspectStatus = "Die Sicherung konnte nicht geprüft werden. Es wurden keine Daten übernommen." }
+                finally { password.fill('\u0000'); busy = false }
+            }
+            job.invokeOnCompletion { password.fill('\u0000') }
+            inspectJob = job
+        })
+    }
+    inspected?.let { EncryptedRestorePreviewDialog(it.preview, onClose = { closeInspected() }) }
     prepared?.let { snapshot ->
         AlertDialog(onDismissRequest = { if (!busy) { snapshot.close(); prepared = null } },
             title = { Text("Lokale Sicherung wiederherstellen?") },

@@ -103,6 +103,64 @@ class OfflineBackupPickerComposeTest {
         assertEquals(listOf(receipt), database.receiptDao().getAllReceiptsList())
     }
 
+    private fun openEncryptedInspection() {
+        ui.onNodeWithTag("offline_backup_restore_inspect").performScrollTo().performClick()
+        ui.mainClock.advanceTimeByFrame()
+        ui.runOnUiThread {
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            assertTrue(dialog.isShowing)
+            val density = ui.activity.resources.displayMetrics.density
+            dialog.window!!.setLayout((360 * density).toInt(), (700 * density).toInt())
+        }
+    }
+
+    @Test fun encryptedPickerChecksRealArchiveAndShowsReadOnlyPreviewWithoutApplyingData() {
+        val password = "synthetic-recovery-password"
+        val application = ui.activity.application
+        val bytes = runBlocking(Dispatchers.IO) {
+            com.example.data.OfflineBackupKeyEnvelope.create(password.toCharArray()).use { generation ->
+                com.example.data.OfflineBackupSnapshot.capture(application, database).use { snapshot ->
+                    val output = java.io.ByteArrayOutputStream()
+                    com.example.data.OfflineBackupArchiveCrypto.encrypt(generation, output) { snapshot.writeArchive(it) }
+                    output.toByteArray()
+                }
+            }
+        }
+        select(File(ui.activity.cacheDir, "selected-encrypted-backup.immobak").apply { writeBytes(bytes) })
+        openEncryptedInspection()
+        ui.onNodeWithTag("offline_restore_password").assert(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsProperties.Password))
+        ui.onNodeWithTag("offline_restore_password").performTextInput(password)
+        ui.onNodeWithTag("offline_restore_password_confirm").performClick()
+        ui.waitUntil(10_000) { ui.onAllNodesWithTag("offline_restore_preview").fetchSemanticsNodes().isNotEmpty() }
+        ui.onNodeWithText("1 Immobilien · 1 Belege").assertExists()
+        ui.onNodeWithText("Die Prüfung hat noch keine Daten verändert.").assertExists()
+        ui.onNodeWithText("Wiederherstellen").assertDoesNotExist()
+        assertLocalDataUnchanged()
+        ui.onNodeWithTag("offline_restore_preview_close").performClick()
+        ui.waitUntil(10_000) {
+            ui.onAllNodesWithTag("offline_restore_preview").fetchSemanticsNodes().isEmpty() &&
+                File(ui.activity.filesDir, "offline-backup-staging").listFiles().orEmpty().isEmpty()
+        }
+        assertLocalDataUnchanged()
+    }
+
+    @Test fun cancellingEncryptedPasswordDialogDiscardsInputAndNeverStartsInspection() {
+        val original = File(ui.activity.cacheDir, "not-inspected.immobak").apply { writeText("keep untouched") }
+        select(original)
+        openEncryptedInspection()
+        ui.onNodeWithTag("offline_restore_password").performTextInput("short")
+        ui.onNodeWithTag("offline_restore_password_confirm").assertIsNotEnabled()
+        ui.onNodeWithText("Abbrechen").performClick()
+        openEncryptedInspection()
+        ui.onNodeWithTag("offline_restore_password").assert(SemanticsMatcher.expectValue(
+            androidx.compose.ui.semantics.SemanticsProperties.EditableText, androidx.compose.ui.text.AnnotatedString("")))
+        ui.onNodeWithText("Abbrechen").performClick()
+        assertEquals("keep untouched", original.readText())
+        ui.onNodeWithTag("offline_restore_preview").assertDoesNotExist()
+        ui.onNodeWithTag("offline_restore_status").assertDoesNotExist()
+        assertLocalDataUnchanged()
+    }
+
     @Test fun encryptedDefaultUsesFolderPickerAndCancellationKeepsConfiguration() {
         ui.onNodeWithTag("offline_backup_legacy_options").performScrollTo().performClick()
         ui.onNodeWithTag("offline_backup_legacy_export").assertDoesNotExist()

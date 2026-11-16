@@ -2510,3 +2510,30 @@ Nicht-ZIP-Daten, verweigerten Anbieterzugriff und Abbruch vor IO-Eintritt.
 lintDebug ohne Error/Fatal, assembleDebug und git diff --check erfolgreich.
 Logs: /workspace/immopilot-restore-inspector-tests.log und
 /workspace/immopilot-restore-inspector-build.log. Kein echter Gerätewechsel-Test.
+
+### Schritt 7 – verschlüsselte Prüfung und Vorschau in der Karte
+
+Die Karte öffnet für V2 einen eigenen OpenDocument-Dialog und fragt anschließend
+nach dem Archivpasswort. Dieses bleibt ausschließlich in flüchtigem, maskiertem
+Dialogzustand; Schließen verwirft die Eingabe. Nur bestätigte CharArrays gelangen
+an den Inspector und werden auch bei abgebrochenem UI-Scope gewischt. Die
+laufende Prüfung ist abbrechbar; V1-/V2-Aktionen sind dabei gegenseitig gesperrt.
+
+Die Vorschau zeigt authentifizierte Zeit-/Umfangsdaten und Credential-Provider,
+weist ausdrücklich auf den bisher unveränderten Bestand hin und ist in diesem
+Inkrement ausschließlich lesend. Tatsächliches Anwenden folgt mit dem Journal
+in Schritt 8. Schließen entfernt private Prüfressourcen auf IO, auch bei
+anschließendem Bildschirmwechsel; laufende Prüfung wird beim Verlassen
+abgebrochen. V1 bleibt separat ergänzend lesbar und ausführbar.
+
+Zusätzliche Picker-Methoden: echter verschlüsselter Snapshot über Content-URI,
+Passwortdialog, vollständige Prüfung/Vorschau, unveränderte fachliche Daten und
+Cleanup; Abbrechen und erneutes Öffnen ohne behaltenes Passwort oder gestartete
+Prüfung. Vorhandene V1-/Ordner-Pickerfälle werden wegen der Kartenänderung gezielt
+mitgeprüft; keine fachfremde Suite.
+
+Abnahme Vorschau: sieben Pickerfälle im ersten Lauf bestanden; der neue
+Archivfall scheiterte am Activity-Zugriff aus dem IO-Testthread. Nach Zugriff
+auf dem Testthread bestand auch dieser gezielt erneut. lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check erfolgreich. Logs: /workspace/immopilot-restore-preview-tests.log,
+/workspace/immopilot-restore-preview-fixed.log und /workspace/immopilot-restore-preview-build.log.
