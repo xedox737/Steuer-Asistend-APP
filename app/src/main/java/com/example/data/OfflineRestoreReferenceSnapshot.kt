@@ -61,7 +61,7 @@ internal object OfflineRestoreReferenceSnapshot {
                     if (!directory.mkdir()) invalid("Der private Rückfallplatz ist bereits belegt.")
                     owned = directory
                     val draftFile = File(directory, "draft.json")
-                    val draft = OfflineBackupMetadataWriter(context, database).write(draftFile)
+                    val draft = OfflineBackupMetadataWriter(context, database, referenceMode = OfflineBackupMetadataWriter.ReferenceMode.ROLLBACK_INVENTORY).write(draftFile)
                     val pending = draft.references.map { reference ->
                         val local = localFile(reference.path)
                         val prior = local?.canonicalPath?.let(ownedByPath::get)

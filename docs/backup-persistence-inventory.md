@@ -2869,3 +2869,25 @@ Abnahme Preference-Prüfung: fünf Methoden ohne Fehler/Skips, darunter historis
 negative Werte, unzulässige Geheimnisfelder und fehlende, unbekannte sowie
 doppelte Speicher. lintDebug ohne Error/Fatal, assembleDebug und git diff --check
 bestanden. Nachweis: /workspace/immopilot-rollback-prefs-verify.log.
+
+### Schritt 8 – fehlende Cloud-Originale im Rückfallinventar
+
+Die Metadatenerfassung besitzt für den ausschließlich internen Rückfall einen
+separaten Referenzmodus. Ein Beleg mit Originalanspruch, aber ohne vorhandenen
+lokalen Pfad, und ein nicht lokal zugeordneter Drive-Anhang erzeugen darin
+stabile interne UNAVAILABLE-Verweise. Sie werden nicht als vorhandene Originale
+oder als vollständige Sicherung bezeichnet. Widersprüchliche oder ungültige alte
+Dateiprüfsummen werden für die Rückfallerfassung nicht als Wahrheit verwendet;
+die vorhandenen Bytes und unveränderten Datenbankwerte bleiben maßgeblich.
+
+Der Standardmodus für reguläre Vollsicherungen bleibt streng und bricht bei
+fehlenden Originalen oder widersprüchlichen Prüfsummen weiterhin ab. Der neue
+Rückfallmodus ist nur für die interne, private Bestandserfassung vorgesehen;
+er führt keinen Cloud-Zugriff aus und verändert den Bestand nicht.
+
+Abnahme: fünf bestehende Metadatentests und vier Rückfallreferenztests ohne
+Fehler/Skips; darunter ein Cloud-only-Beleg mit zusätzlichem fehlendem Anhang,
+während der strenge Vollbackup-Modus denselben Bestand ablehnt. lintDebug ohne
+Error/Fatal, assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-rollback-missing-cloud-tests.log und
+/workspace/immopilot-rollback-missing-cloud-build.log.

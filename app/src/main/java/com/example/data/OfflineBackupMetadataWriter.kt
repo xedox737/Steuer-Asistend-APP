@@ -25,8 +25,10 @@ import org.json.JSONObject
 internal class OfflineBackupMetadataWriter(
     private val context: Context,
     private val database: AppDatabase,
-    private val maximumBytes: Long = MAX_BYTES
+    private val maximumBytes: Long = MAX_BYTES,
+    private val referenceMode: ReferenceMode = ReferenceMode.STRICT_BACKUP
 ) {
+    enum class ReferenceMode { STRICT_BACKUP, ROLLBACK_INVENTORY }
     init { require(maximumBytes in 1..MAX_BYTES) }
     data class Reference(val key: String, val path: String, val owner: String,
         val expectedSha256: String?, val expectedSize: Long?, val verifiedCandidates: List<String>)
@@ -118,19 +120,34 @@ internal class OfflineBackupMetadataWriter(
                     fileOutput.fd.sync()
                 }
             }
-            receipts.forEach { receipt ->
+            fun unavailable(kind: String, identity: String, owner: String) {
+                if (claims.size >= 10_000) invalid("Zu viele Originalverweise in den Rückfallmetadaten.")
+                val path = "offline-missing-$kind:${StableDocumentIdentity.sha256(identity.toByteArray(Charsets.UTF_8))}"
+                if (path in claims) invalid("Eine fehlende Originalzuordnung ist nicht eindeutig.")
+                claims[path] = Claim("original-${claims.size}", path).also { it.owners += owner }
+            }
+            receipts.forEachIndexed { index, receipt ->
                 if (receipt.id !in documentsWithOriginal) {
-                    invalid("${receipt.owner}: Das Original liegt nur in der Cloud oder fehlt lokal. Bitte zuerst lokal herunterladen.")
+                    if (referenceMode == ReferenceMode.STRICT_BACKUP)
+                        invalid("${receipt.owner}: Das Original liegt nur in der Cloud oder fehlt lokal. Bitte zuerst lokal herunterladen.")
+                    unavailable("receipt", "${receipt.id}\u0000$index", receipt.owner)
                 }
             }
-            if (!availableDriveIds.containsAll(attachmentDriveIds)) invalid("Ein zusätzlicher Beleganhang besitzt keine lokal auflösbare Originalzuordnung.")
+            val missingAttachments = attachmentDriveIds - availableDriveIds
+            if (missingAttachments.isNotEmpty() && referenceMode == ReferenceMode.STRICT_BACKUP)
+                invalid("Ein zusätzlicher Beleganhang besitzt keine lokal auflösbare Originalzuordnung.")
+            if (referenceMode == ReferenceMode.ROLLBACK_INVENTORY) missingAttachments.sorted().forEach { driveId ->
+                unavailable("attachment", driveId, "Beleganhang mit nicht verfügbarer Originalzuordnung")
+            }
             val hashes = claims.values.associate { claim ->
-                if (claim.hashes.size > 1 || claim.sizes.size > 1) invalid("${claim.owners.joinToString("; ")}: Widersprüchliche Originalmetadaten.")
-                claim.path to claim.hashes.singleOrNull()
+                if (referenceMode == ReferenceMode.STRICT_BACKUP && (claim.hashes.size > 1 || claim.sizes.size > 1))
+                    invalid("${claim.owners.joinToString("; ")}: Widersprüchliche Originalmetadaten.")
+                claim.path to if (referenceMode == ReferenceMode.STRICT_BACKUP) claim.hashes.singleOrNull() else null
             }
             val references = claims.values.map { claim ->
                 val hash = hashes[claim.path]
-                Reference(claim.key, claim.path, claim.owners.joinToString("; "), hash, claim.sizes.singleOrNull(),
+                Reference(claim.key, claim.path, claim.owners.joinToString("; "), hash,
+                    if (referenceMode == ReferenceMode.STRICT_BACKUP) claim.sizes.singleOrNull() else null,
                     if (hash == null) emptyList() else (claim.candidates + claims.values.filter { hashes[it.path] == hash }.map { it.path }).distinct())
             }
             cancellation.ensureActive()
@@ -193,11 +210,12 @@ internal class OfflineBackupMetadataWriter(
                 claim.owners += display
                 if (table == "managed_documents" && column == "localUri") {
                     val hash = text("sha256").lowercase(java.util.Locale.ROOT)
-                    if (hash.isNotBlank()) {
+                    if (hash.isNotBlank() && referenceMode == ReferenceMode.STRICT_BACKUP) {
                         if (!Regex("[0-9a-f]{64}").matches(hash)) invalid("$display: Die gespeicherte Prüfsumme ist ungültig.")
                         claim.hashes += hash
                     }
-                    (row["fileSizeBytes"] as? Number)?.toLong()?.takeIf { it > 0 }?.let(claim.sizes::add)
+                    if (referenceMode == ReferenceMode.STRICT_BACKUP)
+                        (row["fileSizeBytes"] as? Number)?.toLong()?.takeIf { it > 0 }?.let(claim.sizes::add)
                     val filename = text("storedFilename")
                     if (filename.isNotBlank() && filename !in setOf(".", "..") && '/' !in filename && '\\' !in filename) {
                         val directory = File(context.filesDir, "managed_documents").canonicalFile

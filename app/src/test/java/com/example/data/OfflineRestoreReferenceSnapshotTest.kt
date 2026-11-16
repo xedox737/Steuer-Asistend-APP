@@ -122,6 +122,27 @@ class OfflineRestoreReferenceSnapshotTest {
         }
     }
 
+    @Test fun rollbackRecordsCloudOnlyReceiptAndAttachmentWhileFullBackupStillRejectsThem() = runBlocking<Unit> {
+        database.receiptDao().insertReceipt(Receipt(id = 42, internalId = "cloud-only", propertyId = "house", aussteller = "Cloud",
+            datum = "2026-11-11", uhrzeit = "", bruttobetrag = 1.0, hauptkategorie = "Kosten", unterkategorie = "Reparatur",
+            kontoNr = "4800", beschreibung = "Nicht lokal", driveFileId = "synthetic-cloud-original", originalMimeType = "application/pdf"))
+        database.receiptDocumentDao().insertDocument(ReceiptDocumentReference(id = "cloud-attachment", receiptInternalId = "cloud-only",
+            driveFileId = "synthetic-cloud-attachment", driveFolderId = null, filename = "attachment.pdf", mimeType = "application/pdf",
+            sizeBytes = 123, role = "OTHER", createdAt = "2026-11-11"))
+        val strictFile = File(root, "strict-metadata.json")
+        assertThrows(OfflineBackupValidationException::class.java) { runBlocking { OfflineBackupMetadataWriter(context, database).write(strictFile) } }
+        assertFalse(strictFile.exists())
+        coordinator.beginMaintenance().use { token ->
+            val snapshotId = id(); val owned = OfflineRestoreOwnedFilesSnapshot.capture(context, token, snapshotId)
+            val snapshot = OfflineRestoreReferenceSnapshot.capture(context, database, token, snapshotId, owned)
+            val unavailable = snapshot.references.filter { it.state == OfflineRestoreReferenceSnapshot.State.UNAVAILABLE }
+            assertTrue(unavailable.any { it.path.startsWith("offline-missing-receipt:") })
+            assertTrue(unavailable.any { it.path.startsWith("offline-missing-attachment:") })
+            assertEquals(2, database.receiptDao().getAllReceiptsIncludingDeletedList().size)
+            assertFalse(File(snapshot.directory, "manifest.json").readText().contains("synthetic-cloud-original"))
+        }
+    }
+
     @Test fun changedOwnedSnapshotIsRejectedWithoutDeletingOldOrUnrelatedFiles() = runBlocking<Unit> {
         coordinator.beginMaintenance().use { token ->
             val snapshotId = id(); val owned = OfflineRestoreOwnedFilesSnapshot.capture(context, token, snapshotId)
