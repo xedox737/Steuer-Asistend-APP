@@ -2681,3 +2681,23 @@ Abnahme Preference-Rückfallkopie: zwei Methoden jeweils auf API 24 und 35 ohne
 Fehler/Skips, einschließlich Vergleich mit dem bestehenden Inventar und Ausschluss
 synthetischer Geheimniswerte. lintDebug ohne Error/Fatal, assembleDebug und
 git diff --check bestanden. Nachweis: /workspace/immopilot-restore-prefs-verify.log.
+
+### Schritt 8 – strukturierte Wartungsarbeit über Coroutine-Wechsel
+
+Das Wartungstoken unterstützt zusätzlich einen strukturierten suspendierbaren
+Ablauf. Die ausschließlich dem Token zugeordnete ThreadLocal-Berechtigung wird
+über Coroutine-Kontextwechsel weitergegeben; die gesamte Laufzeit einschließlich
+strukturierter Kindaufgaben bleibt als aktiver Wartungsschreiber registriert.
+Bei Abbruch wird diese Registrierung im `finally` freigegeben. Ein bereits
+freigegebenes Token kann keine neue Arbeit beginnen; andere Threads ohne den
+Kontext erhalten keine Berechtigung.
+
+Dies ist ein interner Baustein für die noch zu implementierende Dateierfassung
+und Restore-Anwendung, keine Freigabe für unstrukturierte Hintergrundaufgaben.
+
+Abnahme Coroutine-Wartungsablauf: fünf Methoden ohne Fehler/Skips, lintDebug ohne
+Error/Fatal, assembleDebug und git diff --check bestanden. Der erste JUnit-Lauf
+meldete einen nicht-void Rückgabetyp der neuen Testmethode; nach Korrektur des
+Test-Rückgabetyps lief die unveränderte Prüfung erfolgreich. Nachweise:
+/workspace/immopilot-maintenance-coroutines-tests-fixed.log und
+/workspace/immopilot-maintenance-coroutines-build.log.

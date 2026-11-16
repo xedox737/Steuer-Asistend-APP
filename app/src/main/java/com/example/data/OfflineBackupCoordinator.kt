@@ -12,6 +12,8 @@ import androidx.sqlite.db.SupportSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteStatement
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.asContextElement
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -56,6 +58,19 @@ internal class OfflineBackupCoordinator {
             maintenanceWriter.set(this)
             try { return action() } finally {
                 maintenanceWriter.set(previous)
+                synchronized(monitor) { activeWriters--; advance() }
+            }
+        }
+        /** Structured children inherit the permit; the token remains held until all finish. */
+        internal suspend fun <T> suspending(action: suspend () -> T): T {
+            synchronized(monitor) {
+                check(maintenance === this) { "Wartung ist nicht mehr aktiv." }
+                activeWriters++
+                advance()
+            }
+            try {
+                return withContext(maintenanceWriter.asContextElement(this)) { action() }
+            } finally {
                 synchronized(monitor) { activeWriters--; advance() }
             }
         }

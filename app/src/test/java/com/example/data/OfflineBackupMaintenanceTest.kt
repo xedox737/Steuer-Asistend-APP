@@ -3,6 +3,13 @@ package com.example.data
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -52,6 +59,26 @@ class OfflineBackupMaintenanceTest {
             maintenance.close()
             coordinator.writing { }
         } finally { release.countDown(); executor.shutdownNow() }
+    }
+
+    @Test fun coroutinePermitSurvivesDispatcherChangeAndReleasesAfterCancellation() = runBlocking<Unit> {
+        val coordinator = OfflineBackupCoordinator()
+        val token = coordinator.beginMaintenance()
+        val entered = CompletableDeferred<Unit>()
+        val action = launch {
+            token.suspending {
+                withContext(Dispatchers.IO) { coordinator.writing { } }
+                entered.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        entered.await()
+        assertThrows(IllegalStateException::class.java) { token.close() }
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginWrite() }
+        action.cancelAndJoin()
+        token.close()
+        coordinator.writing { }
+        assertThrows(IllegalStateException::class.java) { runBlocking { token.suspending { } } }
     }
 
     @Test fun maintenancePrivilegeDoesNotEscapeToOtherThreadsOrSurviveRelease() {
