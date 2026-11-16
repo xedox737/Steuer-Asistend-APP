@@ -3002,3 +3002,19 @@ wiederholte Übernahme, historische Werte, unveränderte Geheimnisse sowie Ableh
 von falscher Phase, fremder Wartungssperre und beschädigtem Snapshot. lintDebug,
 assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-preference-rollback-check.log.
+
+### Schritt 8 – Rückfall der Datenbank
+
+Der interne Datenbankrückfall setzt eine aktive gemeinsame Wartungssperre und
+ein passendes Journal in der Phase ROLLBACK voraus. Vor dem ersten Schreibvorgang
+prüft er die vollständige Datenbankkopie einschließlich Schema, Referenzen,
+Dateinutzdaten und Einstellungen. Die klassifizierten Geschäfts- und lokalen
+Journaltabellen sowie SQLite-Zähler werden in einer Transaktion aus dem gebundenen
+Rückfallstand übernommen und beidseitig verglichen. Anschließend wird der
+abgeleitete Dokumentsuchindex neu aufgebaut. Währenddessen bleibt das Journal im
+Rückfallzustand; bei einem Abbruch kann die Übernahme erneut ausgeführt werden.
+Die Einbindung in den Wiederanlauf und echte Prozessstopptests stehen noch aus.
+
+Abnahme: acht gezielte Datenbanktests ohne Fehler oder Skips, darunter Wiederholung,
+IDs, manipulierte Datenbank und falsche Journalphase. lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis: /workspace/immopilot-database-rollback-check.log.

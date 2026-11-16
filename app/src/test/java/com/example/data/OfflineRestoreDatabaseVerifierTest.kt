@@ -140,4 +140,39 @@ class OfflineRestoreDatabaseVerifierTest {
         assertThrows(OfflineBackupValidationException::class.java) { runBlocking { OfflineRestoreDatabaseVerifier.verify(context, journal) } }
         assertEquals(journal, OfflineRestoreJournal(context).load()); noWorkLeft()
     }
+    @Test fun rollbackRestoresDatabaseRowsAndIdsAndCanBeRepeated() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val journal = OfflineRestoreJournal(context)
+        val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        database.openHelper.writableDatabase.execSQL("DELETE FROM receipts")
+        database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 5, propertyId = "new", name = "Neu"))
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            repeat(2) { OfflineRestoreDatabaseRollback.apply(context, database, token, rollback) }
+        }
+        val receipts = database.receiptDao().getAllReceiptsIncludingDeletedList()
+        assertEquals(setOf(41, 42), receipts.map { it.id }.toSet())
+        assertEquals(setOf("stable", "cloud-only"), receipts.map { it.internalId }.toSet())
+        assertEquals(bundle.database.rowCounts["property_metadata"], 1L)
+        assertEquals(1L, database.openHelper.readableDatabase.query("SELECT count(*) FROM property_metadata").use { it.moveToFirst(); it.getLong(0) })
+        assertEquals(rollback, journal.load())
+        noWorkLeft()
+    }
+    @Test fun rollbackRejectsTamperingAndWrongPhaseWithoutChangingLiveRows() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreDatabaseRollback.apply(context, database, token, prepared)
+            } }
+        }
+        val rollback = OfflineRestoreJournal(context).advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        bundle.database.file.appendText("tampered")
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreDatabaseRollback.apply(context, database, token, rollback)
+            } }
+        }
+        assertEquals(setOf(41, 42), database.receiptDao().getAllReceiptsIncludingDeletedList().map { it.id }.toSet())
+        assertEquals(rollback, OfflineRestoreJournal(context).load())
+    }
+
 }
