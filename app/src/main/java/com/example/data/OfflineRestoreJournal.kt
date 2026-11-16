@@ -9,6 +9,8 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.FileInputStream
+import java.security.MessageDigest
 import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
@@ -18,16 +20,33 @@ import java.util.UUID
 /** Device-only recovery marker. This class does not perform or certify a restore. */
 internal class OfflineRestoreJournal(context: Context) {
     enum class Phase { PREPARED, FILES, DATABASE, PREFERENCES, ROLLBACK, COMMITTED, ROLLED_BACK }
-    data class Entry(val operationId: String, val stagingId: String, val rollbackId: String, val phase: Phase) {
-        init { listOf(operationId, stagingId, rollbackId).forEach { require(UUID.fromString(it).toString() == it) } }
+    data class Entry(val operationId: String, val stagingId: String, val rollbackId: String, val phase: Phase,
+        val rollbackManifestBytes: Long, val rollbackManifestSha256: String) {
+        init {
+            listOf(operationId, stagingId, rollbackId).forEach { require(UUID.fromString(it).toString() == it) }
+            require(rollbackManifestBytes in 1..MAX_BUNDLE_BYTES && rollbackManifestSha256.matches(Regex("[0-9a-f]{64}")))
+        }
     }
     private val directory = File(context.noBackupFilesDir, "offline-backup-state")
     private val file = File(directory, "restore-journal.json")
 
     fun load(): Entry? = synchronized(lock) { guarded { read() } }
-    fun begin(operationId: String, stagingId: String, rollbackId: String): Entry = synchronized(lock) { guarded {
+    fun begin(operationId: String, stagingId: String, rollbackId: String,
+        rollbackManifestBytes: Long, rollbackManifestSha256: String): Entry = synchronized(lock) { guarded {
         if (read() != null) invalid()
-        write(Entry(operationId, stagingId, rollbackId, Phase.PREPARED))
+        val entry = Entry(operationId, stagingId, rollbackId, Phase.PREPARED, rollbackManifestBytes, rollbackManifestSha256)
+        val bundle = File(directory, "rollback-${entry.rollbackId}.bundle.json")
+        require(bundle.absoluteFile == bundle.canonicalFile && bundle.isFile && bundle.length() == rollbackManifestBytes)
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(bundle).use { input ->
+            val buffer = ByteArray(1024); var total = 0L
+            while (true) { val count = input.read(buffer); if (count < 0) break
+                require(count.toLong() <= rollbackManifestBytes - total)
+                digest.update(buffer, 0, count); total += count }
+            require(total == rollbackManifestBytes)
+        }
+        require(digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == rollbackManifestSha256)
+        write(entry)
     } }
     fun advance(expected: Entry, next: Phase): Entry = synchronized(lock) { guarded {
         if (read() != expected || next !in allowed(expected.phase)) invalid()
@@ -49,9 +68,11 @@ internal class OfflineRestoreJournal(context: Context) {
     private fun write(entry: Entry): Entry {
         val buffer = ByteArrayOutputStream()
         JsonWriter(OutputStreamWriter(buffer, Charsets.UTF_8)).use { writer ->
-            writer.beginObject().name("version").value(1L).name("owner").value("local-full-restore")
+            writer.beginObject().name("version").value(2L).name("owner").value("local-full-restore")
                 .name("operationId").value(entry.operationId).name("stagingId").value(entry.stagingId)
-                .name("rollbackId").value(entry.rollbackId).name("phase").value(entry.phase.name).endObject()
+                .name("rollbackId").value(entry.rollbackId).name("phase").value(entry.phase.name)
+                .name("rollbackManifestBytes").value(entry.rollbackManifestBytes)
+                .name("rollbackManifestSha256").value(entry.rollbackManifestSha256).endObject()
         }
         val bytes = buffer.toByteArray(); require(bytes.size <= MAX_BYTES && decode(bytes) == entry)
         check(directory.isDirectory || directory.mkdirs())
@@ -81,13 +102,16 @@ internal class OfflineRestoreJournal(context: Context) {
             val values = mutableMapOf<String, String>(); reader.beginObject()
             while (reader.hasNext()) {
                 val name = reader.nextName(); require(name !in values)
-                val expected = if (name == "version") JsonToken.NUMBER else JsonToken.STRING
+                val expected = if (name == "version" || name == "rollbackManifestBytes") JsonToken.NUMBER else JsonToken.STRING
                 require(reader.peek() == expected); values[name] = reader.nextString()
             }
             reader.endObject(); require(reader.peek() == JsonToken.END_DOCUMENT)
-            require(values.keys == setOf("version", "owner", "operationId", "stagingId", "rollbackId", "phase"))
-            require(values["version"] == "1" && values["owner"] == "local-full-restore")
-            Entry(values.getValue("operationId"), values.getValue("stagingId"), values.getValue("rollbackId"), Phase.valueOf(values.getValue("phase")))
+            require(values.keys == setOf("version", "owner", "operationId", "stagingId", "rollbackId", "phase", "rollbackManifestBytes", "rollbackManifestSha256"))
+            require(values["version"] == "2" && values["owner"] == "local-full-restore")
+            val sizeText = values.getValue("rollbackManifestBytes")
+            val size = sizeText.toLong(); require(size.toString() == sizeText)
+            Entry(values.getValue("operationId"), values.getValue("stagingId"), values.getValue("rollbackId"),
+                Phase.valueOf(values.getValue("phase")), size, values.getValue("rollbackManifestSha256"))
         }
     }
     private inline fun <T> guarded(block: () -> T): T = try { block() }
@@ -97,5 +121,5 @@ internal class OfflineRestoreJournal(context: Context) {
         catch (_: IllegalStateException) { invalid() }
         catch (_: SecurityException) { invalid() }
     private fun invalid(): Nothing = throw OfflineBackupValidationException("Das lokale Wiederherstellungsjournal ist ungültig oder nicht verfügbar. Der Bestand darf noch nicht geöffnet oder verändert werden.")
-    private companion object { val lock = Any(); const val MAX_BYTES = 8192 }
+    private companion object { val lock = Any(); const val MAX_BYTES = 8192; const val MAX_BUNDLE_BYTES = 16L * 1024 }
 }

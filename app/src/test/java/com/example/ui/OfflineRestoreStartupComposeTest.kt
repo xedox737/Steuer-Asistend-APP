@@ -9,6 +9,7 @@ import com.example.MainActivity
 import com.example.data.OfflineRestoreJournal
 import java.io.File
 import java.util.UUID
+import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.After
 import org.junit.Rule
@@ -40,12 +41,17 @@ class OfflineRestoreStartupComposeTest {
     @Test fun pendingRestoreBlocksBusinessUiBeforeViewModelCreation() {
         val id = { UUID.randomUUID().toString() }
         val journal = OfflineRestoreJournal(context)
-        val entry = journal.begin(id(), id(), id())
+        val rollbackId = id()
+        val bundle = File(context.noBackupFilesDir, "offline-backup-state/rollback-$rollbackId.bundle.json")
+        bundle.parentFile!!.mkdirs(); bundle.writeText("synthetic rollback manifest")
+        val hash = MessageDigest.getInstance("SHA-256").digest(bundle.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+        val entry = journal.begin(id(), id(), rollbackId, bundle.length(), hash)
         ActivityScenario.launch(MainActivity::class.java).use {
             ui.onNodeWithTag("offline_restore_startup_blocked").assertExists()
             ui.onNodeWithTag("bottom_navigation").assertDoesNotExist()
             assertEquals(entry, journal.load())
         }
+        bundle.delete()
     }
     @Test fun corruptJournalAlsoBlocksAndIsNotDiscarded() {
         journalFile.parentFile!!.mkdirs(); journalFile.writeText("{broken")

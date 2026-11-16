@@ -2776,3 +2776,25 @@ Abnahme Rückfallverbund: drei Methoden ohne Fehler/Skips, darunter ein bereits
 fehlendes Original und Bereinigung nach spätem Fehler; lintDebug ohne Error/Fatal,
 assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-bundle-verify.log. Kein Restore oder Neustarttest.
+
+### Schritt 8 – Journal bindet das Rückfallverzeichnis
+
+Der lokale Journalvertrag trägt jetzt zusätzlich die begrenzte Byteanzahl und
+SHA-256 des Rückfallverzeichnisses. Vor dem Anlegen prüft der Journal den anhand
+UUID gebildeten privaten Pfad, reguläre Datei, erwartete Größe und vollständigen
+Hash. Eine fehlende, veränderte oder nicht sicher zuordenbare Datei kann keinen
+neuen Journal eröffnen. Die Werte bleiben über jeden Phasenwechsel unverändert;
+beim Lesen werden Format, Typen, kanonische Größe und Hash strikt geprüft.
+Der lokale Journal verwendet dafür Formatversion 2. Ein älterer oder beschädigter
+Eintrag gilt weiterhin als blockierend und wird nicht still zurückgesetzt.
+
+Diese Bindung überprüft bisher nur die Verzeichnisdatei selbst. Vor einem
+Wiederanlauf müssen deren vollständige Struktur und alle einzelnen Datenbank-,
+Preference-, Datei- und Referenzbestandteile anhand des gebundenen Verzeichnisses
+separat verifiziert werden; die vorbereitete Rücklage wird noch nicht angewendet.
+
+Abnahme Journalbindung: acht Journal-Testausführungen auf API 24/35 und drei
+Startschutzmethoden ohne Fehler/Skips; lintDebug ohne Error/Fatal, assembleDebug
+und git diff --check bestanden. Nachweise:
+/workspace/immopilot-restore-journal-binding-tests.log und
+/workspace/immopilot-restore-journal-binding-build.log.
