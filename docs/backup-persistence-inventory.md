@@ -2605,3 +2605,25 @@ Abnahme Journalbaustein: drei Testmethoden jeweils auf API 24 und 35 ohne
 Fehler oder Skips, lintDebug ohne Error/Fatal, assembleDebug und git diff --check
 bestanden. Nachweise: /workspace/immopilot-restore-journal-tests.log und
 /workspace/immopilot-restore-journal-build.log.
+
+### Schritt 8 – geschützter App-Start
+
+MainActivity prüft das lokale Journal vor `setContent` und vor Erzeugung des
+`ReceiptViewModel`, das Room und Synchronisationsabläufe initialisiert. Ein
+vorhandener oder nicht lesbarer Eintrag zeigt ausschließlich einen geschützten
+Hinweis; der Journal wird weder entfernt noch verändert. Ohne Eintrag wird die
+bestehende Oberfläche einschließlich Navigation unverändert gestartet. Ein
+Terminalzustand bleibt ebenfalls gesperrt, bis der spätere Wiederanlauf dessen
+Rückfall-/Abschlussdaten geprüft und das Journal ausdrücklich bereinigt hat.
+
+Drei isolierte Compose-Tests prüfen offenen Journal, beschädigten Journal und
+normalen Start ohne Eintrag. Dies ist eine Eintrittssperre für MainActivity,
+noch kein automatischer Rollback und kein Nachweis für zukünftige Worker oder
+andere Prozesse; deren Eintrittspunkte müssen vor Verwendung gesondert über
+den Wiederanlaufvertrag abgesichert werden.
+
+Abnahme Startschutz: drei echte Compose-Methoden ohne Fehler/Skips, lintDebug
+ohne Error/Fatal, assembleDebug und git diff --check bestanden. Ein anfänglicher
+Test-Kompilierfehler durch zwei falsche Imports wurde korrigiert. Nachweise:
+/workspace/immopilot-restore-startup-tests-final.log und
+/workspace/immopilot-restore-startup-build.log. Kein Emulator-Gerätenachweis.

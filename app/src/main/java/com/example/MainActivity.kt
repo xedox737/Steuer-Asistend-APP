@@ -5,6 +5,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -13,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.OfflineRestoreJournal
 import com.example.ui.AppScreen
 import com.example.ui.ReceiptAppUi
 import com.example.ui.ReceiptViewModel
@@ -22,8 +33,20 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    // Read before constructing ReceiptViewModel: it opens Room and starts sync work.
+    // A malformed or unreadable marker is treated as pending, never as absent.
+    val restorePending = try { OfflineRestoreJournal(applicationContext).load() != null }
+      catch (_: Exception) { true }
     setContent {
       MyApplicationTheme {
+        if (restorePending) {
+          Surface(Modifier.fillMaxSize().testTag("offline_restore_startup_blocked")) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              Text("Wiederherstellung noch nicht abgeschlossen", style = MaterialTheme.typography.titleLarge)
+              Text("Der aktuelle Bestand bleibt geschützt. Die Wiederherstellung muss abgeschlossen werden, bevor Daten angezeigt werden können.")
+            }
+          }
+        } else {
         val viewModel: ReceiptViewModel = viewModel()
         val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
         val primaryNavigationReset by viewModel.primaryNavigationReset.collectAsStateWithLifecycle()
@@ -77,6 +100,7 @@ class MainActivity : ComponentActivity() {
         }
 
         ReceiptAppUi(viewModel = viewModel)
+        }
       }
     }
   }
