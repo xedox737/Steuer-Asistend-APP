@@ -2754,3 +2754,25 @@ beschädigter eigener Kopie und einer Anbieteränderung beim Rücklesen. lintDeb
 ohne Error/Fatal, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-references-verify.log. Keine echten Anbieter oder
 Nutzerdateien verwendet.
+
+### Schritt 8 – vorbereiteter Rückfallverbund
+
+`OfflineRestoreRollbackBundle` erstellt unter einem durchgehend gehaltenen
+Wartungstoken eine neue UUID und bereitet dazu Datenbank-, Preference-, app-eigene
+Datei- und externe Referenzrücklage nacheinander vor. Ein kleines privates
+Verzeichnis bindet deren Größen, Prüfsummen und Anzahlen an diese UUID; es wird
+synchronisiert und größenbegrenzt rückgelesen. Bei einem späteren Fehler oder
+Abbruch werden nur die bereits erfolgreich neu erzeugten eigenen Bestandteile
+entfernt, nicht fremde vorhandene Dateien. Die Vorbereitung verändert keinen
+fachlichen Bestand und schreibt noch keinen Journal.
+
+Der Verbund allein ist noch keine Freigabe zur Wiederherstellung. Der spätere
+Journal muss die Prüfsumme dieses Verzeichnisses dauerhaft binden; vor einem
+Wiederanlauf müssen alle Bestandteile und ihre Dateiverzeichnisse erneut strikt
+validiert werden. Credential-Rückfall, Restore-Anwendung, Rückrollen und
+Wiederanlauf bleiben weitere notwendige Schritte.
+
+Abnahme Rückfallverbund: drei Methoden ohne Fehler/Skips, darunter ein bereits
+fehlendes Original und Bereinigung nach spätem Fehler; lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-bundle-verify.log. Kein Restore oder Neustarttest.
