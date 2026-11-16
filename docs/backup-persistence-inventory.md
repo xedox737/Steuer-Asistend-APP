@@ -2967,3 +2967,19 @@ Sicherheitstests ohne Fehler oder Skips; ausschließlich synthetische Schlüssel
 lintDebug, assembleDebug und git diff --check bestanden. Nachweise:
 /workspace/immopilot-credential-rollback-tests.log und
 /workspace/immopilot-credential-rollback-build.log.
+
+### Schritt 8 – optionale Bindung des Credential-Rückfalls
+
+Das Rückfallpaket vermerkt ausdrücklich, ob Zugangsschlüssel unverändert bleiben
+oder ihr bisheriger Zustand gesichert werden muss. Nur bei gewähltem Schlüsselimport
+wird die verschlüsselte Credential-Datei aufgenommen und ihre Größe und ihr Hash
+im journalgebundenen Manifest hinterlegt. Die Indexprüfung authentifiziert diese
+Datei und die ursprünglichen Keystore-Aliase erneut. Ohne Schlüsselimport werden
+beschädigte vorhandene Schlüssel weder gelesen noch verändert. Bestehende
+Rückfallmanifeste der Version 1 bleiben lesbar. Eine Datenübernahme findet durch
+diese Vorbereitung noch nicht statt.
+
+Abnahme: fünf gezielte Paket- und drei Indexprüfungen ohne Fehler oder Skips;
+darunter beschädigte bestehende Schlüssel ohne Import und Manipulation der
+gebundenen Credential-Datei. lintDebug, assembleDebug und git diff --check
+bestanden. Nachweis: /workspace/immopilot-credential-bundle-check.log.

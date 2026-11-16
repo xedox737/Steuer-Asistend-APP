@@ -20,10 +20,12 @@ import kotlinx.coroutines.withContext
 internal object OfflineRestoreRollbackVerifier {
     data class Index(val rollbackId: String, val database: File, val preferences: File,
         val ownedManifest: File, val referenceManifest: File, val fileCount: Int,
-        val referenceCount: Int, val unavailableCount: Int, val databaseBytes: Long, val databaseSha256: String)
+        val referenceCount: Int, val unavailableCount: Int, val databaseBytes: Long, val databaseSha256: String,
+        val credentials: OfflineRestoreCredentialSnapshot.Checked?)
     private data class Description(val id: String, val databaseBytes: Long, val databaseHash: String,
         val preferencesBytes: Long, val preferencesHash: String, val filesBytes: Long, val filesHash: String,
-        val fileCount: Int, val referencesBytes: Long, val referencesHash: String, val referenceCount: Int, val unavailableCount: Int)
+        val fileCount: Int, val referencesBytes: Long, val referencesHash: String, val referenceCount: Int, val unavailableCount: Int,
+        val credentialBytes: Long?, val credentialHash: String?)
     private const val MAX_BUNDLE = 16L * 1024
     private const val MAX_METADATA = 64L * 1024 * 1024
     private val hashPattern = Regex("[0-9a-f]{64}")
@@ -47,10 +49,13 @@ internal object OfflineRestoreRollbackVerifier {
             checkFile(preferences, description.preferencesBytes, description.preferencesHash)
             checkFile(owned, description.filesBytes, description.filesHash)
             checkFile(references, description.referencesBytes, description.referencesHash)
+            val credentials = description.credentialBytes?.let { size ->
+                OfflineRestoreCredentialSnapshot.verify(context, id, size, requireNotNull(description.credentialHash))
+            }
             if (OfflineRestoreJournal(context).load() != expected) invalid()
             currentCoroutineContext().ensureActive()
             Index(id, database, preferences, owned, references, description.fileCount, description.referenceCount, description.unavailableCount,
-                description.databaseBytes, description.databaseHash)
+                description.databaseBytes, description.databaseHash, credentials)
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (error: OfflineBackupValidationException) { throw error }
         catch (_: IOException) { invalid() }
@@ -86,16 +91,26 @@ internal object OfflineRestoreRollbackVerifier {
         val decoder = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT)
         return JsonReader(InputStreamReader(ByteArrayInputStream(bytes), decoder)).use { reader ->
             val numbers = setOf("version", "databaseBytes", "preferencesBytes", "filesManifestBytes", "fileCount",
-                "referencesManifestBytes", "referenceCount", "unavailableCount")
-            val strings = setOf("owner", "id", "databaseSha256", "preferencesSha256", "filesManifestSha256", "referencesManifestSha256")
+                "referencesManifestBytes", "referenceCount", "unavailableCount", "credentialBytes")
+            val strings = setOf("owner", "id", "databaseSha256", "preferencesSha256", "filesManifestSha256", "referencesManifestSha256", "credentialMode", "credentialSha256")
             val values = mutableMapOf<String, String>(); reader.isLenient = false; reader.beginObject()
             while (reader.hasNext()) {
                 val name = reader.nextName(); require(name !in values && (name in numbers || name in strings))
                 require(reader.peek() == if (name in numbers) JsonToken.NUMBER else JsonToken.STRING)
                 values[name] = reader.nextString()
             }
-            reader.endObject(); require(reader.peek() == JsonToken.END_DOCUMENT && values.keys == numbers + strings)
-            require(values["version"] == "1" && values["owner"] == "local-full-restore-rollback")
+            reader.endObject(); require(reader.peek() == JsonToken.END_DOCUMENT)
+            val common = (numbers + strings) - setOf("credentialBytes", "credentialMode", "credentialSha256")
+            val credentialsPresent = when (values["version"]) {
+                "1" -> { require(values.keys == common); false }
+                "2" -> when (values["credentialMode"]) {
+                    "UNCHANGED" -> { require(values.keys == common + "credentialMode"); false }
+                    "RESTORE" -> { require(values.keys == common + setOf("credentialMode", "credentialBytes", "credentialSha256")); true }
+                    else -> throw IllegalArgumentException()
+                }
+                else -> throw IllegalArgumentException()
+            }
+            require(values["owner"] == "local-full-restore-rollback")
             fun number(name: String, maximum: Long): Long {
                 val raw = values.getValue(name); val value = raw.toLong(); require(value.toString() == raw && value in 0..maximum); return value
             }
@@ -105,7 +120,9 @@ internal object OfflineRestoreRollbackVerifier {
             val unavailable = number("unavailableCount", refs.toLong()).toInt()
             Description(values.getValue("id"), number("databaseBytes", Long.MAX_VALUE), sha("databaseSha256"),
                 number("preferencesBytes", MAX_METADATA), sha("preferencesSha256"), number("filesManifestBytes", MAX_METADATA),
-                sha("filesManifestSha256"), files, number("referencesManifestBytes", MAX_METADATA), sha("referencesManifestSha256"), refs, unavailable)
+                sha("filesManifestSha256"), files, number("referencesManifestBytes", MAX_METADATA), sha("referencesManifestSha256"), refs, unavailable,
+                if (credentialsPresent) number("credentialBytes", 128 * 1024) else null,
+                if (credentialsPresent) sha("credentialSha256") else null)
         }
     }
     private fun hash(bytes: ByteArray) = hex(MessageDigest.getInstance("SHA-256").digest(bytes))

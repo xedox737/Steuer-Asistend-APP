@@ -5,6 +5,7 @@ import android.content.ContextWrapper
 import android.content.SharedPreferences
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.example.api.TestAndroidKeyStore
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
@@ -93,4 +94,48 @@ class OfflineRestoreRollbackBundleTest {
         } } } finally { foreign.close() }
         assertFalse(File(context.noBackupFilesDir, "offline-backup-state").exists())
     }
+    @Test fun credentialSelectionIsExplicitAndDamagedKeysDoNotBlockUnchangedMode() = runBlocking<Unit> {
+        TestAndroidKeyStore.register()
+        val prefs = context.getSharedPreferences("ai_provider_settings", 0)
+        try {
+            prefs.edit().putString("openai_key_ciphertext", "damaged").commit()
+            val before = prefs.all.toMap()
+            coordinator.beginMaintenance().use { token ->
+                val unchanged = OfflineRestoreRollbackBundle.prepare(context, database, token)
+                assertNull(unchanged.credentials)
+                assertEquals("UNCHANGED", JSONObject(unchanged.manifest.readText()).getString("credentialMode"))
+                val entry = OfflineRestoreJournal(context).begin(UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                    unchanged.id, unchanged.manifestBytes, unchanged.manifestSha256)
+                assertNull(OfflineRestoreRollbackVerifier.verifyIndex(context, entry).credentials)
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreRollbackBundle.prepare(context, database, token, includeCredentials = true)
+                } }
+            }
+            assertEquals(before, prefs.all)
+        } finally { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
+    }
+    @Test fun selectedCredentialSnapshotIsBoundToJournalAndTamperingIsRejected() = runBlocking<Unit> {
+        TestAndroidKeyStore.register()
+        val prefs = context.getSharedPreferences("ai_provider_settings", 0)
+        try {
+            com.example.api.AiProviderSettings.storeGeminiKey(context, "synthetic-key-for-bundle".toCharArray())
+            val before = prefs.all.toMap()
+            coordinator.beginMaintenance().use { token ->
+                val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token, includeCredentials = true)
+                val credentials = requireNotNull(bundle.credentials)
+                val record = JSONObject(bundle.manifest.readText())
+                assertEquals("RESTORE", record.getString("credentialMode"))
+                assertEquals(credentials.sha256, record.getString("credentialSha256"))
+                val entry = OfflineRestoreJournal(context).begin(UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                    bundle.id, bundle.manifestBytes, bundle.manifestSha256)
+                assertNotNull(OfflineRestoreRollbackVerifier.verifyIndex(context, entry).credentials)
+                credentials.file.appendText(" ")
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreRollbackVerifier.verifyIndex(context, entry)
+                } }
+                assertEquals(before, prefs.all)
+            }
+        } finally { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
+    }
+
 }

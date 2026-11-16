@@ -21,15 +21,17 @@ internal object OfflineRestoreRollbackBundle {
         val preferences: OfflineRestorePreferenceSnapshot.Snapshot,
         val ownedFiles: OfflineRestoreOwnedFilesSnapshot.Snapshot,
         val references: OfflineRestoreReferenceSnapshot.Snapshot,
+        val credentials: OfflineRestoreCredentialSnapshot.Snapshot?,
         val manifest: File, val manifestBytes: Long, val manifestSha256: String)
 
     /** Caller owns the shared maintenance token through journal creation and all later mutation. */
-    suspend fun prepare(context: Context, database: AppDatabase, token: OfflineBackupCoordinator.Maintenance): Prepared {
+    suspend fun prepare(context: Context, database: AppDatabase, token: OfflineBackupCoordinator.Maintenance, includeCredentials: Boolean = false): Prepared {
         val id = UUID.randomUUID().toString()
         var db: OfflineRestoreDatabaseSnapshot.Snapshot? = null
         var prefs: OfflineRestorePreferenceSnapshot.Snapshot? = null
         var files: OfflineRestoreOwnedFilesSnapshot.Snapshot? = null
         var references: OfflineRestoreReferenceSnapshot.Snapshot? = null
+        var credentials: OfflineRestoreCredentialSnapshot.Snapshot? = null
         var manifest: File? = null
         var delivered = false
         try {
@@ -40,8 +42,9 @@ internal object OfflineRestoreRollbackBundle {
                     val fixedPrefs = OfflineRestorePreferenceSnapshot.capture(context, token, id).also { prefs = it }
                     val fixedFiles = OfflineRestoreOwnedFilesSnapshot.capture(context, token, id).also { files = it }
                     val fixedReferences = OfflineRestoreReferenceSnapshot.capture(context, database, token, id, fixedFiles).also { references = it }
+                    val fixedCredentials = if (includeCredentials) OfflineRestoreCredentialSnapshot.capture(context, token, id).also { credentials = it } else null
                     currentCoroutineContext().ensureActive()
-                    val record = JSONObject().put("version", 1).put("owner", "local-full-restore-rollback").put("id", id)
+                    val record = JSONObject().put("version", 2).put("owner", "local-full-restore-rollback").put("id", id)
                         .put("databaseBytes", fixedDb.size).put("databaseSha256", fixedDb.sha256)
                         .put("preferencesBytes", fixedPrefs.size).put("preferencesSha256", fixedPrefs.sha256)
                         .put("filesManifestBytes", fixedFiles.manifestBytes).put("filesManifestSha256", fixedFiles.manifestSha256)
@@ -49,6 +52,8 @@ internal object OfflineRestoreRollbackBundle {
                         .put("referencesManifestBytes", fixedReferences.manifestBytes).put("referencesManifestSha256", fixedReferences.manifestSha256)
                         .put("referenceCount", fixedReferences.references.size)
                         .put("unavailableCount", fixedReferences.references.count { it.state == OfflineRestoreReferenceSnapshot.State.UNAVAILABLE })
+                        .put("credentialMode", if (includeCredentials) "RESTORE" else "UNCHANGED")
+                    if (fixedCredentials != null) record.put("credentialBytes", fixedCredentials.size).put("credentialSha256", fixedCredentials.sha256)
                     val bytes = record.toString().toByteArray(Charsets.UTF_8)
                     require(bytes.size in 1..MAX_MANIFEST)
                     val file = File(context.noBackupFilesDir, "offline-backup-state/rollback-$id.bundle.json")
@@ -64,7 +69,7 @@ internal object OfflineRestoreRollbackBundle {
                     if (readback.size != bytes.size || hash(readback) != sha || !readback.contentEquals(bytes))
                         invalid("Das Rückfallverzeichnis konnte nicht vollständig rückgelesen werden.")
                     currentCoroutineContext().ensureActive()
-                    Prepared(id, fixedDb, fixedPrefs, fixedFiles, fixedReferences, file, bytes.size.toLong(), sha)
+                    Prepared(id, fixedDb, fixedPrefs, fixedFiles, fixedReferences, fixedCredentials, file, bytes.size.toLong(), sha)
                 }
             }
             delivered = true
@@ -79,7 +84,7 @@ internal object OfflineRestoreRollbackBundle {
             if (!delivered) withContext(NonCancellable + Dispatchers.IO) {
                 var failed = false
                 fun remove(file: File?) { if (file != null && file.exists() && !file.deleteRecursively()) failed = true }
-                remove(manifest); remove(references?.directory); remove(files?.directory); remove(prefs?.file)
+                remove(manifest); remove(credentials?.file); remove(references?.directory); remove(files?.directory); remove(prefs?.file)
                 db?.file?.let { file ->
                     remove(file); remove(File(file.path + "-journal")); remove(File(file.path + "-wal")); remove(File(file.path + "-shm"))
                 }
