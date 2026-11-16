@@ -313,6 +313,37 @@ object AiProviderSettings {
         catch (_: IllegalStateException) { rollbackCredentialFailure() }
         catch (_: SecurityException) { rollbackCredentialFailure() }
     }
+    /** Replays only journal-bound encrypted records; no key is created or deleted. */
+    internal suspend fun restoreRollbackCiphertexts(
+        context: Context,
+        token: com.example.data.OfflineBackupCoordinator.Maintenance,
+        entry: com.example.data.OfflineRestoreJournal.Entry
+    ) {
+        try {
+            com.example.data.OfflineBackupCoordinator.shared.requireMaintenance(token)
+            require(entry.phase == com.example.data.OfflineRestoreJournal.Phase.ROLLBACK)
+            token.suspending {
+                val checked = com.example.data.OfflineRestoreRollbackVerifier.verifyIndex(context, entry)
+                val credentials = checked.credentials ?: return@suspending
+                require(com.example.data.OfflineRestoreJournal(context).load() == entry)
+                validateRollbackCiphertexts(credentials.state)
+                val editor = com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).edit()
+                rollbackFields().forEach { (provider, names) ->
+                    val value = credentials.state.getValue(provider)
+                    if (value == null) { editor.remove(names.first); editor.remove(names.second) }
+                    else { editor.putString(names.first, value.ciphertext); editor.putString(names.second, value.iv) }
+                }
+                check(editor.commit())
+                require(com.example.data.OfflineRestoreJournal(context).load() == entry)
+            }
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: OfflineBackupValidationException) { throw error }
+        catch (_: IllegalArgumentException) { rollbackWriteFailure() }
+        catch (_: IllegalStateException) { rollbackWriteFailure() }
+        catch (_: SecurityException) { rollbackWriteFailure() }
+    }
+    private fun rollbackWriteFailure(): Nothing = throw OfflineBackupValidationException(
+        "Der Rückfall der API-Schlüssel konnte nicht abgeschlossen werden. Der Rückfall bleibt gesperrt und kann erneut versucht werden.")
     private fun rollbackFields() = mapOf(
         OfflineBackupCredentialSection.Provider.OPENAI to (KEY_CIPHERTEXT to KEY_IV),
         OfflineBackupCredentialSection.Provider.GEMINI to (KEY_GEMINI_CIPHERTEXT to KEY_GEMINI_IV),

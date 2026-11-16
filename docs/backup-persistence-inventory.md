@@ -3018,3 +3018,22 @@ Die Einbindung in den Wiederanlauf und echte Prozessstopptests stehen noch aus.
 Abnahme: acht gezielte Datenbanktests ohne Fehler oder Skips, darunter Wiederholung,
 IDs, manipulierte Datenbank und falsche Journalphase. lintDebug, assembleDebug
 und git diff --check bestanden. Nachweis: /workspace/immopilot-database-rollback-check.log.
+
+### Schritt 8 – Rückfall verschlüsselter Zugangsdaten
+
+Der interne Credential-Rückfall verlangt die aktive gemeinsame Wartungssperre
+und ein passendes Journal in der Phase ROLLBACK. Wenn das Rückfallpaket einen
+Credential-Stand bindet, authentifiziert er diesen erneut und stellt die
+vorhandenen Chiffretexte und Initialisierungsvektoren gemeinsam mit einem
+synchronen Preference-Commit wieder her. Fehlende Einträge werden entsprechend
+dem ursprünglichen Stand entfernt; Geräteschlüssel werden weder erzeugt noch
+gelöscht. Andere Einstellungen bleiben unverändert. Ohne gewählten Credential-
+Import bleibt der Credential-Bestand unberührt. Das Journal bleibt bestehen;
+die Einbindung in den vollständigen Wiederanlauf steht noch aus.
+
+Abnahme: sechs gezielte Pakettests ohne Fehler/Skips und nach Korrektur des
+Fehlertexts ein erneuter gezielter Credential-Test ohne Fehler/Skips; lintDebug,
+assembleDebug und git diff --check bestanden. Beim ersten Testversuch wurde eine
+ungültig formatierte synthetische Eingabe korrekt abgewiesen und anschließend
+korrigiert. Nachweise: /workspace/immopilot-credential-replay-check-fixed.log
+und /workspace/immopilot-credential-replay-final.log.

@@ -138,4 +138,32 @@ class OfflineRestoreRollbackBundleTest {
         } finally { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
     }
 
+    @Test fun credentialRollbackRestoresEncryptedRecordsWithoutChangingAliasesOrSelection() = runBlocking<Unit> {
+        TestAndroidKeyStore.register()
+        val prefs = context.getSharedPreferences("ai_provider_settings", 0)
+        val settings = com.example.api.AiProviderSettings
+        try {
+            settings.storeGeminiKey(context, "synthetic-original-key".toCharArray())
+            val original = settings.captureRollbackCiphertexts(context)
+            coordinator.beginMaintenance().use { token ->
+                val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token, includeCredentials = true)
+                val journal = OfflineRestoreJournal(context)
+                val prepared = journal.begin(UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                    bundle.id, bundle.manifestBytes, bundle.manifestSha256)
+                val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+                token.writing {
+                    settings.storeGeminiKey(context, "synthetic-replacement-key".toCharArray())
+                    settings.storeOpenAiKey(context, ("sk-" + "x".repeat(30)).toCharArray())
+                    prefs.edit().putString("openai_model", "preserve selection").commit()
+                }
+                val aliases = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.aliases().toList().toSet()
+                repeat(2) { settings.restoreRollbackCiphertexts(context, token, rollback) }
+                assertEquals(original, settings.captureRollbackCiphertexts(context))
+                assertEquals("preserve selection", prefs.getString("openai_model", null))
+                assertEquals(aliases, java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.aliases().toList().toSet())
+                assertEquals(rollback, journal.load())
+            }
+        } finally { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
+    }
+
 }
