@@ -67,7 +67,7 @@ internal object PersistentPreferenceInventory {
         else -> false
     }
 
-    private fun permits(store: Store, key: String): Boolean =
+    internal fun permits(store: Store, key: String): Boolean =
         store.kind == Kind.BACKUP && (store.allowedKeys?.contains(key) ?: (businessKey(store, key) || !secretKey.containsMatchIn(key)))
 
     fun hasBackupValues(context: Context, store: Store): Boolean =

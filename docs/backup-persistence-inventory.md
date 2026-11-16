@@ -2847,3 +2847,25 @@ bestanden. Der erste Kompilierversuch meldete einen fehlenden expliziten Kotlin-
 Null-Check; danach bestanden die Tests. Nachweise:
 /workspace/immopilot-rollback-files-verify-tests-fixed.log und
 /workspace/immopilot-rollback-files-verify-build.log.
+
+### Schritt 8 – Prüfung des Preference-Rückfallstands
+
+`OfflineRestorePreferenceVerifier` liest die journalgebundene Preference-Datei
+mit strengem UTF-8/JSON nach Indexprüfung. Alle klassifizierten BACKUP-Speicher
+müssen genau einmal vorhanden sein; unbekannte Speicher, doppelte Schlüssel,
+nicht zugelassene Geheimnisfelder, unbekannte Typen, fehlerhafte Zahlen und
+uneindeutige Mengen werden abgewiesen. Der Parser begrenzt die Datei und prüft
+das verfügbare Speicherbudget. Typen und auch historische Werte werden lesend
+übernommen; es erfolgt keine Änderung des aktuellen Preference-Bestands. Danach
+werden Journal und direkte Dateien erneut gegen den gebundenen Index geprüft.
+
+Die Rückfallanwendung muss später exakt diese geprüften Werte und Typen
+wiederherstellen, ohne nicht exportierte Geheimnisse oder lokale Konfiguration zu
+löschen. Der bestehende fachliche Restore validiert bestimmte neue Eingaberegeln;
+er darf deshalb nicht ungeprüft als Rückfallmechanik für historische Werte
+verwendet werden. Credentials und tatsächlicher Wiederanlauf fehlen weiterhin.
+
+Abnahme Preference-Prüfung: fünf Methoden ohne Fehler/Skips, darunter historische
+negative Werte, unzulässige Geheimnisfelder und fehlende, unbekannte sowie
+doppelte Speicher. lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Nachweis: /workspace/immopilot-rollback-prefs-verify.log.
