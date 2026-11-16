@@ -26,7 +26,8 @@ internal class OfflineBackupMetadataWriter(
     private val context: Context,
     private val database: AppDatabase,
     private val maximumBytes: Long = MAX_BYTES,
-    private val referenceMode: ReferenceMode = ReferenceMode.STRICT_BACKUP
+    private val referenceMode: ReferenceMode = ReferenceMode.STRICT_BACKUP,
+    private val referenceFileExists: (String) -> Boolean = { File(it).isFile }
 ) {
     enum class ReferenceMode { STRICT_BACKUP, ROLLBACK_INVENTORY }
     init { require(maximumBytes in 1..MAX_BYTES) }
@@ -201,7 +202,7 @@ internal class OfflineBackupMetadataWriter(
             val raw = text(column)
             if (raw.isBlank()) return@forEach
             val direct = column == "localUri" || (table == "property_metadata" && column == "bildPfad")
-            val paths = if (direct) listOf(raw) else ReceiptOriginalChain.paths(raw)
+            val paths = if (direct) listOf(raw) else ReceiptOriginalChain.paths(raw, referenceFileExists)
             val aliases = paths.map { path ->
                 val claim = claims.getOrPut(path) {
                     if (claims.size >= 10_000) invalid("Zu viele Originalverweise in den Sicherungsmetadaten.")

@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 internal object OfflineRestoreRollbackVerifier {
     data class Index(val rollbackId: String, val database: File, val preferences: File,
         val ownedManifest: File, val referenceManifest: File, val fileCount: Int,
-        val referenceCount: Int, val unavailableCount: Int)
+        val referenceCount: Int, val unavailableCount: Int, val databaseBytes: Long, val databaseSha256: String)
     private data class Description(val id: String, val databaseBytes: Long, val databaseHash: String,
         val preferencesBytes: Long, val preferencesHash: String, val filesBytes: Long, val filesHash: String,
         val fileCount: Int, val referencesBytes: Long, val referencesHash: String, val referenceCount: Int, val unavailableCount: Int)
@@ -49,7 +49,8 @@ internal object OfflineRestoreRollbackVerifier {
             checkFile(references, description.referencesBytes, description.referencesHash)
             if (OfflineRestoreJournal(context).load() != expected) invalid()
             currentCoroutineContext().ensureActive()
-            Index(id, database, preferences, owned, references, description.fileCount, description.referenceCount, description.unavailableCount)
+            Index(id, database, preferences, owned, references, description.fileCount, description.referenceCount, description.unavailableCount,
+                description.databaseBytes, description.databaseHash)
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (error: OfflineBackupValidationException) { throw error }
         catch (_: IOException) { invalid() }

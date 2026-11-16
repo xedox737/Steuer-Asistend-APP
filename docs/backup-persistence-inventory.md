@@ -2891,3 +2891,40 @@ während der strenge Vollbackup-Modus denselben Bestand ablehnt. lintDebug ohne
 Error/Fatal, assembleDebug und git diff --check bestanden. Nachweise:
 /workspace/immopilot-rollback-missing-cloud-tests.log und
 /workspace/immopilot-rollback-missing-cloud-build.log.
+
+### Schritt 8 – isolierte Datenbank- und Referenzprüfung
+
+`OfflineRestoreDatabaseVerifier` prüft zunächst den gebundenen Rückfallindex,
+die Dateinutzdaten und die fachlichen Preference-Daten. Die gesicherte Datenbank
+wird anschließend mit begrenztem Speicherbudget in einen neuen privaten
+Prüfbereich kopiert und gegen die gebundenen Bytes und den Hash rückgelesen.
+Room öffnet ausschließlich diese Kopie ohne destruktive Migration; eine zweite,
+frisch erzeugte Room-Datenbank liefert das aktuelle Vergleichsschema. Geprüft
+werden SQLite-Integrität, Version, klassifizierte Tabellen, Spalten, Fremdschlüssel
+und Indizes. Für die Referenzprüfung werden ausschließlich leere, lesende
+Prüf-Preferences verwendet; der aktuelle Preference-Bestand wird nicht geöffnet.
+
+Die aus der Datenbankkopie gewonnenen Referenzen müssen in Anzahl, Kennung und
+Pfad-Hash zu den geprüften Dateiverzeichnissen passen. App-eigene Referenzen
+müssen zudem auf die richtige fixierte Version zeigen. Bereits nicht verfügbare
+Originale bleiben als solche markiert. Für alte komma-getrennte Mehrseitenpfade
+verwendet die isolierte Prüfung die nachgewiesenen Rückfallreferenzen statt der
+möglicherweise durch einen unterbrochenen Restore veränderten Dateipfade. Der
+normale Reader und der strenge Vollbackup-Modus behalten ihre bisherigen Regeln.
+Der private Prüfbereich wird anschließend entfernt; eine Datenübernahme oder ein
+Rollback wird noch nicht ausgeführt.
+
+Vor tatsächlicher Anwendung müssen die geprüften Daten unter der weiterhin
+gehaltenen Wartung gegen zwischenzeitliche Änderungen geschützt, Credential-
+Rückfall und dauerhafte Phasenübergänge eingebunden sowie Wiederanlauf und
+vollständiger Rückfall durch Fehler-/Prozessstopptests nachgewiesen werden.
+
+Abnahme isolierte Datenbankprüfung: fünf Datenbankfälle, drei Indexfälle, fünf
+bestehende Metadatenfälle und der gezielte historische Komma-Dateipfadtest ohne
+Fehler/Skips; zusätzlich der einzelne Fehlerfall eines fehlenden Index bestanden.
+Darunter beschädigte DB, manipuliertes Schema, falscher Referenz-Hash und der
+Wiederanlauf mit verschwundenen alten Mehrseitenpfaden. lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-rollback-database-verify-tests-final.log,
+/workspace/immopilot-rollback-database-index-test.log und
+/workspace/immopilot-rollback-database-verify-build.log.
