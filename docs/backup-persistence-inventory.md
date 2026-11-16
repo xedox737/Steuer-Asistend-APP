@@ -2928,3 +2928,24 @@ assembleDebug und git diff --check bestanden. Nachweise:
 /workspace/immopilot-rollback-database-verify-tests-final.log,
 /workspace/immopilot-rollback-database-index-test.log und
 /workspace/immopilot-rollback-database-verify-build.log.
+
+### Schritt 8 – vollständige Registrierung von API-Schlüsseländerungen
+
+Die drei API-Schlüssel-Setter registrieren nun den gesamten Vorgang vor dem
+Zugriff auf den Android-Keystore, einschließlich möglicher Erzeugung eines
+Geräteschlüssels und des anschließenden Preference-Schreibens. Eingabepuffer
+werden auch dann gelöscht, wenn die Wartung bereits beim Eintritt ablehnt. Die
+zusammengehörige Einstellungsspeicherung im ViewModel hält zusätzlich eine
+Registrierung über alle ausgewählten Schlüssel und die Providerauswahl hinweg.
+Dadurch kann eine Wartung nicht zwischen diesen Teilen beginnen.
+
+Diese Korrektur schützt die bestehende Wartungsgrenze; sie implementiert noch
+keinen Credential-Rückfall und stellt keine Schlüssel wieder her. Es wurden nur
+synthetische Schlüssel mit dem vorhandenen Test-Keystore verwendet.
+
+Abnahme Credential-Wartungssperre: sieben Sicherheitstests ohne Fehler/Skips,
+darunter alle drei Anbieter, unveränderte Keystore-Aliase/Einstellungen und
+gelöschte Eingabepuffer bei gesperrter Wartung. lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-credential-maintenance-tests.log und
+/workspace/immopilot-credential-maintenance-build.log.

@@ -187,37 +187,39 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         newGoogleRoutesKey: String = ""
     ): String? {
         return try {
-            if (newOpenAiKey.isNotBlank()) {
-                AiProviderSettings.storeOpenAiKey(
-                    getApplication(),
-                    newOpenAiKey.toCharArray()
+            com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+                if (newOpenAiKey.isNotBlank()) {
+                    AiProviderSettings.storeOpenAiKey(
+                        getApplication(),
+                        newOpenAiKey.toCharArray()
+                    )
+                }
+                if (newGeminiKey.isNotBlank()) {
+                    AiProviderSettings.storeGeminiKey(
+                        getApplication(),
+                        newGeminiKey.toCharArray()
+                    )
+                }
+                if (newGoogleRoutesKey.isNotBlank()) {
+                    AiProviderSettings.storeGoogleRoutesKey(
+                        getApplication(),
+                        newGoogleRoutesKey.toCharArray()
+                    )
+                }
+                val onlyGoogleUpdate = newGoogleRoutesKey.isNotBlank() &&
+                    newOpenAiKey.isBlank() && newGeminiKey.isBlank() &&
+                    selectedProviderIsUnavailable(provider)
+                if (onlyGoogleUpdate) {
+                    _aiProviderState.value = AiProviderSettings.loadState(getApplication())
+                    return null
+                }
+                _aiProviderState.value = AiProviderSettings.saveSelection(
+                    context = getApplication(),
+                    provider = provider,
+                    model = model
                 )
+                null
             }
-            if (newGeminiKey.isNotBlank()) {
-                AiProviderSettings.storeGeminiKey(
-                    getApplication(),
-                    newGeminiKey.toCharArray()
-                )
-            }
-            if (newGoogleRoutesKey.isNotBlank()) {
-                AiProviderSettings.storeGoogleRoutesKey(
-                    getApplication(),
-                    newGoogleRoutesKey.toCharArray()
-                )
-            }
-            val onlyGoogleUpdate = newGoogleRoutesKey.isNotBlank() &&
-                newOpenAiKey.isBlank() && newGeminiKey.isBlank() &&
-                selectedProviderIsUnavailable(provider)
-            if (onlyGoogleUpdate) {
-                _aiProviderState.value = AiProviderSettings.loadState(getApplication())
-                return null
-            }
-            _aiProviderState.value = AiProviderSettings.saveSelection(
-                context = getApplication(),
-                provider = provider,
-                model = model
-            )
-            null
         } catch (e: IllegalArgumentException) {
             e.message ?: "KI-Einstellungen konnten nicht gespeichert werden."
         } catch (_: Exception) {

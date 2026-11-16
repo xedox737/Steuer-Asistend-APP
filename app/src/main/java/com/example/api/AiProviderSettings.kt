@@ -97,20 +97,22 @@ object AiProviderSettings {
     }
 
     fun storeOpenAiKey(context: Context, rawKey: CharArray) {
-        val key = rawKey.concatToString().trim()
         try {
-            require(isPlausibleOpenAiKey(key)) {
-                "Der OpenAI-API-Schlüssel hat kein gültiges Format."
-            }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
-            val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
+            com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+                val key = rawKey.concatToString().trim()
+                require(isPlausibleOpenAiKey(key)) {
+                    "Der OpenAI-API-Schlüssel hat kein gültiges Format."
+                }
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
+                val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
 
-            com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
-                .edit()
-                .putString(KEY_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-                .putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-                .apply()
+                com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
+                    .edit()
+                    .putString(KEY_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                    .putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                    .apply()
+            }
         } finally {
             rawKey.fill('\u0000')
         }
@@ -138,19 +140,21 @@ object AiProviderSettings {
     }
 
     fun storeGeminiKey(context: Context, rawKey: CharArray) {
-        val key = rawKey.concatToString().trim()
         try {
-            require(isPlausibleGeminiKey(key)) {
-                "Der Gemini-API-Schlüssel hat kein gültiges Format."
+            com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+                val key = rawKey.concatToString().trim()
+                require(isPlausibleGeminiKey(key)) {
+                    "Der Gemini-API-Schlüssel hat kein gültiges Format."
+                }
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGeminiSecretKey())
+                val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
+                com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
+                    .edit()
+                    .putString(KEY_GEMINI_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                    .putString(KEY_GEMINI_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                    .apply()
             }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGeminiSecretKey())
-            val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
-            com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME)
-                .edit()
-                .putString(KEY_GEMINI_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-                .putString(KEY_GEMINI_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-                .apply()
         } finally {
             rawKey.fill('\u0000')
         }
@@ -175,16 +179,18 @@ object AiProviderSettings {
     }
 
     fun storeGoogleRoutesKey(context: Context, rawKey: CharArray) {
-        val key = rawKey.concatToString().trim()
         try {
-            require(isPlausibleGoogleRoutesKey(key)) { "Der Google-Routes-API-Schlüssel hat kein gültiges Format." }
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGoogleRoutesSecretKey())
-            val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
-            com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).edit()
-                .putString(KEY_GOOGLE_ROUTES_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
-                .putString(KEY_GOOGLE_ROUTES_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-                .apply()
+            com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+                val key = rawKey.concatToString().trim()
+                require(isPlausibleGoogleRoutesKey(key)) { "Der Google-Routes-API-Schlüssel hat kein gültiges Format." }
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, getOrCreateGoogleRoutesSecretKey())
+                val encrypted = cipher.doFinal(key.toByteArray(StandardCharsets.UTF_8))
+                com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).edit()
+                    .putString(KEY_GOOGLE_ROUTES_CIPHERTEXT, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                    .putString(KEY_GOOGLE_ROUTES_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+                    .apply()
+            }
         } finally {
             rawKey.fill('\u0000')
         }

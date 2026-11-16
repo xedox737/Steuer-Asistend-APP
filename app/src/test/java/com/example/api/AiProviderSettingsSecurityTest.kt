@@ -21,6 +21,22 @@ class AiProviderSettingsSecurityTest {
     @After fun cleanup() { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
     private fun dummyOpenAi() = "sk-" + "x".repeat(30)
     private fun dummyGoogle() = "test-only-" + "z".repeat(30)
+    @Test fun maintenanceRejectsKeyCreationBeforeKeystoreMutationAndWipesAllInputs() {
+        val keys = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val before = prefs.all.toMap()
+        val openAi = dummyOpenAi().toCharArray(); val gemini = dummyGoogle().toCharArray(); val routes = (dummyGoogle() + "routes").toCharArray()
+        com.example.data.OfflineBackupCoordinator.shared.beginMaintenance().use {
+            assertThrows(OfflineBackupValidationException::class.java) { AiProviderSettings.storeOpenAiKey(context, openAi) }
+            assertThrows(OfflineBackupValidationException::class.java) { AiProviderSettings.storeGeminiKey(context, gemini) }
+            assertThrows(OfflineBackupValidationException::class.java) { AiProviderSettings.storeGoogleRoutesKey(context, routes) }
+            assertTrue(listOf(openAi, gemini, routes).all { chars -> chars.all { it == '\u0000' } })
+            assertTrue(keys.aliases().toList().isEmpty())
+            assertEquals(before, prefs.all)
+        }
+        AiProviderSettings.storeOpenAiKey(context, dummyOpenAi().toCharArray())
+        assertNotNull(keys.getKey("steuer_assistent_openai_key_v1", null))
+    }
+
     @Test fun allProviderKeysRoundTripThroughRealAesGcmAndInputArraysAreWiped() {
         val openAi = dummyOpenAi().toCharArray(); val gemini = dummyGoogle().toCharArray(); val routes = (dummyGoogle() + "routes").toCharArray()
         AiProviderSettings.storeOpenAiKey(context, openAi); AiProviderSettings.storeGeminiKey(context, gemini); AiProviderSettings.storeGoogleRoutesKey(context, routes)
