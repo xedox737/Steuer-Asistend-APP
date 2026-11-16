@@ -109,4 +109,49 @@ class OfflineRestorePreferenceVerifierTest {
         assertEquals(journal, OfflineRestoreJournal(context).load())
     }
 
+    @Test fun rollbackRestoresOriginalTypesAndIsRepeatableWithoutChangingSecrets() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val journal = OfflineRestoreJournal(context)
+        val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val notes = context.getSharedPreferences("bank_transaction_notes", 0)
+        notes.edit().putString("note", "changed").putInt("new", 9).putString("api_key", "current secret").commit()
+        context.getSharedPreferences("rent_plan_prefs", 0).edit().putFloat("nk_house", 2f).commit()
+        val local = context.getSharedPreferences("app_installation_prefs", 0)
+        local.edit().putString("device", "keep").commit()
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            repeat(2) { OfflineRestorePreferenceRollback.apply(context, token, rollback) }
+        }
+        assertEquals("original", notes.getString("note", null))
+        assertEquals(4, notes.getInt("count", 0)); assertEquals(5_000_000_000L, notes.getLong("large", 0))
+        assertEquals(1.25f, notes.getFloat("float", 0f), 0f); assertTrue(notes.getBoolean("flag", false))
+        assertEquals(setOf("a", "z"), notes.getStringSet("set", emptySet()))
+        assertFalse(notes.contains("new")); assertEquals("current secret", notes.getString("api_key", null))
+        assertEquals(-3.5f, context.getSharedPreferences("rent_plan_prefs", 0).getFloat("nk_house", 0f), 0f)
+        assertEquals("keep", local.getString("device", null)); assertEquals(rollback, journal.load())
+        local.edit().clear().commit()
+    }
+    @Test fun rollbackRefusesWrongPhaseForeignMaintenanceAndDamagedSnapshotBeforeWriting() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val notes = context.getSharedPreferences("bank_transaction_notes", 0)
+        notes.edit().putString("note", "current").commit()
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestorePreferenceRollback.apply(context, token, prepared)
+            } }
+        }
+        val rollback = OfflineRestoreJournal(context).advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val foreign = OfflineBackupCoordinator().beginMaintenance()
+        try { assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineRestorePreferenceRollback.apply(context, foreign, rollback)
+        } } } finally { foreign.close() }
+        bundle.preferences.file.appendText(" ")
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestorePreferenceRollback.apply(context, token, rollback)
+            } }
+        }
+        assertEquals("current", notes.getString("note", null))
+        assertEquals(rollback, OfflineRestoreJournal(context).load())
+    }
+
 }

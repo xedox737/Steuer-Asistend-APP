@@ -2983,3 +2983,22 @@ Abnahme: fünf gezielte Paket- und drei Indexprüfungen ohne Fehler oder Skips;
 darunter beschädigte bestehende Schlüssel ohne Import und Manipulation der
 gebundenen Credential-Datei. lintDebug, assembleDebug und git diff --check
 bestanden. Nachweis: /workspace/immopilot-credential-bundle-check.log.
+
+### Schritt 8 – Rückfall fachlicher Einstellungen
+
+Der interne Rückfallbaustein akzeptiert ausschließlich die aktive gemeinsame
+Wartungssperre und ein passendes Journal in der Phase ROLLBACK. Er prüft den
+gesamten journalgebundenen Einstellungsstand vor dem ersten Schreibvorgang und
+übernimmt anschließend pro Speicher ausschließlich die klassifizierten fachlichen
+Werte. Typen und historische negative Werte bleiben erhalten; geheime und nicht
+für das Backup freigegebene Schlüssel sowie lokale Speicher bleiben unangetastet.
+Jeder Speicher wird synchron bestätigt. Bei Abbruch oder Fehler bleibt das Journal
+bestehen und die Übernahme kann wiederholt werden; sie markiert den gesamten
+Rückfall nicht als abgeschlossen. Eine Einbindung in den Wiederanlauf und ein
+vollständiger Prozessstopptest stehen noch aus.
+
+Abnahme: sieben gezielte Einstellungstests ohne Fehler oder Skips, darunter
+wiederholte Übernahme, historische Werte, unveränderte Geheimnisse sowie Ablehnung
+von falscher Phase, fremder Wartungssperre und beschädigtem Snapshot. lintDebug,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-preference-rollback-check.log.
