@@ -94,6 +94,43 @@ internal object PersistentPreferenceInventory {
         }
     }
 
+    /** Streaming equivalent of writePayload for bounded private rollback staging. */
+    internal fun writePayload(context: Context, writer: android.util.JsonWriter, checkpoint: () -> Unit) {
+        writer.beginObject()
+        stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
+            checkpoint()
+            writer.name(requireNotNull(store.payloadKey)).beginObject()
+            open(context, store.name).all.toSortedMap().forEach { (key, value) ->
+                checkpoint()
+                if (permits(store, key)) {
+                    val type = when (value) {
+                        is String -> "string"
+                        is Int -> "int"
+                        is Long -> "long"
+                        is Float -> "float"
+                        is Boolean -> "boolean"
+                        is Set<*> -> "stringSet"
+                        else -> null
+                    }
+                    if (type != null) {
+                        writer.name(key).beginObject().name("type").value(type).name("value")
+                        when (value) {
+                            is String -> writer.value(value)
+                            is Int -> writer.value(value.toLong())
+                            is Long -> writer.value(value)
+                            is Float -> writer.value(value.toDouble())
+                            is Boolean -> writer.value(value)
+                            is Set<*> -> { writer.beginArray(); value.filterIsInstance<String>().sorted().forEach { writer.value(it) }; writer.endArray() }
+                        }
+                        writer.endObject()
+                    }
+                }
+            }
+            writer.endObject()
+        }
+        writer.endObject()
+    }
+
     fun validatePayload(root: JSONObject) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
             val payloadKey = requireNotNull(store.payloadKey)

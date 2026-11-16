@@ -2658,3 +2658,26 @@ Fehler/Skips; lintDebug ohne Error/Fatal, assembleDebug und git diff --check
 bestanden. Nachweise: /workspace/immopilot-restore-db-maintenance-tests.log und
 /workspace/immopilot-restore-db-maintenance-build.log. Noch kein vollständiger
 Rollback oder Geräte-/Prozessneustarttest.
+
+### Schritt 8 – privater Preference-Rückfallstand
+
+`OfflineRestorePreferenceSnapshot` schreibt während der gemeinsamen Wartung
+nur die im bestehenden Preference-Inventar als BACKUP zugelassenen Werte in
+eine private, neue und größenbegrenzte Datei. Die Streaming-Serialisierung nutzt
+dieselbe Schlüsselauswahl und dieselben Typen wie der bestehende Export, prüft
+Abbruch und meldet ungültiges UTF-8 statt Zeichen zu ersetzen. Datei und
+Schreibstrom werden synchronisiert, anschließend Größe und SHA-256 vollständig
+rückgelesen. Belegte Pfade bleiben unverändert; bei Fehlschlag werden nur eigene
+unvollständige Daten entfernt. Ein lokaler Rückfallstand darf nicht als
+portables oder vollständiges Backup bezeichnet werden.
+
+Geheimschlüssel und Geräte-Ciphertexte werden anhand der bestehenden
+Inventargrenzen nicht in diese fachliche Datei geschrieben. Der separate Vertrag
+für einen bei Restore tatsächlich geänderten Credential-Bestand ist noch nicht
+implementiert; vor Anwendung müssen dessen Rückfall, die Zugehörigkeit der
+Datei zum Journal und Integritätsprüfung beim Wiederanlauf ergänzt werden.
+
+Abnahme Preference-Rückfallkopie: zwei Methoden jeweils auf API 24 und 35 ohne
+Fehler/Skips, einschließlich Vergleich mit dem bestehenden Inventar und Ausschluss
+synthetischer Geheimniswerte. lintDebug ohne Error/Fatal, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-restore-prefs-verify.log.
