@@ -3378,3 +3378,22 @@ git diff --check bestanden. Nachweise:
 /workspace/immopilot-startup-recovery-isolation.log,
 /workspace/immopilot-startup-recovery-concurrent-diagnosis.log und
 /workspace/immopilot-startup-recovery-core-build.log.
+
+### Schritt 8 – Wiederanlauf vor dem App-Start
+
+Bei einem vorhandenen oder nicht lesbaren Restore-Journal zeigt die App zunächst
+den bestehenden Schutzbildschirm und startet den geprüften Wiederanlauf, bevor
+ein fachliches ViewModel erzeugt wird. Erst nach erfolgreichem Abschluss und
+Entfernen des terminalen Journals wird die normale Oberfläche aufgebaut. Bei
+einem Fehler bleibt der Bestand gesperrt; ein erneuter Versuch ist möglich.
+Ohne Journal startet die App wie bisher. Die Wiederanlauftests verwenden eine
+isolierte Testdatenbank und simulieren den Neustart durch Schließen und erneutes
+Öffnen; ein echter Android-Prozessstopp und produktive OS-Dateiaufrufe bleiben
+für den Emulator offen. Der zuvor dokumentierte einmalige Fehler der isolierten
+Archiv-Datenbankprüfung ist weiterhin ungeklärt.
+
+Abnahme: vier gezielte Compose-Starttests ohne Fehler/Skips, darunter normaler
+Start, erfolgreich wiederhergestellter Bestand und Sperre bei defektem Journal;
+lintDebug, assembleDebug und git diff --check bestanden. Der erste Auftrag wurde
+bei einer Umgebungsneuverbindung abgebrochen und zählt nicht als Ergebnis.
+Nachweis: /workspace/immopilot-startup-recovery-ui-resumed.log.

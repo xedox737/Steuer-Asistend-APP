@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,6 +25,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.OfflineRestoreJournal
+import com.example.data.OfflineRestoreRecovery
+import kotlinx.coroutines.CancellationException
 import com.example.ui.AppScreen
 import com.example.ui.ReceiptAppUi
 import com.example.ui.ReceiptViewModel
@@ -35,15 +38,31 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     // Read before constructing ReceiptViewModel: it opens Room and starts sync work.
     // A malformed or unreadable marker is treated as pending, never as absent.
-    val restorePending = try { OfflineRestoreJournal(applicationContext).load() != null }
+    val initialRestorePending = try { OfflineRestoreJournal(applicationContext).load() != null }
       catch (_: Exception) { true }
     setContent {
       MyApplicationTheme {
+        var restorePending by remember { mutableStateOf(initialRestorePending) }
+        var recoveryFailed by remember { mutableStateOf(false) }
+        var recoveryAttempt by remember { mutableStateOf(0) }
         if (restorePending) {
+          LaunchedEffect(recoveryAttempt) {
+            recoveryFailed = false
+            try {
+              OfflineRestoreRecovery.recoverOnStartup(applicationContext)
+              restorePending = false
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { recoveryFailed = true }
+          }
           Surface(Modifier.fillMaxSize().testTag("offline_restore_startup_blocked")) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
               Text("Wiederherstellung noch nicht abgeschlossen", style = MaterialTheme.typography.titleLarge)
-              Text("Der aktuelle Bestand bleibt geschützt. Die Wiederherstellung muss abgeschlossen werden, bevor Daten angezeigt werden können.")
+              if (recoveryFailed) {
+                Text("Der Bestand bleibt geschützt. Die Wiederherstellung konnte nicht abgeschlossen werden. Bitte versuche es erneut.")
+                Button(onClick = { recoveryAttempt++ }, modifier = Modifier.testTag("offline_restore_retry")) { Text("Erneut versuchen") }
+              } else {
+                Text("Der aktuelle Bestand bleibt geschützt. Die Wiederherstellung wird geprüft und abgeschlossen.")
+              }
             }
           }
         } else {
