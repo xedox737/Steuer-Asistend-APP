@@ -3175,3 +3175,26 @@ Abnahme: sechs gezielte Archiv-/Datenbanktests ohne Fehler/Skips, darunter
 fehlende installierte Dateien, Einzel- und Mehrseitenverweise sowie unveränderter
 Live-Bestand; lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-staged-database-check.log.
+
+### Schritt 8 – transaktionale Datenbankübernahme
+
+Der interne Datenbankimport setzt die DATABASE-Phase des gebundenen Journals und
+die gemeinsame Wartung voraus. Vor der Übernahme werden Rückfallstand,
+installierte Dateien und Archiv erneut geprüft und eine frische isolierte
+Datenbank mit den neuen Dateiverweisen vorbereitet. Nach SQLite-WAL-Checkpoint
+werden ausschließlich klassifizierte Geschäftstabellen in einer Transaktion
+ersetzt; IDs, Daten und SQLite-Sequenzen werden beidseitig gegen die isolierte
+Quelle verglichen. Alte lokale Dokumentmigrationsaufträge werden neutralisiert,
+damit sie nicht auf dem neuen Bestand erneut starten. Der abgeleitete Suchindex
+wird anschließend neu aufgebaut. Bei Fehler oder Abbruch bleibt das Journal
+bestehen; der gesicherte Datenbankrückfall kann den alten Zustand einschließlich
+lokaler Migrationsaufträge wiederherstellen. Einstellungen und Credential-Import
+werden durch diesen Baustein noch nicht übernommen.
+
+Abnahme: acht gezielte Archiv-/Datenbanktests ohne Fehler oder Skips, darunter
+wiederholte Übernahme, IDs, SQLite-Sequenz, Dateiverweise, neutralisierte alte
+Migrationsaufträge, absichtlicher SQL-Fehler mit atomarem Rückfall und
+Wiederherstellung des ursprünglichen Bestands. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-live-database-import-check.log.
+Vollständige Orchestrierung, echter Prozessstopp und Android-Emulatorprüfung sind
+weiterhin offen.

@@ -254,4 +254,69 @@ class OfflineBackupRestoreInspectorTest {
         noStagingLeft(); liveUnchanged()
     }
 
+    @Test fun databaseImportPreservesIdsSequencesAndCanRollbackThePriorInventory() = runBlocking<Unit> {
+        targetDb.managedDocumentDao().upsertMigrationJournal(DocumentMigrationJournal(
+            documentId = "old-task", driveFileId = "synthetic-drive", targetFolderId = "old-folder", targetFilename = "old.pdf"))
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                repeat(2) { OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared) }
+                assertEquals("archive-house", targetDb.propertyDao().getAllProperties().single().propertyId)
+                val receipt = targetDb.receiptDao().getAllReceiptsIncludingDeletedList().single()
+                assertEquals(41, receipt.id); assertEquals("archive-receipt", receipt.internalId)
+                assertArrayEquals(original.readBytes(), File(receipt.imageUrl!!).readBytes())
+                assertTrue(targetDb.managedDocumentDao().getMigrationJournal().isEmpty())
+                val originalSequence = sourceDb.openHelper.readableDatabase.query("SELECT seq FROM sqlite_sequence WHERE name='receipts'").use { assertTrue(it.moveToFirst()); it.getLong(0) }
+                val restoredSequence = targetDb.openHelper.readableDatabase.query("SELECT seq FROM sqlite_sequence WHERE name='receipts'").use { assertTrue(it.moveToFirst()); it.getLong(0) }
+                assertEquals(originalSequence, restoredSequence)
+                assertEquals("keep live note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
+                val rollback = journal.advance(database, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestoreDatabaseRollback.apply(target, targetDb, token, rollback)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+                assertEquals("old-task", targetDb.managedDocumentDao().getMigrationJournal().single().documentId)
+                assertEquals(rollback, journal.load())
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+    @Test fun databaseImportFailureRollsBackTheSqlTransactionWithoutLosingLiveData() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                token.writing { targetDb.openHelper.writableDatabase.execSQL("CREATE TRIGGER test_reject_insert BEFORE INSERT ON receipts BEGIN SELECT RAISE(ABORT, 'synthetic'); END") }
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
+                } }
+                assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+                assertTrue(targetDb.receiptDao().getAllReceiptsIncludingDeletedList().isEmpty())
+                assertEquals(database, journal.load())
+                token.writing { targetDb.openHelper.writableDatabase.execSQL("DROP TRIGGER test_reject_insert") }
+                val rollback = journal.advance(database, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestoreDatabaseRollback.apply(target, targetDb, token, rollback)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+
 }
