@@ -513,6 +513,53 @@ class OfflineBackupCoordinatorTest {
         }
     }
 
+    @Test fun recoveryDatabaseOpensExistingRowsWithoutRunningStartupRepairDuringMaintenance() = runBlocking<Unit> {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("receipt_database")
+        val seed = Room.databaseBuilder(context, AppDatabase::class.java, "receipt_database").build()
+        try { seed.receiptDao().insertReceipt(receipt.copy(internalId = "")) } finally { seed.close() }
+        try {
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val recovery = AppDatabase.openForRestoreRecovery(context, token)
+                try {
+                    val internalId = token.writing {
+                        recovery.openHelper.writableDatabase.query("SELECT internalId FROM receipts WHERE id = 7").use {
+                            assertTrue(it.moveToFirst()); it.getString(0)
+                        }
+                    }
+                    assertEquals("", internalId)
+                } finally { recovery.close() }
+            }
+            OfflineBackupCoordinator.shared.beginWrite().close()
+        } finally { context.deleteDatabase("receipt_database") }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(IllegalArgumentException::class.java) { AppDatabase.openForRestoreRecovery(context, token) }
+        }
+    }
+
+    @Test fun recoveryDatabaseRefusesOlderSchemaWithoutMigratingOrErasingIt() = runBlocking<Unit> {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.deleteDatabase("receipt_database")
+        val file = context.getDatabasePath("receipt_database")
+        check(file.parentFile!!.isDirectory || file.parentFile!!.mkdirs())
+        android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file, null).use {
+            it.execSQL("CREATE TABLE sentinel(value TEXT NOT NULL)")
+            it.execSQL("INSERT INTO sentinel(value) VALUES('preserve')")
+            it.execSQL("PRAGMA user_version = 33")
+        }
+        try {
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val recovery = AppDatabase.openForRestoreRecovery(context, token)
+                try { assertThrows(IllegalStateException::class.java) { token.writing { recovery.openHelper.writableDatabase } } }
+                finally { recovery.close() }
+            }
+            android.database.sqlite.SQLiteDatabase.openDatabase(file.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { db ->
+                db.rawQuery("PRAGMA user_version", null).use { assertTrue(it.moveToFirst()); assertEquals(33, it.getInt(0)) }
+                db.rawQuery("SELECT value FROM sentinel", null).use { assertTrue(it.moveToFirst()); assertEquals("preserve", it.getString(0)) }
+            }
+        } finally { context.deleteDatabase("receipt_database") }
+    }
+
     @Test fun factoryPreservesStorageFlagsCallbacksMigrationAndReopening() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val name = "snapshot-sql-probe-${UUID.randomUUID()}"

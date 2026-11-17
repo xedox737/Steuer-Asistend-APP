@@ -796,6 +796,18 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /** Opens only the existing current-schema database, without startup repair callbacks or migrations. */
+        internal fun openForRestoreRecovery(context: Context, token: OfflineBackupCoordinator.Maintenance): AppDatabase {
+            OfflineBackupCoordinator.shared.requireMaintenance(token)
+            return token.writing {
+                val existing = context.getDatabasePath("receipt_database").canonicalFile
+                require(existing.isFile) { "Die bestehende Datenbank für den Wiederanlauf fehlt." }
+                Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, existing.path)
+                    .openHelperFactory(OfflineBackupCoordinator.shared.sqliteFactory())
+                    .build()
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(

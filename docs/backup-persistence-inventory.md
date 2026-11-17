@@ -3286,3 +3286,22 @@ Tests durch eine Umgebungsneuverbindung unterbrochen; nur Lint/Build wurden
 anschließend abgeschlossen. Nachweise: /workspace/immopilot-restore-file-finish-check.log
 und /workspace/immopilot-restore-file-finish-build-resumed.log. Die produktiven
 Android-Dateisystemaufrufe und Prozessstopps bleiben für den Emulator offen.
+
+### Schritt 8 – geschützter Datenbankzugang beim Wiederanlauf
+
+Für die spätere Wiederanlaufsteuerung gibt es einen gesonderten Room-Zugang,
+der nur eine bereits vorhandene Datenbank öffnet und nur unter gehaltener
+Wartungssperre aufgebaut wird. Er registriert weder die normale asynchrone
+Startreparatur noch Migrationen. Ein fehlender Bestand oder ein älteres Schema
+wird abgewiesen, statt vor dem geprüften Rückfall eine Datenbank anzulegen oder
+zu verändern. Der normale Datenbankzugang einschließlich seiner bisherigen
+Migrationen und Startreparatur bleibt erhalten. Dieser Zugang ist noch nicht an
+den App-Start angeschlossen.
+
+Abnahme: vier gezielte Datenbanktests ohne Fehler/Skips, darunter unveränderte
+Altwerte unter Wartung, fehlende Datenbank, unverändertes älteres Schema sowie die
+bestehende reguläre Startreparatur und DAO-Koordination. Der erste Testlauf fand
+die Room-Schreibmoduskonfiguration vor Eintritt in die Sperre; nach Korrektur
+bestanden die vier Fälle, lintDebug, assembleDebug und git diff --check. Nachweise:
+/workspace/immopilot-recovery-database-open-check.log und
+/workspace/immopilot-recovery-database-open-fixed.log.
