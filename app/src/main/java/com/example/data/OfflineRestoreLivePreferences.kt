@@ -28,7 +28,7 @@ internal object OfflineRestoreLivePreferences {
                     require(OfflineRestoreJournal(context).load() == entry)
                     currentCoroutineContext().ensureActive()
                     PersistentPreferenceInventory.restorePayload(context, values, RestoreMode.REPLACE_FULL)
-                    verify(context, values)
+                    verifyRestored(context, values)
                     require(OfflineRestoreImportedFiles.verifyInstalled(context, token, entry) == plan)
                     require(OfflineRestoreJournal(context).load() == entry)
                 }
@@ -43,7 +43,7 @@ internal object OfflineRestoreLivePreferences {
         catch (_: SecurityException) { invalid() }
     }
 
-    private suspend fun verify(context: Context, payload: JSONObject) {
+    internal suspend fun verifyRestored(context: Context, payload: JSONObject) {
         PersistentPreferenceInventory.stores.filter { it.kind == PersistentPreferenceInventory.Kind.BACKUP }.forEach { store ->
             currentCoroutineContext().ensureActive()
             val expected = payload.getJSONObject(requireNotNull(store.payloadKey))

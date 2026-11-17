@@ -154,4 +154,30 @@ class OfflineRestorePreferenceVerifierTest {
         assertEquals(rollback, OfflineRestoreJournal(context).load())
     }
 
+    @Test fun rollbackDoesNotAcceptAReportedCommitThatDidNotRestoreTheValues() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val journal = OfflineRestoreJournal(context)
+        val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val notes = context.getSharedPreferences("bank_transaction_notes", 0)
+        notes.edit().putString("note", "changed").commit()
+        val unreliable = object : ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+                val actual = context.getSharedPreferences(name, mode)
+                if (name != "bank_transaction_notes") return actual
+                return object : SharedPreferences by actual {
+                    override fun edit(): SharedPreferences.Editor {
+                        val editor = actual.edit()
+                        return object : SharedPreferences.Editor by editor { override fun commit() = true }
+                    }
+                }
+            }
+        }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestorePreferenceRollback.apply(unreliable, token, rollback)
+            } }
+        }
+        assertEquals("changed", notes.getString("note", null)); assertEquals(rollback, journal.load())
+    }
+
 }

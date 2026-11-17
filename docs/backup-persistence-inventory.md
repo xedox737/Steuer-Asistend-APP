@@ -3305,3 +3305,17 @@ die Room-Schreibmoduskonfiguration vor Eintritt in die Sperre; nach Korrektur
 bestanden die vier Fälle, lintDebug, assembleDebug und git diff --check. Nachweise:
 /workspace/immopilot-recovery-database-open-check.log und
 /workspace/immopilot-recovery-database-open-fixed.log.
+
+### Schritt 8 – Rücklesen des Einstellungsrückfalls
+
+Nach dem synchronen Rückfall der fachlichen Preferences werden alle erlaubten
+Schlüssel, Typen und Werte erneut mit dem journalgebundenen Ausgangsstand
+verglichen. Ein gemeldeter Commit ohne tatsächliche Übernahme führt zum Abbruch;
+das Journal bleibt im Rückfallzustand. Der gleiche Vergleich wird bereits nach
+dem regulären Einstellungsimport verwendet und ändert keine geheimen oder
+lokalen Felder.
+
+Abnahme: acht gezielte Einstellungsprüfungen und zwei betroffene Importtests ohne
+Fehler/Skips, einschließlich eines synthetischen Speichers mit irreführendem
+Commit-Erfolg. lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-preference-rollback-readback-check.log.

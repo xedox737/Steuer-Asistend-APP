@@ -40,6 +40,7 @@ internal object OfflineRestorePreferenceRollback {
                         }
                         check(editor.commit())
                     }
+                    OfflineRestoreLivePreferences.verifyRestored(context, checked.payload)
                     require(journal.load() == entry)
                 }
             }
