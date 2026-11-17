@@ -273,4 +273,33 @@ class OfflineRestoreRollbackBundleTest {
         }
     }
 
+    @Test fun committedCleanupRemovesOnlyMarkersAndCanResumeWithoutDeletingPayloads() = runBlocking<Unit> {
+        val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+        val plan = OfflineRestoreFilePlan.prepare(context, operation, importManifest())
+        val journal = OfflineRestoreJournal(context)
+        coordinator.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, staging, plan)
+            val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token)
+            val prepared = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+            val files = journal.advance(prepared, OfflineRestoreJournal.Phase.FILES)
+            OfflineRestoreImportedFiles.claim(context, token, files, ::syncTestDirectory, ::atomicTestRename)
+            plan.items.forEachIndexed { index, item ->
+                check(item.destination.parentFile!!.mkdirs()); item.destination.writeText(if (index == 0) "original bytes" else "export bytes")
+            }
+            val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+            val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
+            val committed = journal.advance(preferences, OfflineRestoreJournal.Phase.COMMITTED)
+            val unexpected = File(plan.ownedDirectories.first(), "unknown").apply { writeText("keep") }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreImportedFiles.finish(context, token, committed, ::syncTestDirectory)
+            } }
+            assertEquals("keep", unexpected.readText()); assertTrue(unexpected.delete())
+            repeat(2) { OfflineRestoreImportedFiles.finish(context, token, committed, ::syncTestDirectory) }
+            assertEquals("original bytes", plan.items[0].destination.readText())
+            assertEquals("export bytes", plan.items[1].destination.readText())
+            assertEquals("retained original", original.readText()); assertEquals(committed, journal.load())
+            assertTrue(plan.ownedDirectories.all { File(it, ".immopilot-restore-owner").exists().not() })
+        }
+    }
+
 }

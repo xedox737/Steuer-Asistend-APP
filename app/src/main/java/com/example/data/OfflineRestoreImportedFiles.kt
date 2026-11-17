@@ -170,6 +170,38 @@ internal object OfflineRestoreImportedFiles {
         catch (_: SecurityException) { invalid() }
     }
 
+    /** After durable commit, remove only ownership markers and retain all verified payloads. */
+    suspend fun finish(context: Context, token: OfflineBackupCoordinator.Maintenance, entry: OfflineRestoreJournal.Entry,
+        syncDirectory: (File) -> Unit = ::syncDirectory) {
+        try {
+            OfflineBackupCoordinator.shared.requireMaintenance(token)
+            require(entry.phase == OfflineRestoreJournal.Phase.COMMITTED)
+            withContext(Dispatchers.IO) { token.suspending {
+                val index = OfflineRestoreRollbackVerifier.verifyIndex(context, entry)
+                val plan = requireNotNull(index.filePlan); val expected = marker(entry)
+                val existing = plan.ownedDirectories.sortedBy { it.path }.map { root ->
+                    requireNotNull(inspect(root, plan, expected, allowEmptyUnmarked = false, allowVerifiedUnmarked = true))
+                }
+                require(existing.flatMap { it.files }.toSet() == plan.items.map { it.destination }.toSet())
+                for (item in existing) {
+                    currentCoroutineContext().ensureActive(); require(OfflineRestoreJournal(context).load() == entry)
+                    item.marker?.let { file ->
+                        require(readMarker(file).contentEquals(expected) && file.delete())
+                        syncDirectory(item.root)
+                    }
+                }
+                require(OfflineRestoreJournal(context).load() == entry)
+            } }
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: OfflineBackupValidationException) { throw error }
+        catch (_: IOException) { invalid() }
+        catch (_: ErrnoException) { invalid() }
+        catch (_: IllegalArgumentException) { invalid() }
+        catch (_: IllegalStateException) { invalid() }
+        catch (_: NoSuchElementException) { invalid() }
+        catch (_: SecurityException) { invalid() }
+    }
+
     /** Delete only verified bytes in directories owned by this journal; unexpected data is preserved. */
     suspend fun rollback(context: Context, token: OfflineBackupCoordinator.Maintenance, entry: OfflineRestoreJournal.Entry,
         syncDirectory: (File) -> Unit = ::syncDirectory) {
@@ -211,18 +243,17 @@ internal object OfflineRestoreImportedFiles {
         catch (_: SecurityException) { invalid() }
     }
 
-    private suspend fun inspect(root: File, plan: OfflineRestoreFilePlan.Plan, markerBytes: ByteArray, allowEmptyUnmarked: Boolean): Existing? {
+    private suspend fun inspect(root: File, plan: OfflineRestoreFilePlan.Plan, markerBytes: ByteArray,
+        allowEmptyUnmarked: Boolean, allowVerifiedUnmarked: Boolean = false): Existing? {
         require(root.absoluteFile == root.canonicalFile)
         if (!root.exists()) return null
         require(root.isDirectory)
         val permitted = plan.items.filter { it.destination.parentFile?.parentFile == root }.associateBy { requireNotNull(it.destination.parentFile).name }
         val contents = requireNotNull(root.listFiles()).toList()
         val markerFile = contents.singleOrNull { it.name == MARKER }
-        if (markerFile == null) {
-            require(allowEmptyUnmarked && contents.isEmpty())
-            return Existing(root, null, emptyList(), emptyList())
-        }
-        require(readMarker(markerFile).contentEquals(markerBytes))
+        if (markerFile == null && allowEmptyUnmarked && contents.isEmpty()) return Existing(root, null, emptyList(), emptyList())
+        require(markerFile != null || allowVerifiedUnmarked)
+        if (markerFile != null) require(readMarker(markerFile).contentEquals(markerBytes))
         val files = mutableListOf<File>(); val directories = mutableListOf<File>()
         for (directory in contents.filter { it.name != MARKER }) {
             currentCoroutineContext().ensureActive()

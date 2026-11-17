@@ -3269,3 +3269,20 @@ Abnahme: sechs gezielte Schlüsselverwaltungstests ohne Fehler/Skips, darunter
 wartende Passwortanlage und Archivverschlüsselung während der Restore-Sperre;
 lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-key-exclusivity-check.log.
+
+### Schritt 8 – Abschluss importierter Dateien
+
+Nach einem dauerhaft als COMMITTED markierten Restore kann der interne
+Dateiabschluss die Besitzkennzeichen entfernen. Zuvor werden alle gebundenen
+Zieldateien vollständig geprüft; unbekannte oder veränderte Inhalte verhindern
+den Abschluss. Bereits entfernte Kennzeichen sind bei einem Wiederanlauf zulässig,
+sofern alle Nutzdaten weiterhin passen. Die importierten Dateien werden nicht
+gelöscht; das Journal wird durch diesen Baustein noch nicht entfernt.
+
+Abnahme: zehn gezielte Rückfallpakettests ohne Fehler/Skips, darunter Schutz
+unbekannter Dateien und wiederholter Abschluss. lintDebug, assembleDebug und
+git diff --check bestanden. Der erste gemeinsame Prüflauf wurde nach erfolgreichen
+Tests durch eine Umgebungsneuverbindung unterbrochen; nur Lint/Build wurden
+anschließend abgeschlossen. Nachweise: /workspace/immopilot-restore-file-finish-check.log
+und /workspace/immopilot-restore-file-finish-build-resumed.log. Die produktiven
+Android-Dateisystemaufrufe und Prozessstopps bleiben für den Emulator offen.
