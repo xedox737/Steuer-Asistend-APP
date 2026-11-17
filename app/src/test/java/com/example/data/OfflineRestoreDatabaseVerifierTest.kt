@@ -144,6 +144,12 @@ class OfflineRestoreDatabaseVerifierTest {
         val bundle = bundle(); val prepared = bind(bundle)
         val journal = OfflineRestoreJournal(context)
         val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val expectedSequence = android.database.sqlite.SQLiteDatabase.openDatabase(bundle.database.file.path, null,
+            android.database.sqlite.SQLiteDatabase.OPEN_READONLY).use { snapshot ->
+            snapshot.rawQuery("SELECT seq FROM sqlite_sequence WHERE name = 'receipts'", null).use {
+                assertTrue(it.moveToFirst()); it.getLong(0)
+            }
+        }
         database.openHelper.writableDatabase.execSQL("DELETE FROM receipts")
         database.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 5, propertyId = "new", name = "Neu"))
         OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
@@ -152,6 +158,10 @@ class OfflineRestoreDatabaseVerifierTest {
         val receipts = database.receiptDao().getAllReceiptsIncludingDeletedList()
         assertEquals(setOf(41, 42), receipts.map { it.id }.toSet())
         assertEquals(setOf("stable", "cloud-only"), receipts.map { it.internalId }.toSet())
+        val restoredSequence = database.openHelper.readableDatabase.query("SELECT seq FROM sqlite_sequence WHERE name = 'receipts'").use {
+            assertTrue(it.moveToFirst()); it.getLong(0)
+        }
+        assertEquals(expectedSequence, restoredSequence)
         assertEquals(bundle.database.rowCounts["property_metadata"], 1L)
         assertEquals(1L, database.openHelper.readableDatabase.query("SELECT count(*) FROM property_metadata").use { it.moveToFirst(); it.getLong(0) })
         assertEquals(rollback, journal.load())

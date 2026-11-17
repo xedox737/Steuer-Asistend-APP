@@ -3319,3 +3319,17 @@ Abnahme: acht gezielte Einstellungsprüfungen und zwei betroffene Importtests oh
 Fehler/Skips, einschließlich eines synthetischen Speichers mit irreführendem
 Commit-Erfolg. lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-preference-rollback-readback-check.log.
+
+### Schritt 8 – Rücklesen von Credential- und SQLite-Rückfall
+
+Nach dem Credential-Rückfall werden die gespeicherten Chiffretexte erneut
+geöffnet und exakt mit dem journalgebundenen Ausgangszustand verglichen. Ein
+bloß gemeldeter Commit ohne tatsächliche Übernahme lässt das Journal gesperrt.
+Beim Datenbankrückfall werden zusätzlich die SQLite-Sequenzwerte vor dem
+Transaktionsabschluss in beide Richtungen mit der gesicherten Datenbank verglichen.
+
+Abnahme: vier gezielte Rückfalltests ohne Fehler/Skips, darunter ein synthetischer
+Credential-Speicher mit irreführendem Commit-Erfolg, ursprüngliche SQLite-Zähler,
+Credential-Rückfall und simulierter Gerätewechsel. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis:
+/workspace/immopilot-credential-sequence-rollback-check.log.

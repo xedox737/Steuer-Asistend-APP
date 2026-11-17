@@ -302,4 +302,38 @@ class OfflineRestoreRollbackBundleTest {
         }
     }
 
+    @Test fun credentialRollbackRejectsACommitThatDoesNotRestoreCiphertext() = runBlocking<Unit> {
+        TestAndroidKeyStore.register()
+        val prefs = context.getSharedPreferences("ai_provider_settings", 0)
+        val settings = com.example.api.AiProviderSettings
+        try {
+            settings.storeGeminiKey(context, "synthetic-original-gemini-key".toCharArray())
+            coordinator.beginMaintenance().use { token ->
+                val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token, includeCredentials = true)
+                val journal = OfflineRestoreJournal(context)
+                val prepared = journal.begin(UUID.randomUUID().toString(), UUID.randomUUID().toString(),
+                    bundle.id, bundle.manifestBytes, bundle.manifestSha256)
+                val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+                token.writing { settings.storeGeminiKey(context, "synthetic-changed-gemini-key".toCharArray()) }
+                val changed = settings.captureRollbackCiphertexts(context)
+                val unreliable = object : ContextWrapper(context) {
+                    override fun getSharedPreferences(name: String, mode: Int): SharedPreferences {
+                        val actual = context.getSharedPreferences(name, mode)
+                        if (name != "ai_provider_settings") return actual
+                        return object : SharedPreferences by actual {
+                            override fun edit(): SharedPreferences.Editor {
+                                val editor = actual.edit()
+                                return object : SharedPreferences.Editor by editor { override fun commit() = true }
+                            }
+                        }
+                    }
+                }
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    settings.restoreRollbackCiphertexts(unreliable, token, rollback)
+                } }
+                assertEquals(changed, settings.captureRollbackCiphertexts(context)); assertEquals(rollback, journal.load())
+            }
+        } finally { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
+    }
+
 }

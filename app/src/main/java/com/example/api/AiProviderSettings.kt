@@ -392,6 +392,8 @@ object AiProviderSettings {
                     else { editor.putString(names.first, value.ciphertext); editor.putString(names.second, value.iv) }
                 }
                 check(editor.commit())
+                try { require(captureRollbackCiphertexts(context) == credentials.state) }
+                catch (_: OfflineBackupValidationException) { rollbackWriteFailure() }
                 require(com.example.data.OfflineRestoreJournal(context).load() == entry)
             }
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }

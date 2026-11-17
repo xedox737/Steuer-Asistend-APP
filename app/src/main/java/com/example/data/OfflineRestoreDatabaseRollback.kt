@@ -37,6 +37,8 @@ internal object OfflineRestoreDatabaseRollback {
                                     require(!db.query("SELECT * FROM main.`$table` EXCEPT SELECT * FROM restore_rollback.`$table`").use { it.moveToFirst() })
                                     require(!db.query("SELECT * FROM restore_rollback.`$table` EXCEPT SELECT * FROM main.`$table`").use { it.moveToFirst() })
                                 }
+                                require(!db.query("SELECT * FROM main.sqlite_sequence EXCEPT SELECT * FROM restore_rollback.sqlite_sequence").use { it.moveToFirst() })
+                                require(!db.query("SELECT * FROM restore_rollback.sqlite_sequence EXCEPT SELECT * FROM main.sqlite_sequence").use { it.moveToFirst() })
                                 require(OfflineRestoreJournal(context).load() == entry)
                                 db.setTransactionSuccessful()
                             } finally { db.endTransaction() }
