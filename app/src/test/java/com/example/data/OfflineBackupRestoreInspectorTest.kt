@@ -170,9 +170,18 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreStagedDatabase.prepare(target, token, files, prepared)
+                } }
                 repeat(2) { OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink) }
                 assertEquals(1, plan.items.size)
                 assertArrayEquals(original.readBytes(), plan.items.single().destination.readBytes())
+                OfflineRestoreStagedDatabase.prepare(target, token, files, prepared).use { staged ->
+                    val receipt = staged.database.receiptDao().getAllReceiptsIncludingDeletedList().single()
+                    assertEquals(41, receipt.id); assertEquals("archive-receipt", receipt.internalId)
+                    assertEquals(plan.aliases.getValue("original-0").absolutePath, receipt.imageUrl)
+                    assertArrayEquals(original.readBytes(), File(receipt.imageUrl!!).readBytes())
+                }
                 assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
                 assertEquals("keep live note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
                 plan.items.single().destination.writeText("do not overwrite")
@@ -207,6 +216,39 @@ class OfflineBackupRestoreInspectorTest {
                 } }
                 assertTrue(plan.ownedDirectories.none { it.exists() }); assertEquals(files, journal.load())
                 assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+
+    @Test fun stagedDatabaseRewritesMultipleOriginalReferencesToInstalledFiles() = runBlocking<Unit> {
+        val second = File(original.parentFile, "second.pdf").apply { writeText("second original") }
+        val pages = org.json.JSONArray(listOf(original.absolutePath, second.absolutePath)).toString()
+        sourceDb.openHelper.writableDatabase.execSQL("UPDATE receipts SET imageUrl = ? WHERE id = ?", arrayOf(pages, 41))
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreStagedDatabase.prepare(target, token, files, prepared).use { staged ->
+                    val receipt = staged.database.receiptDao().getAllReceiptsIncludingDeletedList().single()
+                    val restored = org.json.JSONArray(receipt.imageUrl)
+                    assertEquals(41, receipt.id); assertEquals(2, restored.length())
+                    assertArrayEquals(original.readBytes(), File(restored.getString(0)).readBytes())
+                    assertArrayEquals(second.readBytes(), File(restored.getString(1)).readBytes())
+                    assertEquals(plan.aliases.values.map { it.canonicalPath }.toSet(),
+                        (0 until restored.length()).map { File(restored.getString(it)).canonicalPath }.toSet())
+                }
+                assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+                val rollback = journal.advance(files, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
             }
         } finally { prepared.close() }
         noStagingLeft(); liveUnchanged()

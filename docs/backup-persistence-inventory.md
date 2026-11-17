@@ -3157,3 +3157,21 @@ Archivdatei vor Zielanlage und anschließende Bereinigung. lintDebug, assembleDe
 und git diff --check bestanden. Nachweis: /workspace/immopilot-restore-file-import-check.log.
 Die JVM-Tests verwenden echte lokale Dateisystemoperationen; Android-Systemaufrufe,
 Prozessstopps und vollständige Restore-Orchestrierung sind noch im Emulator zu prüfen.
+
+### Schritt 8 – isolierte Datenbank mit neuen Dateiverweisen
+
+Nach vollständigem, erneut geprüftem Dateiimport kann eine frische isolierte Room-
+Prüfdatenbank aufgebaut werden. Der journalgebundene Dateiplan und die installierten
+Dateien werden zunächst vollständig geprüft. In einer Transaktion werden nur die
+klassifizierten Originalpfadspalten der isolierten Datenbank auf die geprüften
+Zieldateien umgeschrieben; Einzel- und mehrseitige Verweise werden unterstützt.
+Anschließend werden Tabellenanzahlen, SQLite-Integrität, Fremdschlüssel und
+Dateien erneut geprüft. IDs und Live-Datenbank bleiben bei dieser Vorbereitung
+unverändert. Die vorbereitete Prüfdatenbank muss geschlossen werden, bevor die
+zugehörige Archivinspektion geschlossen wird. Die Übernahme in die Live-Datenbank
+und der Wiederanlauf stehen noch aus.
+
+Abnahme: sechs gezielte Archiv-/Datenbanktests ohne Fehler/Skips, darunter
+fehlende installierte Dateien, Einzel- und Mehrseitenverweise sowie unveränderter
+Live-Bestand; lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-staged-database-check.log.

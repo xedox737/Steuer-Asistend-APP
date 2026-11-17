@@ -143,6 +143,32 @@ internal object OfflineRestoreImportedFiles {
         finally { withContext(NonCancellable + Dispatchers.IO) { temporary?.let { if (it.exists() && !it.delete()) invalid() } } }
     }
 
+    /** Check that every planned file is installed and still matches its authenticated payload. */
+    suspend fun verifyInstalled(context: Context, token: OfflineBackupCoordinator.Maintenance,
+        entry: OfflineRestoreJournal.Entry): OfflineRestoreFilePlan.Plan {
+        try {
+            OfflineBackupCoordinator.shared.requireMaintenance(token)
+            require(entry.phase in setOf(OfflineRestoreJournal.Phase.FILES, OfflineRestoreJournal.Phase.DATABASE))
+            return withContext(Dispatchers.IO) { token.suspending {
+                val index = OfflineRestoreRollbackVerifier.verifyIndex(context, entry)
+                val plan = requireNotNull(index.filePlan)
+                val expected = marker(entry)
+                val existing = plan.ownedDirectories.map { root ->
+                    requireNotNull(inspect(root, plan, expected, allowEmptyUnmarked = false)).also { require(it.marker != null) }
+                }
+                require(existing.flatMap { it.files }.toSet() == plan.items.map { it.destination }.toSet())
+                require(OfflineRestoreJournal(context).load() == entry)
+                plan
+            } }
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: OfflineBackupValidationException) { throw error }
+        catch (_: IOException) { invalid() }
+        catch (_: IllegalArgumentException) { invalid() }
+        catch (_: IllegalStateException) { invalid() }
+        catch (_: NoSuchElementException) { invalid() }
+        catch (_: SecurityException) { invalid() }
+    }
+
     /** Delete only verified bytes in directories owned by this journal; unexpected data is preserved. */
     suspend fun rollback(context: Context, token: OfflineBackupCoordinator.Maintenance, entry: OfflineRestoreJournal.Entry,
         syncDirectory: (File) -> Unit = ::syncDirectory) {
