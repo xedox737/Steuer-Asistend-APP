@@ -109,4 +109,60 @@ class OfflineRestoreFileManifestVerifierTest {
         assertThrows(OfflineBackupValidationException::class.java) { runBlocking { OfflineRestoreFileManifestVerifier.verify(context, journal) } }
         assertEquals(journal, OfflineRestoreJournal(context).load())
     }
+    @Test fun rollbackRestoresOwnedBytesAndLeavesExternalAndUnrelatedFilesUntouched() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val journal = OfflineRestoreJournal(context)
+        val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val original = File(context.filesDir, "managed_documents/original.pdf")
+        val retained = File(context.filesDir, "managed_documents/retained.pdf")
+        val added = File(context.filesDir, "managed_documents/unrelated.pdf").apply { writeText("keep") }
+        val external = File(root, "external.pdf").apply { writeText("external changed") }
+        original.writeText("changed"); assertTrue(retained.delete())
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            repeat(2) {
+                OfflineRestoreOwnedFilesRollback.apply(context, token, rollback,
+                    syncDirectory = { directory ->
+                        java.nio.channels.FileChannel.open(directory.toPath(), java.nio.file.StandardOpenOption.READ).use { it.force(true) }
+                    },
+                    rename = { from, to ->
+                        java.nio.file.Files.move(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    })
+            }
+        }
+        assertEquals("original", original.readText()); assertEquals("retained", retained.readText())
+        assertEquals("keep", added.readText()); assertEquals("external changed", external.readText())
+        assertFalse(File(root, "missing.pdf").exists()); assertEquals(rollback, journal.load())
+    }
+    @Test fun rollbackRejectsTamperedPayloadAndWrongPhaseBeforeChangingFiles() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val original = File(context.filesDir, "managed_documents/original.pdf").apply { writeText("current") }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreOwnedFilesRollback.apply(context, token, prepared)
+            } }
+        }
+        val rollback = OfflineRestoreJournal(context).advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        File(bundle.ownedFiles.directory, bundle.ownedFiles.versions.first().stagedName).appendText("tampered")
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreOwnedFilesRollback.apply(context, token, rollback)
+            } }
+        }
+        assertEquals("current", original.readText()); assertEquals(rollback, OfflineRestoreJournal(context).load())
+    }
+    @Test fun rollbackRejectsSymlinkDestinationWithoutTouchingItsTarget() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val rollback = OfflineRestoreJournal(context).advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val target = File(root, "do-not-touch").apply { writeText("protected") }
+        val original = File(context.filesDir, "managed_documents/original.pdf")
+        assertTrue(original.delete()); java.nio.file.Files.createSymbolicLink(original.toPath(), target.toPath())
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreOwnedFilesRollback.apply(context, token, rollback)
+            } }
+        }
+        assertEquals("protected", target.readText()); assertEquals(rollback, OfflineRestoreJournal(context).load())
+    }
+
 }

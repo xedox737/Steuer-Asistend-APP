@@ -3037,3 +3037,29 @@ assembleDebug und git diff --check bestanden. Beim ersten Testversuch wurde eine
 ungültig formatierte synthetische Eingabe korrekt abgewiesen und anschließend
 korrigiert. Nachweise: /workspace/immopilot-credential-replay-check-fixed.log
 und /workspace/immopilot-credential-replay-final.log.
+
+### Schritt 8 – Rückfall app-eigener Dateien
+
+Der interne Dateirückfall verlangt eine aktive gemeinsame Wartungssperre und
+ein Journal in der Phase ROLLBACK. Vor Änderungen prüft er den gebundenen
+Datenbank-, Referenz- und Dateistand. Nur zuvor gesicherte, klassifizierte
+app-eigene Dateipfade werden berücksichtigt; symbolische Links und unsichere
+Pfade werden abgewiesen. Jede Kopie wird mit Größen- und Hashprüfung in einem
+privaten Arbeitsverzeichnis erstellt, synchronisiert, atomar an ihren Platz
+verschoben und erneut gelesen. Zielverzeichnisse werden synchronisiert. Bereits
+fehlende Referenzen bleiben fehlend, externe Quellen und nicht im Rückfallstand
+gelistete Dateien werden nicht verändert. Das Journal bleibt bestehen, sodass
+abgebrochene Arbeit erneut versucht werden kann. Die Zuordnung und Bereinigung
+neu importierter Dateien sowie die Einbindung in den Wiederanlauf stehen aus.
+
+Abnahme: sieben gezielte Dateitests ohne Fehler/Skips, darunter wiederholte
+Rücknahme, unveränderte externe und zusätzliche Dateien, manipulierte Kopien und
+symbolische Links; lintDebug, assembleDebug und git diff --check bestanden.
+Robolectric konnte Androids Verzeichnisöffnung nicht ausführen und bildete den
+Umbenennungsaufruf nicht mit dem erwarteten Dateiaustausch ab. Die JVM-Tests
+verwenden deshalb echte atomare Verschiebung und Synchronisierung des lokalen
+Testdateisystems. Die produktiven Android-OS-Aufrufe müssen noch im Emulator
+verifiziert werden; ein Prozessstopptest wurde nicht durchgeführt. Nachweise:
+/workspace/immopilot-owned-file-rollback-diagnosis.log,
+/workspace/immopilot-owned-file-rollback-diagnosis2.log und
+/workspace/immopilot-owned-file-rollback-resumed.log.
