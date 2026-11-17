@@ -207,4 +207,70 @@ class OfflineRestoreRollbackBundleTest {
         }
     }
 
+    private fun syncTestDirectory(directory: File) {
+        java.nio.channels.FileChannel.open(directory.toPath(), java.nio.file.StandardOpenOption.READ).use { it.force(true) }
+    }
+    private fun atomicTestRename(from: File, to: File) {
+        java.nio.file.Files.move(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    }
+    private fun importManifest(): OfflineBackupManifest.Checked {
+        val contents = listOf("original bytes", "export bytes")
+        val payloads = contents.mapIndexed { index, data ->
+            val hash = java.security.MessageDigest.getInstance("SHA-256").digest(data.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
+            OfflineBackupManifest.Reference("files/$index", hash, data.toByteArray().size.toLong())
+        }
+        return OfflineBackupManifest.Checked(emptyMap(), mapOf("original-0" to "files/0"), listOf(
+            OfflineBackupManifest.Version("files/managed_documents/import.pdf", "files/managed_documents/import.pdf", OfflineBackupFileInventory.Kind.ORIGINAL, "files/0"),
+            OfflineBackupManifest.Version("cache/exports/export.pdf", "cache/exports/export.pdf", OfflineBackupFileInventory.Kind.SAVED_EXPORT, "files/1")
+        ), payloads, null, emptySet(), OfflineBackupArchiveInfo("2026-11-17T00:00:00Z", 1, "test"))
+    }
+    @Test fun rollbackRemovesOnlyVerifiedFilesFromJournalOwnedDirectoriesAndCanRepeat() = runBlocking<Unit> {
+        val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+        val plan = OfflineRestoreFilePlan.prepare(context, operation, importManifest())
+        val journal = OfflineRestoreJournal(context)
+        coordinator.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, staging, plan)
+            val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token)
+            val prepared = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+            val files = journal.advance(prepared, OfflineRestoreJournal.Phase.FILES)
+            OfflineRestoreImportedFiles.claim(context, token, files, ::syncTestDirectory, ::atomicTestRename)
+            OfflineRestoreImportedFiles.claim(context, token, files, ::syncTestDirectory, ::atomicTestRename)
+            plan.items.forEachIndexed { index, item ->
+                check(item.destination.parentFile!!.mkdirs()); item.destination.writeText(if (index == 0) "original bytes" else "export bytes")
+            }
+            val rollback = journal.advance(files, OfflineRestoreJournal.Phase.ROLLBACK)
+            repeat(2) { OfflineRestoreImportedFiles.rollback(context, token, rollback, ::syncTestDirectory) }
+            assertTrue(plan.ownedDirectories.none { it.exists() })
+            assertEquals("retained original", original.readText()); assertEquals(rollback, journal.load())
+        }
+    }
+    @Test fun rollbackKeepsEveryFileWhenAnyOwnedDirectoryContainsUnknownOrChangedData() = runBlocking<Unit> {
+        val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+        val plan = OfflineRestoreFilePlan.prepare(context, operation, importManifest())
+        val journal = OfflineRestoreJournal(context)
+        coordinator.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, staging, plan)
+            val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token)
+            val prepared = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+            val files = journal.advance(prepared, OfflineRestoreJournal.Phase.FILES)
+            OfflineRestoreImportedFiles.claim(context, token, files, ::syncTestDirectory, ::atomicTestRename)
+            plan.items.forEachIndexed { index, item ->
+                check(item.destination.parentFile!!.mkdirs()); item.destination.writeText(if (index == 0) "original bytes" else "changed export")
+            }
+            val rollback = journal.advance(files, OfflineRestoreJournal.Phase.ROLLBACK)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreImportedFiles.rollback(context, token, rollback, ::syncTestDirectory)
+            } }
+            assertEquals("original bytes", plan.items[0].destination.readText())
+            assertEquals("changed export", plan.items[1].destination.readText())
+            plan.items[1].destination.writeText("export bytes")
+            val unknown = File(plan.ownedDirectories.first(), "other-user-data").apply { writeText("keep") }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreImportedFiles.rollback(context, token, rollback, ::syncTestDirectory)
+            } }
+            assertEquals("keep", unknown.readText()); assertEquals("original bytes", plan.items[0].destination.readText())
+            assertEquals("retained original", original.readText()); assertEquals(rollback, journal.load())
+        }
+    }
+
 }

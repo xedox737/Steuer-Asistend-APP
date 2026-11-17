@@ -3116,3 +3116,23 @@ belegtes Ziel, Phasenwechsel und bestehende Journale. lintDebug, assembleDebug
 und git diff --check bestanden. Nachweis: /workspace/immopilot-journal-file-plan-check.log.
 Dateiimport, Bereinigung, vollständiger Wiederanlauf und echte Prozessstopptests
 sind weiterhin offen.
+
+### Schritt 8 – Besitzkennzeichnung und Bereinigung von Restore-Dateien
+
+Für einen durch Journal und Dateiplan gebundenen FILES-Abschnitt können die
+vorgangsbezogenen app-eigenen Zielverzeichnisse mit einer synchronisierten
+Besitzkennung versehen werden. Vorher werden der Rückfallstand und die
+Speicherreserve geprüft. Beim Rückfall werden alle betroffenen Verzeichnisse vor
+der ersten Löschung geprüft. Nur Dateien mit passendem Pfad, Größe und SHA-256
+sowie gültiger Besitzkennung werden entfernt; unbekannte oder veränderte Daten
+führen zum Abbruch und bleiben erhalten. Die Bereinigung ist wiederholbar und
+markiert das Journal nicht selbst als abgeschlossen. Ein leerer, vor der
+Besitzkennzeichnung unterbrochener Vorgangsordner kann sicher entfernt werden.
+Der eigentliche Dateiimport und die Einbindung in den Wiederanlauf fehlen noch.
+
+Abnahme: neun gezielte Pakettests ohne Fehler/Skips, darunter wiederholte
+Besitzkennzeichnung/Bereinigung sowie Schutz unbekannter und veränderter Dateien;
+lintDebug, assembleDebug und git diff --check bestanden. Die JVM-Tests verwenden
+echte atomare Dateisystemoperationen; die produktiven Android-Systemaufrufe und
+Prozessstopps müssen noch im Emulator geprüft werden. Nachweis:
+/workspace/immopilot-restore-owned-cleanup-check.log.
