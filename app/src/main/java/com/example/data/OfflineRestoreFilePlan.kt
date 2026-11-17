@@ -10,7 +10,8 @@ internal object OfflineRestoreFilePlan {
     data class Item(val version: OfflineBackupManifest.Version, val payload: OfflineBackupManifest.Reference, val destination: File)
     data class Plan(val operationId: String, val items: List<Item>, val aliases: Map<String, File>, val ownedDirectories: Set<File>)
 
-    fun prepare(context: Context, operationId: String, manifest: OfflineBackupManifest.Checked): Plan {
+    fun prepare(context: Context, operationId: String, manifest: OfflineBackupManifest.Checked,
+        requireUnused: Boolean = true): Plan {
         try {
             require(UUID.fromString(operationId).toString() == operationId)
             val payloads = manifest.payloads.associateBy { it.entry }
@@ -23,7 +24,7 @@ internal object OfflineRestoreFilePlan {
                 OfflineBackupFileInventory.Kind.SAVED_EXPORT to File(cache, "exports/offline-restore-$operationId")
             )
             val directories = manifest.versions.map { roots.getValue(it.kind) }.toSet()
-            directories.forEach { require(it.absoluteFile == it.canonicalFile && !it.exists()) }
+            directories.forEach { require(it.absoluteFile == it.canonicalFile && (if (requireUnused) !it.exists() else !it.exists() || it.isDirectory)) }
             val items = manifest.versions.mapIndexed { index, version ->
                 val payload = requireNotNull(payloads[version.entry])
                 require(payload.size >= 0 && payload.sha256.matches(Regex("[0-9a-f]{64}")))
@@ -32,7 +33,7 @@ internal object OfflineRestoreFilePlan {
                 else require(version.kind == OfflineBackupFileInventory.Kind.ORIGINAL && version.id.startsWith("external/"))
                 val name = path?.substringAfterLast('/') ?: "original"
                 val destination = File(roots.getValue(version.kind), "file-$index/$name").absoluteFile
-                require(destination == destination.canonicalFile && !destination.exists())
+                require(destination == destination.canonicalFile && (if (requireUnused) !destination.exists() else !destination.exists() || destination.isFile))
                 Item(version, payload, destination)
             }
             require(items.map { it.destination }.toSet().size == items.size)

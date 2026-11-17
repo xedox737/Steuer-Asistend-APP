@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import java.io.File
 import java.nio.file.Files
 import java.util.UUID
+import java.security.MessageDigest
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -35,6 +37,7 @@ class OfflineRestoreFilePlanTest {
         context = object : ContextWrapper(base) {
             override fun getFilesDir() = File(root, "files").apply { check(isDirectory || mkdirs()) }
             override fun getCacheDir() = File(root, "cache").apply { check(isDirectory || mkdirs()) }
+            override fun getNoBackupFilesDir() = File(root, "no-backup").apply { check(isDirectory || mkdirs()) }
         }
     }
     @After fun cleanup() { root.deleteRecursively() }
@@ -73,6 +76,45 @@ class OfflineRestoreFilePlanTest {
         val plan = OfflineRestoreFilePlan.prepare(wrapped, id, manifest())
         assertTrue(plan.items[0].destination.path.startsWith(realFiles.canonicalPath + File.separator))
         assertFalse(plan.items[0].destination.exists())
+    }
+
+    @Test fun durablePlanSurvivesCreatedDestinationsAndRejectsChanges() = runBlocking<Unit> {
+        val stagingId = UUID.randomUUID().toString()
+        val plan = OfflineRestoreFilePlan.prepare(context, id, manifest())
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, stagingId, plan)
+            assertEquals(plan, OfflineRestoreFilePlanStore.verify(context, id, stagingId, snapshot.bytes, snapshot.sha256))
+            val target = plan.items.first().destination
+            target.parentFile!!.mkdirs(); target.writeText("synthetic partial restore")
+            assertEquals(plan, OfflineRestoreFilePlanStore.verify(context, id, stagingId, snapshot.bytes, snapshot.sha256))
+            val original = snapshot.file.readBytes(); snapshot.file.appendText(" ")
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreFilePlanStore.verify(context, id, stagingId, snapshot.bytes, snapshot.sha256)
+            } }
+            snapshot.file.writeBytes(original)
+            val changed = snapshot.file.readText().replaceFirst("\"owner\":", "\"owner\":\"bad\",\"owner\":")
+            snapshot.file.writeText(changed)
+            val hash = MessageDigest.getInstance("SHA-256").digest(snapshot.file.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreFilePlanStore.verify(context, id, stagingId, snapshot.file.length(), hash)
+            } }
+            assertEquals("synthetic partial restore", target.readText())
+        }
+    }
+    @Test fun occupiedPlanDestinationAndForeignMaintenanceNeverOverwriteFiles() = runBlocking<Unit> {
+        val stagingId = UUID.randomUUID().toString(); val plan = OfflineRestoreFilePlan.prepare(context, id, manifest())
+        val directory = File(context.noBackupFilesDir, "offline-backup-state").apply { mkdirs() }
+        val prior = File(directory, "file-plan-$stagingId.json").apply { writeText("keep") }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreFilePlanStore.capture(context, token, stagingId, plan)
+            } }
+        }
+        val foreign = OfflineBackupCoordinator().beginMaintenance()
+        try { assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineRestoreFilePlanStore.capture(context, foreign, UUID.randomUUID().toString(), plan)
+        } } } finally { foreign.close() }
+        assertEquals("keep", prior.readText())
     }
 
 }

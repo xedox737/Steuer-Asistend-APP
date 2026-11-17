@@ -3082,3 +3082,20 @@ Dateirückfalltests auf API 35 ohne Fehler/Skips, darunter symbolische Basispfad
 belegte Ziele und symbolische Links in Zielpfaden. lintDebug, assembleDebug und
 git diff --check bestanden. Nachweis: /workspace/immopilot-restore-canonical-roots-check.log.
 Die produktiven Android-Dateisystemaufrufe bleiben auf Emulator/Gerät zu prüfen.
+
+### Schritt 8 – dauerhafter Restore-Dateiplan
+
+Der vorgangsbezogene Dateiplan kann unter aktiver gemeinsamer Wartung als eigenes
+privates Artefakt mit begrenzter Größe gespeichert, synchronisiert und unter
+Angabe von Vorgangs-ID, Staging-ID, Größe und SHA-256 wieder eingelesen werden.
+Das Einlesen prüft das Dokument strikt, prüft den Dateihash vor und nach dem
+Parsen und rekonstruiert die Ziele aus den bekannten app-eigenen Basispfaden.
+Bereits teilweise angelegte Zieldateien sind beim Wiederanlauf zulässig, sofern
+keine unsicheren Pfade oder symbolischen Links vorliegen. Belegte Plandateien
+werden nie überschrieben. Der Plan selbst ist noch nicht an das Journal gebunden
+und berechtigt nicht zum Anlegen oder Löschen von Dateien; diese Bindung folgt.
+
+Abnahme: zwölf gezielte Testausführungen auf API 24/35 ohne Fehler/Skips, darunter
+Rücklesen nach teilweiser Anlage, Manipulation, ungültiger Inhalt mit passendem
+Hash, belegter Zielplatz und fremde Wartungssperre. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-file-plan-store-check.log.
