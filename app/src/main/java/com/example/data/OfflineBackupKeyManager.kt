@@ -53,6 +53,10 @@ internal class OfflineBackupKeyManager(context: Context) {
     suspend fun encryptCurrent(output: OutputStream, writePlaintext: suspend (OutputStream) -> Unit): Unit =
         withCurrentGeneration { OfflineBackupArchiveCrypto.encrypt(it, output, writePlaintext) }
 
+    /** Restore shares the archive/rotation mutex even on a device without a configured generation. */
+    internal suspend fun <T> withRestoreExclusivity(block: suspend () -> T): T =
+        withContext(Dispatchers.IO) { mutex.withLock { block() } }
+
     internal suspend fun <T> withCurrentGeneration(block: suspend (OfflineBackupKeyEnvelope.Generation) -> T): T =
         withContext(Dispatchers.IO) {
             mutex.withLock {

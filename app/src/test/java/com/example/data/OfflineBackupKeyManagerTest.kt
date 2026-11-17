@@ -107,4 +107,26 @@ class OfflineBackupKeyManagerTest {
         assertArrayEquals(saved, file.readBytes())
         release.complete(Unit); encryption.await()
     }
+    @Test fun restoreExclusivityBlocksArchiveAndPasswordSetupWithoutRequiringAnExistingGeneration() = runBlocking<Unit> {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val restore = async { manager().withRestoreExclusivity { entered.complete(Unit); release.await() } }
+        entered.await()
+        val password = password(); val confirmation = password()
+        val attempted = CompletableDeferred<Unit>()
+        val setup = async { attempted.complete(Unit); manager().initialize(password, confirmation) }
+        attempted.await(); assertFalse(setup.isCompleted); assertFalse(root.exists())
+        setup.cancelAndJoin()
+        assertTrue(password.all { it == '\u0000' }); assertTrue(confirmation.all { it == '\u0000' })
+        release.complete(Unit); restore.await()
+        manager().initialize(password(), password())
+        val nextEntered = CompletableDeferred<Unit>(); val nextRelease = CompletableDeferred<Unit>()
+        val nextRestore = async { manager().withRestoreExclusivity { nextEntered.complete(Unit); nextRelease.await() } }
+        nextEntered.await()
+        val archiveStarted = CompletableDeferred<Unit>()
+        val pendingArchive = async { archiveStarted.complete(Unit); archive() }
+        archiveStarted.await(); assertFalse(pendingArchive.isCompleted)
+        nextRelease.complete(Unit); nextRestore.await()
+        assertArrayEquals("synthetic archive".toByteArray(), decrypt(pendingArchive.await(), password()))
+    }
+
 }

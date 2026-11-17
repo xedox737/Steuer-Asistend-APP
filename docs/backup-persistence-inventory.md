@@ -3254,3 +3254,18 @@ und manuellem Start sowie der bestehende Test für die Aktualisierung des
 Restore-Einstellungszustands bestanden; keine Fehler oder Skips. lintDebug,
 assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-drive-restore-gate-check.log.
+
+### Schritt 8 – gemeinsame Sperre für Restore und Archivschlüssel
+
+Der Restore kann denselben exklusiven Schlüsselverwaltungs-Mutex wie
+Passworteinrichtung, Passwortwechsel und vollständige Archivveröffentlichung
+halten. Dies funktioniert auch auf einer Installation ohne vorhandene
+Schlüsselgeneration. Wartende Vorgänge sind abbrechbar; ein abgebrochener
+Passwortvorgang löscht seine Eingabepuffer. Die spätere Restore-Orchestrierung
+muss diese Sperre vor der Wartungssperre halten; sie ist hier noch nicht mit
+der Oberfläche verbunden.
+
+Abnahme: sechs gezielte Schlüsselverwaltungstests ohne Fehler/Skips, darunter
+wartende Passwortanlage und Archivverschlüsselung während der Restore-Sperre;
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-key-exclusivity-check.log.
