@@ -52,6 +52,11 @@ class OfflineRestoreRollbackBundleTest {
     @After fun cleanup() {
         database.close()
         PersistentPreferenceInventory.stores.forEach { context.getSharedPreferences(it.name, 0).edit().clear().commit() }
+        if (coordinator.restorePending.value) {
+            val marker = File(context.noBackupFilesDir, "offline-backup-state/restore-journal.json")
+            listOf(marker, File(marker.path + ".bak"), File(marker.path + ".new")).forEach { it.delete() }
+            coordinator.beginMaintenance().use { coordinator.clearRestorePending(context, it) }
+        }
         root.deleteRecursively()
     }
     @Test fun bundleBindsAllArtifactsAndRecordsMissingOriginalWithoutApplyingRestore() = runBlocking<Unit> {

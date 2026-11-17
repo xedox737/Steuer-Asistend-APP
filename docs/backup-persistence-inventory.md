@@ -3415,3 +3415,19 @@ Abnahme: ein gezielter Test des offenen Journals und fünf bestehende Wartungste
 ohne Fehler/Skips, einschließlich fehlerhaftem Journal und erneuter Freigabe;
 lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-pending-restore-gate-check.log.
+
+### Schritt 8 – Wiederanlaufsperre in der Oberfläche
+
+Die Startsteuerung aktiviert die gemeinsame Schreibsperre bereits beim Erkennen
+eines offenen oder beschädigten Journals und löst sie erst nach dessen Entfernung
+unter Wartung wieder. Die Oberfläche beobachtet die Sperre auch während die App
+läuft und zeigt dann den Wiederanlauf statt der fachlichen Oberfläche. Die
+vollständige Restore-Ablaufsteuerung muss die Sperre unmittelbar nach Anlegen des
+Journals setzen; künftige Hintergrund-Worker müssen das Journal ebenfalls vor
+Schreibzugriffen beachten. Ein echter Prozessstopp und produktive Android-Datei-
+operationen sind weiterhin im Emulator zu prüfen.
+
+Abnahme: acht gezielte Start-, Rückfall- und Sperrentests ohne Fehler/Skips;
+lintDebug, assembleDebug und git diff --check bestanden. Das Buildprotokoll enthält
+eine KSP-Hintergrundausnahme, der Gradle-Auftrag endete dennoch erfolgreich.
+Nachweis: /workspace/immopilot-pending-restore-ui-gate-check.log.

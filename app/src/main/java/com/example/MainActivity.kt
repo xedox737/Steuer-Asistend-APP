@@ -24,7 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.data.OfflineRestoreJournal
+import com.example.data.OfflineBackupCoordinator
 import com.example.data.OfflineRestoreRecovery
 import kotlinx.coroutines.CancellationException
 import com.example.ui.AppScreen
@@ -38,14 +38,14 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     // Read before constructing ReceiptViewModel: it opens Room and starts sync work.
     // A malformed or unreadable marker is treated as pending, never as absent.
-    val initialRestorePending = try { OfflineRestoreJournal(applicationContext).load() != null }
-      catch (_: Exception) { true }
+    val initialRestorePending = OfflineBackupCoordinator.shared.observeRestoreJournal(applicationContext)
     setContent {
       MyApplicationTheme {
         var restorePending by remember { mutableStateOf(initialRestorePending) }
+        val restoreGuardPending by OfflineBackupCoordinator.shared.restorePending.collectAsStateWithLifecycle()
         var recoveryFailed by remember { mutableStateOf(false) }
         var recoveryAttempt by remember { mutableStateOf(0) }
-        if (restorePending) {
+        if (restorePending || restoreGuardPending) {
           LaunchedEffect(recoveryAttempt) {
             recoveryFailed = false
             try {

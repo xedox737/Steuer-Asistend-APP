@@ -20,12 +20,17 @@ internal object OfflineRestoreRecovery {
     /** Invoke before constructing application ViewModels or starting background work. */
     suspend fun recoverOnStartup(context: Context, files: FileOperations = androidFiles): Outcome {
         try {
+            val coordinator = OfflineBackupCoordinator.shared
+            if (!coordinator.observeRestoreJournal(context)) return Outcome.NOT_NEEDED
             return OfflineBackupKeyManager(context).withRestoreExclusivity {
                 val journal = OfflineRestoreJournal(context)
-                if (journal.load() == null) return@withRestoreExclusivity Outcome.NOT_NEEDED
-                OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                coordinator.beginMaintenance().use { token ->
                     token.suspending {
-                        val pending = requireNotNull(journal.load())
+                        val pending = journal.load()
+                        if (pending == null) {
+                            coordinator.clearRestorePending(context, token)
+                            return@suspending Outcome.NOT_NEEDED
+                        }
                         val terminal = if (pending.phase in setOf(OfflineRestoreJournal.Phase.COMMITTED, OfflineRestoreJournal.Phase.ROLLED_BACK)) {
                             recoverHeld(context, null, token, pending, files)
                         } else {
@@ -34,6 +39,7 @@ internal object OfflineRestoreRecovery {
                         }
                         require(journal.load() == terminal)
                         journal.clear(terminal)
+                        coordinator.clearRestorePending(context, token)
                         when (terminal.phase) {
                             OfflineRestoreJournal.Phase.ROLLED_BACK -> Outcome.ROLLED_BACK
                             OfflineRestoreJournal.Phase.COMMITTED -> Outcome.COMMITTED

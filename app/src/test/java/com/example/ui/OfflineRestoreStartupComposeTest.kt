@@ -42,6 +42,11 @@ class OfflineRestoreStartupComposeTest {
     private val journalFile get() = File(context.noBackupFilesDir, "offline-backup-state/restore-journal.json")
     @After fun cleanup() {
         listOf(journalFile, File(journalFile.path + ".bak"), File(journalFile.path + ".new")).forEach { it.delete() }
+        if (OfflineBackupCoordinator.shared.restorePending.value) {
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                OfflineBackupCoordinator.shared.clearRestorePending(context, token)
+            }
+        }
         context.deleteDatabase("receipt_database")
     }
     @Test fun noJournalStartsNormalBusinessUi() {
@@ -60,6 +65,7 @@ class OfflineRestoreStartupComposeTest {
         val hash = MessageDigest.getInstance("SHA-256").digest(bundle.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
         val entry = journal.begin(id(), id(), rollbackId, bundle.length(), hash)
         ActivityScenario.launch(MainActivity::class.java).use {
+            ui.waitUntil(10_000) { ui.onAllNodesWithTag("offline_restore_retry").fetchSemanticsNodes().isNotEmpty() }
             ui.onNodeWithTag("offline_restore_startup_blocked").assertExists()
             ui.onNodeWithTag("bottom_navigation").assertDoesNotExist()
             assertEquals(entry, journal.load())
@@ -104,6 +110,22 @@ class OfflineRestoreStartupComposeTest {
         }
         val reopened = Room.databaseBuilder(context, AppDatabase::class.java, "receipt_database").build()
         try { assertEquals("Before", reopened.propertyDao().getAllProperties().single().name) } finally { reopened.close() }
+    }
+
+    @Test fun journalDetectedWhileAppIsOpenBlocksBusinessUiAndNewWrites() {
+        context.getSharedPreferences("google_drive_prefs", 0).edit().putBoolean("user_disconnected", true).putBoolean("auto_backup", false).commit()
+        ActivityScenario.launch(MainActivity::class.java).use {
+            ui.waitUntil(10_000) { ui.onAllNodesWithTag("bottom_navigation").fetchSemanticsNodes().isNotEmpty() }
+            journalFile.parentFile!!.mkdirs(); journalFile.writeText("{broken")
+            assertTrue(OfflineBackupCoordinator.shared.observeRestoreJournal(context))
+            ui.waitUntil(10_000) { ui.onAllNodesWithTag("offline_restore_retry").fetchSemanticsNodes().isNotEmpty() }
+            ui.onNodeWithTag("offline_restore_startup_blocked").assertExists()
+            ui.onNodeWithTag("bottom_navigation").assertDoesNotExist()
+            org.junit.Assert.assertThrows(com.example.data.OfflineBackupValidationException::class.java) {
+                OfflineBackupCoordinator.shared.beginWrite()
+            }
+            assertEquals("{broken", journalFile.readText())
+        }
     }
 
 }
