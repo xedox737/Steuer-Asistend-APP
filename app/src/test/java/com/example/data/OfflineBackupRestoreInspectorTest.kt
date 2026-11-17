@@ -393,4 +393,86 @@ class OfflineBackupRestoreInspectorTest {
         noStagingLeft(); liveUnchanged()
     }
 
+    @Test fun selectedCredentialsRestoreOnAnotherKeystoreAndRollbackWithoutReplacingExistingAliases() = runBlocking<Unit> {
+        val encrypted = archive(credentials = true)
+        TestAndroidKeyStore.remove(); TestAndroidKeyStore.register()
+        val oldGemini = "synthetic-target-gemini-key-67890"
+        val oldOpenAi = "sk-" + "x".repeat(30)
+        AiProviderSettings.storeGeminiKey(target, oldGemini.toCharArray())
+        AiProviderSettings.storeOpenAiKey(target, oldOpenAi.toCharArray())
+        val before = AiProviderSettings.captureRollbackCiphertexts(target)
+        val keystore = java.security.KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val aliases = keystore.aliases().toList().toSet()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token, includeCredentials = true)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
+                val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
+                OfflineRestoreLivePreferences.apply(target, token, preferences, prepared)
+                val alias = "steuer_assistent_gemini_key_v1"
+                val oldKey = requireNotNull(keystore.getKey(alias, null))
+                keystore.deleteEntry(alias)
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    AiProviderSettings.importBackupCredentials(target, token, preferences, prepared)
+                } }
+                assertFalse(keystore.containsAlias(alias))
+                keystore.setKeyEntry(alias, oldKey, null, null)
+                assertEquals(before, AiProviderSettings.captureRollbackCiphertexts(target))
+                AiProviderSettings.importBackupCredentials(target, token, preferences, prepared)
+                val restored = requireNotNull(AiProviderSettings.getGeminiKey(target))
+                try { assertTrue(restored.contentEquals(secret.toCharArray())) } finally { restored.fill('\u0000') }
+                assertEquals(before.getValue(OfflineBackupCredentialSection.Provider.OPENAI),
+                    AiProviderSettings.captureRollbackCiphertexts(target).getValue(OfflineBackupCredentialSection.Provider.OPENAI))
+                assertEquals(aliases, keystore.aliases().toList().toSet())
+                val rollback = journal.advance(preferences, OfflineRestoreJournal.Phase.ROLLBACK)
+                AiProviderSettings.restoreRollbackCiphertexts(target, token, rollback)
+                OfflineRestorePreferenceRollback.apply(target, token, rollback)
+                OfflineRestoreDatabaseRollback.apply(target, targetDb, token, rollback)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+                assertEquals(before, AiProviderSettings.captureRollbackCiphertexts(target))
+                assertEquals(aliases, keystore.aliases().toList().toSet()); assertEquals(rollback, journal.load())
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+    @Test fun credentialsRemainUnchangedWhenImportWasNotSelected() = runBlocking<Unit> {
+        val encrypted = archive(credentials = true)
+        TestAndroidKeyStore.remove(); TestAndroidKeyStore.register()
+        AiProviderSettings.storeGeminiKey(target, "synthetic-target-gemini-key-67890".toCharArray())
+        val before = AiProviderSettings.captureRollbackCiphertexts(target)
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token, includeCredentials = false)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
+                val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
+                OfflineRestoreLivePreferences.apply(target, token, preferences, prepared)
+                AiProviderSettings.importBackupCredentials(target, token, preferences, prepared)
+                assertEquals(before, AiProviderSettings.captureRollbackCiphertexts(target))
+                val rollback = journal.advance(preferences, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestorePreferenceRollback.apply(target, token, rollback)
+                OfflineRestoreDatabaseRollback.apply(target, targetDb, token, rollback)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+
 }

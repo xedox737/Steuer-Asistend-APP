@@ -3217,3 +3217,23 @@ wiederholte Übernahme, Erhalt lokaler Geheimnisse, deaktivierter automatischer
 Drive-Abgleich, Ablehnung manipulierter Metadaten und Rückfall. lintDebug,
 assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-live-preference-import-check.log.
+
+### Schritt 8 – ausdrücklich ausgewählter Credential-Import
+
+Nur wenn der journalgebundene Rückfallstand auch den vorhandenen Credential-
+Zustand enthält, werden die im authentifizierten Archivabschnitt enthaltenen
+API-Schlüssel importiert. Vorher werden Rückfallstand, Dateiplan, Dateien und
+Archiv erneut geprüft. Vorhandene Android-Keystore-Aliase werden weiterverwendet;
+nicht im Archiv enthaltene Anbieter bleiben unverändert. Die gespeicherten
+Schlüssel werden synchron bestätigt und ausschließlich im Speicher durch einen
+verschlüsselten Rücklesedurchlauf verglichen. Temporäre Zeichenpuffer werden
+gelöscht. Ohne Auswahl werden keine Credentials verändert. Ein fehlender
+ursprünglicher Geräteschlüssel führt vor dem Import zum Abbruch; der gebundene
+Credential-Rückfall kann den bisherigen Zustand wiederherstellen.
+
+Abnahme: zwölf gezielte Archiv-/Restoretests und sieben Schlüssel-Sicherheitstests
+ohne Fehler/Skips, darunter simulierter Gerätewechsel, fehlender ursprünglicher
+Alias ohne Neuerzeugung, Erhalt nicht ausgewählter Schlüssel, Opt-out und Rückfall.
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-credential-import-check.log. Es wurden synthetische Schlüssel
+und ein Test-Keystore verwendet; die Android-Geräteprüfung steht noch aus.

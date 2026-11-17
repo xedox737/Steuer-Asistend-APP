@@ -17,6 +17,7 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlinx.coroutines.ensureActive
 
 enum class ReceiptAnalysisProvider {
     GEMINI,
@@ -275,6 +276,63 @@ object AiProviderSettings {
         catch (_: IllegalArgumentException) { backupCredentialFailure() }
         catch (_: IllegalStateException) { backupCredentialFailure() }
         finally { values.values.forEach { it.fill('\u0000') } }
+    }
+
+    /** Import only explicitly selected archive credentials; the journal holds their prior ciphertexts. */
+    internal suspend fun importBackupCredentials(context: Context,
+        token: com.example.data.OfflineBackupCoordinator.Maintenance,
+        entry: com.example.data.OfflineRestoreJournal.Entry,
+        archive: com.example.data.OfflineBackupRestoreInspector.Prepared) {
+        var changed = false
+        try {
+            com.example.data.OfflineBackupCoordinator.shared.requireMaintenance(token)
+            require(entry.phase == com.example.data.OfflineRestoreJournal.Phase.PREFERENCES)
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { token.suspending {
+                val index = com.example.data.OfflineRestoreRollbackVerifier.verifyIndex(context, entry)
+                val previous = index.credentials ?: return@suspending // No explicit credential import.
+                com.example.data.OfflineRestoreDatabaseVerifier.verify(context, entry)
+                val plan = com.example.data.OfflineRestoreImportedFiles.verifyInstalled(context, token, entry)
+                com.example.data.OfflineBackupRoomProbe.prepare(context, archive.contents, archive.generation).use { probe ->
+                    require(com.example.data.OfflineRestoreFilePlan.prepare(context, entry.operationId, probe.manifest, requireUnused = false) == plan)
+                    val section = requireNotNull(probe.manifest.credentials)
+                    val sealed = requireNotNull(archive.contents.parts.getValue(section.entry).inMemory)
+                    OfflineBackupCredentialSection.open(archive.generation, sealed).use { opened ->
+                        require(opened.values.keys == probe.manifest.credentialProviders)
+                        val expected = opened.values.mapValues { it.value.copyOf() }
+                        try {
+                            require(com.example.data.OfflineRestoreJournal(context).load() == entry)
+                            for ((provider, value) in opened.values) {
+                                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                                changed = true
+                                when (provider) {
+                                    OfflineBackupCredentialSection.Provider.OPENAI -> storeOpenAiKey(context, value)
+                                    OfflineBackupCredentialSection.Provider.GEMINI -> storeGeminiKey(context, value)
+                                    OfflineBackupCredentialSection.Provider.GOOGLE_ROUTES -> storeGoogleRoutesKey(context, value)
+                                }
+                            }
+                            // The existing setters use apply(); a synchronous commit flushes the resulting state.
+                            check(com.example.data.PersistentPreferenceInventory.open(context, PREFS_NAME).edit().commit())
+                            val after = captureRollbackCiphertexts(context)
+                            (after.keys - expected.keys).forEach { require(after[it] == previous.state[it]) }
+                            val roundTrip = requireNotNull(exportBackupCredentials(context, archive.generation,
+                                OfflineBackupCredentialSection.Consent(manual = true)))
+                            try { OfflineBackupCredentialSection.open(archive.generation, roundTrip).use { restored ->
+                                expected.forEach { (provider, value) -> require(restored.values[provider]?.contentEquals(value) == true) }
+                            } } finally { roundTrip.fill(0) }
+                            require(com.example.data.OfflineRestoreRollbackVerifier.verifyIndex(context, entry) == index)
+                            require(com.example.data.OfflineRestoreImportedFiles.verifyInstalled(context, token, entry) == plan)
+                            require(com.example.data.OfflineRestoreJournal(context).load() == entry)
+                        } finally { expected.values.forEach { it.fill('\u0000') } }
+                    }
+                }
+            } }
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: OfflineBackupValidationException) { if (changed) rollbackWriteFailure() else throw error }
+        catch (_: GeneralSecurityException) { rollbackWriteFailure() }
+        catch (_: IllegalArgumentException) { rollbackWriteFailure() }
+        catch (_: IllegalStateException) { rollbackWriteFailure() }
+        catch (_: NoSuchElementException) { rollbackWriteFailure() }
+        catch (_: SecurityException) { rollbackWriteFailure() }
     }
 
     /** Existing device ciphertext only; validation never clears entries or creates keys. */
