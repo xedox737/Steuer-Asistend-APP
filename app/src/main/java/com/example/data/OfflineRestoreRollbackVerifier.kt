@@ -21,7 +21,7 @@ internal object OfflineRestoreRollbackVerifier {
     data class Index(val rollbackId: String, val database: File, val preferences: File,
         val ownedManifest: File, val referenceManifest: File, val fileCount: Int,
         val referenceCount: Int, val unavailableCount: Int, val databaseBytes: Long, val databaseSha256: String,
-        val credentials: OfflineRestoreCredentialSnapshot.Checked?)
+        val credentials: OfflineRestoreCredentialSnapshot.Checked?, val filePlan: OfflineRestoreFilePlan.Plan?)
     private data class Description(val id: String, val databaseBytes: Long, val databaseHash: String,
         val preferencesBytes: Long, val preferencesHash: String, val filesBytes: Long, val filesHash: String,
         val fileCount: Int, val referencesBytes: Long, val referencesHash: String, val referenceCount: Int, val unavailableCount: Int,
@@ -52,10 +52,13 @@ internal object OfflineRestoreRollbackVerifier {
             val credentials = description.credentialBytes?.let { size ->
                 OfflineRestoreCredentialSnapshot.verify(context, id, size, requireNotNull(description.credentialHash))
             }
+            val filePlan = expected.filePlanBytes?.let { size ->
+                OfflineRestoreFilePlanStore.verify(context, expected.operationId, expected.stagingId, size, requireNotNull(expected.filePlanSha256))
+            }
             if (OfflineRestoreJournal(context).load() != expected) invalid()
             currentCoroutineContext().ensureActive()
             Index(id, database, preferences, owned, references, description.fileCount, description.referenceCount, description.unavailableCount,
-                description.databaseBytes, description.databaseHash, credentials)
+                description.databaseBytes, description.databaseHash, credentials, filePlan)
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (error: OfflineBackupValidationException) { throw error }
         catch (_: IOException) { invalid() }

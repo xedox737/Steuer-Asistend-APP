@@ -3099,3 +3099,20 @@ Abnahme: zwölf gezielte Testausführungen auf API 24/35 ohne Fehler/Skips, daru
 Rücklesen nach teilweiser Anlage, Manipulation, ungültiger Inhalt mit passendem
 Hash, belegter Zielplatz und fremde Wartungssperre. lintDebug, assembleDebug und
 git diff --check bestanden. Nachweis: /workspace/immopilot-file-plan-store-check.log.
+
+### Schritt 8 – Journalbindung des Dateiplans
+
+Eine neue Journalversion bindet den privaten Dateiplan über Vorgangs-ID,
+Staging-ID, Bytezahl und SHA-256. Das Anlegen dieser Journalversion setzt die
+aktive gemeinsame Wartungssperre, einen vollständig geprüften Plan und noch
+unbelegte Vorgangsverzeichnisse voraus. Bei jeder Rückfallindexprüfung wird der
+gebundene Plan erneut validiert; ein vertauschter oder veränderter Plan verhindert
+die Freigabe. Bestehende Journale der Version 2 bleiben unverändert lesbar. Das
+Journal allein legt keine Restore-Dateien an und übernimmt noch keine Daten.
+
+Abnahme: 18 gezielte Paket-, Journal- und Indexprüfungen ohne Fehler oder Skips,
+darunter Planmanipulation vor und nach Journalanlage, falsche Vorgangs-ID,
+belegtes Ziel, Phasenwechsel und bestehende Journale. lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis: /workspace/immopilot-journal-file-plan-check.log.
+Dateiimport, Bereinigung, vollständiger Wiederanlauf und echte Prozessstopptests
+sind weiterhin offen.

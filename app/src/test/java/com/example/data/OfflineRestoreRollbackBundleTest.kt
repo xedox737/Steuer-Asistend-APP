@@ -166,4 +166,45 @@ class OfflineRestoreRollbackBundleTest {
         } finally { prefs.edit().clear().commit(); TestAndroidKeyStore.remove() }
     }
 
+    @Test fun journalBindsFilePlanToOperationAndRejectsTamperingBeforeAndAfterBegin() = runBlocking<Unit> {
+        val operationId = UUID.randomUUID().toString(); val stagingId = UUID.randomUUID().toString()
+        val payload = OfflineBackupManifest.Reference("files/0", "a".repeat(64), 10)
+        val manifest = OfflineBackupManifest.Checked(emptyMap(), mapOf("original-0" to payload.entry), listOf(
+            OfflineBackupManifest.Version("files/managed_documents/source.pdf", "files/managed_documents/source.pdf",
+                OfflineBackupFileInventory.Kind.ORIGINAL, payload.entry)), listOf(payload), null, emptySet(),
+            OfflineBackupArchiveInfo("2026-11-17T00:00:00Z", 1, "test"))
+        val plan = OfflineRestoreFilePlan.prepare(context, operationId, manifest)
+        val journal = OfflineRestoreJournal(context)
+        coordinator.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, stagingId, plan)
+            val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256,
+                    snapshot.copy(operationId = UUID.randomUUID().toString()))
+            } }
+            assertNull(journal.load())
+            val original = snapshot.file.readBytes(); snapshot.file.appendText(" ")
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+            } }
+            assertNull(journal.load()); snapshot.file.writeBytes(original)
+            val occupied = plan.ownedDirectories.single().apply { check(mkdirs()) }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+            } }
+            assertNull(journal.load()); assertTrue(occupied.delete())
+            val prepared = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+            assertEquals(snapshot.bytes, prepared.filePlanBytes); assertEquals(snapshot.sha256, prepared.filePlanSha256)
+            assertEquals(plan, OfflineRestoreRollbackVerifier.verifyIndex(context, prepared).filePlan)
+            val rollback = journal.advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+            assertEquals(rollback, journal.load()); assertEquals(plan, OfflineRestoreRollbackVerifier.verifyIndex(context, rollback).filePlan)
+            snapshot.file.appendText(" ")
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreRollbackVerifier.verifyIndex(context, rollback)
+            } }
+            assertEquals(rollback, journal.load())
+            assertEquals(41, database.receiptDao().getAllReceiptsIncludingDeletedList().single().id)
+        }
+    }
+
 }
