@@ -148,7 +148,8 @@ internal object OfflineRestoreImportedFiles {
         entry: OfflineRestoreJournal.Entry): OfflineRestoreFilePlan.Plan {
         try {
             OfflineBackupCoordinator.shared.requireMaintenance(token)
-            require(entry.phase in setOf(OfflineRestoreJournal.Phase.FILES, OfflineRestoreJournal.Phase.DATABASE))
+            require(entry.phase in setOf(OfflineRestoreJournal.Phase.FILES, OfflineRestoreJournal.Phase.DATABASE,
+                OfflineRestoreJournal.Phase.PREFERENCES))
             return withContext(Dispatchers.IO) { token.suspending {
                 val index = OfflineRestoreRollbackVerifier.verifyIndex(context, entry)
                 val plan = requireNotNull(index.filePlan)

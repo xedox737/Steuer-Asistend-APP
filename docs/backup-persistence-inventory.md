@@ -3198,3 +3198,22 @@ Wiederherstellung des ursprünglichen Bestands. lintDebug, assembleDebug und
 git diff --check bestanden. Nachweis: /workspace/immopilot-live-database-import-check.log.
 Vollständige Orchestrierung, echter Prozessstopp und Android-Emulatorprüfung sind
 weiterhin offen.
+
+### Schritt 8 – Wiederherstellung fachlicher Einstellungen
+
+Der interne Einstellungsimport verlangt die PREFERENCES-Phase und die gemeinsame
+Wartung. Er prüft Rückfallstand, installierte Dateien, Archivmanifest und isolierte
+Room-Prüfung erneut, ersetzt anschließend nur klassifizierte fachliche Preferences
+und liest Typen und Werte vollständig zurück. Geheime und lokale Felder bleiben
+unverändert. `auto_backup` wird unabhängig vom Archivwert dauerhaft auf `false`
+gesetzt, damit wiederhergestellte Daten nicht automatisch mit Google Drive
+abgeglichen werden. Bei Fehler bleibt das Journal für den Rückfall bestehen.
+Vor Freigabe der Wartung muss die spätere Orchestrierung zusätzlich den bereits
+im Speicher vorhandenen UI-/Drive-Zustand aktualisieren; dies ist noch offen.
+Credential-Import ist ebenfalls noch nicht angeschlossen.
+
+Abnahme: zehn gezielte Archiv-/Restoretests ohne Fehler oder Skips, darunter
+wiederholte Übernahme, Erhalt lokaler Geheimnisse, deaktivierter automatischer
+Drive-Abgleich, Ablehnung manipulierter Metadaten und Rückfall. lintDebug,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-live-preference-import-check.log.

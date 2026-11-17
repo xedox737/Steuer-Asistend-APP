@@ -319,4 +319,78 @@ class OfflineBackupRestoreInspectorTest {
         noStagingLeft(); liveUnchanged()
     }
 
+    @Test fun preferenceImportKeepsSecretsDisablesAutomaticDriveAndRollsBack() = runBlocking<Unit> {
+        source.getSharedPreferences("bank_transaction_notes", 0).edit().putString("note", "archive note").commit()
+        source.getSharedPreferences("google_drive_prefs", 0).edit().putBoolean("auto_backup", true).commit()
+        target.getSharedPreferences("google_drive_prefs", 0).edit().putBoolean("auto_backup", true).commit()
+        val keys = target.getSharedPreferences("ai_provider_settings", 0)
+        keys.edit().putString("openai_key_ciphertext", "synthetic-preserved").commit()
+        val local = target.getSharedPreferences("app_installation_prefs", 0)
+        local.edit().putString("device", "keep").commit()
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreLivePreferences.apply(target, token, files, prepared)
+                } }
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
+                val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
+                repeat(2) { OfflineRestoreLivePreferences.apply(target, token, preferences, prepared) }
+                assertEquals("archive note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
+                assertFalse(target.getSharedPreferences("google_drive_prefs", 0).getBoolean("auto_backup", true))
+                assertEquals("synthetic-preserved", keys.getString("openai_key_ciphertext", null))
+                assertEquals("keep", local.getString("device", null))
+                val rollback = journal.advance(preferences, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestorePreferenceRollback.apply(target, token, rollback)
+                OfflineRestoreDatabaseRollback.apply(target, targetDb, token, rollback)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+                assertTrue(target.getSharedPreferences("google_drive_prefs", 0).getBoolean("auto_backup", false))
+                assertEquals("synthetic-preserved", keys.getString("openai_key_ciphertext", null))
+                assertEquals("keep", local.getString("device", null)); assertEquals(rollback, journal.load())
+            }
+        } finally { prepared.close(); local.edit().clear().commit() }
+        noStagingLeft(); liveUnchanged()
+    }
+    @Test fun preferenceImportRejectsChangedArchiveBeforeWritingPreferences() = runBlocking<Unit> {
+        source.getSharedPreferences("bank_transaction_notes", 0).edit().putString("note", "archive note").commit()
+        target.getSharedPreferences("google_drive_prefs", 0).edit().putBoolean("auto_backup", true).commit()
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
+                val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
+                requireNotNull(prepared.contents.parts.getValue("metadata.json").file).appendText("tampered")
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreLivePreferences.apply(target, token, preferences, prepared)
+                } }
+                assertEquals("keep live note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
+                assertTrue(target.getSharedPreferences("google_drive_prefs", 0).getBoolean("auto_backup", false))
+                val rollback = journal.advance(preferences, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestoreDatabaseRollback.apply(target, targetDb, token, rollback)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+
 }
