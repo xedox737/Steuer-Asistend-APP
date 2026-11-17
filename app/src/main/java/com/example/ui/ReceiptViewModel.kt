@@ -822,7 +822,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         if (_isDriveConnected.value && _autoDriveBackup.value) {
             viewModelScope.launch {
                 kotlinx.coroutines.delay(1200)
-                syncAllToDrive()
+                syncAllToDriveAutomatically()
             }
         }
 
@@ -1972,6 +1972,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun toggleAutoBackup(enabled: Boolean) {
         sharedPrefs.edit().putBoolean("auto_backup", enabled).apply()
         _autoDriveBackup.value = enabled
+    }
+
+    /** Recheck persisted state when queued automatic work actually starts. */
+    fun syncAllToDriveAutomatically() {
+        if (!sharedPrefs.getBoolean("auto_backup", true)) return
+        syncAllToDrive()
     }
 
     @Synchronized
@@ -5166,7 +5172,7 @@ data class AiSearchUiState(
 
             // Keep the cloud backup current, but never use it to overwrite existing local metadata.
             if (_isDriveConnected.value && _autoDriveBackup.value) {
-                syncAllToDrive()
+                syncAllToDriveAutomatically()
             }
         }
     }
@@ -5179,7 +5185,7 @@ data class AiSearchUiState(
                 _selectedPropertyId.value = ""
                 sharedPrefs.edit().remove("selected_property_id").apply()
             }
-            if (_isDriveConnected.value && _autoDriveBackup.value) syncAllToDrive()
+            if (_isDriveConnected.value && _autoDriveBackup.value) syncAllToDriveAutomatically()
         }
     }
 

@@ -3237,3 +3237,20 @@ Alias ohne Neuerzeugung, Erhalt nicht ausgewählter Schlüssel, Opt-out und Rüc
 lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-credential-import-check.log. Es wurden synthetische Schlüssel
 und ein Test-Keystore verwendet; die Android-Geräteprüfung steht noch aus.
+
+### Schritt 8 – automatische Drive-Synchronisierung nach Restore
+
+Automatische Drive-Aufrufe prüfen die dauerhaft gespeicherte `auto_backup`-
+Einstellung unmittelbar beim Start erneut. Das schützt auch verzögert
+vorgemerkte Arbeit, deren UI-Zustand noch aus der Zeit vor dem Restore stammt.
+Automatische Aufrufe bei Objekt- und Darlehensänderungen nutzen dieselbe Grenze.
+Ein vom Nutzer ausdrücklich über die Oberfläche gestarteter manueller Abgleich
+bleibt möglich; er aktiviert die automatische Synchronisierung nicht selbst.
+Der Einstellungsimport setzt `auto_backup` auf `false`. Die spätere vollständige
+Restore-Orchestrierung muss den UI-Zustand weiterhin vor Freigabe aktualisieren.
+
+Abnahme: ein gezielter Drive-Test mit veraltetem UI-Zustand, simuliertem Netzwerk
+und manuellem Start sowie der bestehende Test für die Aktualisierung des
+Restore-Einstellungszustands bestanden; keine Fehler oder Skips. lintDebug,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-drive-restore-gate-check.log.
