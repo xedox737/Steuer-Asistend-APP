@@ -165,4 +165,26 @@ class OfflineRestoreFileManifestVerifierTest {
         assertEquals("protected", target.readText()); assertEquals(rollback, OfflineRestoreJournal(context).load())
     }
 
+    @Test fun rollbackSupportsSystemProvidedSymlinkedFilesBase() = runBlocking<Unit> {
+        val bundle = bundle(); val prepared = bind(bundle)
+        val rollback = OfflineRestoreJournal(context).advance(prepared, OfflineRestoreJournal.Phase.ROLLBACK)
+        val realFiles = context.filesDir
+        val original = File(realFiles, "managed_documents/original.pdf").apply { writeText("changed") }
+        val alias = File(root, "system-files-alias")
+        java.nio.file.Files.createSymbolicLink(alias.toPath(), realFiles.toPath())
+        val wrapped = object : ContextWrapper(context) { override fun getFilesDir() = alias }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            OfflineRestoreOwnedFilesRollback.apply(wrapped, token, rollback,
+                syncDirectory = { directory ->
+                    java.nio.channels.FileChannel.open(directory.toPath(), java.nio.file.StandardOpenOption.READ).use { it.force(true) }
+                },
+                rename = { from, to ->
+                    java.nio.file.Files.move(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                })
+        }
+        assertEquals("original", original.readText())
+        assertEquals(rollback, OfflineRestoreJournal(context).load())
+    }
+
 }

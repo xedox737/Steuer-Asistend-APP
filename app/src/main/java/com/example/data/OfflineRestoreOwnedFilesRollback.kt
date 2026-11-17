@@ -33,8 +33,8 @@ internal object OfflineRestoreOwnedFilesRollback {
                     val owned = verified.files.files
                     val destinations = owned.map { version ->
                         require(OfflineBackupManifest.portableKind(version.portablePath) == version.kind)
-                        val base = if (version.portablePath.startsWith("files/")) context.filesDir else context.cacheDir
-                        require(base.absoluteFile == base.canonicalFile && base.isDirectory)
+                        val base = (if (version.portablePath.startsWith("files/")) context.filesDir else context.cacheDir).canonicalFile
+                        require(base.isDirectory)
                         File(base, version.portablePath.substringAfter('/')).also { destination ->
                             require(destination.absoluteFile == destination.canonicalFile)
                             require(destination.path.startsWith(base.path + File.separator))
@@ -70,7 +70,7 @@ internal object OfflineRestoreOwnedFilesRollback {
                         require(!destination.exists() || destination.isFile)
                         require(journal.load() == entry)
                         rename(staged, destination)
-                        val base = (if (version.portablePath.startsWith("files/")) context.filesDir else context.cacheDir).absoluteFile
+                        val base = (if (version.portablePath.startsWith("files/")) context.filesDir else context.cacheDir).canonicalFile
                         var ancestor = destinationParent
                         while (true) {
                             require(ancestor.absoluteFile == ancestor.canonicalFile)

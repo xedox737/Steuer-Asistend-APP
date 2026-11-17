@@ -3063,3 +3063,22 @@ verifiziert werden; ein Prozessstopptest wurde nicht durchgeführt. Nachweise:
 /workspace/immopilot-owned-file-rollback-diagnosis.log,
 /workspace/immopilot-owned-file-rollback-diagnosis2.log und
 /workspace/immopilot-owned-file-rollback-resumed.log.
+
+### Schritt 8 – vorgangsbezogene Dateizuordnung
+
+Ein rein lesender Dateiplan ordnet geprüfte Archivversionen eindeutigen,
+vorgangsbezogenen Pfaden unter den app-eigenen Original- und Exportverzeichnissen
+zu. Er erhält vorhandene Dateinamen, ordnet gemeinsame Originalreferenzen derselben
+Kopie zu und lehnt belegte Vorgangsverzeichnisse, symbolische Links und fehlende
+oder fachfremde Nutzdatenzuordnungen ab. Der Plan legt selbst keine Dateien an und
+berechtigt noch nicht zum Löschen. Vor dem Import müssen Plan und Dateibesitz noch
+dauerhaft journalgebunden, die Dateien sicher übertragen und Datenbankverweise
+umgeschrieben werden.
+
+Die von Android bereitgestellten Basispfade werden kanonisch aufgelöst; symbolische
+Links innerhalb der Zielpfade bleiben unzulässig. Dies gilt auch für den bereits
+vorhandenen Dateirückfall. Abnahme: acht Dateiplantests auf API 24/35 und acht
+Dateirückfalltests auf API 35 ohne Fehler/Skips, darunter symbolische Basispfade,
+belegte Ziele und symbolische Links in Zielpfaden. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-restore-canonical-roots-check.log.
+Die produktiven Android-Dateisystemaufrufe bleiben auf Emulator/Gerät zu prüfen.
