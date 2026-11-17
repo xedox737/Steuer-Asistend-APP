@@ -3354,3 +3354,27 @@ darunter Rückfall ohne ursprüngliches Archiv nach Datenbank-/Preference-/Crede
 simulieren eine Unterbrechung innerhalb eines JVM-Prozesses; sie sind kein echter
 Android-Prozessstopptest. lintDebug, assembleDebug und git diff --check bestanden.
 Nachweis: /workspace/immopilot-restore-recovery-held-check.log.
+
+### Schritt 8 – Startsteuerung für den internen Wiederanlauf
+
+Die interne Startsteuerung hält den Archivschlüssel-Mutex und anschließend die
+gemeinsame Wartungssperre. Bei offenem Journal öffnet sie für nicht abgeschlossene
+Phasen ausschließlich die vorhandene Datenbank über den geschützten
+Wiederanlaufzugang, führt den Rückfall aus und schließt die Datenbank. Erst bei
+erfolgreichem terminalem Zustand wird das Journal entfernt. Fehlende oder
+beschädigte Rückfalldaten lassen Journal und Bestand gesperrt. Ein bereits
+terminales Journal wird ohne erneutes Öffnen der Live-Datenbank abgeschlossen.
+Die Startoberfläche ruft diese Steuerung noch nicht auf; echte Android-
+Prozessstopps und die spätere Bereinigung privater Rückfallartefakte sind offen.
+
+Abnahme: die zwei gezielten dateibasierten Startfälle bestanden nach Korrektur
+einer Testpfadauflösung; der zusätzliche Credential-Wiederanlauftest scheiterte
+in einem gemeinsamen Lauf einmal bei der isolierten Datenbankprüfung und bestand
+sowohl isoliert als auch im anschließenden gemeinsamen Diagnoselauf. Die Ursache
+dieses einmaligen Fehlschlags ist nicht geklärt und bleibt ein offener Befund;
+es wurde keine Sicherheitsprüfung abgeschwächt. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweise:
+/workspace/immopilot-startup-recovery-core-fixed.log,
+/workspace/immopilot-startup-recovery-isolation.log,
+/workspace/immopilot-startup-recovery-concurrent-diagnosis.log und
+/workspace/immopilot-startup-recovery-core-build.log.
