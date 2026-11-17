@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.ContentValues
+import android.content.Context
 import android.content.SharedPreferences
 import android.database.Cursor
 import android.database.CursorWrapper
@@ -17,6 +18,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.Closeable
 import java.lang.ref.WeakReference
@@ -36,6 +39,8 @@ internal class OfflineBackupCoordinator {
     private var activeWriters = 0L
     private var blockedReason: String? = null
     private var maintenance: Maintenance? = null
+    private val mutableRestorePending = MutableStateFlow(false)
+    internal val restorePending = mutableRestorePending.asStateFlow()
     private val maintenanceWriter = ThreadLocal<Maintenance?>()
     private val initializations = mutableSetOf<CompletableDeferred<Unit>>()
     private val preferences = IdentityHashMap<SharedPreferences, SharedPreferences>()
@@ -95,7 +100,31 @@ internal class OfflineBackupCoordinator {
         check(maintenance === token) { "Die gemeinsame Wartungssperre ist nicht aktiv." }
     }
 
+    /** Keep new writers blocked after a failed/interrupted journalled restore. */
+    internal fun markRestorePending(token: Maintenance) = synchronized(monitor) {
+        check(maintenance === token) { "Die gemeinsame Wartungssperre ist nicht aktiv." }
+        if (!mutableRestorePending.value) { mutableRestorePending.value = true; advance() }
+    }
+
+    /** Fail closed on malformed journals, including before any ViewModel is created. */
+    internal fun observeRestoreJournal(context: Context): Boolean {
+        val pending = try { OfflineRestoreJournal(context).load() != null } catch (_: Exception) { true }
+        return synchronized(monitor) {
+            if (pending && !mutableRestorePending.value) { mutableRestorePending.value = true; advance() }
+            mutableRestorePending.value
+        }
+    }
+
+    /** Only the held maintenance owner may unblock, and only once the durable journal is gone. */
+    internal fun clearRestorePending(context: Context, token: Maintenance) = synchronized(monitor) {
+        check(maintenance === token) { "Die gemeinsame Wartungssperre ist nicht aktiv." }
+        check(OfflineRestoreJournal(context).load() == null) { "Das Wiederherstellungsjournal ist noch vorhanden." }
+        if (mutableRestorePending.value) { mutableRestorePending.value = false; advance() }
+    }
+
     fun beginWrite(): Closeable = synchronized(monitor) {
+        if (mutableRestorePending.value && (maintenance == null || maintenanceWriter.get() !== maintenance))
+            throw OfflineBackupValidationException("Die Wiederherstellung ist noch nicht abgeschlossen. Änderungen und Sicherungen bleiben gesperrt.")
         if (maintenance != null && maintenanceWriter.get() !== maintenance)
             throw OfflineBackupValidationException("Wiederherstellung läuft. Änderungen und Sicherungen sind vorübergehend gesperrt.")
         advance()
@@ -187,6 +216,7 @@ internal class OfflineBackupCoordinator {
     }
 
     fun beginCapture(): Capture = synchronized(monitor) {
+        if (mutableRestorePending.value) throw OfflineBackupValidationException("Die Wiederherstellung ist noch nicht abgeschlossen. Sicherungen bleiben gesperrt.")
         if (maintenance != null) throw OfflineBackupValidationException("Während der Wiederherstellung ist keine Sicherung möglich.")
         blockedReason?.let { throw OfflineBackupValidationException(it) }
         if (activeWriters != 0L) throw OfflineBackupValidationException("Daten werden gerade geändert. Bitte die Sicherung später erneut starten.")
@@ -195,6 +225,7 @@ internal class OfflineBackupCoordinator {
 
     /** Call only after all captured metadata and original bytes are fixed in private staging. */
     fun completeCapture(capture: Capture) = synchronized(monitor) {
+        if (mutableRestorePending.value) throw OfflineBackupValidationException("Die Wiederherstellung ist noch nicht abgeschlossen. Sicherungen bleiben gesperrt.")
         if (maintenance != null) throw OfflineBackupValidationException("Während der Wiederherstellung ist keine Sicherung möglich.")
         blockedReason?.let { throw OfflineBackupValidationException(it) }
         if (capture.owner !== this || activeWriters != 0L || capture.generation != generation) {

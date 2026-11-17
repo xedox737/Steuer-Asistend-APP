@@ -513,6 +513,32 @@ class OfflineBackupCoordinatorTest {
         }
     }
 
+    @Test fun pendingRestoreBlocksNewWritesUntilJournalIsGoneAndMaintenanceOwnerClearsIt() {
+        val base = ApplicationProvider.getApplicationContext<Context>()
+        val root = File(base.cacheDir, "pending-gate-${UUID.randomUUID()}").apply { check(mkdirs()) }
+        val isolated = object : ContextWrapper(base) { override fun getNoBackupFilesDir() = root }
+        val local = OfflineBackupCoordinator()
+        val earlier = local.beginCapture()
+        try {
+            local.beginMaintenance().use { token -> local.markRestorePending(token) }
+            assertTrue(local.restorePending.value)
+            assertThrows(OfflineBackupValidationException::class.java) { local.beginWrite() }
+            assertThrows(OfflineBackupValidationException::class.java) { local.beginCapture() }
+            assertThrows(OfflineBackupValidationException::class.java) { local.completeCapture(earlier) }
+            val marker = File(root, "offline-backup-state/restore-journal.json").apply { parentFile!!.mkdirs(); writeText("{broken") }
+            assertTrue(local.observeRestoreJournal(isolated))
+            local.beginMaintenance().use { token ->
+                token.writing { local.beginWrite().close() }
+                assertThrows(OfflineBackupValidationException::class.java) { local.clearRestorePending(isolated, token) }
+                assertTrue(local.restorePending.value)
+                assertTrue(marker.delete())
+                local.clearRestorePending(isolated, token)
+            }
+            assertFalse(local.restorePending.value); local.beginWrite().close()
+            assertThrows(OfflineBackupValidationException::class.java) { local.completeCapture(earlier) }
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun recoveryDatabaseOpensExistingRowsWithoutRunningStartupRepairDuringMaintenance() = runBlocking<Unit> {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase("receipt_database")

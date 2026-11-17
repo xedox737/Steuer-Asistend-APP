@@ -3397,3 +3397,21 @@ Start, erfolgreich wiederhergestellter Bestand und Sperre bei defektem Journal;
 lintDebug, assembleDebug und git diff --check bestanden. Der erste Auftrag wurde
 bei einer Umgebungsneuverbindung abgebrochen und zählt nicht als Ergebnis.
 Nachweis: /workspace/immopilot-startup-recovery-ui-resumed.log.
+
+### Schritt 8 – Sperre bei offenem Restore-Journal
+
+Die gemeinsame Snapshot-/Schreibkoordination kann einen offenen Restore dauerhaft
+für die Lebensdauer des Prozesses als gesperrt markieren. Neue fachliche
+Schreibzugriffe und Sicherungserfassungen werden dann auch nach Freigabe einer
+Wartungsinstanz abgewiesen. Eine neue Wartungsinstanz darf den Rückfall
+fortsetzen; nur sie kann die Sperre nach nachweislich entferntem Journal wieder
+lösen. Ein beschädigtes Journal wird ebenfalls als offen behandelt. Bereits vor
+der Sperre begonnene optimistische Erfassungen verlieren ihre Gültigkeit.
+Die Startoberfläche und die vollständige Restore-Orchestrierung müssen diese
+Sperre noch verwenden; zukünftige Hintergrund-Worker müssen das Journal vor
+ihrem Start ebenfalls beachten.
+
+Abnahme: ein gezielter Test des offenen Journals und fünf bestehende Wartungstests
+ohne Fehler/Skips, einschließlich fehlerhaftem Journal und erneuter Freigabe;
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-pending-restore-gate-check.log.
