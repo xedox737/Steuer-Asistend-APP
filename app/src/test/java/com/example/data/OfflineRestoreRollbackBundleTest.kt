@@ -299,6 +299,9 @@ class OfflineRestoreRollbackBundleTest {
             assertEquals("export bytes", plan.items[1].destination.readText())
             assertEquals("retained original", original.readText()); assertEquals(committed, journal.load())
             assertTrue(plan.ownedDirectories.all { File(it, ".immopilot-restore-owner").exists().not() })
+            val ops = OfflineRestoreRecovery.FileOperations(::syncTestDirectory, ::atomicTestRename)
+            assertEquals(committed, OfflineRestoreRecovery.recoverHeld(context, null, token, committed, ops))
+            assertEquals(committed, journal.load())
         }
     }
 

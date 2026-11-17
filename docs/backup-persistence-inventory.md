@@ -3333,3 +3333,24 @@ Credential-Speicher mit irreführendem Commit-Erfolg, ursprüngliche SQLite-Zäh
 Credential-Rückfall und simulierter Gerätewechsel. lintDebug, assembleDebug und
 git diff --check bestanden. Nachweis:
 /workspace/immopilot-credential-sequence-rollback-check.log.
+
+### Schritt 8 – wiederholbarer interner Wiederanlauf
+
+Unter gehaltener gemeinsamer Wartung prüft der interne Wiederanlauf das vorhandene
+Journal und den gebundenen Rückfallstand. Nicht abgeschlossene Phasen werden auf
+ROLLBACK gesetzt; anschließend werden app-eigene Originaldateien, Datenbank,
+fachliche Einstellungen und gegebenenfalls Credentials zurückgesetzt und die
+nachgewiesenen Importdateien konservativ bereinigt. Erst nach diesen Schritten
+wird ROLLED_BACK dauerhaft markiert. Bei unbekannten oder veränderten Importdateien
+bleibt der Rückfall gesperrt und kann nach Behebung wiederholt werden. Bereits
+abgeschlossene Journale können ihre Dateikennzeichen wiederholbar abschließen.
+Der Aufrufer muss Datenbank und UI-Zustand sicher schließen beziehungsweise
+aktualisieren, bevor er ein terminales Journal entfernt. Die Anbindung an den
+App-Start und echte Prozessstopptests sind noch offen.
+
+Abnahme: drei gezielte Wiederanlauf- und Dateischutztests ohne Fehler/Skips,
+darunter Rückfall ohne ursprüngliches Archiv nach Datenbank-/Preference-/Credential-
+Änderungen, erneuter Aufruf und Erhalt unbekannter Importdateien. Die Tests
+simulieren eine Unterbrechung innerhalb eines JVM-Prozesses; sie sind kein echter
+Android-Prozessstopptest. lintDebug, assembleDebug und git diff --check bestanden.
+Nachweis: /workspace/immopilot-restore-recovery-held-check.log.

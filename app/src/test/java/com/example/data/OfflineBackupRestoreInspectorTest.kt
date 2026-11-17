@@ -475,4 +475,81 @@ class OfflineBackupRestoreInspectorTest {
         noStagingLeft(); liveUnchanged()
     }
 
+    private fun recoveryFileOperations() = OfflineRestoreRecovery.FileOperations(::syncTestDirectory) { from, to ->
+        java.nio.file.Files.move(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+    @Test fun interruptedRestoreRecoversDatabasePreferencesFilesAndCredentialsWithoutArchive() = runBlocking<Unit> {
+        val encrypted = archive(credentials = true)
+        TestAndroidKeyStore.remove(); TestAndroidKeyStore.register()
+        AiProviderSettings.storeGeminiKey(target, "synthetic-prior-gemini-key-67890".toCharArray())
+        val oldKeys = AiProviderSettings.captureRollbackCiphertexts(target)
+        val oldFile = File(target.filesDir, "managed_documents/keep.pdf").apply { parentFile!!.mkdirs(); writeText("prior original") }
+        target.getSharedPreferences("google_drive_prefs", 0).edit().putBoolean("auto_backup", true).commit()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        val journal = OfflineRestoreJournal(target)
+        val plan = OfflineRestoreFilePlan.prepare(target, UUID.randomUUID().toString(), prepared.probe.manifest)
+        try {
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, UUID.randomUUID().toString(), plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token, includeCredentials = true)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
+                val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
+                OfflineRestoreLivePreferences.apply(target, token, preferences, prepared)
+                AiProviderSettings.importBackupCredentials(target, token, preferences, prepared)
+                oldFile.writeText("changed during restore")
+            }
+        } finally { prepared.close() }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            val pending = requireNotNull(journal.load())
+            val terminal = OfflineRestoreRecovery.recoverHeld(target, targetDb, token, pending, recoveryFileOperations())
+            assertEquals(OfflineRestoreJournal.Phase.ROLLED_BACK, terminal.phase)
+            assertEquals(terminal, OfflineRestoreRecovery.recoverHeld(target, targetDb, token, terminal, recoveryFileOperations()))
+            assertEquals("prior original", oldFile.readText())
+            assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+            assertTrue(targetDb.receiptDao().getAllReceiptsIncludingDeletedList().isEmpty())
+            assertEquals("keep live note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
+            assertTrue(target.getSharedPreferences("google_drive_prefs", 0).getBoolean("auto_backup", false))
+            assertEquals(oldKeys, AiProviderSettings.captureRollbackCiphertexts(target))
+            assertTrue(plan.ownedDirectories.none { it.exists() }); assertEquals(terminal, journal.load())
+            journal.clear(terminal)
+        }
+        assertNull(journal.load()); noStagingLeft()
+    }
+    @Test fun recoveryPreservesUnknownImportDataAndCanResumeAfterItIsRemoved() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        val journal = OfflineRestoreJournal(target)
+        val plan = OfflineRestoreFilePlan.prepare(target, UUID.randomUUID().toString(), prepared.probe.manifest)
+        var unknown: File? = null
+        try {
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, UUID.randomUUID().toString(), plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                unknown = File(plan.ownedDirectories.single(), "unknown-user-data").apply { writeText("preserve") }
+            }
+        } finally { prepared.close() }
+        OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreRecovery.recoverHeld(target, targetDb, token, requireNotNull(journal.load()), recoveryFileOperations())
+            } }
+            val protected = requireNotNull(unknown)
+            assertEquals("preserve", protected.readText()); assertTrue(plan.items.single().destination.exists())
+            assertEquals(OfflineRestoreJournal.Phase.ROLLBACK, journal.load()!!.phase)
+            assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+            assertTrue(protected.delete())
+            val terminal = OfflineRestoreRecovery.recoverHeld(target, targetDb, token, requireNotNull(journal.load()), recoveryFileOperations())
+            assertEquals(OfflineRestoreJournal.Phase.ROLLED_BACK, terminal.phase)
+            assertTrue(plan.ownedDirectories.none { it.exists() }); journal.clear(terminal)
+        }
+        assertNull(journal.load()); noStagingLeft(); liveUnchanged()
+    }
+
 }
