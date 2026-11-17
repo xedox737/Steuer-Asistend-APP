@@ -74,6 +74,75 @@ internal object OfflineRestoreImportedFiles {
         finally { withContext(NonCancellable + Dispatchers.IO) { temporary?.let { if (it.exists() && !it.delete()) invalid() } } }
     }
 
+    /** Install only freshly reverified archive payloads; existing files are never replaced. */
+    suspend fun install(context: Context, token: OfflineBackupCoordinator.Maintenance, entry: OfflineRestoreJournal.Entry,
+        prepared: OfflineBackupRestoreInspector.Prepared,
+        syncDirectory: (File) -> Unit = ::syncDirectory,
+        rename: (File, File) -> Unit = { from, to -> Os.rename(from.path, to.path) },
+        link: (File, File) -> Unit = { from, to -> Os.link(from.path, to.path) }) {
+        var temporary: File? = null
+        try {
+            OfflineBackupCoordinator.shared.requireMaintenance(token)
+            require(entry.phase == OfflineRestoreJournal.Phase.FILES)
+            withContext(Dispatchers.IO) { token.suspending {
+                val rollback = OfflineRestoreDatabaseVerifier.verify(context, entry)
+                val plan = requireNotNull(rollback.files.index.filePlan)
+                // Repeat the complete authenticated manifest and isolated Room probe before any live file change.
+                OfflineBackupRoomProbe.prepare(context, prepared.contents, prepared.generation).use { probe ->
+                    require(OfflineRestoreFilePlan.prepare(context, entry.operationId, probe.manifest, requireUnused = false) == plan)
+                    plan.items.forEach { item ->
+                        val part = prepared.contents.parts.getValue(item.version.entry)
+                        require(part.file != null && part.bytes == item.payload.size && part.sha256 == item.payload.sha256)
+                    }
+                }
+                require(OfflineRestoreJournal(context).load() == entry)
+                claim(context, token, entry, syncDirectory, rename)
+                val state = File(context.noBackupFilesDir, "offline-backup-state")
+                for (item in plan.items) {
+                    currentCoroutineContext().ensureActive(); require(OfflineRestoreJournal(context).load() == entry)
+                    val destination = item.destination; val child = requireNotNull(destination.parentFile)
+                    val root = requireNotNull(child.parentFile)
+                    require(root in plan.ownedDirectories && readMarker(File(root, MARKER)).contentEquals(marker(entry)))
+                    require(child.absoluteFile == child.canonicalFile && destination.absoluteFile == destination.canonicalFile)
+                    if (destination.exists()) { requireFile(destination, item.payload); continue }
+                    if (!child.exists()) { require(child.mkdir()); syncDirectory(root) }
+                    require(child.isDirectory && requireNotNull(child.list()).isEmpty())
+                    val source = requireNotNull(prepared.contents.parts.getValue(item.version.entry).file)
+                    val stage = File(state, "restore-payload-${UUID.randomUUID()}.tmp")
+                    require(stage.absoluteFile == stage.canonicalFile && stage.createNewFile()); temporary = stage
+                    val digest = MessageDigest.getInstance("SHA-256"); var count = 0L
+                    FileInputStream(source).use { input -> FileOutputStream(stage).use { output ->
+                        val buffer = ByteArray(8192)
+                        while (true) {
+                            currentCoroutineContext().ensureActive(); val size = input.read(buffer); if (size < 0) break
+                            require(size.toLong() <= item.payload.size - count)
+                            output.write(buffer, 0, size); digest.update(buffer, 0, size); count += size
+                        }
+                        output.fd.sync()
+                    } }
+                    require(count == item.payload.size && digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == item.payload.sha256)
+                    requireFile(stage, item.payload)
+                    require(child.absoluteFile == child.canonicalFile && destination.absoluteFile == destination.canonicalFile && !destination.exists())
+                    require(OfflineRestoreJournal(context).load() == entry)
+                    // A hard link is atomic and fails if the destination already exists.
+                    link(stage, destination)
+                    syncDirectory(child)
+                    requireFile(destination, item.payload)
+                    require(stage.delete()); temporary = null; syncDirectory(state)
+                }
+                require(OfflineRestoreJournal(context).load() == entry)
+            } }
+        } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+        catch (error: OfflineBackupValidationException) { throw error }
+        catch (_: IOException) { invalid() }
+        catch (_: ErrnoException) { invalid() }
+        catch (_: IllegalArgumentException) { invalid() }
+        catch (_: IllegalStateException) { invalid() }
+        catch (_: NoSuchElementException) { invalid() }
+        catch (_: SecurityException) { invalid() }
+        finally { withContext(NonCancellable + Dispatchers.IO) { temporary?.let { if (it.exists() && !it.delete()) invalid() } } }
+    }
+
     /** Delete only verified bytes in directories owned by this journal; unexpected data is preserved. */
     suspend fun rollback(context: Context, token: OfflineBackupCoordinator.Maintenance, entry: OfflineRestoreJournal.Entry,
         syncDirectory: (File) -> Unit = ::syncDirectory) {

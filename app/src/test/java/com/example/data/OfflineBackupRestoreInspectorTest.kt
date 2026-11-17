@@ -150,4 +150,66 @@ class OfflineBackupRestoreInspectorTest {
         } }
         assertFalse(opened); assertTrue(cancelled.all { it == '\u0000' }); noStagingLeft(); liveUnchanged()
     }
+    private fun syncTestDirectory(directory: File) {
+        java.nio.channels.FileChannel.open(directory.toPath(), java.nio.file.StandardOpenOption.READ).use { it.force(true) }
+    }
+    private fun atomicTestRename(from: File, to: File) {
+        java.nio.file.Files.move(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    }
+    private fun atomicTestLink(from: File, to: File) { java.nio.file.Files.createLink(to.toPath(), from.toPath()) }
+
+    @Test fun verifiedArchiveFilesInstallWithoutOverwriteAndRollbackCleanly() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                repeat(2) { OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink) }
+                assertEquals(1, plan.items.size)
+                assertArrayEquals(original.readBytes(), plan.items.single().destination.readBytes())
+                assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+                assertEquals("keep live note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
+                plan.items.single().destination.writeText("do not overwrite")
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                } }
+                assertEquals("do not overwrite", plan.items.single().destination.readText())
+                plan.items.single().destination.writeBytes(original.readBytes())
+                val rollback = journal.advance(files, OfflineRestoreJournal.Phase.ROLLBACK)
+                OfflineRestoreImportedFiles.rollback(target, token, rollback, ::syncTestDirectory)
+                assertTrue(plan.ownedDirectories.none { it.exists() }); assertEquals(rollback, journal.load())
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+    @Test fun changedStagedArchiveIsRejectedBeforeAnyDestinationIsCreated() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            val operation = UUID.randomUUID().toString(); val staging = UUID.randomUUID().toString()
+            val plan = OfflineRestoreFilePlan.prepare(target, operation, prepared.probe.manifest)
+            val journal = OfflineRestoreJournal(target)
+            OfflineBackupCoordinator.shared.beginMaintenance().use { token ->
+                val snapshot = OfflineRestoreFilePlanStore.capture(target, token, staging, plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                val part = requireNotNull(prepared.contents.parts.getValue(plan.items.single().version.entry).file)
+                part.appendText("tampered")
+                assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                    OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                } }
+                assertTrue(plan.ownedDirectories.none { it.exists() }); assertEquals(files, journal.load())
+                assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
+            }
+        } finally { prepared.close() }
+        noStagingLeft(); liveUnchanged()
+    }
+
 }

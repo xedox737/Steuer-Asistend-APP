@@ -3136,3 +3136,24 @@ lintDebug, assembleDebug und git diff --check bestanden. Die JVM-Tests verwenden
 echte atomare Dateisystemoperationen; die produktiven Android-Systemaufrufe und
 Prozessstopps müssen noch im Emulator geprüft werden. Nachweis:
 /workspace/immopilot-restore-owned-cleanup-check.log.
+
+### Schritt 8 – geprüfter Import von Restore-Dateien
+
+Der interne Dateiimport verlangt die aktive Wartung, ein Journal in der FILES-
+Phase und den daran gebundenen Dateiplan. Vor der ersten Änderung werden der
+Rückfallstand, das vollständige vorbereitete Archivmanifest und eine isolierte
+Room-Datenbank erneut geprüft. Danach werden ausschließlich vorgangsbezogene,
+besitzgekennzeichnete Ziele verwendet. Jede Archivdatei wird begrenzt in einen
+privaten temporären Bereich kopiert, synchronisiert und auf Größe und Hash
+geprüft. Ein atomarer Hardlink legt das Ziel nur an, wenn es noch nicht existiert;
+das Ziel wird anschließend erneut geprüft. Bestehende abweichende Dateien werden
+nicht überschrieben. Bereits korrekt übernommene Dateien können erneut geprüft
+werden; bei Abbruch bleibt das Journal bestehen und der vorbereitete Rückfall
+kann die nachgewiesenen Importdateien entfernen.
+
+Abnahme: fünf gezielte Archivinspektions- und neun Rückfallpakettests ohne
+Fehler/Skips, darunter erneuter Import, Schutz veränderter Zieldateien, beschädigte
+Archivdatei vor Zielanlage und anschließende Bereinigung. lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis: /workspace/immopilot-restore-file-import-check.log.
+Die JVM-Tests verwenden echte lokale Dateisystemoperationen; Android-Systemaufrufe,
+Prozessstopps und vollständige Restore-Orchestrierung sind noch im Emulator zu prüfen.
