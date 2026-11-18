@@ -3518,3 +3518,23 @@ abgeschaltete automatische Drive-Synchronisierung ohne Fehler/Skips; lintDebug,
 assembleDebug und git diff --check bestanden. Die Dateisystemoperationen wurden
 im JVM-Test ersetzt, nicht auf einem Android-Gerät geprüft. Nachweis:
 /workspace/immopilot-restore-coordinator-check.log.
+
+### Schritt 8 – bestätigter Restore aus der Vorschau
+
+Die Vorschau bietet nach Prüfung eine getrennte Bestätigung zum vollständigen
+Ersetzen des fachlichen Bestands. Sie erklärt den lokalen Rückfallstand und die
+anschließend ausgeschaltete automatische Drive-Synchronisierung. Enthaltene
+persönliche API-Schlüssel werden nur nach zusätzlicher Auswahl importiert; bei
+jedem Öffnen der Bestätigung ist diese Auswahl ausgeschaltet. Der Controller
+übernimmt das geprüfte Archiv vor dem Verlassen der Vorschau synchron und führt
+die Wiederherstellung in einer ViewModel-Arbeit aus. Die Archivnutzung wird nach
+Abschluss oder Abbruch im Hintergrund freigegeben; Einstellungen werden noch
+unter Wartung aktualisiert.
+
+Abnahme: drei gezielte Tests für tatsächliche Archivvorschau und Abbruch,
+Schlüsselwahl sowie Lebensdauer bei geschlossenem Vorschaufenster ohne Fehler
+oder Skips; lintDebug, assembleDebug und git diff --check bestanden. Die
+vollständige UI-Übernahme mit produktiven Android-Dateisystemaufrufen und echtem
+Prozessstopp ist weiterhin auf dem Emulator zu prüfen. Die Bereinigung privater
+Reste nach Prozessende sowie der zuvor dokumentierte einmalige Archivprüfungs-
+fehler bleiben offen. Nachweis: /workspace/immopilot-restore-ui-handoff-check.log.

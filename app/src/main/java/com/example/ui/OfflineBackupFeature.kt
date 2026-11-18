@@ -190,7 +190,13 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
             inspectJob = job
         })
     }
-    inspected?.let { EncryptedRestorePreviewDialog(it.preview, onClose = { closeInspected() }) }
+    inspected?.let { snapshot -> EncryptedRestorePreviewDialog(snapshot.preview, onClose = { closeInspected() },
+        onRestore = { includeCredentials ->
+            if (controller.restore(snapshot, includeCredentials)) {
+                inspected = null
+                true
+            } else false
+        }) }
     prepared?.let { snapshot ->
         AlertDialog(onDismissRequest = { if (!busy) { snapshot.close(); prepared = null } },
             title = { Text("Lokale Sicherung wiederherstellen?") },

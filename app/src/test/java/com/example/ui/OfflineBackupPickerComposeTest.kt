@@ -135,6 +135,11 @@ class OfflineBackupPickerComposeTest {
         ui.onNodeWithText("1 Immobilien · 1 Belege").assertExists()
         ui.onNodeWithText("Die Prüfung hat noch keine Daten verändert.").assertExists()
         ui.onNodeWithText("Wiederherstellen").assertDoesNotExist()
+        ui.onNodeWithTag("offline_restore_replace").performClick()
+        ui.onNodeWithTag("offline_restore_replace_confirmation").assertExists()
+        ui.onNodeWithTag("offline_restore_include_credentials").assertDoesNotExist()
+        ui.onNodeWithTag("offline_restore_replace_cancel").performClick()
+        ui.onNodeWithTag("offline_restore_replace_confirmation").assertDoesNotExist()
         assertLocalDataUnchanged()
         ui.onNodeWithTag("offline_restore_preview_close").performClick()
         ui.waitUntil(10_000) {
@@ -252,5 +257,28 @@ class OfflineBackupPickerComposeTest {
         ui.onAllNodes(hasText("Vollständige lokale Sicherung gespeichert", substring = true)).assertCountEquals(0)
         assertEquals("previous backup", previous.readText())
         assertLocalDataUnchanged()
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [35], qualifiers = "w393dp-h852dp-420dpi")
+class EncryptedRestoreConfirmationComposeTest {
+    @get:Rule val ui = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun credentialImportRequiresExplicitSelectionAtReplacementConfirmation() {
+        var selected: Boolean? = null
+        val preview = com.example.data.OfflineBackupRestoreInspector.Preview("synthetic",
+            com.example.data.OfflineBackupArchiveInfo("2026-11-18T00:00:00Z", 1, "test"),
+            emptyMap(), 0, 0, setOf(com.example.data.OfflineBackupCredentialSection.Provider.GEMINI))
+        ui.setContent { MaterialTheme { EncryptedRestorePreviewDialog(preview, {}, { selected = it; true }) } }
+        ui.onNodeWithTag("offline_restore_replace").performClick()
+        ui.onNodeWithTag("offline_restore_include_credentials").assertIsOff()
+        ui.onNodeWithTag("offline_restore_replace_confirm").performClick()
+        ui.runOnIdle { assertEquals(false, selected) }
+        ui.onNodeWithTag("offline_restore_replace").performClick()
+        ui.onNodeWithTag("offline_restore_include_credentials").assertIsOff().performClick().assertIsOn()
+        ui.onNodeWithTag("offline_restore_replace_confirm").performClick()
+        ui.runOnIdle { assertEquals(true, selected) }
     }
 }
