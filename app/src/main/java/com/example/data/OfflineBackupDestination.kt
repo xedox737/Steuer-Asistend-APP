@@ -23,7 +23,8 @@ internal class OfflineBackupDestination(private val context: Context, private va
     private val backend: Backend = SafBackend(context)) {
     data class Access(val persistedReadWrite: Boolean, val directory: Boolean, val canCreate: Boolean, val availableBytes: Long?)
     data class Created(val uri: Uri, val canRename: Boolean)
-    data class Published(val uri: Uri, val backupId: String, val bytes: Long, val sha256: String, val archiveInfo: OfflineBackupArchiveInfo)
+    data class Published(val uri: Uri, val backupId: String, val bytes: Long, val sha256: String,
+        val archiveInfo: OfflineBackupArchiveInfo, val summary: OfflineBackupSnapshot.Summary)
     enum class Stage { WRITING, VERIFYING, FINALIZING }
     interface Backend {
         fun access(tree: Uri): Access
@@ -75,7 +76,7 @@ internal class OfflineBackupDestination(private val context: Context, private va
             require(finalSha == sha)
             currentCoroutineContext().ensureActive()
             complete = true
-            Published(finalized, id, bytes, sha, source.archiveInfo)
+            Published(finalized, id, bytes, sha, source.archiveInfo, source.summary)
         } catch (error: kotlinx.coroutines.CancellationException) { throw error }
         catch (error: OfflineBackupValidationException) { throw error }
         catch (_: android.system.ErrnoException) { fail("Die neue Zieldatei konnte nicht sicher synchronisiert oder geschlossen werden.") }

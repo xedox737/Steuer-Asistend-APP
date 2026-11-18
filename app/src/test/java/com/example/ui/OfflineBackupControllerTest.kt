@@ -165,6 +165,10 @@ class OfflineBackupControllerTest {
         configure(); await(controller.selectFolder(tree)); assertTrue(controller.state.value.canSave)
         await(controller.save())
         val success = requireNotNull(controller.state.value.lastPublished)
+        val verified = requireNotNull(OfflineBackupHistory(context).load().lastFullSuccess)
+        assertEquals(success.backupId, verified.archiveId); assertEquals(success.bytes, verified.bytes)
+        assertEquals(success.summary.files.toLong(), verified.fileCount)
+        assertEquals(OfflineBackupHistory.Origin.MANUAL, verified.origin)
         assertTrue(controller.state.value.status.orEmpty().contains("vollständig geprüft"))
         val previousBytes = backend.documents.getValue(success.uri).copyOf()
         backend.writeFails = true; await(controller.save())
@@ -173,6 +177,39 @@ class OfflineBackupControllerTest {
         assertArrayEquals(previousBytes, backend.documents.getValue(success.uri))
         assertEquals("prior valid archive", backend.documents.getValue(backend.prior).toString(Charsets.UTF_8))
         assertFalse(controller.state.value.busy)
+        val afterFailure = OfflineBackupHistory(context).load()
+        assertEquals(verified, afterFailure.lastFullSuccess)
+        assertEquals(OfflineBackupHistory.Outcome.FAILED, afterFailure.lastAttempt?.outcome)
+        assertEquals(OfflineBackupHistory.Failure.VALIDATION, afterFailure.lastAttempt?.failure)
+    }
+
+    @Test fun historySeparatesRestoreAndPartialFromVerifiedFullAndRejectsCorruption() {
+        val store = OfflineBackupHistory(context)
+        fun id() = UUID.randomUUID().toString()
+        val full = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.FULL, OfflineBackupHistory.Outcome.VERIFIED,
+            100, 12, null, OfflineBackupHistory.Origin.MANUAL, id(), "content://synthetic/document/full", 2, 3)
+        val partial = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.PARTIAL, OfflineBackupHistory.Outcome.VERIFIED,
+            101, 5, null, OfflineBackupHistory.Origin.MANUAL, id(), "content://synthetic/document/partial", 1, 1)
+        val partialStart = OfflineBackupHistory.Event(partial.operationId, OfflineBackupHistory.Kind.PARTIAL,
+            OfflineBackupHistory.Outcome.STARTED, 100, origin = OfflineBackupHistory.Origin.MANUAL)
+        val failedPartial = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.PARTIAL, OfflineBackupHistory.Outcome.FAILED,
+            103, failure = OfflineBackupHistory.Failure.STORAGE, origin = OfflineBackupHistory.Origin.MANUAL)
+        val failedStart = failedPartial.copy(outcome = OfflineBackupHistory.Outcome.STARTED, timeMillis = 102, failure = null)
+        val restore = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.RESTORE, OfflineBackupHistory.Outcome.RESTORED, 102)
+        store.record(full); store.record(partialStart); store.record(partial); store.record(failedStart); store.record(failedPartial)
+        store.record(restore); store.record(restore.copy(timeMillis = 104))
+        assertThrows(OfflineBackupValidationException::class.java) { store.record(full.copy(timeMillis = 105, bytes = 13)) }
+        repeat(101) { index -> store.record(OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.RESTORE,
+            OfflineBackupHistory.Outcome.STARTED, 103L + index)) }
+        val reopened = OfflineBackupHistory(context).load()
+        assertEquals(100, reopened.recent.size); assertEquals(full, reopened.lastFullSuccess)
+        assertEquals(partial, reopened.lastPartial); assertEquals(failedPartial, reopened.lastAttempt)
+        assertEquals(OfflineBackupHistory.Outcome.STARTED, reopened.lastRestore?.outcome)
+        val file = File(context.noBackupFilesDir, "offline-backup-state/history.json")
+        file.writeText("{broken")
+        assertThrows(OfflineBackupValidationException::class.java) { store.load() }
+        assertThrows(OfflineBackupValidationException::class.java) { store.record(full) }
+        assertEquals("{broken", file.readText())
     }
 
     @Test fun canceledScopeStillConsumesUnstartedPasswordBuffers() = runBlocking<Unit> {

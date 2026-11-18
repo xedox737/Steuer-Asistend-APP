@@ -3552,3 +3552,31 @@ weiterhin gesondert auf dem Emulator zu prüfen.
 Abnahme: beide gezielten Tests ohne Fehler/Skips, lintDebug, assembleDebug und
 git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-late-failure-check.log.
+
+### Schritt 9 – dauerhafter Verlauf geprüfter Sicherungen
+
+Ein eigener lokaler, atomar gespeicherter Verlauf unterscheidet vollständige
+Sicherungen, Teilsicherungen und Wiederherstellungen. Er behält die letzten
+relevanten Ereignisse auch dann getrennt, wenn der begrenzte Verlauf rotiert;
+wiederholte identische Ereignisse sind idempotent, widersprüchliche Wiederholungen
+werden abgewiesen. Der letzte Erfolg einer vollständigen oder teilweisen Sicherung
+bleibt bei späteren Fehlern erhalten. Ereignisse enthalten begrenzte Fehlerarten,
+keine Schlüssel und keine Rohfehlermeldungen. Der Speicher ist gerätelokal und
+erteilt keine Löschrechte für Archive.
+
+Die gemeinsame Sicherungs-Engine trägt den Versuch vor der Ausführung und einen
+vollständigen Erfolg erst nach geprüfter Veröffentlichung und Rücklesen des
+endgültigen Ziels ein. Abbruch und Fehler verändern den letzten Erfolg nicht.
+Zeitpunkt, Ziel, Größe und Umfang des geprüften Archivs werden getrennt vom letzten
+Versuch festgehalten. Die automatische Erfassung von Restore-Ereignissen und die
+Anzeige dieses Verlaufs in der Oberfläche stehen noch aus; eine Teilsicherung ist
+weiterhin keine freigegebene Funktion.
+
+Abnahme: zwei gezielte Tests für echte synthetische Veröffentlichung mit späterem
+Fehler sowie getrennte, begrenzte und beschädigte Verlaufseinträge ohne Fehler oder
+Skips; lintDebug, assembleDebug und git diff --check bestanden. Der erste Testlauf
+scheiterte, weil der synthetische Teil-Erfolg ohne vorherigen Start eingetragen
+worden war; der korrigierte Test bildet Start und Abschluss ab und deckt zusätzlich
+Wiederholungen und einen späteren Teilfehler ab. Nachweise:
+/workspace/immopilot-backup-history-check.log und
+/workspace/immopilot-backup-history-corrected.log.

@@ -6,6 +6,8 @@ import java.io.FileOutputStream
 import java.io.FilterOutputStream
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -43,12 +45,44 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
         snapshotProgress: (OfflineBackupSnapshot.Progress) -> Unit = {},
         destinationProgress: (OfflineBackupDestination.Stage) -> Unit = {}): OfflineBackupDestination.Published =
         withContext(Dispatchers.IO) {
-            destination.preflight()
-            OfflineBackupKeyManager(context).withCurrentGeneration { generation ->
-                prepareHeld(generation, consent, trigger, snapshotProgress, destination).use { source ->
-                    destination.publish(source, generation, destinationProgress)
+            val history = OfflineBackupHistory(context)
+            val operationId = UUID.randomUUID().toString()
+            val origin = if (trigger == OfflineBackupCredentialSection.Trigger.MANUAL) OfflineBackupHistory.Origin.MANUAL
+                else OfflineBackupHistory.Origin.AUTOMATIC
+            fun event(outcome: OfflineBackupHistory.Outcome, published: OfflineBackupDestination.Published? = null,
+                failure: OfflineBackupHistory.Failure? = null): OfflineBackupHistory.Event = OfflineBackupHistory.Event(
+                operationId, OfflineBackupHistory.Kind.FULL, outcome, System.currentTimeMillis(), published?.bytes, failure, origin,
+                published?.backupId, published?.uri?.toString(), published?.summary?.files?.toLong(),
+                published?.summary?.rowCounts?.values?.fold(0L) { total, count -> Math.addExact(total, count) })
+            history.record(event(OfflineBackupHistory.Outcome.STARTED))
+            var published: OfflineBackupDestination.Published? = null
+            try {
+                destination.preflight()
+                OfflineBackupKeyManager(context).withCurrentGeneration { generation ->
+                    prepareHeld(generation, consent, trigger, snapshotProgress, destination).use { source ->
+                        destination.publish(source, generation, destinationProgress).also { published = it }
+                    }
                 }
+            } catch (error: Throwable) {
+                val confirmed = published
+                try { withContext(NonCancellable) {
+                    history.record(if (confirmed != null) event(OfflineBackupHistory.Outcome.VERIFIED, confirmed)
+                    else if (error is CancellationException) event(OfflineBackupHistory.Outcome.CANCELLED)
+                    else event(OfflineBackupHistory.Outcome.FAILED, failure = when (error) {
+                        is SecurityException -> OfflineBackupHistory.Failure.UNAVAILABLE
+                        is java.io.IOException -> OfflineBackupHistory.Failure.STORAGE
+                        is OfflineBackupValidationException -> OfflineBackupHistory.Failure.VALIDATION
+                        else -> OfflineBackupHistory.Failure.UNKNOWN
+                    }))
+                } } catch (historyError: Exception) { error.addSuppressed(historyError) }
+                if (confirmed != null && error !is CancellationException)
+                    throw OfflineBackupValidationException("Die Sicherung wurde geprüft gespeichert; private Arbeitsdaten konnten nicht vollständig entfernt werden.")
+                throw error
             }
+            val confirmed = requireNotNull(published)
+            try { history.record(event(OfflineBackupHistory.Outcome.VERIFIED, confirmed)) }
+            catch (_: Exception) { throw OfflineBackupValidationException("Die Sicherung wurde geprüft gespeichert, aber der lokale Verlauf konnte nicht gespeichert werden.") }
+            confirmed
         }
 
     private suspend fun prepareHeld(generation: OfflineBackupKeyEnvelope.Generation,
