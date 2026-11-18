@@ -22,10 +22,34 @@ internal object OfflineBackupRestoreInspector {
         val credentialProviders: Set<OfflineBackupCredentialSection.Provider>)
 
     class Prepared internal constructor(private val resources: Resources, val preview: Preview) : AutoCloseable {
+        private val lock = Any()
+        private var ownerClosed = false
+        private var leases = 0
         internal val probe get() = checkNotNull(resources.probe)
         internal val contents get() = checkNotNull(resources.contents)
         internal val generation get() = checkNotNull(resources.generation)
-        override fun close() = resources.close()
+
+        /** Acquire synchronously before transferring work to a longer-lived coroutine. */
+        internal fun acquireLease(): AutoCloseable {
+            synchronized(lock) {
+                check(!ownerClosed && leases < Int.MAX_VALUE) { "Die geprüfte Sicherung ist nicht mehr verfügbar." }
+                leases++
+            }
+            val released = AtomicBoolean()
+            return AutoCloseable {
+                if (released.compareAndSet(false, true)) {
+                    val cleanup = synchronized(lock) { leases--; ownerClosed && leases == 0 }
+                    if (cleanup) resources.close()
+                }
+            }
+        }
+
+        override fun close() {
+            val cleanup = synchronized(lock) {
+                if (ownerClosed) false else { ownerClosed = true; leases == 0 }
+            }
+            if (cleanup) resources.close()
+        }
     }
     internal class Resources : AutoCloseable {
         var directory: File? = null

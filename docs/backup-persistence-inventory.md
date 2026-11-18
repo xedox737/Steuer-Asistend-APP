@@ -3462,3 +3462,18 @@ Ende-zu-Ende-Abnahme steht noch aus.
 Abnahme: gezielter Test der Berechnung, Unterdeckung und Überlaufbehandlung ohne
 Fehler/Skips; lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-budget-check.log.
+
+### Schritt 8 – Lebensdauer geprüfter Archivdaten
+
+Geprüfte Archivdaten können vor Übergabe an eine länger laufende Arbeit mit einer
+synchron erworbenen Nutzung gehalten werden. Schließt die bisherige Eigentümerin
+oder der bisherige Eigentümer die Vorschau, bleiben die Daten bis zur Freigabe
+der letzten Nutzung erhalten; danach werden die privaten Prüfdaten entfernt.
+Neue Nutzungen nach dem Schließen sind ausgeschlossen. Die spätere Restore-
+Steuerung muss die Nutzung vor Übergabe an eine unabhängige Coroutine erwerben,
+bei jedem Abschluss freigeben und die Coroutine außerhalb der kurzlebigen
+Compose-Oberfläche betreiben. Diese Integration steht noch aus.
+
+Abnahme: gezielter Lebensdauertest ohne Fehler/Skips, einschließlich mehrfacher
+Freigabe und verzögerter Bereinigung; lintDebug, assembleDebug und git diff --check
+bestanden. Nachweis: /workspace/immopilot-restore-lease-check.log.
