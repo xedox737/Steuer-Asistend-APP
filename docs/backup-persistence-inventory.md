@@ -3656,3 +3656,28 @@ und wöchentliche Termine, Sommerzeitlücke, doppelte Herbstzeit und Zeitzonenwe
 bestanden ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check sind
 erfolgreich. Dies belegt noch weder Registrierung noch Wiederanlauf der geplanten
 Arbeit. Nachweis: /workspace/immopilot-schedule-calendar-check.log.
+
+### Schritt 10 – dauerhafter Sollzustand und Anspruch
+
+Der gerätelokale Zeitplan speichert die Regel, Zielordner, ausdrückliche
+Credential-Auswahl, Generation, nächsten eindeutigen Termin und gegebenenfalls
+einen bereits begonnenen Vorgang atomar. Ein Start beansprucht genau den
+passenden fälligen Termin und speichert dabei bereits den nächsten künftigen
+Termin. Ein laufender Vorgang blockiert einen weiteren Start; eine geänderte oder
+deaktivierte Regel erhält den bereits laufenden Anspruch. Veraltete Termine
+starten keinen Export. Fehlende oder abgeschlossene Registrierungen können für
+den gespeicherten nächsten Termin erneut angelegt werden; bei unbekanntem
+WorkManager-Zustand wird vorsichtig abgewartet.
+
+Ein nachweislich beendeter oder fehlender Anspruch wird nach Abgleich mit dem
+lokalen Erfolgseintrag freigegeben und gegebenenfalls als unterbrochen vermerkt.
+Dazu muss der spätere Worker die Vorgangskennung unverändert an die
+Sicherungs-Engine und den Verlauf weitergeben. Die echte WorkManager-Abfrage,
+Ordnerberechtigungsprüfung, Aktivierung und der Abgleich nach Android-Neustart
+sind noch nicht angebunden; der neue Speicher selbst registriert keine Arbeit.
+
+Abnahme: vier gezielte Tests zu Speichern, doppeltem Anspruch, veränderter Regel,
+unterbrochenem Vorgang, erhaltenem Erfolg und beschädigten Dateien sowie zwei
+gezielte ergänzende Konflikttests ohne Fehler/Skips; lintDebug, assembleDebug und
+git diff --check bestanden. Nachweise: /workspace/immopilot-schedule-store-check.log
+und /workspace/immopilot-schedule-conflict-check.log.
