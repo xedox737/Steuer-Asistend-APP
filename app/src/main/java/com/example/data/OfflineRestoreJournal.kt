@@ -38,6 +38,17 @@ internal class OfflineRestoreJournal(private val context: Context) {
         rollbackManifestBytes: Long, rollbackManifestSha256: String): Entry =
         guarded { beginBound(Entry(operationId, stagingId, rollbackId, Phase.PREPARED, rollbackManifestBytes, rollbackManifestSha256)) }
 
+    /** Arm the process gate before the first suspension or durable journal write. */
+    suspend fun beginProtected(token: OfflineBackupCoordinator.Maintenance, rollbackId: String,
+        rollbackManifestBytes: Long, rollbackManifestSha256: String, plan: OfflineRestoreFilePlanStore.Snapshot): Entry {
+        val coordinator = OfflineBackupCoordinator.shared
+        coordinator.requireMaintenance(token)
+        coordinator.markRestorePending(token)
+        // Even cancellation or an uncertain write failure leaves the gate armed. Recovery
+        // verifies the journal (or its absence) before it is permitted to unblock writers.
+        return beginWithFilePlan(token, rollbackId, rollbackManifestBytes, rollbackManifestSha256, plan)
+    }
+
     /** Caller keeps maintenance through journal creation and every subsequent mutation. */
     suspend fun beginWithFilePlan(token: OfflineBackupCoordinator.Maintenance, rollbackId: String,
         rollbackManifestBytes: Long, rollbackManifestSha256: String, plan: OfflineRestoreFilePlanStore.Snapshot): Entry =

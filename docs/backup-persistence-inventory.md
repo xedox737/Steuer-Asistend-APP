@@ -3431,3 +3431,16 @@ Abnahme: acht gezielte Start-, Rückfall- und Sperrentests ohne Fehler/Skips;
 lintDebug, assembleDebug und git diff --check bestanden. Das Buildprotokoll enthält
 eine KSP-Hintergrundausnahme, der Gradle-Auftrag endete dennoch erfolgreich.
 Nachweis: /workspace/immopilot-pending-restore-ui-gate-check.log.
+
+### Schritt 8 – abbruchsicherer Journalstart
+
+Der neue geschützte Journalstart aktiviert die gemeinsame Schreibsperre unter
+gehaltener Wartung vor dem ersten Coroutine-Wechsel und vor dem Schreiben des
+Journals. Bei Abbruch oder einem Fehler bleibt die Sperre aktiv; der Wiederanlauf
+prüft das Journal beziehungsweise dessen Abwesenheit, bevor er Schreibzugriffe
+freigibt. Die spätere vollständige Restore-Ablaufsteuerung muss diesen Einstieg
+verwenden; sie ist noch nicht angeschlossen.
+
+Abnahme: gezielter Test für fehlgeschlagenen und erfolgreichen Journalstart ohne
+Fehler/Skips, lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-protected-journal-gate.log.

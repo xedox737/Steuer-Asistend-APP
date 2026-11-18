@@ -117,4 +117,37 @@ class OfflineRestoreFilePlanTest {
         assertEquals("keep", prior.readText())
     }
 
+    @Test fun protectedJournalArmsGateBeforeWriteAndRecoveryClearsFailedBegin() = runBlocking<Unit> {
+        val coordinator = OfflineBackupCoordinator.shared
+        val journal = OfflineRestoreJournal(context)
+        val plan = OfflineRestoreFilePlan.prepare(context, id, manifest())
+        val rollbackId = UUID.randomUUID().toString()
+        coordinator.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, UUID.randomUUID().toString(), plan)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                journal.beginProtected(token, rollbackId, 4, "0".repeat(64), snapshot)
+            } }
+            assertTrue(coordinator.restorePending.value)
+            assertNull(journal.load())
+        }
+        assertThrows(OfflineBackupValidationException::class.java) { coordinator.beginWrite() }
+        assertEquals(OfflineRestoreRecovery.Outcome.NOT_NEEDED, OfflineRestoreRecovery.recoverOnStartup(context))
+        coordinator.beginWrite().close()
+
+        coordinator.beginMaintenance().use { token ->
+            val snapshot = OfflineRestoreFilePlanStore.capture(context, token, UUID.randomUUID().toString(), plan)
+            val bundle = File(context.noBackupFilesDir, "offline-backup-state/rollback-$rollbackId.bundle.json")
+            bundle.writeText("synthetic rollback")
+            val hash = MessageDigest.getInstance("SHA-256").digest(bundle.readBytes()).joinToString("") { "%02x".format(it.toInt() and 255) }
+            val initial = journal.beginProtected(token, rollbackId, bundle.length(), hash, snapshot)
+            assertTrue(coordinator.restorePending.value)
+            assertEquals(initial, journal.load())
+            val rollback = journal.advance(initial, OfflineRestoreJournal.Phase.ROLLBACK)
+            val terminal = journal.advance(rollback, OfflineRestoreJournal.Phase.ROLLED_BACK)
+            journal.clear(terminal)
+            coordinator.clearRestorePending(context, token)
+        }
+        coordinator.beginWrite().close()
+    }
+
 }
