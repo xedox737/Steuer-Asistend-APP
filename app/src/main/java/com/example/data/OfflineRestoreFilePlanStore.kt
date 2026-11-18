@@ -100,6 +100,26 @@ internal object OfflineRestoreFilePlanStore {
         catch (_: NoSuchElementException) { invalid() }
         catch (_: SecurityException) { invalid() } }
 
+    /** Discard an owned plan only before it has been bound to any journal. */
+    suspend fun discardUnjournalled(context: Context, token: OfflineBackupCoordinator.Maintenance, snapshot: Snapshot) =
+        withContext(Dispatchers.IO) {
+            try {
+                OfflineBackupCoordinator.shared.requireMaintenance(token)
+                token.suspending {
+                    require(OfflineRestoreJournal(context).load() == null)
+                    verify(context, snapshot.operationId, snapshot.stagingId, snapshot.bytes, snapshot.sha256)
+                    val expected = File(context.noBackupFilesDir, "offline-backup-state/file-plan-${snapshot.stagingId}.json").absoluteFile
+                    require(snapshot.file.absoluteFile == expected && expected == expected.canonicalFile)
+                    require(OfflineRestoreJournal(context).load() == null && expected.delete())
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) { throw error }
+            catch (error: OfflineBackupValidationException) { throw error }
+            catch (_: IOException) { invalid() }
+            catch (_: IllegalArgumentException) { invalid() }
+            catch (_: IllegalStateException) { invalid() }
+            catch (_: SecurityException) { invalid() }
+        }
+
     private suspend fun read(context: Context, operationId: String, stagingId: String, size: Long, hash: String,
         requireUnused: Boolean): OfflineRestoreFilePlan.Plan {
         uuid(operationId); uuid(stagingId); require(size in 1..MAX_BYTES && shaPattern.matches(hash))

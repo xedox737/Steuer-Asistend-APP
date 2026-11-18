@@ -158,6 +158,43 @@ class OfflineBackupRestoreInspectorTest {
     }
     private fun atomicTestLink(from: File, to: File) { java.nio.file.Files.createLink(to.toPath(), from.toPath()) }
 
+    @Test fun replacementCoordinatorCommitsValidatedArchiveWithLeaseAndDisablesAutoSync() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        val lease = prepared.acquireLease()
+        prepared.close()
+        try {
+            target.getDatabasePath("receipt_database").parentFile!!.mkdirs()
+            var refreshed = false
+            val result = OfflineRestoreCoordinator.restore(target, targetDb, prepared, false, {
+                assertTrue(OfflineBackupCoordinator.shared.restorePending.value)
+                assertFalse(target.getSharedPreferences("google_drive_prefs", 0).getBoolean("auto_backup", true))
+                refreshed = true
+            }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
+            assertTrue(refreshed); assertFalse(result.preparationCleanupFailed)
+            assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
+            assertEquals("Archived house", targetDb.propertyDao().getAllProperties().single().name)
+            val receipt = targetDb.receiptDao().getAllReceiptsIncludingDeletedList().single()
+            assertEquals(41, receipt.id); assertArrayEquals(original.readBytes(), File(receipt.imageUrl!!).readBytes())
+        } finally { lease.close() }
+        noStagingLeft()
+    }
+
+    @Test fun replacementCoordinatorRollsBackAfterFileInstallFailure() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            target.getDatabasePath("receipt_database").parentFile!!.mkdirs()
+            assertThrows(Exception::class.java) { runBlocking {
+                OfflineRestoreCoordinator.restore(target, targetDb, prepared, false, {},
+                    OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename) { _, _ -> throw java.io.IOException("synthetic failure") })
+            } }
+            assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
+            liveUnchanged()
+        } finally { prepared.close() }
+        noStagingLeft()
+    }
+
     @Test fun verifiedArchiveFilesInstallWithoutOverwriteAndRollbackCleanly() = runBlocking<Unit> {
         val encrypted = archive()
         val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }

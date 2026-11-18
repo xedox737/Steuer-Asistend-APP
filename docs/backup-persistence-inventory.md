@@ -3494,3 +3494,27 @@ Abnahme: gezielter Test für unbekannte Dateien, Journalbindung, zulässige
 Bereinigung und Erhalt des Bestands ohne Fehler/Skips; lintDebug, assembleDebug
 und git diff --check bestanden. Nachweis:
 /workspace/immopilot-restore-discard-check.log.
+
+### Schritt 8 – interne Steuerung der vollständigen Wiederherstellung
+
+Die interne Steuerung verbindet unter Archivschlüssel-Mutex und gemeinsamer
+Wartung die erneute Archivprüfung, Dateiplan, Rückfallverbund, Speicher-Preflight,
+geschützten Journalstart und die Phasen für Dateien, Datenbank und Einstellungen.
+Credentials werden nur bei ausdrücklicher Auswahl übernommen. Nach Aktualisierung
+des gehaltenen Zustands wird der Abschluss journalisiert; bei Fehler oder Abbruch
+wird unter nicht abbrechbarer Wartung ein Rückfall versucht. Kann der Rückfall
+nicht sicher abgeschlossen werden, bleibt das Journal für den Wiederanlauf stehen.
+Nicht journalgebundene Vorbereitungen werden nach Prüfung bereinigt; ein Fehler bei
+der Bereinigung nach erfolgreichem Abschluss wird gesondert gemeldet. Die
+Steuerung ist noch nicht an die Oberfläche angeschlossen; ihr Aufrufer muss die
+Archivnutzung vor Übergabe an eine langlebige Coroutine erwerben und freigeben.
+Echte Android-Dateisystemaufrufe, Prozessstopps und die Behebung verwaister
+privater Vorbereitungsreste nach Prozessende sind weiterhin offen. Der zuvor
+dokumentierte einmalige Archivprüfungsfehler bleibt ungeklärt.
+
+Abnahme: zwei gezielte Tests mit synthetischen Archiven für erfolgreiche Übernahme,
+erzwungenen Dateiimportfehler und Rückfall, stabile ID, Originalbytes und
+abgeschaltete automatische Drive-Synchronisierung ohne Fehler/Skips; lintDebug,
+assembleDebug und git diff --check bestanden. Die Dateisystemoperationen wurden
+im JVM-Test ersetzt, nicht auf einem Android-Gerät geprüft. Nachweis:
+/workspace/immopilot-restore-coordinator-check.log.
