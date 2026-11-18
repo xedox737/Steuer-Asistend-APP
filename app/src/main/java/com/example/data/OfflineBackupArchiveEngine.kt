@@ -43,10 +43,10 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
         consent: OfflineBackupCredentialSection.Consent = OfflineBackupCredentialSection.Consent(),
         trigger: OfflineBackupCredentialSection.Trigger = OfflineBackupCredentialSection.Trigger.MANUAL,
         snapshotProgress: (OfflineBackupSnapshot.Progress) -> Unit = {},
-        destinationProgress: (OfflineBackupDestination.Stage) -> Unit = {}): OfflineBackupDestination.Published =
+        destinationProgress: (OfflineBackupDestination.Stage) -> Unit = {},
+        operationId: String = UUID.randomUUID().toString()): OfflineBackupDestination.Published =
         withContext(Dispatchers.IO) {
             val history = OfflineBackupHistory(context)
-            val operationId = UUID.randomUUID().toString()
             val origin = if (trigger == OfflineBackupCredentialSection.Trigger.MANUAL) OfflineBackupHistory.Origin.MANUAL
                 else OfflineBackupHistory.Origin.AUTOMATIC
             fun event(outcome: OfflineBackupHistory.Outcome, published: OfflineBackupDestination.Published? = null,
@@ -54,7 +54,7 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
                 operationId, OfflineBackupHistory.Kind.FULL, outcome, System.currentTimeMillis(), published?.bytes, failure, origin,
                 published?.backupId, published?.uri?.toString(), published?.summary?.files?.toLong(),
                 published?.summary?.rowCounts?.values?.fold(0L) { total, count -> Math.addExact(total, count) })
-            history.record(event(OfflineBackupHistory.Outcome.STARTED))
+            history.beginFullBackup(operationId, origin, System.currentTimeMillis())
             var published: OfflineBackupDestination.Published? = null
             try {
                 destination.preflight()

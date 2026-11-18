@@ -46,6 +46,14 @@ internal class OfflineBackupHistory(context: Context) {
     private val file = File(directory, "history.json")
     fun load(): History = synchronized(lock) { guarded { read() } }
 
+    /** A backup operation ID may begin only once, including after an interrupted process. */
+    fun beginFullBackup(operationId: String, origin: Origin, timeMillis: Long): History = synchronized(lock) { guarded {
+        val previous = read()
+        val known = previous.recent + listOfNotNull(previous.lastAttempt, previous.lastFullSuccess, previous.lastPartial, previous.lastRestore)
+        require(known.none { it.operationId == operationId && it.kind == Kind.FULL })
+        record(Event(operationId, Kind.FULL, Outcome.STARTED, timeMillis, origin = origin))
+    } }
+
     /** Same operation and outcome may be replayed exactly; conflicting replay fails closed. */
     fun record(event: Event): History = synchronized(lock) { guarded {
         val old = read()

@@ -368,8 +368,24 @@ class OfflineBackupSnapshotTest {
             }
             val backend = PublishingBackend(beforeCreate = { noOwnedRunLeft(); assertCurrentGeneration() }, beforeRead = { assertCurrentGeneration() })
             val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
-            val result = OfflineBackupArchiveEngine(keyContext, database).publish(destination)
+            val schedule = OfflineBackupScheduleStore(keyContext)
+            val rule = OfflineBackupSchedule.Rule(OfflineBackupSchedule.Cadence.DAILY, java.time.LocalTime.of(7, 0), null, java.time.ZoneId.of("UTC"))
+            val state = schedule.configure(OfflineBackupScheduleStore.Config(true, rule, "content://engine.test/tree/root", false),
+                java.time.Instant.parse("2026-11-18T05:00:00Z"))
+            val occurrence = requireNotNull(state.next); val operationId = occurrence.id
+            assertEquals(OfflineBackupScheduleStore.ClaimResult.CLAIMED,
+                schedule.claim(state.generation, operationId, java.time.Instant.ofEpochMilli(occurrence.dueMillis)))
+            val engine = OfflineBackupArchiveEngine(keyContext, database)
+            val result = engine.publish(destination, trigger = OfflineBackupCredentialSection.Trigger.SCHEDULED, operationId = operationId)
             assertEquals(1, backend.created); assertEquals(1, backend.documents.size)
+            val verified = requireNotNull(OfflineBackupHistory(keyContext).load().lastFullSuccess)
+            assertEquals(operationId, verified.operationId); assertEquals(OfflineBackupHistory.Origin.AUTOMATIC, verified.origin)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                engine.publish(destination, trigger = OfflineBackupCredentialSection.Trigger.SCHEDULED, operationId = operationId)
+            } }
+            assertEquals(1, backend.created); assertEquals(1, backend.documents.size)
+            assertTrue(schedule.reconcileStoppedClaim(operationId, OfflineBackupScheduleStore.WorkState.FINISHED))
+            assertNull(schedule.load()?.lastInterrupted)
             assertEquals(com.example.BuildConfig.VERSION_CODE.toLong(), result.archiveInfo.appVersionCode)
             assertEquals(com.example.BuildConfig.VERSION_NAME, result.archiveInfo.appVersionName)
             java.time.Instant.parse(result.archiveInfo.createdAt)

@@ -3681,3 +3681,18 @@ unterbrochenem Vorgang, erhaltenem Erfolg und beschädigten Dateien sowie zwei
 gezielte ergänzende Konflikttests ohne Fehler/Skips; lintDebug, assembleDebug und
 git diff --check bestanden. Nachweise: /workspace/immopilot-schedule-store-check.log
 und /workspace/immopilot-schedule-conflict-check.log.
+
+### Schritt 10 – gemeinsame Vorgangskennung
+
+Die Sicherungs-Engine kann die dauerhafte Kennung eines beanspruchten Termins
+übernehmen. Versuch und geprüfter Erfolg verwenden dieselbe Kennung; der
+Zeitplan-Wiederanlauf kann damit einen bereits bestätigten Erfolg erkennen. Ein
+erneuter Sicherungsstart mit einer bereits bekannten vollständigen Vorgangskennung
+wird vor erneuter Veröffentlichung abgewiesen. Manuelle Sicherungen erhalten
+weiterhin eigene neue Kennungen. Die Android-Registrierung und der Worker sind
+noch nicht angebunden.
+
+Abnahme: ein gezielter Integrationstest mit synthetischer vollständiger
+Veröffentlichung, doppeltem Start und Wiederanlaufabgleich ohne Fehler/Skips;
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-schedule-operation-id-check.log.
