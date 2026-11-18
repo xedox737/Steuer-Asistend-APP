@@ -75,6 +75,31 @@ class OfflineBackupControllerTest {
         uri -> OfflineBackupDestination(context, uri, backend)
     }
     private suspend fun await(job: Job?) { requireNotNull(job).join() }
+    @Test fun restoreRetainsPreparedArchiveUntilViewModelJobFinishes() = runBlocking<Unit> {
+        val directory = File(root, "held-restore").apply { mkdirs() }
+        val sentinel = File(directory, "archive").apply { writeText("synthetic") }
+        val resources = OfflineBackupRestoreInspector.Resources().apply { this.directory = directory }
+        val preview = OfflineBackupRestoreInspector.Preview("test", OfflineBackupArchiveInfo("2026-11-18T00:00:00Z", 1, "test"),
+            emptyMap(), 0, 0, emptySet())
+        val prepared = OfflineBackupRestoreInspector.Prepared(resources, preview)
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        var selected: Boolean? = null; var refreshed = false
+        val owner = OfflineBackupController(context, database, scope, folders,
+            refreshAfterRestore = { refreshed = true },
+            restoreAction = { _, _, _, credentials, refresh ->
+                selected = credentials; entered.complete(Unit); release.await(); refresh()
+                OfflineRestoreCoordinator.Result(false)
+            })
+        assertTrue(owner.restore(prepared, false))
+        withTimeout(10_000) { entered.await() }
+        prepared.close() // The disposed preview must not release the running job's lease.
+        assertTrue(sentinel.exists()); assertTrue(owner.state.value.busy)
+        assertFalse(owner.restore(prepared, false))
+        release.complete(Unit)
+        withTimeout(10_000) { while (owner.state.value.busy || directory.exists()) delay(10) }
+        assertEquals(false, selected); assertTrue(refreshed)
+        assertTrue(owner.state.value.status.orEmpty().contains("abgeschlossen"))
+    }
     @Before fun setup(): Unit = runBlocking {
         TestAndroidKeyStore.register()
         val base = ApplicationProvider.getApplicationContext<Context>()

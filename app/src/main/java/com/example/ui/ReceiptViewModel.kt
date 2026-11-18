@@ -1504,7 +1504,8 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     internal fun offlineBackupServiceForUi() = com.example.data.OfflineBackupService(getApplication(), database)
 
     private val offlineBackupController by lazy {
-        OfflineBackupController(getApplication(), database, viewModelScope).also { it.reload() }
+        OfflineBackupController(getApplication(), database, viewModelScope,
+            refreshAfterRestore = { refreshPreferencesAfterRestore() }).also { it.reload() }
     }
 
     internal fun offlineBackupControllerForUi() = offlineBackupController

@@ -13,11 +13,14 @@ import com.example.data.OfflineBackupKeyManager
 import com.example.data.OfflineBackupSettings
 import com.example.data.OfflineBackupSnapshot
 import com.example.data.OfflineBackupValidationException
+import com.example.data.OfflineBackupRestoreInspector
+import com.example.data.OfflineRestoreCoordinator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -25,10 +28,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** View-model-owned actions. No passwords in saved state, settings or publication requests. */
-internal class OfflineBackupController(private val context: Context, database: AppDatabase, private val scope: CoroutineScope,
+internal class OfflineBackupController(private val context: Context, private val database: AppDatabase, private val scope: CoroutineScope,
     private val folders: FolderAccess = AndroidFolderAccess(context),
+    private val refreshAfterRestore: suspend () -> Unit = {},
+    private val restoreAction: suspend (Context, AppDatabase, OfflineBackupRestoreInspector.Prepared, Boolean, suspend () -> Unit) -> OfflineRestoreCoordinator.Result =
+        { ctx, db, prepared, credentials, refresh -> OfflineRestoreCoordinator.restore(ctx, db, prepared, credentials, refresh) },
     private val destination: (Uri) -> OfflineBackupDestination = { OfflineBackupDestination(context, it) }) {
-    enum class Operation { LOADING, PASSWORD, FOLDER, OPTIONS, SAVING }
+    enum class Operation { LOADING, PASSWORD, FOLDER, OPTIONS, SAVING, RESTORING }
     data class State(val loaded: Boolean = false, val operation: Operation? = null,
         val config: OfflineBackupSettings.Config = OfflineBackupSettings.Config(), val generationId: String? = null,
         val keyProblem: String? = null, val folderReady: Boolean = false, val folderLabel: String = "Kein Sicherungsordner gewählt",
@@ -104,6 +110,26 @@ internal class OfflineBackupController(private val context: Context, database: A
             }) } })
         mutable.update { it.copy(lastPublished = result, status = "Vollsicherung gespeichert und vollständig geprüft.") }
     }
+
+    /** Returns true only after ownership was transferred to a ViewModel-scoped job. */
+    fun restore(prepared: OfflineBackupRestoreInspector.Prepared, includeCredentials: Boolean): Boolean = synchronized(lock) {
+        if (current?.isActive == true || mutable.value.busy) return@synchronized false
+        val lease = prepared.acquireLease()
+        val job = try { perform(Operation.RESTORING) {
+            mutable.update { it.copy(status = "Vollständige Wiederherstellung läuft …") }
+            val result = restoreAction(context, database, prepared, includeCredentials, refreshAfterRestore)
+            mutable.update { it.copy(status = if (result.preparationCleanupFailed)
+                "Wiederherstellung abgeschlossen. Private Vorbereitungsdaten konnten nicht vollständig entfernt werden."
+            else "Vollständige Wiederherstellung abgeschlossen. Die automatische Drive-Synchronisierung bleibt ausgeschaltet.") }
+        } } catch (error: Throwable) { lease.close(); throw error }
+        if (job == null) { lease.close(); return@synchronized false }
+        job.invokeOnCompletion {
+            cleanupScope.launch {
+                try { prepared.close() } finally { lease.close() }
+            }
+        }
+        true
+    }
     fun cancel() = synchronized(lock) { current?.cancel() }
 
     private fun refresh() {
@@ -127,9 +153,11 @@ internal class OfflineBackupController(private val context: Context, database: A
         mutable.update { it.copy(operation = operation, status = null) }
         val job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             try { block() }
-            catch (error: CancellationException) { mutable.update { it.copy(status = "Vorgang abgebrochen. Bisherige Sicherungen bleiben unverändert.") }; throw error }
+            catch (error: CancellationException) { mutable.update { it.copy(status = if (operation == Operation.RESTORING)
+                "Wiederherstellung abgebrochen. Der Bestand wird gegebenenfalls wiederhergestellt." else "Vorgang abgebrochen. Bisherige Sicherungen bleiben unverändert.") }; throw error }
             catch (error: OfflineBackupValidationException) { mutable.update { it.copy(status = error.message) } }
-            catch (_: Exception) { mutable.update { it.copy(status = "Der Sicherungsvorgang konnte nicht abgeschlossen werden. Bitte Ordner, Speicher und Einstellungen prüfen.") } }
+            catch (_: Exception) { mutable.update { it.copy(status = if (operation == Operation.RESTORING)
+                "Die Wiederherstellung konnte nicht abgeschlossen werden. Bitte den angezeigten Wiederanlauf beachten." else "Der Sicherungsvorgang konnte nicht abgeschlossen werden. Bitte Ordner, Speicher und Einstellungen prüfen.") } }
             finally { mutable.update { it.copy(operation = null) } }
         }
         current = job
@@ -141,6 +169,8 @@ internal class OfflineBackupController(private val context: Context, database: A
         } }
         job.start(); job
     }
+
+    private companion object { val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO) }
 
     private class AndroidFolderAccess(private val context: Context) : FolderAccess {
         private val resolver get() = context.contentResolver
