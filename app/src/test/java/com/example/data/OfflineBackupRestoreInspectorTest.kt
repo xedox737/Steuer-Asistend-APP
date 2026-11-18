@@ -195,6 +195,48 @@ class OfflineBackupRestoreInspectorTest {
         noStagingLeft()
     }
 
+    @Test fun replacementCoordinatorRollsBackDatabaseAndPreferencesAfterLateFailure() = runBlocking<Unit> {
+        val encrypted = archive()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            target.getDatabasePath("receipt_database").parentFile!!.mkdirs()
+            var refreshCalls = 0
+            assertThrows(IllegalStateException::class.java) { runBlocking {
+                OfflineRestoreCoordinator.restore(target, targetDb, prepared, false, {
+                    refreshCalls++
+                    if (refreshCalls == 1) {
+                        assertEquals("Archived house", targetDb.propertyDao().getAllProperties().single().name)
+                        throw IllegalStateException("synthetic late failure")
+                    }
+                }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
+            } }
+            assertEquals(2, refreshCalls)
+            assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
+            liveUnchanged()
+        } finally { prepared.close() }
+        noStagingLeft()
+    }
+
+    @Test fun replacementCoordinatorRestoresStableIdsAndOriginalOnEmptyInstallation() = runBlocking<Unit> {
+        val encrypted = archive()
+        targetDb.openHelper.writableDatabase.execSQL("DELETE FROM property_metadata")
+        target.getSharedPreferences("bank_transaction_notes", 0).edit().clear().commit()
+        val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
+        try {
+            target.getDatabasePath("receipt_database").parentFile!!.mkdirs()
+            val result = OfflineRestoreCoordinator.restore(target, targetDb, prepared, false, {},
+                OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
+            assertFalse(result.preparationCleanupFailed)
+            val property = targetDb.propertyDao().getAllProperties().single()
+            val receipt = targetDb.receiptDao().getAllReceiptsIncludingDeletedList().single()
+            assertEquals(3, property.id); assertEquals("archive-house", property.propertyId)
+            assertEquals(41, receipt.id); assertEquals("archive-house", receipt.propertyId)
+            assertArrayEquals(original.readBytes(), File(receipt.imageUrl!!).readBytes())
+            assertNull(OfflineRestoreJournal(target).load())
+        } finally { prepared.close() }
+        noStagingLeft()
+    }
+
     @Test fun verifiedArchiveFilesInstallWithoutOverwriteAndRollbackCleanly() = runBlocking<Unit> {
         val encrypted = archive()
         val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }

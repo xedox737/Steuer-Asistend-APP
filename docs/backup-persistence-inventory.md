@@ -3538,3 +3538,17 @@ vollständige UI-Übernahme mit produktiven Android-Dateisystemaufrufen und echt
 Prozessstopp ist weiterhin auf dem Emulator zu prüfen. Die Bereinigung privater
 Reste nach Prozessende sowie der zuvor dokumentierte einmalige Archivprüfungs-
 fehler bleiben offen. Nachweis: /workspace/immopilot-restore-ui-handoff-check.log.
+
+### Schritt 8 – Rückfall nach später Änderung und leere Installation
+
+Der vollständige interne Ablauf wurde zusätzlich mit leerem Zielbestand sowie mit
+einem erzwungenen Fehler nach Datenbank- und Einstellungsübernahme geprüft. Der
+Rückfall stellt den vorherigen Datenbank- und Einstellungsstand wieder her; bei
+der leeren Installation bleiben Immobilien- und Beleg-IDs, Zuordnung und
+Originalbytes erhalten. Die Tests verwenden isolierte künstliche Daten und JVM-
+Dateisystemoperationen; Android-Prozessstopps und produktive OS-Aufrufe sind
+weiterhin gesondert auf dem Emulator zu prüfen.
+
+Abnahme: beide gezielten Tests ohne Fehler/Skips, lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-late-failure-check.log.
