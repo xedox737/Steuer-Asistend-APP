@@ -3611,3 +3611,48 @@ dennoch Erfolg. Nachweise: /workspace/immopilot-restore-history-check.log,
 /workspace/immopilot-history-ui-corrected.log und
 /workspace/immopilot-history-ui-final.log. Echte Android-Prozessstopps und die
 Bereinigung privater Reste bleiben weiterhin für die Geräteprüfung offen.
+
+### Schritt 10 – festgelegte Kalender- und Konfliktstrategie
+
+Die gewünschte Regel wird mit aktiver/inaktiver Einstellung, Tages-/Wochenregel,
+lokaler Uhrzeit, aktueller IANA-Zeitzone, Konfigurationsgeneration und dem nächsten
+Solltermin samt eigener Vorgangskennung dauerhaft gespeichert. Ein Termin wird
+vor einer WorkManager-Registrierung gespeichert. Der Kalender verschiebt eine
+nicht existierende lokale Uhrzeit um die Länge der Sommerzeitlücke; bei einer
+doppelt vorkommenden Uhrzeit zählt nur die erste. Bei erkannter Zeitzonenänderung
+wird die lokale Uhrzeit in der neuen Gerätezeitzone neu berechnet und eine neue
+Generation gebildet.
+
+Jeder Solltermin erhält einen eigenen eindeutigen Work-Namen aus Generation und
+Vorgangskennung. `KEEP` wird nur zur idempotenten Registrierung genau dieses
+Termins verwendet; es gibt keine abhängig verketteten Folgeaufträge. Der Worker
+prüft vor dem Zugriff auf Room oder Schlüssel das Restore-Journal, vergleicht die
+Generation und beansprucht den Solltermin dauerhaft, bevor er exportiert. Der
+nächste Solltermin wird unabhängig vom Abschluss des laufenden Exports dauerhaft
+festgehalten und als eigener Auftrag registriert. Eine Konfigurationsänderung
+bricht bereits beanspruchte Exporte nicht ab; veraltete unbeanspruchte Aufträge
+beenden sich ohne Export. Nach einem Prozessabbruch darf ein bereits beanspruchter
+Termin nicht blind erneut exportiert werden: Er wird als unterbrochen ausgewiesen;
+die nächste künftige Ausführung wird rekonstruiert, ohne eine Serie versäumter
+Termine nachzuholen. App-/Worker-Eintritt, Neustart und relevante Zeitänderungen
+müssen die gespeicherte Sollplanung mit registrierten Arbeiten abgleichen und
+einen fehlenden Auftrag idempotent nachtragen. Force-Stop und ausgeschaltete
+Geräte erlauben keine zeitgenaue Ausführung.
+
+Dies ist die festgelegte Strategie, noch kein Nachweis einer funktionsfähigen
+WorkManager-Integration. Der App-Bestand verwendet minSdk 24, targetSdk 36 und
+Java-Zeit-Desugaring; WorkManager ist noch nicht eingebunden. Android dokumentiert
+für `KEEP`/`REPLACE` beziehungsweise abhängige Ketten die oben vermiedenen
+Konflikte: https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/manage-work.
+Für `dataSync`-Foreground-Dienste gelten auf Android 15 Laufzeitgrenzen und auf
+Android 16 Jobquoten auch für langfristige Worker:
+https://developer.android.com/develop/background-work/services/fgs/timeout und
+https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/long-running.
+Die konkrete Dienst-/Benachrichtigungskonfiguration wird mit dem Worker in
+Schritt 11 geprüft, nicht durch eine pauschale Berechtigung vorweggenommen.
+
+Die reine Kalenderberechnung ist implementiert. Vier gezielte Tests für tägliche
+und wöchentliche Termine, Sommerzeitlücke, doppelte Herbstzeit und Zeitzonenwechsel
+bestanden ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check sind
+erfolgreich. Dies belegt noch weder Registrierung noch Wiederanlauf der geplanten
+Arbeit. Nachweis: /workspace/immopilot-schedule-calendar-check.log.
