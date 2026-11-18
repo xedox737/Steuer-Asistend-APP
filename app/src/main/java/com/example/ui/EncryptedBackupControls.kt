@@ -13,11 +13,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.data.OfflineBackupHistory
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 /** Presentation only. Password input deliberately never enters saved state. */
 @Composable
@@ -60,6 +66,7 @@ internal fun EncryptedBackupControls(
                 TextButton(onClick = onCancel, modifier = Modifier.testTag("offline_backup_cancel")) { Text("Abbrechen") }
             }
         }
+        BackupHistorySummary(state)
         state.status?.let { Text(it, Modifier.testTag("offline_backup_v2_status")) }
         if (!state.loaded && !state.busy || state.keyProblem != null && !state.busy) {
             TextButton(onClick = onReload, enabled = !blocked) { Text("Erneut prüfen") }
@@ -70,6 +77,41 @@ internal fun EncryptedBackupControls(
             passwordDialog = false
             onConfigure(password, confirmation, state.configured)
         })
+}
+
+@Composable
+private fun BackupHistorySummary(state: OfflineBackupController.State) {
+    val context = LocalContext.current
+    state.historyProblem?.let { Text(it, Modifier.testTag("offline_backup_history_error"), color = MaterialTheme.colorScheme.error) }
+    val history = state.history ?: return
+    fun time(event: OfflineBackupHistory.Event): String = try {
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withZone(ZoneId.systemDefault())
+            .format(Instant.ofEpochMilli(event.timeMillis))
+    } catch (_: Exception) { "Zeit nicht verfügbar" }
+    fun outcome(event: OfflineBackupHistory.Event): String = when (event.outcome) {
+        OfflineBackupHistory.Outcome.STARTED -> "begonnen; Abschluss nicht bestätigt"
+        OfflineBackupHistory.Outcome.VERIFIED -> "geprüft abgeschlossen"
+        OfflineBackupHistory.Outcome.FAILED -> when (event.failure) {
+            OfflineBackupHistory.Failure.UNAVAILABLE -> "fehlgeschlagen: Ziel oder Zugriff nicht verfügbar"
+            OfflineBackupHistory.Failure.STORAGE -> "fehlgeschlagen: Speicher- oder Schreibfehler"
+            else -> "fehlgeschlagen"
+        }
+        OfflineBackupHistory.Outcome.CANCELLED -> "abgebrochen"
+        OfflineBackupHistory.Outcome.RESTORED -> "abgeschlossen"
+        OfflineBackupHistory.Outcome.ROLLED_BACK -> "zurückgesetzt"
+    }
+    val success = history.lastFullSuccess
+    if (success == null) Text("Noch keine geprüfte Vollsicherung.", Modifier.testTag("offline_backup_history_success"))
+    else {
+        Text("Letzte geprüfte Vollsicherung: ${time(success)}", Modifier.testTag("offline_backup_history_success"))
+        Text("Ziel: ${state.lastSuccessTargetLabel ?: "Zielname nicht verfügbar"} · ${android.text.format.Formatter.formatFileSize(context, requireNotNull(success.bytes))} · ${success.fileCount} Dateien · ${success.rowCount} Datensätze")
+    }
+    history.lastAttempt?.let { event ->
+        val kind = if (event.kind == OfflineBackupHistory.Kind.PARTIAL) "Teilsicherung" else "Vollsicherung"
+        Text("Letzter Versuch ($kind): ${outcome(event)} · ${time(event)}", Modifier.testTag("offline_backup_history_attempt"))
+    }
+    history.lastPartial?.let { Text("Letzte geprüfte Teilsicherung: ${time(it)}", Modifier.testTag("offline_backup_history_partial")) }
+    history.lastRestore?.let { Text("Letzte Wiederherstellung: ${outcome(it)} · ${time(it)}", Modifier.testTag("offline_backup_history_restore")) }
 }
 
 @Composable

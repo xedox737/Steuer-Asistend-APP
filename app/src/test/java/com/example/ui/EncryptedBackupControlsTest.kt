@@ -11,6 +11,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
+import com.example.data.OfflineBackupHistory
+import java.util.UUID
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -121,5 +123,26 @@ class EncryptedBackupControlsTest {
         node("password").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
         node("password_confirm").assertIsNotEnabled()
         assertNull(configured)
+    }
+
+    @Test fun historyShowsVerifiedSuccessAttemptAndRestoreSeparately() {
+        fun id() = UUID.randomUUID().toString()
+        val success = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.FULL, OfflineBackupHistory.Outcome.VERIFIED,
+            1_700_000_000_000, 1024, null, OfflineBackupHistory.Origin.MANUAL, id(), "content://synthetic/document/full", 2, 3)
+        val failed = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.FULL, OfflineBackupHistory.Outcome.FAILED,
+            1_700_000_001_000, failure = OfflineBackupHistory.Failure.STORAGE, origin = OfflineBackupHistory.Origin.MANUAL)
+        val restore = OfflineBackupHistory.Event(id(), OfflineBackupHistory.Kind.RESTORE, OfflineBackupHistory.Outcome.ROLLED_BACK, 1_700_000_002_000)
+        state = state.copy(history = OfflineBackupHistory.History(listOf(success, failed, restore), failed, success, null, restore),
+            lastSuccessTargetLabel = "Sicherung.immopilot")
+        show()
+        node("history_success").assertTextContains("Letzte geprüfte Vollsicherung", substring = true)
+        node("history_attempt").assertTextContains("fehlgeschlagen: Speicher- oder Schreibfehler", substring = true)
+        node("history_restore").assertTextContains("zurückgesetzt", substring = true)
+        ui.onNodeWithText("Ziel: Sicherung.immopilot", substring = true).assertExists()
+        ui.runOnIdle { state = state.copy(lastSuccessTargetLabel = null) }
+        ui.onNodeWithText("Ziel: Zielname nicht verfügbar", substring = true).assertExists()
+        ui.runOnIdle { state = state.copy(history = null, historyProblem = "Verlauf nicht verfügbar") }
+        node("history_error").assertTextEquals("Verlauf nicht verfügbar")
+        node("history_success").assertDoesNotExist()
     }
 }

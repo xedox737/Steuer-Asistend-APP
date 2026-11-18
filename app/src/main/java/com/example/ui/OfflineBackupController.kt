@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import com.example.data.AppDatabase
 import com.example.data.OfflineBackupArchiveEngine
 import com.example.data.OfflineBackupCredentialSection
@@ -14,6 +15,7 @@ import com.example.data.OfflineBackupSettings
 import com.example.data.OfflineBackupSnapshot
 import com.example.data.OfflineBackupValidationException
 import com.example.data.OfflineBackupRestoreInspector
+import com.example.data.OfflineBackupHistory
 import com.example.data.OfflineRestoreCoordinator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +40,9 @@ internal class OfflineBackupController(private val context: Context, private val
     data class State(val loaded: Boolean = false, val operation: Operation? = null,
         val config: OfflineBackupSettings.Config = OfflineBackupSettings.Config(), val generationId: String? = null,
         val keyProblem: String? = null, val folderReady: Boolean = false, val folderLabel: String = "Kein Sicherungsordner gewählt",
-        val status: String? = null, val lastPublished: OfflineBackupDestination.Published? = null) {
+        val status: String? = null, val lastPublished: OfflineBackupDestination.Published? = null,
+        val history: OfflineBackupHistory.History? = null, val historyProblem: String? = null,
+        val lastSuccessTargetLabel: String? = null) {
         val busy get() = operation != null
         val configured get() = generationId != null
         val canSave get() = loaded && configured && folderReady && !busy
@@ -50,6 +54,7 @@ internal class OfflineBackupController(private val context: Context, private val
         fun label(uri: Uri): String?
     }
     private val settings = OfflineBackupSettings(context)
+    private val history = OfflineBackupHistory(context)
     private val keys = OfflineBackupKeyManager(context)
     private val engine = OfflineBackupArchiveEngine(context, database)
     private val mutable = MutableStateFlow(State())
@@ -147,6 +152,20 @@ internal class OfflineBackupController(private val context: Context, private val
         }
         mutable.update { it.copy(loaded = true, config = config, generationId = id, keyProblem = keyProblem,
             folderReady = ready, folderLabel = label, status = keyProblem ?: folderProblem ?: it.status) }
+        refreshHistory()
+    }
+    private fun refreshHistory() {
+        try {
+            val current = history.load()
+            val label = current.lastFullSuccess?.targetUri?.let { raw ->
+                try { context.contentResolver.query(Uri.parse(raw), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0)?.takeIf { name -> name.isNotBlank() && name.length <= 256 && name.none(Char::isISOControl) } else null
+                } } catch (_: Exception) { null }
+            }
+            mutable.update { it.copy(history = current, historyProblem = null, lastSuccessTargetLabel = label) }
+        } catch (error: OfflineBackupValidationException) {
+            mutable.update { it.copy(history = null, historyProblem = error.message, lastSuccessTargetLabel = null) }
+        }
     }
     private fun perform(operation: Operation, block: suspend () -> Unit): Job? = synchronized(lock) {
         if (current?.isActive == true || mutable.value.busy) return@synchronized null
@@ -158,7 +177,10 @@ internal class OfflineBackupController(private val context: Context, private val
             catch (error: OfflineBackupValidationException) { mutable.update { it.copy(status = error.message) } }
             catch (_: Exception) { mutable.update { it.copy(status = if (operation == Operation.RESTORING)
                 "Die Wiederherstellung konnte nicht abgeschlossen werden. Bitte den angezeigten Wiederanlauf beachten." else "Der Sicherungsvorgang konnte nicht abgeschlossen werden. Bitte Ordner, Speicher und Einstellungen prüfen.") } }
-            finally { mutable.update { it.copy(operation = null) } }
+            finally {
+                if (operation == Operation.SAVING || operation == Operation.RESTORING) refreshHistory()
+                mutable.update { it.copy(operation = null) }
+            }
         }
         current = job
         job.invokeOnCompletion { synchronized(lock) {

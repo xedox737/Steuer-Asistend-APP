@@ -3580,3 +3580,34 @@ worden war; der korrigierte Test bildet Start und Abschluss ab und deckt zusätz
 Wiederholungen und einen späteren Teilfehler ab. Nachweise:
 /workspace/immopilot-backup-history-check.log und
 /workspace/immopilot-backup-history-corrected.log.
+
+### Schritt 9 – Restore-Ereignis und Statusanzeige
+
+Die Wiederherstellung erhält eine dauerhafte Operationskennung und einen eigenen
+Verlaufseintrag. Abschluss oder Rückfall wird vor dem Entfernen des terminalen
+Journals gespeichert. Ein Wiederanlauf darf denselben Abschluss wiederholt
+melden, erzeugt aber keinen doppelten Eintrag; widersprüchliche Endzustände werden
+abgewiesen. Ist der Verlauf beschädigt oder nicht schreibbar, bleibt das Journal
+für einen sicheren erneuten Versuch erhalten. Ein Restore erzeugt keinen Erfolg
+für eine neu erstellte Sicherung.
+
+Die Sicherungskarte lädt den Verlauf erneut und zeigt letzten geprüften
+Vollerfolg, Zielname und Umfang, letzten Versuch sowie letzte Wiederherstellung
+getrennt an. Eine geprüfte Teilsicherung hätte eine eigene Anzeige; die
+Teilsicherungsfunktion selbst bleibt weiterhin nicht beauftragt. Offene Versuche
+werden ohne bestätigten Abschluss angezeigt. Ist ein Zielname nicht abrufbar,
+wird nur der fehlende Name gemeldet. Ein beschädigter Verlauf wird angezeigt,
+nicht stillschweigend zurückgesetzt.
+
+Abnahme: vier gezielte Restore-/Wiederanlauftests ohne Fehler/Skips, zwei gezielte
+Controller-Tests für erneutes Laden und ViewModel-Übergabe sowie der gezielte
+Anzeigetest bestanden; lintDebug, assembleDebug und git diff --check bestanden.
+Der erste Anzeigetestlauf scheiterte an einem vollständigen Textvergleich trotz
+zusätzlich angezeigter Uhrzeit; die korrigierte Teiltextprüfung und die spätere
+Prüfung des fehlenden Zielnamens bestanden. In den erfolgreichen Buildprotokollen
+tritt die bereits dokumentierte KSP-Hintergrundausnahme auf; Gradle meldete
+dennoch Erfolg. Nachweise: /workspace/immopilot-restore-history-check.log,
+/workspace/immopilot-history-ui-check.log,
+/workspace/immopilot-history-ui-corrected.log und
+/workspace/immopilot-history-ui-final.log. Echte Android-Prozessstopps und die
+Bereinigung privater Reste bleiben weiterhin für die Geräteprüfung offen.

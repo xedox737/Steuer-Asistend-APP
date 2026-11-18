@@ -181,6 +181,9 @@ class OfflineBackupControllerTest {
         assertEquals(verified, afterFailure.lastFullSuccess)
         assertEquals(OfflineBackupHistory.Outcome.FAILED, afterFailure.lastAttempt?.outcome)
         assertEquals(OfflineBackupHistory.Failure.VALIDATION, afterFailure.lastAttempt?.failure)
+        val reloaded = controller(); await(reloaded.reload())
+        assertEquals(afterFailure, reloaded.state.value.history)
+        assertNull(reloaded.state.value.historyProblem)
     }
 
     @Test fun historySeparatesRestoreAndPartialFromVerifiedFullAndRejectsCorruption() {
