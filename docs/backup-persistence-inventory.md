@@ -3696,3 +3696,29 @@ Abnahme: ein gezielter Integrationstest mit synthetischer vollständiger
 Veröffentlichung, doppeltem Start und Wiederanlaufabgleich ohne Fehler/Skips;
 lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-schedule-operation-id-check.log.
+
+### Schritt 10 – Abgleich mit WorkManager
+
+WorkManager 2.12.0 ist als benötigte Laufzeitabhängigkeit und `work-testing`
+ausschließlich für die gezielte Testumgebung eingebunden. Die offizielle
+Versionsinformation nennt minSdk 24, passend zur App:
+https://developer.android.com/jetpack/androidx/releases/work. Ein Vergleich des
+Debug-Laufzeitgraphen vor und nach der Einbindung ergab keine geänderten Versionen
+vorher vorhandener Module; neu aufgelöst wurden WorkManager und der benötigte
+Lifecycle-Service. Nachweise: /workspace/immopilot-runtime-deps-before-workmanager.log
+und /workspace/immopilot-runtime-deps-after-workmanager.log.
+
+Der Abgleich liest den dauerhaften Sollzustand, prüft einen vorhandenen Anspruch
+anhand des zugehörigen WorkManager-Namens und registriert einen fehlenden Termin
+als unabhängigen OneTime-Auftrag. `KEEP` gilt ausschließlich für dessen eigene
+Generation und Termin-ID. Ein gleichzeitiges Ändern des Zeitplans kann höchstens
+einen veralteten Auftrag zurücklassen; dieser muss vor Ausführung seine
+Generation erneut prüfen. Bestehende Aufträge werden nicht ersetzt oder
+abgebrochen. Bei nicht lesbarem WorkManager-Zustand wird kein Erfolg vorgetäuscht.
+
+Abnahme: ein gezielter WorkManager-Integrationstest mit isolierter Testdatenbank
+für parallelen/wiederholten Abgleich, Neustart nach Speicherung und unveränderte
+ältere Aufträge ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check
+bestanden. Der Testauftrag führt keinen Export aus. Ein echter Worker,
+App-/Boot-/Zeitänderungseinstieg, Zielberechtigung und Nutzeraktivierung sind
+noch nicht angebunden. Nachweis: /workspace/immopilot-workmanager-scheduler-check.log.
