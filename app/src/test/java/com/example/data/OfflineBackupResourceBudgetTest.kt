@@ -70,4 +70,23 @@ class OfflineBackupResourceBudgetTest {
             OfflineBackupResourceBudget.estimateCapture(draft(listOf(reference("content://synthetic/large", Long.MAX_VALUE))), emptyList())
         }
     }
+
+    @Test fun restoreBudgetIncludesFilesDatabaseProbeAndReserveAndRejectsShortage() {
+        val metadata = 300L; val database = 500L
+        val needed = OfflineBackupResourceBudget.estimateRestore(metadata, database, listOf(100, 200), listOf(400, 500))
+        assertEquals(OfflineBackupResourceBudget.RESERVE_BYTES + 80L * 1024 * 1024 +
+            16 * metadata + 4 * database + 2 * 300 + 900, needed)
+        OfflineBackupResourceBudget.requireRestoreAvailable(needed, needed)
+        val error = assertThrows(OfflineBackupValidationException::class.java) {
+            OfflineBackupResourceBudget.requireRestoreAvailable(needed, needed - 1)
+        }
+        assertTrue(error.message.orEmpty().contains(needed.toString()))
+        assertTrue(error.message.orEmpty().contains((needed - 1).toString()))
+        assertThrows(OfflineBackupValidationException::class.java) {
+            OfflineBackupResourceBudget.estimateRestore(metadata, Long.MAX_VALUE, emptyList(), emptyList())
+        }
+        assertThrows(OfflineBackupValidationException::class.java) {
+            OfflineBackupResourceBudget.estimateRestore(metadata, database, listOf(-1), emptyList())
+        }
+    }
 }

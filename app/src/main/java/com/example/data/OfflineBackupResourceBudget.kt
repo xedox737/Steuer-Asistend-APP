@@ -1,5 +1,6 @@
 package com.example.data
 
+import android.content.Context
 import android.net.Uri
 import java.io.File
 import java.io.IOException
@@ -79,6 +80,52 @@ internal object OfflineBackupResourceBudget {
         val estimate = estimate(snapshot.summary.bytes - snapshot.metadataBytes, snapshot.metadataBytes, snapshot.summary.payloads)
         requireAvailable(estimate, directory.usableSpace)
         return estimate
+    }
+
+    /** Remaining space after the checked archive and rollback copies already exist. */
+    internal fun estimateRestore(metadataBytes: Long, rollbackDatabaseBytes: Long,
+        importedFileBytes: List<Long>, rollbackFileBytes: List<Long>): Long {
+        try {
+            require(metadataBytes in 1..MAX_METADATA && rollbackDatabaseBytes > 0)
+            require(importedFileBytes.size <= 10_000 && rollbackFileBytes.size <= 10_000)
+            fun total(values: List<Long>): Long = values.fold(0L) { sum, value ->
+                require(value >= 0); Math.addExact(sum, value)
+            }
+            // Include concurrent imported files/staging, rollback file copies, SQLite
+            // verification/workspace and fresh probe/live transaction headroom.
+            var needed = Math.addExact(RESERVE_BYTES, 80 * MIB)
+            needed = Math.addExact(needed, Math.multiplyExact(metadataBytes, 16))
+            needed = Math.addExact(needed, Math.multiplyExact(rollbackDatabaseBytes, 4))
+            needed = Math.addExact(needed, Math.multiplyExact(total(importedFileBytes), 2))
+            return Math.addExact(needed, total(rollbackFileBytes))
+        } catch (_: ArithmeticException) {
+            throw OfflineBackupValidationException("Der Speicherbedarf der Wiederherstellung ist zu groß. Es wurden keine Bestandsdaten verändert.")
+        } catch (_: IllegalArgumentException) {
+            throw OfflineBackupValidationException("Der Speicherbedarf der Wiederherstellung ist ungültig. Es wurden keine Bestandsdaten verändert.")
+        }
+    }
+
+    /** Conservative per-volume check; archive and rollback already occupy the measured free space. */
+    internal fun checkRestore(context: Context, archive: OfflineBackupRestoreInspector.Prepared,
+        rollback: OfflineRestoreRollbackBundle.Prepared, plan: OfflineRestoreFilePlan.Plan): Long {
+        val needed = estimateRestore(archive.contents.parts.getValue("metadata.json").bytes,
+            rollback.database.size, plan.items.map { it.payload.size }, rollback.ownedFiles.versions.map { it.bytes })
+        // Charging the whole estimate to each directory also handles distinct filesystems
+        // conservatively, without assuming that Android's private directories share a mount.
+        val directories = listOf(context.filesDir, context.cacheDir, context.noBackupFilesDir,
+            requireNotNull(context.getDatabasePath("receipt_database").parentFile)).distinct()
+        directories.forEach { directory ->
+            if (!directory.isDirectory) throw OfflineBackupValidationException(
+                "Der private Speicher für die Wiederherstellung ist nicht verfügbar. Es wurden keine Bestandsdaten verändert.")
+            requireRestoreAvailable(needed, directory.usableSpace)
+        }
+        return needed
+    }
+
+    internal fun requireRestoreAvailable(needed: Long, available: Long) {
+        require(needed >= RESERVE_BYTES && available >= 0)
+        if (available < needed) throw OfflineBackupValidationException(
+            "Zu wenig privater Speicher für die Wiederherstellung: benötigt $needed Byte einschließlich $RESERVE_BYTES Byte Reserve, verfügbar $available Byte. Es wurden keine Bestandsdaten verändert.")
     }
 
     private fun localFile(path: String): File? = try {

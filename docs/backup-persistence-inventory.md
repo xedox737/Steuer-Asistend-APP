@@ -3444,3 +3444,21 @@ verwenden; sie ist noch nicht angeschlossen.
 Abnahme: gezielter Test für fehlgeschlagenen und erfolgreichen Journalstart ohne
 Fehler/Skips, lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
 /workspace/immopilot-protected-journal-gate.log.
+
+### Schritt 8 – zusammengefasster Restore-Speicherbedarf
+
+Nach dem Prüfen des Archivs und dem Anlegen der privaten Rückfallkopien kann der
+verbleibende Speicherbedarf für Importdateien, Dateirückfall, Datenbankprüfung,
+Transaktionen und Reserve konservativ berechnet werden. Der bereits belegte Platz
+für Archiv und Rückfallkopien ist im gemessenen freien Platz enthalten. Zur
+sicheren Behandlung verschiedener Dateisysteme wird der gesamte geschätzte Bedarf
+an jedem beteiligten privaten Speicherort vorausgesetzt; dadurch sind auch
+konservative Ablehnungen möglich. Bei Unterdeckung werden benötigte und verfügbare
+Bytes genannt. Die Schätzung ersetzt keine Einzelprüfungen oder Fehlerbehandlung
+bei sich änderndem freiem Platz. Die spätere Restore-Ablaufsteuerung muss diese
+Prüfung unter Wartung vor dem geschützten Journalstart aufrufen; eine vollständige
+Ende-zu-Ende-Abnahme steht noch aus.
+
+Abnahme: gezielter Test der Berechnung, Unterdeckung und Überlaufbehandlung ohne
+Fehler/Skips; lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-budget-check.log.
