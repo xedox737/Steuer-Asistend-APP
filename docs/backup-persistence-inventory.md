@@ -3477,3 +3477,20 @@ Compose-Oberfläche betreiben. Diese Integration steht noch aus.
 Abnahme: gezielter Lebensdauertest ohne Fehler/Skips, einschließlich mehrfacher
 Freigabe und verzögerter Bereinigung; lintDebug, assembleDebug und git diff --check
 bestanden. Nachweis: /workspace/immopilot-restore-lease-check.log.
+
+### Schritt 8 – Bereinigung ungebundener Vorbereitungen
+
+Ein vollständig vorbereiteter Rückfallverbund und sein Dateiübernahmeplan können
+unter gemeinsamer Wartung vor dem Journalstart verworfen werden. Vor dem ersten
+Löschen werden Journalfreiheit, eindeutige kanonische Pfade, erlaubte Dateinamen,
+Verzeichnisinhalte, Größen und Prüfsummen kontrolliert. Bei unbekannten Dateien,
+abweichenden Inhalten, SQLite-Nebendateien oder einem vorhandenen Journal wird
+abgebrochen. Bestandsdateien und externe Originale werden nicht gelöscht. Der
+spätere Restore-Ablauf muss diese Funktion im Fehlerfall aufrufen; nach einem
+Prozessabbruch oder einem Fehler während der Bereinigung können private Reste
+verbleiben und benötigen weiterhin eine gesonderte Wiederanlaufstrategie.
+
+Abnahme: gezielter Test für unbekannte Dateien, Journalbindung, zulässige
+Bereinigung und Erhalt des Bestands ohne Fehler/Skips; lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-discard-check.log.

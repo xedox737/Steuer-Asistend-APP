@@ -78,6 +78,32 @@ class OfflineRestoreRollbackBundleTest {
             assertEquals(64, bundle.manifestSha256.length); assertEquals(bundle.manifest.length(), bundle.manifestBytes)
         }
     }
+    @Test fun unjournalledCleanupRejectsUnknownOrBoundFilesBeforeRemovingOwnedPreparation() = runBlocking<Unit> {
+        coordinator.beginMaintenance().use { token ->
+            val plan = OfflineRestoreFilePlan.prepare(context, UUID.randomUUID().toString(), emptyRestoreManifest())
+            val planSnapshot = OfflineRestoreFilePlanStore.capture(context, token, UUID.randomUUID().toString(), plan)
+            val bundle = OfflineRestoreRollbackBundle.prepare(context, database, token)
+            val unknown = File(bundle.ownedFiles.directory, "unrelated").apply { writeText("keep") }
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreRollbackBundle.discardUnjournalled(context, token, bundle, planSnapshot)
+            } }
+            assertEquals("keep", unknown.readText()); assertTrue(bundle.database.file.exists()); assertTrue(planSnapshot.file.exists())
+            assertTrue(unknown.delete())
+            val journal = OfflineRestoreJournal(context)
+            val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, planSnapshot)
+            assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+                OfflineRestoreRollbackBundle.discardUnjournalled(context, token, bundle, planSnapshot)
+            } }
+            assertTrue(bundle.database.file.exists()); assertEquals(initial, journal.load())
+            val rollback = journal.advance(initial, OfflineRestoreJournal.Phase.ROLLBACK)
+            journal.clear(journal.advance(rollback, OfflineRestoreJournal.Phase.ROLLED_BACK))
+            OfflineRestoreRollbackBundle.discardUnjournalled(context, token, bundle, planSnapshot)
+            assertFalse(bundle.manifest.exists()); assertFalse(bundle.database.file.exists())
+            assertFalse(bundle.ownedFiles.directory.exists()); assertFalse(bundle.references.directory.exists())
+            assertFalse(planSnapshot.file.exists()); assertEquals("retained original", original.readText())
+            assertEquals(41, database.receiptDao().getAllReceiptsIncludingDeletedList().single().id)
+        }
+    }
     @Test fun laterFailureRemovesOnlyNewArtifactsAndKeepsExistingData() = runBlocking<Unit> {
         val directory = File(context.noBackupFilesDir, "offline-backup-state").apply { mkdirs() }
         val sentinel = File(directory, "keep.txt").apply { writeText("preserve") }
