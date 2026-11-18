@@ -49,12 +49,14 @@ internal class OfflineBackupHistory(context: Context) {
     /** Same operation and outcome may be replayed exactly; conflicting replay fails closed. */
     fun record(event: Event): History = synchronized(lock) { guarded {
         val old = read()
-        val existing = (old.recent + listOfNotNull(old.lastAttempt, old.lastFullSuccess, old.lastPartial, old.lastRestore))
-            .filter { it.operationId == event.operationId && it.kind == event.kind && it.outcome == event.outcome }
+        val related = (old.recent + listOfNotNull(old.lastAttempt, old.lastFullSuccess, old.lastPartial, old.lastRestore))
+            .filter { it.operationId == event.operationId && it.kind == event.kind }
+        val existing = related.filter { it.outcome == event.outcome }
         if (existing.isNotEmpty()) {
             require(existing.all { it.copy(timeMillis = event.timeMillis) == event })
             return@guarded old
         }
+        require(related.none { it.outcome != Outcome.STARTED })
         val next = old.copy(recent = (old.recent + event).takeLast(MAX_EVENTS),
             lastAttempt = if (event.kind != Kind.RESTORE && (event.outcome == Outcome.STARTED || old.lastAttempt == null || old.lastAttempt.operationId == event.operationId)) event else old.lastAttempt,
             lastFullSuccess = if (event.kind == Kind.FULL && event.outcome == Outcome.VERIFIED) event else old.lastFullSuccess,

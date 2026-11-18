@@ -395,11 +395,44 @@ class OfflineRestoreRollbackBundleTest {
                 original.writeText("changed")
             }
         } finally { live.close() }
+        val operationId = requireNotNull(journal.load()).operationId
         assertEquals(OfflineRestoreRecovery.Outcome.ROLLED_BACK, OfflineRestoreRecovery.recoverOnStartup(context, recoveryOperations()))
         assertNull(journal.load()); assertEquals("retained original", original.readText())
+        val history = OfflineBackupHistory(context).load()
+        assertEquals(operationId, history.lastRestore?.operationId)
+        assertEquals(OfflineBackupHistory.Outcome.ROLLED_BACK, history.lastRestore?.outcome)
+        assertNull(history.lastFullSuccess)
+        val recorded = requireNotNull(history.lastRestore)
+        assertEquals(history, OfflineBackupHistory(context).record(recorded.copy(timeMillis = recorded.timeMillis + 1)))
         val reopened = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, path.absolutePath).build()
         try { assertEquals("Before", reopened.propertyDao().getAllProperties().single().name) } finally { reopened.close() }
         assertEquals(OfflineRestoreRecovery.Outcome.NOT_NEEDED, OfflineRestoreRecovery.recoverOnStartup(context, recoveryOperations()))
+    }
+    @Test fun startupRecoveryKeepsTerminalJournalWhenHistoryCannotBeWritten() = runBlocking<Unit> {
+        val path = context.getDatabasePath("receipt_database")
+        val live = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, path.absolutePath)
+            .openHelperFactory(coordinator.sqliteFactory()).build()
+        val journal = OfflineRestoreJournal(context)
+        try {
+            live.propertyDao().insertPropertyMetadata(PropertyMetadata(id = 9, propertyId = "prior", name = "Before"))
+            coordinator.beginMaintenance().use { token ->
+                val plan = OfflineRestoreFilePlan.prepare(context, UUID.randomUUID().toString(), emptyRestoreManifest())
+                val snapshot = OfflineRestoreFilePlanStore.capture(context, token, UUID.randomUUID().toString(), plan)
+                val bundle = OfflineRestoreRollbackBundle.prepare(context, live, token)
+                val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
+                val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
+                journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
+                token.writing { live.openHelper.writableDatabase.execSQL("UPDATE property_metadata SET name = 'After' WHERE id = 9") }
+            }
+        } finally { live.close() }
+        val history = File(context.noBackupFilesDir, "offline-backup-state/history.json").apply { writeText("{broken") }
+        assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineRestoreRecovery.recoverOnStartup(context, recoveryOperations())
+        } }
+        assertEquals(OfflineRestoreJournal.Phase.ROLLED_BACK, journal.load()?.phase)
+        assertTrue(coordinator.restorePending.value); assertEquals("{broken", history.readText())
+        val reopened = Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, path.absolutePath).build()
+        try { assertEquals("Before", reopened.propertyDao().getAllProperties().single().name) } finally { reopened.close() }
     }
     @Test fun startupRecoveryKeepsJournalAndLiveDataWhenRollbackSnapshotIsDamaged() = runBlocking<Unit> {
         val path = context.getDatabasePath("receipt_database")

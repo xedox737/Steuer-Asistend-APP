@@ -38,6 +38,7 @@ internal object OfflineRestoreRecovery {
                             try { recoverHeld(context, database, token, pending, files) } finally { database.close() }
                         }
                         require(journal.load() == terminal)
+                        recordTerminal(context, terminal)
                         journal.clear(terminal)
                         coordinator.clearRestorePending(context, token)
                         when (terminal.phase) {
@@ -56,6 +57,17 @@ internal object OfflineRestoreRecovery {
         catch (_: IllegalStateException) { invalid() }
         catch (_: NoSuchElementException) { invalid() }
         catch (_: SecurityException) { invalid() }
+    }
+
+    /** Persist the outcome before clearing the journal; replay after a crash is idempotent. */
+    internal fun recordTerminal(context: Context, terminal: OfflineRestoreJournal.Entry) {
+        val outcome = when (terminal.phase) {
+            OfflineRestoreJournal.Phase.COMMITTED -> OfflineBackupHistory.Outcome.RESTORED
+            OfflineRestoreJournal.Phase.ROLLED_BACK -> OfflineBackupHistory.Outcome.ROLLED_BACK
+            else -> throw IllegalArgumentException("Die Wiederherstellung ist noch nicht abgeschlossen.")
+        }
+        OfflineBackupHistory(context).record(OfflineBackupHistory.Event(terminal.operationId,
+            OfflineBackupHistory.Kind.RESTORE, outcome, System.currentTimeMillis()))
     }
 
     /** Returns a terminal journal; the caller must refresh/close its DB before clearing it. */

@@ -173,6 +173,11 @@ class OfflineBackupRestoreInspectorTest {
             }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
             assertTrue(refreshed); assertFalse(result.preparationCleanupFailed)
             assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
+            val history = OfflineBackupHistory(target).load()
+            assertEquals(OfflineBackupHistory.Outcome.RESTORED, history.lastRestore?.outcome)
+            assertNull(history.lastFullSuccess)
+            assertEquals(listOf(OfflineBackupHistory.Outcome.STARTED, OfflineBackupHistory.Outcome.RESTORED),
+                history.recent.filter { it.kind == OfflineBackupHistory.Kind.RESTORE }.map { it.outcome })
             assertEquals("Archived house", targetDb.propertyDao().getAllProperties().single().name)
             val receipt = targetDb.receiptDao().getAllReceiptsIncludingDeletedList().single()
             assertEquals(41, receipt.id); assertArrayEquals(original.readBytes(), File(receipt.imageUrl!!).readBytes())
@@ -190,6 +195,7 @@ class OfflineBackupRestoreInspectorTest {
                     OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename) { _, _ -> throw java.io.IOException("synthetic failure") })
             } }
             assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
+            assertEquals(OfflineBackupHistory.Outcome.ROLLED_BACK, OfflineBackupHistory(target).load().lastRestore?.outcome)
             liveUnchanged()
         } finally { prepared.close() }
         noStagingLeft()
@@ -212,6 +218,7 @@ class OfflineBackupRestoreInspectorTest {
             } }
             assertEquals(2, refreshCalls)
             assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
+            assertEquals(OfflineBackupHistory.Outcome.ROLLED_BACK, OfflineBackupHistory(target).load().lastRestore?.outcome)
             liveUnchanged()
         } finally { prepared.close() }
         noStagingLeft()

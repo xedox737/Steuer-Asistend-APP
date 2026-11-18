@@ -7,6 +7,7 @@ import com.example.api.AiProviderSettings
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 
 /** Coordinates a complete replacement while the caller retains the inspected archive. */
@@ -28,13 +29,18 @@ internal object OfflineRestoreCoordinator {
             if (coordinator.observeRestoreJournal(context)) throw OfflineBackupValidationException(
                 "Eine frühere Wiederherstellung muss zuerst abgeschlossen werden.")
             val journal = OfflineRestoreJournal(context)
+            val history = OfflineBackupHistory(context)
+            val operationId = UUID.randomUUID().toString()
             coordinator.beginMaintenance().use { token -> token.suspending {
                 var plan: OfflineRestoreFilePlanStore.Snapshot? = null
                 var rollback: OfflineRestoreRollbackBundle.Prepared? = null
+                var historyStarted = false
                 try {
                     require(journal.load() == null)
                     if (includeCredentials) require(archive.preview.credentialProviders.isNotEmpty())
-                    val operationId = UUID.randomUUID().toString()
+                    history.record(OfflineBackupHistory.Event(operationId, OfflineBackupHistory.Kind.RESTORE,
+                        OfflineBackupHistory.Outcome.STARTED, System.currentTimeMillis()))
+                    historyStarted = true
                     val filePlan = OfflineBackupRoomProbe.prepare(context, archive.contents, archive.generation).use { probe ->
                         OfflineRestoreFilePlan.prepare(context, operationId, probe.manifest)
                     }
@@ -54,6 +60,7 @@ internal object OfflineRestoreCoordinator {
                     refresh()
                     entry = journal.advance(entry, OfflineRestoreJournal.Phase.COMMITTED)
                     OfflineRestoreImportedFiles.finish(context, token, entry, files.sync)
+                    OfflineRestoreRecovery.recordTerminal(context, entry)
                     journal.clear(entry)
                     val cleanupFailed = try {
                         withContext(NonCancellable) { OfflineRestoreRollbackBundle.discardUnjournalled(context, token, preparedRollback, preparedPlan) }
@@ -71,8 +78,15 @@ internal object OfflineRestoreCoordinator {
                                 val terminal = OfflineRestoreRecovery.recoverHeld(context, database, token, pending,
                                     OfflineRestoreRecovery.FileOperations(files.sync, files.rename))
                                 refresh()
+                                OfflineRestoreRecovery.recordTerminal(context, terminal)
                                 journal.clear(terminal)
                                 committed = terminal.phase == OfflineRestoreJournal.Phase.COMMITTED
+                            } else if (historyStarted) {
+                                val outcome = if (error is CancellationException) OfflineBackupHistory.Outcome.CANCELLED else OfflineBackupHistory.Outcome.FAILED
+                                try { history.record(OfflineBackupHistory.Event(operationId, OfflineBackupHistory.Kind.RESTORE,
+                                    outcome, System.currentTimeMillis(), failure = if (outcome == OfflineBackupHistory.Outcome.FAILED)
+                                        OfflineBackupHistory.Failure.UNKNOWN else null)) }
+                                catch (historyError: Exception) { error.addSuppressed(historyError) }
                             }
                             val fixedPlan = plan; val fixedRollback = rollback
                             if (fixedPlan != null) {
