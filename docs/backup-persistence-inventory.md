@@ -3722,3 +3722,18 @@ für parallelen/wiederholten Abgleich, Neustart nach Speicherung und unveränder
 bestanden. Der Testauftrag führt keinen Export aus. Ein echter Worker,
 App-/Boot-/Zeitänderungseinstieg, Zielberechtigung und Nutzeraktivierung sind
 noch nicht angebunden. Nachweis: /workspace/immopilot-workmanager-scheduler-check.log.
+
+### Schritt 10 – bestätigte Einstellungen beim Anspruch
+
+Beim erfolgreichen Beanspruchen eines Termins erhält der spätere Worker die
+unveränderliche Zeitplan- und Zielkonfiguration dieses Anspruchs. Eine spätere
+Änderung der Generation oder der automatischen Credential-Einwilligung verändert
+den bereits laufenden Export nicht. Die zugehörigen alten Ordnerrechte dürfen
+während eines laufenden Exports nicht vorzeitig entzogen werden. Der Worker muss
+diese übergebene Konfiguration verwenden; er ist noch nicht angebunden.
+
+Abnahme: gezielter Test für laufenden Anspruch, Zeitplanänderung und unveränderte
+Credential-Auswahl ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check
+bestanden. Ein erster Lauf wurde durch einen Wechsel der Arbeitsumgebung vor dem
+Testergebnis unterbrochen; der vollständige Nachweis steht in
+/workspace/immopilot-schedule-consent-snapshot-resumed.log.

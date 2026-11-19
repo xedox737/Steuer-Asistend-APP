@@ -47,6 +47,9 @@ internal class OfflineBackupScheduleStore(context: Context) {
     }
     enum class WorkState { WAITING, RUNNING, FINISHED, MISSING, UNKNOWN }
     enum class ClaimResult { CLAIMED, NOT_DUE, STALE, BUSY, ALREADY_CLAIMED }
+    data class ClaimDecision(val result: ClaimResult, val config: Config? = null) {
+        init { require((result == ClaimResult.CLAIMED) == (config != null)) }
+    }
 
     private val directory = File(context.noBackupFilesDir, "offline-backup-state")
     private val file = File(directory, "schedule.json")
@@ -61,18 +64,22 @@ internal class OfflineBackupScheduleStore(context: Context) {
     } }
 
     /** Persist the claim and following calendar occurrence together before starting export. */
-    fun claim(generation: String, occurrenceId: String, now: Instant): ClaimResult = synchronized(lock) { guarded {
+    fun claim(generation: String, occurrenceId: String, now: Instant): ClaimResult =
+        claimForExecution(generation, occurrenceId, now).result
+
+    /** The returned immutable configuration is the one explicitly confirmed at claim time. */
+    fun claimForExecution(generation: String, occurrenceId: String, now: Instant): ClaimDecision = synchronized(lock) { guarded {
         uuid(generation); uuid(occurrenceId)
-        val state = read() ?: return@guarded ClaimResult.STALE
-        if (state.active?.occurrence?.id == occurrenceId) return@guarded ClaimResult.ALREADY_CLAIMED
+        val state = read() ?: return@guarded ClaimDecision(ClaimResult.STALE)
+        if (state.active?.occurrence?.id == occurrenceId) return@guarded ClaimDecision(ClaimResult.ALREADY_CLAIMED)
         val due = state.next
-        if (!state.config.enabled || state.generation != generation || due?.id != occurrenceId) return@guarded ClaimResult.STALE
+        if (!state.config.enabled || state.generation != generation || due?.id != occurrenceId) return@guarded ClaimDecision(ClaimResult.STALE)
         val millis = now.toEpochMilli()
-        if (millis < due.dueMillis) return@guarded ClaimResult.NOT_DUE
-        if (state.active != null) return@guarded ClaimResult.BUSY
+        if (millis < due.dueMillis) return@guarded ClaimDecision(ClaimResult.NOT_DUE)
+        if (state.active != null) return@guarded ClaimDecision(ClaimResult.BUSY)
         val following = Occurrence(id(), OfflineBackupSchedule.next(state.config.rule, now).toEpochMilli())
         write(state.copy(next = following, active = Claim(generation, due, millis)))
-        ClaimResult.CLAIMED
+        ClaimDecision(ClaimResult.CLAIMED, state.config)
     } }
 
     /** Only the exact claimed occurrence can finish; newer schedule generations are retained. */
