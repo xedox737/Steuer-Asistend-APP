@@ -25,9 +25,10 @@ import java.util.UUID
 /** Durable desired schedule and claims; it never registers or runs Android work itself. */
 internal class OfflineBackupScheduleStore(context: Context) {
     data class Config(val enabled: Boolean, val rule: OfflineBackupSchedule.Rule,
-        val targetUri: String?, val automaticCredentials: Boolean) {
+        val targetUri: String?, val automaticCredentials: Boolean, val warningDays: Int = 7) {
         init {
             require(!enabled || targetUri != null)
+            require(warningDays in 1..90)
             targetUri?.let { raw ->
                 require(raw.length <= 16 * 1024 && raw.none(Char::isISOControl))
                 val uri = Uri.parse(raw)
@@ -42,8 +43,19 @@ internal class OfflineBackupScheduleStore(context: Context) {
         init { uuid(generation); require(startedMillis >= occurrence.dueMillis) }
     }
     data class State(val generation: String, val config: Config, val next: Occurrence?,
-        val active: Claim?, val lastInterrupted: Claim?) {
-        init { uuid(generation); require(config.enabled == (next != null)); require(active == null || active.occurrence.id != next?.id) }
+        val active: Claim?, val lastInterrupted: Claim?, val warningSinceMillis: Long? = null) {
+        init {
+            uuid(generation)
+            require(config.enabled == (next != null))
+            require(active == null || active.occurrence.id != next?.id)
+            require(warningSinceMillis == null || (config.enabled && warningSinceMillis > 0))
+        }
+
+        fun warningDue(lastSuccessMillis: Long?, nowMillis: Long): Boolean {
+            val since = warningSinceMillis ?: return false
+            val reference = maxOf(since, lastSuccessMillis ?: since)
+            return nowMillis >= reference && nowMillis - reference >= config.warningDays * 86_400_000L
+        }
     }
     enum class WorkState { WAITING, RUNNING, FINISHED, MISSING, UNKNOWN }
     enum class ClaimResult { CLAIMED, NOT_DUE, STALE, BUSY, ALREADY_CLAIMED }
@@ -60,7 +72,8 @@ internal class OfflineBackupScheduleStore(context: Context) {
     fun configure(config: Config, now: Instant): State = synchronized(lock) { guarded {
         val previous = read()
         val next = if (config.enabled) Occurrence(id(), OfflineBackupSchedule.next(config.rule, now).toEpochMilli()) else null
-        State(id(), config, next, previous?.active, previous?.lastInterrupted).also(::write)
+        val warningSince = if (config.enabled) previous?.warningSinceMillis ?: now.toEpochMilli() else null
+        State(id(), config, next, previous?.active, previous?.lastInterrupted, warningSince).also(::write)
     } }
 
     /** Recompute local calendar time after a zone change and refresh Android's delay after a clock edit. */
@@ -124,13 +137,16 @@ internal class OfflineBackupScheduleStore(context: Context) {
     private fun write(state: State) {
         val buffer = ByteArrayOutputStream()
         JsonWriter(OutputStreamWriter(buffer, Charsets.UTF_8)).use { writer ->
-            writer.beginArray().value(1L).value(state.generation).value(state.config.enabled)
+            writer.beginArray().value(2L).value(state.generation).value(state.config.enabled)
                 .value(state.config.rule.cadence.name).value(state.config.rule.time.hour.toLong() * 60 + state.config.rule.time.minute)
             if (state.config.rule.day == null) writer.nullValue() else writer.value(state.config.rule.day.name)
             writer.value(state.config.rule.zone.id)
             if (state.config.targetUri == null) writer.nullValue() else writer.value(state.config.targetUri)
             writer.value(state.config.automaticCredentials)
             writeOccurrence(writer, state.next); writeClaim(writer, state.active); writeClaim(writer, state.lastInterrupted)
+            writer.value(state.config.warningDays.toLong())
+            val since = state.warningSinceMillis
+            if (since == null) writer.nullValue() else writer.value(since)
             writer.endArray()
         }
         val bytes = buffer.toByteArray(); require(bytes.size <= MAX_BYTES && decode(bytes) == state)
@@ -177,12 +193,17 @@ internal class OfflineBackupScheduleStore(context: Context) {
                 reader.beginArray(); val generation = text(); val occurrence = requireNotNull(occurrence()); val started = number()
                 require(!reader.hasNext()); reader.endArray(); return Claim(generation, occurrence, started)
             }
-            require(number() == 1L); val generation = text(); val enabled = boolean()
+            val version = number(); require(version == 1L || version == 2L); val generation = text(); val enabled = boolean()
             val cadence = OfflineBackupSchedule.Cadence.valueOf(text()); val minutes = number(); require(minutes in 0..1439)
             val day = nullableText()?.let(DayOfWeek::valueOf); val zone = ZoneId.of(text()); val target = nullableText()
             val credentials = boolean(); val next = occurrence(); val active = claim(); val interrupted = claim()
+            val warningDays = if (version == 2L) number().also { require(it in 1L..90L) }.toInt() else 7
+            val warningSince = if (version == 1L) next?.dueMillis else if (reader.peek() == JsonToken.NULL) {
+                reader.nextNull()
+                null
+            } else number()
             require(!reader.hasNext()); reader.endArray(); require(reader.peek() == JsonToken.END_DOCUMENT)
-            State(generation, Config(enabled, OfflineBackupSchedule.Rule(cadence, LocalTime.of((minutes / 60).toInt(), (minutes % 60).toInt()), day, zone), target, credentials), next, active, interrupted)
+            State(generation, Config(enabled, OfflineBackupSchedule.Rule(cadence, LocalTime.of((minutes / 60).toInt(), (minutes % 60).toInt()), day, zone), target, credentials, warningDays), next, active, interrupted, warningSince)
         }
     }
     private inline fun <T> guarded(block: () -> T): T = try { block() }

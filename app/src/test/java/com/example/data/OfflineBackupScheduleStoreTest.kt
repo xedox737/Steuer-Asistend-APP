@@ -34,6 +34,21 @@ class OfflineBackupScheduleStoreTest {
     }
     @After fun cleanup() { root.deleteRecursively() }
 
+    @Test fun warningDeadlinePersistsAcrossEditsAndUsesLastVerifiedSuccess() {
+        val store = store()
+        val day = 86_400_000L
+        store.configure(config.copy(warningDays = 2), now)
+        val first = now.toEpochMilli()
+        val edited = store.configure(config.copy(warningDays = 2), now.plusMillis(day))
+        assertEquals(edited, store.load())
+        assertFalse(edited.warningDue(null, first + 2 * day - 1))
+        assertTrue(edited.warningDue(null, first + 2 * day))
+        assertFalse(edited.warningDue(first + day, first + 2 * day))
+        assertTrue(edited.warningDue(first + day, first + 3 * day))
+        val disabled = store.configure(config.copy(enabled = false), now.plusMillis(3 * day))
+        assertFalse(disabled.warningDue(null, first + 100 * day))
+    }
+
     @Test fun clockRefreshReplacesPendingRegistrationAndKeepsActiveClaim() {
         val store = store()
         val original = store.configure(config, now)
