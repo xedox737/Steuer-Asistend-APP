@@ -151,3 +151,4 @@ docs/backup-persistence-inventory.md
 .github/scripts/run-android-emulator-e2e.sh
 .github/scripts/tests/test_backup_ci.py
 .github/workflows/android-ci.yml
+.github/workflows/bank-performance.yml
