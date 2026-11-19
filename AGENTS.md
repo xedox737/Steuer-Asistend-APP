@@ -34,6 +34,14 @@ Betroffene Wechselwirkungen **risikobasiert** prüfen: Navigation/Backstack, Roo
 - Vorhandene Zwischenergebnisse wiederverwenden, unveränderte Dateien und komplette CI-Logs nicht mehrfach einlesen. Fehlerlogs gezielt auswerten und bei Bedarf vertiefen.
 - Vollständige vorgeschriebene Tests weiterhin ausführen und nur die Ergebnisse sowie relevante Fehlstellen knapp berichten. Keine Sicherheitsregel, Testpflicht oder Freigabe aus Tokenersparnis schwächen.
 
+## Ressourcenbewusste Umsetzung und sichere Zwischenstände
+
+- Erfolgreiche Prüfungen mit Commit-/Arbeitsstand und Testumfang dokumentieren. Dieselbe unveränderte Prüfung nicht erneut ausführen, außer wenn eine relevante Codeänderung, ein konkreter Fehler-/Seiteneffekt oder eine verpflichtende Abschluss-/CI-Prüfung es erfordert.
+- Nach jeder abgeschlossenen, fachlich geprüften Teilaufgabe einen lokalen Commit auf dem eigenen Featurebranch erstellen, sofern Änderungen eindeutig zugeordnet sind. Nur eigene aufgabenbezogene Dateien stagen; fremde Änderungen nicht übernehmen. Ein lokaler Commit allein schützt nicht vor Verlust einer Cloud-Arbeitsumgebung: vor Ende einer Sitzung den nicht veröffentlichten Stand und verbleibende Risiken ausdrücklich melden. Push/PR/Merge nur nach den jeweiligen Auftrags- und Freigaberegeln.
+- Bei wiederholter technischer Blockade nach höchstens zwei unterschiedlichen, begründeten Lösungsversuchen Ursache, Logbelege, bereits versuchte Wege und sicheren Arbeitsstand dokumentieren. Weitere Versuche nur mit neuem konkretem Ansatz; keine blinden Retry-Schleifen und keine Abschwächung von Tests oder Sicherheitsanforderungen.
+- Vor umfangreichen Zusatzanalysen den direkten Bezug zum aktuellen Arbeitsschritt prüfen. Keine auftragsfremden Optimierungen, Refactorings oder Untersuchungen ohne begründeten Bedarf.
+- Bei längeren Aufträgen den Fortschritt je Teilaufgabe und offene Punkte knapp festhalten, damit eine unterbrochene Sitzung ohne unnötige Wiederholung fortgesetzt werden kann.
+
 ## Fertig-Kriterium
 
 Eine Änderung ist erst fertig, wenn relevante Tests, `lintDebug`, `assembleDebug` und `git diff --check` erfolgreich sind oder ein konkreter externer Prüfgrund dokumentiert ist. Keine Tests deaktivieren oder Fehler verstecken.
