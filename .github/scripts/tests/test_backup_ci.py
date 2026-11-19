@@ -13,8 +13,23 @@ class BackupCiTest(unittest.TestCase):
     def test_source_selection_contains_android_and_jvm_methods(self):
         self.assertIn(("com.example.e2e.OfflineBackupScheduleEmulatorTest",
                        "missingRegistrationIsRecreatedOnceOnAndroid"), backup_ci.expected("androidTest"))
+        self.assertIn(("com.example.ui.EncryptedRestoreConfirmationComposeTest",
+                       "credentialImportRequiresExplicitSelectionAtReplacementConfirmation"), backup_ci.expected("test"))
         self.assertIn(("com.example.data.OfflineBackupScheduleStoreTest",
                        "clockRefreshReplacesPendingRegistrationAndKeepsActiveClaim"), backup_ci.expected("test"))
+
+    def test_multisdk_methods_require_each_configured_variant(self):
+        wanted = backup_ci.expected("test")
+        classname = "com.example.data.OfflineBackupDeviceKeyTest"
+        method = "alteredRecoveryContextOrCiphertextCannotOpenMaster"
+        variants = {(owner, name) for owner, name in wanted if owner == classname and name.startswith(method)}
+        self.assertEqual(variants, {(classname, method + "[24]"), (classname, method)})
+        with tempfile.TemporaryDirectory() as folder:
+            report = Path(folder)
+            (report / "TEST-device.xml").write_text(
+                f'<testsuite><testcase classname="{classname}" name="{method}[24]"/></testsuite>')
+            with self.assertRaisesRegex(ValueError, "Missing methods"):
+                backup_ci.verify(report, variants)
 
     def test_requires_exactly_one_success_per_method(self):
         case = '<testcase classname="example.Test" name="selected"/>'

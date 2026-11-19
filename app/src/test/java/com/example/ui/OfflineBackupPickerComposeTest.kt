@@ -211,10 +211,27 @@ class OfflineBackupPickerComposeTest {
             assertNotNull(zip.getEntry("snapshot.json"))
             assertNotNull(zip.getEntry("snapshot.sha256"))
         }
-        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
+        val status = ui.onAllNodesWithTag("offline_backup_status")
+        fun statusText() = status.fetchSemanticsNodes().map { it.config.toString() }
+        val beforeImport = statusText()
+        val importButton = ui.onNodeWithTag("offline_backup_import").performScrollTo()
+        val pickerLaunchesBeforeImport = pickerLaunches
+        val previousDialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+        importButton.assertIsEnabled().performClick()
+        ui.runOnIdle { assertEquals("Import picker did not open", pickerLaunchesBeforeImport + 1, pickerLaunches) }
+        val confirmation = ui.onAllNodesWithText("Lokale Sicherung wiederherstellen?")
         ui.waitUntil(10_000) {
-            ui.onAllNodesWithText("Lokale Sicherung wiederherstellen?").fetchSemanticsNodes().isNotEmpty()
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            (dialog != null && dialog !== previousDialog && dialog.isShowing) || statusText() != beforeImport
         }
+        val afterImport = statusText()
+        ui.runOnUiThread {
+            val dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog()
+            assertTrue("Restore preview missing: $afterImport", dialog != null && dialog !== previousDialog && dialog.isShowing)
+            val density = ui.activity.resources.displayMetrics.density
+            dialog.window!!.setLayout((360 * density).toInt(), (700 * density).toInt())
+        }
+        confirmation.assertCountEquals(1)
         ui.onNodeWithText("1 Immobilien · 1 Belege · 0 Originaldateien", substring = true).assertExists()
         ui.onNodeWithText("Wiederherstellen").performClick()
         waitForStatus("Lokale Sicherung wiederhergestellt")

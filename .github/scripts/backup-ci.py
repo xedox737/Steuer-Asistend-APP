@@ -23,11 +23,32 @@ def expected(kind):
         if not name.startswith(prefix) or not name.endswith("Test.kt"):
             continue
         source = (ROOT / name).read_text()
-        methods = [method.strip("`") for method in METHOD.findall(source)]
-        if not methods or len(methods) != len(re.findall(r"@Test\b", source)) or len(set(methods)) != len(methods):
+        package = name[len(prefix):].rsplit("/", 1)[0].replace("/", ".")
+        classes = list(re.finditer(r"^class (\w+)\b", source, re.MULTILINE))
+        if not classes:
+            raise ValueError(f"No top-level test class in {name}")
+        discovered = 0
+        previous_end = 0
+        for index, declaration in enumerate(classes):
+            next_class = classes[index + 1].start() if index + 1 < len(classes) else len(source)
+            end = source.rindex("\n}", declaration.end(), next_class) + 2
+            body = source[declaration.end():end]
+            methods = [method.strip("`") for method in METHOD.findall(body)]
+            if len(set(methods)) != len(methods) or "@Config" in body:
+                raise ValueError(f"Unsupported test declarations in {name}")
+            discovered += len(methods)
+            config = source[previous_end:declaration.start()]
+            sdk_configs = re.findall(r"@Config\(\s*sdk\s*=\s*\[([^\]]+)\]", config)
+            if len(sdk_configs) > 1:
+                raise ValueError(f"Ambiguous SDK configuration in {name}")
+            sdks = sorted(int(sdk.strip()) for sdk in sdk_configs[0].split(",")) if sdk_configs else []
+            # Robolectric 4.16 names the final SDK variant without a suffix.
+            suffixes = [f"[{sdk}]" for sdk in sdks[:-1]] + [""]
+            classname = f"{package}.{declaration.group(1)}"
+            result.update((classname, method + suffix) for method in methods for suffix in suffixes)
+            previous_end = end
+        if not discovered or discovered != len(re.findall(r"@Test\b", source)):
             raise ValueError(f"Cannot determine test methods in {name}")
-        classname = name[len(prefix):-3].replace("/", ".")
-        result.update((classname, method) for method in methods)
     if not result:
         raise ValueError(f"No test methods selected for {kind}")
     return result
