@@ -70,6 +70,11 @@ adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.H
   "$e2e_sdk_root/emulator/emulator" -no-window -noaudio -accel-check
 } > "$artifact_dir/device-environment.txt" 2>&1
 
-gradle connectedDebugAndroidTest \
+test_selection=()
+if [[ "${IMMO_BACKUP_PROFILE:-}" == true ]]; then
+  classes=$(python3 .github/scripts/backup-ci.py classes androidTest)
+  test_selection+=("-Pandroid.testInstrumentationRunnerArguments.class=$(paste -sd, <<< "$classes")")
+fi
+gradle connectedDebugAndroidTest "${test_selection[@]}" \
   -Pandroid.testInstrumentationRunnerArguments.immopilotDisposableEmulator=true \
   --stacktrace --no-daemon
