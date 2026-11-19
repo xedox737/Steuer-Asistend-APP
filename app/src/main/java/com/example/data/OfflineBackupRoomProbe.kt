@@ -94,7 +94,7 @@ internal object OfflineBackupRoomProbe {
                     val privatePaths = contents.parts.values.mapNotNull { it.file?.canonicalPath }.toSet()
                     require(checked.rowCounts == manifest.rowCounts && checked.references.all { it.path in privatePaths })
                 } finally { checkFile.delete() }
-                OfflineBackupService(readContext, probe).validateRelationships(readContext.getSharedPreferences("wohneinheiten_prefs", 0))
+                OfflineBackupService(readContext, probe).validateRelationships(readContext.archivedPreferences("wohneinheiten_prefs"))
                 cancellation.ensureActive()
                 Prepared(probe, directory, manifest, parser.preferences)
             }
@@ -294,7 +294,8 @@ internal object OfflineBackupRoomProbe {
     }
 
     private class PreferenceContext(base: Context, private val values: Map<String, Map<String, Any>>) : ContextWrapper(base) {
-        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences = ReadOnlyPreferences(values[name] ?: emptyMap())
+        override fun getSharedPreferences(name: String, mode: Int): SharedPreferences = archivedPreferences(name)
+        fun archivedPreferences(name: String): SharedPreferences = ReadOnlyPreferences(values[name] ?: emptyMap())
     }
     private class ReadOnlyPreferences(private val values: Map<String, Any>) : SharedPreferences {
         override fun getAll(): MutableMap<String, *> = values.toMutableMap()

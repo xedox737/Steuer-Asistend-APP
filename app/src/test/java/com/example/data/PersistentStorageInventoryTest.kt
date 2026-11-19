@@ -8,6 +8,20 @@ class PersistentStorageInventoryTest {
     private fun sources(): File = listOf(File("src/main/java"), File("app/src/main/java"))
         .firstOrNull { it.isDirectory } ?: error("Produktive Quellen für Inventarprüfung fehlen.")
 
+    // Capacity probes and validated restore path resolution access existing roots.
+    private val portableRoot = """\(if \(version\.portablePath\.startsWith\("files/"\)\) context\.filesDir else context\.cacheDir\)\.canonicalFile"""
+    private val cacheRoot = """context\.cacheDir\.canonicalFile"""
+    private val rootReaders = mapOf(
+        "OfflineBackupResourceBudget.kt" to listOf(
+            """listOf\(context\.filesDir, context\.cacheDir, context\.noBackupFilesDir,""",
+            """context\.getDatabasePath\("receipt_database"\)\.parentFile"""),
+        "ReceiptDatabase.kt" to listOf("""context\.getDatabasePath\("receipt_database"\)\.canonicalFile"""),
+        "OfflineRestoreFilePlan.kt" to listOf("""context\.filesDir\.canonicalFile"""),
+        "OfflineRestoreImportedFiles.kt" to listOf("""context\.filesDir\.(usableSpace|canonicalFile)"""),
+        "OfflineRestoreDatabaseVerifier.kt" to listOf(portableRoot),
+        "OfflineRestoreOwnedFilesRollback.kt" to listOf(portableRoot),
+    )
+
     @Test fun persistentFileRootsAndDataStoreOwnersRequireExplicitClassification() {
         val classifiedRoots = setOf("filesDir/managed_documents", "filesDir/property-images", "filesDir/offline-originals",
             "filesDir/restored_receipts", "filesDir/receipt_documents", "filesDir/receipt_page_", "filesDir/offline-backup-staging",
@@ -20,10 +34,11 @@ class PersistentStorageInventoryTest {
         sources().walkTopDown().filter { it.extension in setOf("kt", "java") }.forEach { file ->
             val source = file.readText().replace(Regex("(?s)/\\*.*?\\*/|//[^\\n]*"), "")
             val matches = root.findAll(source).toList()
+            val knownUses = (rootReaders[file.name].orEmpty()).flatMap { Regex(it).findAll(source).toList() }
             Regex("\\b(filesDir|noBackupFilesDir|getFilesDir|getNoBackupFilesDir|getExternalFilesDir|getExternalFilesDirs|dataDir|getDataDir|getDir|getDatabasePath)\\b")
                 .findAll(source).forEach { use ->
                     assertTrue("${file.name}: neuer Dateispeicher benötigt eine Sicherungszuordnung",
-                        matches.any { use.range.first in it.range })
+                        (matches + knownUses).any { use.range.first in it.range })
                 }
             matches.forEach { match ->
                 val directory = match.groupValues[1] + "/" + match.groupValues[2].substringBefore('/').substringBefore('$')
@@ -59,14 +74,23 @@ class PersistentStorageInventoryTest {
         val token = "(\"[^\"]+\"|[A-Za-z_][A-Za-z0-9_]*)"
         val declaration = Regex("const\\s+val\\s+(\\w+)\\s*=\\s*\"([^\"]+)\"")
         val forms = listOf(
-            Regex("getSharedPreferences\\s*\\(") to Regex("getSharedPreferences\\s*\\(\\s*$token\\s*,"),
+            Regex("(?<!fun )getSharedPreferences\\s*\\(") to Regex("getSharedPreferences\\s*\\(\\s*$token\\s*,"),
             Regex("PersistentPreferenceInventory\\.open\\s*\\(") to
                 Regex("PersistentPreferenceInventory\\.open\\s*\\((?:[^,()]|\\(\\))+?,\\s*$token\\s*,?\\s*\\)")
         )
         return buildSet {
             forms.forEach { (opening, full) ->
-                opening.findAll(source).forEach { call ->
+                opening.findAll(source).forEach scanCall@ { call ->
                     val match = full.find(source, call.range.first)?.takeIf { it.range.first == call.range.first }
+                    // These restore loops pass the name of each BACKUP entry from the inventory.
+                    val registeredRestoreLoop = owner in setOf("OfflineRestoreLivePreferences.kt", "OfflineRestorePreferenceRollback.kt") &&
+                        source.substring(call.range.first).startsWith("PersistentPreferenceInventory.open(context, store.name)") &&
+                        source.substring(0, call.range.first).substringAfterLast("fun ").contains(
+                            "PersistentPreferenceInventory.stores.filter { it.kind == PersistentPreferenceInventory.Kind.BACKUP }.forEach { store ->")
+                    if (match == null && registeredRestoreLoop) {
+                        addAll(PersistentPreferenceInventory.stores.filter { it.kind == PersistentPreferenceInventory.Kind.BACKUP }.map { it.name })
+                        return@scanCall
+                    }
                     assertNotNull("$owner: dynamischer oder unbekannter Preference-Zugang benötigt eine explizite Klassifizierung", match)
                     val argument = match!!.groupValues[1]
                     val name = if (argument.startsWith('"')) argument.removeSurrounding("\"")
@@ -139,6 +163,13 @@ class PersistentStorageInventoryTest {
         "com/example/data/OfflineBackupService.kt" to mapOf(
             "technical-export-staging" to """File\(context\.cacheDir,\s*"offline-export-[^"\n]+"\)""",
             "technical-import-staging" to """File\(context\.cacheDir,\s*"offline-import-[^"\n]+"\)"""),
+        "com/example/data/OfflineBackupResourceBudget.kt" to mapOf("capacity-check" to
+            """listOf\(context\.filesDir, context\.cacheDir, context\.noBackupFilesDir,"""),
+        "com/example/data/OfflineRestoreFilePlan.kt" to mapOf("validated-cache-root" to cacheRoot),
+        "com/example/data/OfflineRestoreImportedFiles.kt" to mapOf(
+            "validated-cache-root" to cacheRoot, "capacity-check" to """context\.cacheDir\.usableSpace >= required"""),
+        "com/example/data/OfflineRestoreDatabaseVerifier.kt" to mapOf("validated-cache-root" to portableRoot),
+        "com/example/data/OfflineRestoreOwnedFilesRollback.kt" to mapOf("validated-cache-root" to portableRoot),
         "com/example/data/OfflineBackupFileInventory.kt" to mapOf("classified-inventory-reader" to
             """context\.cacheDir\.canonicalFile""")
     )
@@ -160,7 +191,11 @@ class PersistentStorageInventoryTest {
             classifiedCacheUses(file.readText(), owner).takeIf { it.isNotEmpty() }?.let { owner to it }
         }.toMap()
         val expected = cacheRules.mapValues { (owner, rules) -> rules.mapValues { (kind, _) ->
-            if (owner == "com/example/ui/ReceiptDetailScreen.kt" && kind == "temporary-replacement") 2 else 1
+            when {
+                owner == "com/example/ui/ReceiptDetailScreen.kt" && kind == "temporary-replacement" -> 2
+                owner == "com/example/data/OfflineRestoreOwnedFilesRollback.kt" && kind == "validated-cache-root" -> 2
+                else -> 1
+            }
         } }
         assertEquals("Cache-Inventar enthält veraltete oder fehlende aktive Eigentümer", expected, found)
     }
