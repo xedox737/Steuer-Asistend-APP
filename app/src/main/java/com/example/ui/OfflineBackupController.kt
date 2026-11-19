@@ -104,7 +104,7 @@ internal class OfflineBackupController(private val context: Context, private val
     fun setManualCredentials(enabled: Boolean): Job? = perform(Operation.OPTIONS) {
         settings.setManualCredentials(enabled); refresh()
     }
-    fun setSchedule(enabled: Boolean, rule: OfflineBackupSchedule.Rule, credentials: Boolean): Job? = perform(Operation.OPTIONS) {
+    fun setSchedule(enabled: Boolean, rule: OfflineBackupSchedule.Rule, credentials: Boolean, warningDays: Int): Job? = perform(Operation.OPTIONS) {
         val target = settings.load().targetUri
         if (enabled) {
             if (!mutable.value.configured || target == null)
@@ -112,7 +112,7 @@ internal class OfflineBackupController(private val context: Context, private val
             destination(Uri.parse(target)).preflight()
         }
         val saved = OfflineBackupScheduleStore(context).configure(
-            OfflineBackupScheduleStore.Config(enabled, rule, target, enabled && credentials), Instant.now())
+            OfflineBackupScheduleStore.Config(enabled, rule, target, enabled && credentials, warningDays), Instant.now())
         mutable.update { it.copy(schedule = saved, scheduleProblem = null) }
         OfflineBackupWorkScheduler(context, OfflineBackupWorker::class.java).reconcile()
     }

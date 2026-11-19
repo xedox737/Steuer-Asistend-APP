@@ -29,7 +29,7 @@ import kotlinx.coroutines.Job
 internal fun BackupScheduleControls(
     state: OfflineBackupController.State,
     blocked: Boolean,
-    save: (Boolean, OfflineBackupSchedule.Rule, Boolean) -> Job?,
+    save: (Boolean, OfflineBackupSchedule.Rule, Boolean, Int) -> Job?,
 ) {
     var editing by remember { mutableStateOf(false) }
     val schedule = state.schedule
@@ -52,6 +52,8 @@ internal fun BackupScheduleControls(
     var time by remember { mutableStateOf(config?.rule?.time?.toString() ?: "07:00") }
     var day by remember { mutableStateOf(config?.rule?.day) }
     var credentials by remember { mutableStateOf(config?.automaticCredentials == true) }
+    var warningDays by remember { mutableStateOf((config?.warningDays ?: 7).toString()) }
+    val warning = warningDays.toIntOrNull()?.takeIf { it in 1..90 }
     val parsed = time.takeIf { it.matches(Regex("[0-9]{2}:[0-9]{2}")) }
         ?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
     val cadence = if (day == null) OfflineBackupSchedule.Cadence.DAILY else OfflineBackupSchedule.Cadence.WEEKLY
@@ -70,6 +72,9 @@ internal fun BackupScheduleControls(
                 } }) {
                     Text(day?.let { "Wöchentlich am ${it.getDisplayName(TextStyle.FULL, locale)}" } ?: "Täglich")
                 }
+                OutlinedTextField(value = warningDays, onValueChange = { if (it.length <= 2) warningDays = it },
+                    label = { Text("Warnen nach Tagen ohne Vollsicherung (1–90)") },
+                    singleLine = true, isError = warning == null)
                 androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Checkbox(checked = credentials, onCheckedChange = { credentials = it })
                     Text("Persönliche API-Schlüssel automatisch mitsichern")
@@ -77,15 +82,15 @@ internal fun BackupScheduleControls(
             }
         },
         confirmButton = {
-            TextButton(enabled = parsed != null && state.canSave && !blocked, onClick = {
+            TextButton(enabled = parsed != null && warning != null && state.canSave && !blocked, onClick = {
                 val rule = OfflineBackupSchedule.Rule(cadence, requireNotNull(parsed), day, zone)
-                if (save(true, rule, credentials) != null) editing = false
+                if (save(true, rule, credentials, requireNotNull(warning)) != null) editing = false
             }) { Text("Zeitplan speichern") }
         },
         dismissButton = {
             if (config?.enabled == true) {
                 TextButton(enabled = !state.busy && !blocked, onClick = {
-                    if (save(false, config.rule, false) != null) editing = false
+                    if (save(false, config.rule, false, config.warningDays) != null) editing = false
                 }) { Text("Deaktivieren") }
             } else TextButton(onClick = { editing = false }) { Text("Abbrechen") }
         },

@@ -2,6 +2,8 @@ package com.example.data
 
 import android.content.Context
 import androidx.work.Data
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequest
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequest
@@ -30,6 +32,13 @@ internal class OfflineBackupWorkScheduler(context: Context, private val workerCl
                 val observed = observe(name(active.generation, active.occurrence.id))
                 store.reconcileStoppedClaim(active.occurrence.id, observed)
                 state = store.load() ?: return
+            }
+            if (state.config.enabled) {
+                // This monitor is independent of calendar-based export work and checks the
+                // latest persisted settings, including after disabling the schedule.
+                val monitor = PeriodicWorkRequest.Builder(OfflineBackupWarningWorker::class.java, 12, TimeUnit.HOURS).build()
+                manager.enqueueUniquePeriodicWork("immopilot-backup-success-monitor", ExistingPeriodicWorkPolicy.KEEP, monitor)
+                    .result.awaitResult()
             }
             val next = state.next ?: return
             val workName = name(state.generation, next.id)
