@@ -3737,3 +3737,24 @@ Credential-Auswahl ohne Fehler/Skips; lintDebug, assembleDebug und git diff --ch
 bestanden. Ein erster Lauf wurde durch einen Wechsel der Arbeitsumgebung vor dem
 Testergebnis unterbrochen; der vollständige Nachweis steht in
 /workspace/immopilot-schedule-consent-snapshot-resumed.log.
+
+### Schritte 10/11 – Ausführung eines beanspruchten Termins
+
+Die interne Ausführungslogik gleicht zunächst den Sollzustand ab und prüft das
+Restore-Journal vor dem Zugriff auf die fachliche Datenbank. Ein registrierter
+Writer-Anspruch schützt die anschließende Vorbereitung vor einem gleichzeitig
+beginnenden Restore und wird vor der eigentlichen Snapshot-Erfassung freigegeben.
+Nur ein fälliger, gültiger und noch nicht beanspruchter Termin übernimmt die zu
+seinem Anspruch gehörenden bestätigten Einstellungen. Der folgende Termin ist
+vor dem Export dauerhaft gespeichert. Ist ein älterer Export aktiv oder ein
+Restore offen, wird gewartet; veraltete und bereits beanspruchte Termine starten
+keinen zweiten Export. Fehler vor der Veröffentlichung werden ohne Erfolgseintrag
+im Verlauf erfasst; wenn der Verlauf nicht sicher geschrieben werden kann, bleibt
+der Anspruch für den späteren Abgleich erhalten.
+
+Abnahme: sechs gezielte Tests für Restore-Sperre, bestätigte Einstellungen,
+doppelten Anspruch, Überschneidung, Vorbereitungsfehler, Abbruch und eine
+fehlgeschlagene Folgeregistrierung ohne Fehler/Skips; lintDebug, assembleDebug und
+git diff --check bestanden. Die Android-Worker-Hülle, echte Zielprüfung,
+Benachrichtigung und Systemunterbrechung sind noch nicht angebunden. Nachweis:
+/workspace/immopilot-scheduled-runner-check.log.
