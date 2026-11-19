@@ -33,7 +33,7 @@ class OfflineBackupScheduledRunnerTest {
 
     private inner class Hooks : OfflineBackupScheduledRunner.Hooks {
         var reconciles = 0; var prepares = 0; var warnings = 0; var failReconcileAt = 0
-        var prepareError: Exception? = null; var changeConfig = false
+        var prepareError: Exception? = null; var changeConfig = false; var systemInterrupted = false
         var usedConfig: OfflineBackupScheduleStore.Config? = null; var publications = 0
         override suspend fun reconcile() { reconciles++; if (reconciles == failReconcileAt) throw IllegalStateException("synthetic scheduling error") }
         override suspend fun prepare(config: OfflineBackupScheduleStore.Config): OfflineBackupScheduledRunner.PreparedExport {
@@ -52,6 +52,7 @@ class OfflineBackupScheduledRunnerTest {
             }
         }
         override fun notifyFailure() { warnings++ }
+        override fun cancellationOutcome() = if (systemInterrupted) OfflineBackupHistory.Outcome.INTERRUPTED else OfflineBackupHistory.Outcome.CANCELLED
     }
     @Before fun setup() {
         val base = ApplicationProvider.getApplicationContext<Context>()
@@ -108,6 +109,12 @@ class OfflineBackupScheduledRunnerTest {
         assertThrows(CancellationException::class.java) { runBlocking { runner(hooks).run(initial.generation, occurrence) } }
         assertEquals(OfflineBackupHistory.Outcome.CANCELLED, history.load().lastAttempt?.outcome)
         assertNull(history.load().lastFullSuccess); assertNull(schedule.load()?.active)
+    }
+    @Test fun systemInterruptionBeforePublicationIsRecordedAndWarned() {
+        val hooks = Hooks().apply { prepareError = CancellationException("synthetic timeout"); systemInterrupted = true }
+        assertThrows(CancellationException::class.java) { runBlocking { runner(hooks).run(initial.generation, occurrence) } }
+        assertEquals(OfflineBackupHistory.Outcome.INTERRUPTED, history.load().lastAttempt?.outcome)
+        assertNull(history.load().lastFullSuccess); assertNull(schedule.load()?.active); assertEquals(1, hooks.warnings)
     }
     @Test fun laterOccurrenceWaitsWhileAnEarlierClaimIsActive() = runBlocking<Unit> {
         assertEquals(OfflineBackupScheduleStore.ClaimResult.CLAIMED, schedule.claim(initial.generation, occurrence, clock))

@@ -3758,3 +3758,18 @@ fehlgeschlagene Folgeregistrierung ohne Fehler/Skips; lintDebug, assembleDebug u
 git diff --check bestanden. Die Android-Worker-Hülle, echte Zielprüfung,
 Benachrichtigung und Systemunterbrechung sind noch nicht angebunden. Nachweis:
 /workspace/immopilot-scheduled-runner-check.log.
+
+### Schritt 11 – Unterbrechung vor der Veröffentlichung
+
+Für geplante Sicherungen unterscheidet der Verlauf nun einen ausdrücklichen
+Abbruch von einer Systemunterbrechung. Wird die Vorbereitung nach dem Anspruch
+durch das System unterbrochen, bleibt der letzte geprüfte Erfolg unverändert;
+der Zustand wird als unterbrochen gespeichert und die Warnschnittstelle
+aufgerufen. Die Android-Worker-Hülle muss den tatsächlichen WorkManager-Stopgrund
+übergeben und die Warnung mit Benachrichtigungsberechtigung behandeln. Die
+Unterscheidung während der Archivveröffentlichung wird gesondert angebunden.
+
+Abnahme: zwei gezielte Tests für Abbruch und simulierte Systemunterbrechung vor
+der Veröffentlichung ohne Fehler/Skips; lintDebug, assembleDebug und git diff
+--check bestanden. Nachweis:
+/workspace/immopilot-system-interruption-prepare-check.log.

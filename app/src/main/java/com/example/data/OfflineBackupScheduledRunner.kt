@@ -16,6 +16,7 @@ internal class OfflineBackupScheduledRunner(private val context: Context, privat
         /** Called under a registered writer lease; do not publish a backup here. */
         suspend fun prepare(config: OfflineBackupScheduleStore.Config): PreparedExport
         fun notifyFailure()
+        fun cancellationOutcome(): OfflineBackupHistory.Outcome = OfflineBackupHistory.Outcome.CANCELLED
     }
     private val schedule = OfflineBackupScheduleStore(context)
     private val history = OfflineBackupHistory(context)
@@ -51,12 +52,16 @@ internal class OfflineBackupScheduledRunner(private val context: Context, privat
             require(terminal(occurrenceId)?.outcome == OfflineBackupHistory.Outcome.VERIFIED)
             return Result.COMPLETED
         } catch (error: CancellationException) {
-            if (claimed && !publishing) try { withContext(NonCancellable) { recordPreparationFailure(occurrenceId, cancelled = true) } }
+            val outcome = try { hooks.cancellationOutcome().takeIf {
+                it == OfflineBackupHistory.Outcome.CANCELLED || it == OfflineBackupHistory.Outcome.INTERRUPTED
+            } ?: OfflineBackupHistory.Outcome.INTERRUPTED } catch (_: Exception) { OfflineBackupHistory.Outcome.INTERRUPTED }
+            if (claimed && !publishing) try { withContext(NonCancellable) { recordPreparationFailure(occurrenceId, outcome) } }
             catch (historyError: Exception) { error.addSuppressed(historyError) }
+            if (claimed && outcome == OfflineBackupHistory.Outcome.INTERRUPTED) try { hooks.notifyFailure() } catch (_: Exception) { }
             throw error
         } catch (error: Exception) {
             if (claimed && !publishing) {
-                try { withContext(NonCancellable) { recordPreparationFailure(occurrenceId, cancelled = false) } }
+                try { withContext(NonCancellable) { recordPreparationFailure(occurrenceId, OfflineBackupHistory.Outcome.FAILED) } }
                 catch (historyError: Exception) { error.addSuppressed(historyError) }
             }
             if (claimed) try { hooks.notifyFailure() } catch (_: Exception) { }
@@ -69,11 +74,11 @@ internal class OfflineBackupScheduledRunner(private val context: Context, privat
         }
     }
 
-    private fun recordPreparationFailure(operationId: String, cancelled: Boolean) {
+    private fun recordPreparationFailure(operationId: String, outcome: OfflineBackupHistory.Outcome) {
+        require(outcome in setOf(OfflineBackupHistory.Outcome.FAILED, OfflineBackupHistory.Outcome.CANCELLED, OfflineBackupHistory.Outcome.INTERRUPTED))
         history.beginFullBackup(operationId, OfflineBackupHistory.Origin.AUTOMATIC, now().toEpochMilli())
         history.record(OfflineBackupHistory.Event(operationId, OfflineBackupHistory.Kind.FULL,
-            if (cancelled) OfflineBackupHistory.Outcome.CANCELLED else OfflineBackupHistory.Outcome.FAILED,
-            now().toEpochMilli(), failure = if (cancelled) null else OfflineBackupHistory.Failure.UNKNOWN,
+            outcome, now().toEpochMilli(), failure = if (outcome == OfflineBackupHistory.Outcome.FAILED) OfflineBackupHistory.Failure.UNKNOWN else null,
             origin = OfflineBackupHistory.Origin.AUTOMATIC))
     }
     private fun terminal(operationId: String): OfflineBackupHistory.Event? {

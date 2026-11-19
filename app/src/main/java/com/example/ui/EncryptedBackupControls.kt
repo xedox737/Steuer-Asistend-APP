@@ -97,6 +97,7 @@ private fun BackupHistorySummary(state: OfflineBackupController.State) {
             else -> "fehlgeschlagen"
         }
         OfflineBackupHistory.Outcome.CANCELLED -> "abgebrochen"
+        OfflineBackupHistory.Outcome.INTERRUPTED -> "unterbrochen"
         OfflineBackupHistory.Outcome.RESTORED -> "abgeschlossen"
         OfflineBackupHistory.Outcome.ROLLED_BACK -> "zurückgesetzt"
     }

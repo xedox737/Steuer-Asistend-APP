@@ -19,7 +19,7 @@ import java.util.UUID
 /** Device-only operation history; it is not part of the portable user backup. */
 internal class OfflineBackupHistory(context: Context) {
     enum class Kind { FULL, PARTIAL, RESTORE }
-    enum class Outcome { STARTED, VERIFIED, FAILED, CANCELLED, RESTORED, ROLLED_BACK }
+    enum class Outcome { STARTED, VERIFIED, FAILED, CANCELLED, INTERRUPTED, RESTORED, ROLLED_BACK }
     enum class Origin { MANUAL, AUTOMATIC }
     enum class Failure { UNAVAILABLE, VALIDATION, STORAGE, UNKNOWN }
     data class Event(val operationId: String, val kind: Kind, val outcome: Outcome, val timeMillis: Long,
@@ -28,7 +28,7 @@ internal class OfflineBackupHistory(context: Context) {
         init {
             require(UUID.fromString(operationId).toString() == operationId && timeMillis > 0)
             require(if (kind == Kind.RESTORE) outcome in setOf(Outcome.STARTED, Outcome.RESTORED, Outcome.ROLLED_BACK, Outcome.FAILED, Outcome.CANCELLED)
-                else outcome in setOf(Outcome.STARTED, Outcome.VERIFIED, Outcome.FAILED, Outcome.CANCELLED))
+                else outcome in setOf(Outcome.STARTED, Outcome.VERIFIED, Outcome.FAILED, Outcome.CANCELLED, Outcome.INTERRUPTED))
             require(if (outcome == Outcome.VERIFIED) bytes != null && bytes > 0 else bytes == null)
             require((outcome == Outcome.FAILED) == (failure != null))
             require((kind != Kind.RESTORE) == (origin != null))
