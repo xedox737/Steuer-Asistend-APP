@@ -3773,3 +3773,19 @@ Abnahme: zwei gezielte Tests für Abbruch und simulierte Systemunterbrechung vor
 der Veröffentlichung ohne Fehler/Skips; lintDebug, assembleDebug und git diff
 --check bestanden. Nachweis:
 /workspace/immopilot-system-interruption-prepare-check.log.
+
+### Schritt 11 – Unterbrechung bei der Veröffentlichung
+
+Die Sicherungs-Engine übernimmt bei einem Abbruch während der Veröffentlichung
+den vom Worker bestimmten Unterbrechungszustand. Eine Systemunterbrechung wird
+als solche statt als Nutzerabbruch gespeichert; ein bereits geprüfter und
+veröffentlichter Erfolg bleibt korrekt als Erfolg erfasst. Vor der bestätigten
+Veröffentlichung wird keine Erfolgsmeldung erzeugt. Der echte Worker muss noch
+den WorkManager-Stopgrund übergeben; ein tatsächliches Android-Zeitlimit ist
+weiterhin auf einem Gerät beziehungsweise Emulator nachzuweisen.
+
+Abnahme: ein gezielter Test mit simuliertem Zeitlimit während der Veröffentlichung
+ohne Fehler/Skips, einschließlich Bereinigung des eigenen unvollständigen Ziels;
+lintDebug, assembleDebug und git diff --check bestanden. Der vorherige Lauf wurde
+durch einen Umgebungswechsel unterbrochen; vollständiger Nachweis:
+/workspace/immopilot-system-interruption-publish-resumed.log.

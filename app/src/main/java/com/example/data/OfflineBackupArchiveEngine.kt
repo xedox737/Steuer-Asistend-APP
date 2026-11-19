@@ -44,7 +44,8 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
         trigger: OfflineBackupCredentialSection.Trigger = OfflineBackupCredentialSection.Trigger.MANUAL,
         snapshotProgress: (OfflineBackupSnapshot.Progress) -> Unit = {},
         destinationProgress: (OfflineBackupDestination.Stage) -> Unit = {},
-        operationId: String = UUID.randomUUID().toString()): OfflineBackupDestination.Published =
+        operationId: String = UUID.randomUUID().toString(),
+        cancellationOutcome: () -> OfflineBackupHistory.Outcome = { OfflineBackupHistory.Outcome.CANCELLED }): OfflineBackupDestination.Published =
         withContext(Dispatchers.IO) {
             val history = OfflineBackupHistory(context)
             val origin = if (trigger == OfflineBackupCredentialSection.Trigger.MANUAL) OfflineBackupHistory.Origin.MANUAL
@@ -67,7 +68,12 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
                 val confirmed = published
                 try { withContext(NonCancellable) {
                     history.record(if (confirmed != null) event(OfflineBackupHistory.Outcome.VERIFIED, confirmed)
-                    else if (error is CancellationException) event(OfflineBackupHistory.Outcome.CANCELLED)
+                    else if (error is CancellationException) {
+                        val outcome = try { cancellationOutcome().takeIf {
+                            it == OfflineBackupHistory.Outcome.CANCELLED || it == OfflineBackupHistory.Outcome.INTERRUPTED
+                        } ?: OfflineBackupHistory.Outcome.INTERRUPTED } catch (_: Exception) { OfflineBackupHistory.Outcome.INTERRUPTED }
+                        event(outcome)
+                    }
                     else event(OfflineBackupHistory.Outcome.FAILED, failure = when (error) {
                         is SecurityException -> OfflineBackupHistory.Failure.UNAVAILABLE
                         is java.io.IOException -> OfflineBackupHistory.Failure.STORAGE

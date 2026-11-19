@@ -418,4 +418,23 @@ class OfflineBackupSnapshotTest {
         }
     }
 
+    @Test fun systemInterruptionDuringPublicationNeverRecordsSuccessOrLeavesNewTarget() = runBlocking<Unit> {
+        withEngineKeys { keyContext ->
+            val backend = PublishingBackend({}, {})
+            val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
+            val operationId = UUID.randomUUID().toString()
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking {
+                OfflineBackupArchiveEngine(keyContext, database).publish(destination,
+                    trigger = OfflineBackupCredentialSection.Trigger.SCHEDULED,
+                    destinationProgress = { if (it == OfflineBackupDestination.Stage.WRITING) throw kotlinx.coroutines.CancellationException("synthetic timeout") },
+                    operationId = operationId, cancellationOutcome = { OfflineBackupHistory.Outcome.INTERRUPTED })
+            } }
+            val history = OfflineBackupHistory(keyContext).load()
+            assertEquals(operationId, history.lastAttempt?.operationId)
+            assertEquals(OfflineBackupHistory.Outcome.INTERRUPTED, history.lastAttempt?.outcome)
+            assertNull(history.lastFullSuccess); assertTrue(backend.documents.isEmpty())
+            noPreparedArchiveLeft()
+        }
+    }
+
 }
