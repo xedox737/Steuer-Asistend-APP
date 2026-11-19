@@ -34,6 +34,28 @@ class OfflineBackupScheduleStoreTest {
     }
     @After fun cleanup() { root.deleteRecursively() }
 
+    @Test fun clockRefreshReplacesPendingRegistrationAndKeepsActiveClaim() {
+        val store = store()
+        val original = store.configure(config, now)
+        val due = requireNotNull(original.next)
+        val start = Instant.ofEpochMilli(due.dueMillis)
+        assertEquals(OfflineBackupScheduleStore.ClaimResult.CLAIMED, store.claim(original.generation, due.id, start))
+        val claimed = requireNotNull(store.load())
+        store.refreshClock(rule.zone, start, clockEdited = true)
+        val refreshed = requireNotNull(store.load())
+        assertNotEquals(claimed.generation, refreshed.generation)
+        assertEquals(claimed.next?.dueMillis, refreshed.next?.dueMillis)
+        assertEquals(claimed.active, refreshed.active)
+
+        val utc = ZoneId.of("UTC")
+        store.refreshClock(utc, start, clockEdited = false)
+        val moved = requireNotNull(store.load())
+        assertEquals(Instant.parse("2026-11-18T07:00:00Z").toEpochMilli(), moved.next?.dueMillis)
+        assertEquals(claimed.active, moved.active)
+        store.refreshClock(utc, start, clockEdited = false)
+        assertEquals(moved, store.load())
+    }
+
     @Test fun persistedOccurrenceRepairsMissingRegistrationWithoutDuplicates() {
         val state = store().configure(config, now)
         assertEquals(state, store().load())

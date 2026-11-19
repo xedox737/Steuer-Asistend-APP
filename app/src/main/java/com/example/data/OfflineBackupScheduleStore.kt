@@ -63,6 +63,22 @@ internal class OfflineBackupScheduleStore(context: Context) {
         State(id(), config, next, previous?.active, previous?.lastInterrupted).also(::write)
     } }
 
+    /** Recompute local calendar time after a zone change and refresh Android's delay after a clock edit. */
+    fun refreshClock(zone: ZoneId, now: Instant, clockEdited: Boolean) = synchronized(lock) { guarded {
+        val state = read() ?: return@guarded
+        if (!state.config.enabled) return@guarded
+        val zoneChanged = state.config.rule.zone != zone
+        if (!zoneChanged && !clockEdited) return@guarded
+        val rule = state.config.rule.copy(zone = zone)
+        val due = if (zoneChanged) OfflineBackupSchedule.next(rule, now).toEpochMilli()
+            else requireNotNull(state.next).dueMillis
+        write(state.copy(
+            generation = id(),
+            config = state.config.copy(rule = rule),
+            next = Occurrence(id(), due),
+        ))
+    } }
+
     /** Persist the claim and following calendar occurrence together before starting export. */
     fun claim(generation: String, occurrenceId: String, now: Instant): ClaimResult =
         claimForExecution(generation, occurrenceId, now).result

@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.OfflineBackupScheduleReceiver
 import com.example.data.OfflineBackupCoordinator
 import com.example.data.OfflineRestoreRecovery
 import kotlinx.coroutines.CancellationException
@@ -66,6 +67,7 @@ class MainActivity : ComponentActivity() {
             }
           }
         } else {
+        LaunchedEffect(Unit) { OfflineBackupScheduleReceiver.reconcile(applicationContext) }
         val viewModel: ReceiptViewModel = viewModel()
         val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
         val primaryNavigationReset by viewModel.primaryNavigationReset.collectAsStateWithLifecycle()
