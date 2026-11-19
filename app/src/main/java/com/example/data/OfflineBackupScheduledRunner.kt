@@ -61,7 +61,16 @@ internal class OfflineBackupScheduledRunner(private val context: Context, privat
             throw error
         } catch (error: Exception) {
             if (claimed && !publishing) {
-                try { withContext(NonCancellable) { recordPreparationFailure(occurrenceId, OfflineBackupHistory.Outcome.FAILED) } }
+                try {
+                    withContext(NonCancellable) {
+                        val failure = when (error) {
+                            is OfflineBackupTargetUnavailable, is SecurityException -> OfflineBackupHistory.Failure.UNAVAILABLE
+                            is OfflineBackupValidationException -> OfflineBackupHistory.Failure.VALIDATION
+                            else -> OfflineBackupHistory.Failure.UNKNOWN
+                        }
+                        recordPreparationFailure(occurrenceId, OfflineBackupHistory.Outcome.FAILED, failure)
+                    }
+                }
                 catch (historyError: Exception) { error.addSuppressed(historyError) }
             }
             if (claimed) try { hooks.notifyFailure() } catch (_: Exception) { }
@@ -74,11 +83,12 @@ internal class OfflineBackupScheduledRunner(private val context: Context, privat
         }
     }
 
-    private fun recordPreparationFailure(operationId: String, outcome: OfflineBackupHistory.Outcome) {
+    private fun recordPreparationFailure(operationId: String, outcome: OfflineBackupHistory.Outcome,
+        failure: OfflineBackupHistory.Failure? = null) {
         require(outcome in setOf(OfflineBackupHistory.Outcome.FAILED, OfflineBackupHistory.Outcome.CANCELLED, OfflineBackupHistory.Outcome.INTERRUPTED))
         history.beginFullBackup(operationId, OfflineBackupHistory.Origin.AUTOMATIC, now().toEpochMilli())
         history.record(OfflineBackupHistory.Event(operationId, OfflineBackupHistory.Kind.FULL,
-            outcome, now().toEpochMilli(), failure = if (outcome == OfflineBackupHistory.Outcome.FAILED) OfflineBackupHistory.Failure.UNKNOWN else null,
+            outcome, now().toEpochMilli(), failure = failure,
             origin = OfflineBackupHistory.Origin.AUTOMATIC))
     }
     private fun terminal(operationId: String): OfflineBackupHistory.Event? {

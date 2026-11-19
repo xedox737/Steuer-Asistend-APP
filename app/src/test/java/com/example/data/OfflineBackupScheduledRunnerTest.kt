@@ -96,6 +96,15 @@ class OfflineBackupScheduledRunnerTest {
         assertNull(history.load().lastFullSuccess); assertNull(schedule.load()?.active)
         assertNotEquals(occurrence, schedule.load()?.next?.id); assertEquals(1, hooks.warnings); assertEquals(0, hooks.publications)
     }
+    @Test fun unavailableTargetIsReportedWithoutStartingPublication() = runBlocking<Unit> {
+        val hooks = Hooks().apply { prepareError = OfflineBackupTargetUnavailable("synthetic revoked permission") }
+        assertEquals(OfflineBackupScheduledRunner.Result.FAILED, runner(hooks).run(initial.generation, occurrence))
+        assertEquals(OfflineBackupHistory.Failure.UNAVAILABLE, history.load().lastAttempt?.failure)
+        assertNull(history.load().lastFullSuccess)
+        assertEquals(1, hooks.warnings)
+        assertEquals(0, hooks.publications)
+    }
+
     @Test fun failedNextRegistrationRetriesReconciliationWithoutRepeatingExport() = runBlocking<Unit> {
         val hooks = Hooks().apply { failReconcileAt = 2 }
         assertEquals(OfflineBackupScheduledRunner.Result.RETRY, runner(hooks).run(initial.generation, occurrence))

@@ -15,7 +15,9 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /** Expected validation failures with messages intended for the user. */
-internal class OfflineBackupValidationException(message: String) : IllegalArgumentException(message)
+internal open class OfflineBackupValidationException(message: String) : IllegalArgumentException(message)
+
+internal class OfflineBackupTargetUnavailable(message: String) : OfflineBackupValidationException(message)
 
 /** Versioned offline transport. Conflicting existing rows are never overwritten. */
 internal class OfflineBackupService(private val context: Context, private val database: AppDatabase) {

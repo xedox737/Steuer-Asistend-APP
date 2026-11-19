@@ -75,7 +75,7 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
                         event(outcome)
                     }
                     else event(OfflineBackupHistory.Outcome.FAILED, failure = when (error) {
-                        is SecurityException -> OfflineBackupHistory.Failure.UNAVAILABLE
+                        is OfflineBackupTargetUnavailable, is SecurityException -> OfflineBackupHistory.Failure.UNAVAILABLE
                         is java.io.IOException -> OfflineBackupHistory.Failure.STORAGE
                         is OfflineBackupValidationException -> OfflineBackupHistory.Failure.VALIDATION
                         else -> OfflineBackupHistory.Failure.UNKNOWN

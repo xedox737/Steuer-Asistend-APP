@@ -83,7 +83,7 @@ internal class OfflineBackupDestination(private val context: Context, private va
         catch (_: IOException) { fail("Die neue Sicherung konnte im Ziel nicht vollständig geschrieben, geschlossen oder rückgelesen werden.") }
         catch (_: IllegalArgumentException) { fail("Die neue Zielsicherung stimmt nicht mit dem geprüften Archiv überein.") }
         catch (_: IllegalStateException) { fail("Das private Ziel-Rücklese-Staging ist nicht verfügbar.") }
-        catch (_: SecurityException) { fail("Der Zugriff auf den Sicherungsordner wurde verweigert.") }
+        catch (_: SecurityException) { throw OfflineBackupTargetUnavailable("Der Zugriff auf den Sicherungsordner wurde verweigert.") }
         finally {
             var cleanupFailed = false
             if (!complete) owned?.let { uri ->
@@ -100,14 +100,14 @@ internal class OfflineBackupDestination(private val context: Context, private va
             require(expectedCipherBytes in 0..(2L * 1024 * 1024 * 1024 + 64L * 1024 * 1024))
             val access = backend.access(tree)
             if (!access.persistedReadWrite || !access.directory || !access.canCreate)
-                fail("Der Sicherungsordner ist nicht mehr mit dauerhaften Lese- und Schreibrechten verfügbar.")
+                throw OfflineBackupTargetUnavailable("Der Sicherungsordner ist nicht mehr mit dauerhaften Lese- und Schreibrechten verfügbar.")
             val available = access.availableBytes?.takeIf { it >= 0 }
                 ?: fail("Der Ordneranbieter meldet keinen zuverlässig bestimmbaren freien Zielplatz. Es wurde keine Zieldatei angelegt.")
             val needed = expectedCipherBytes + OfflineBackupResourceBudget.RESERVE_BYTES
             if (available < needed) fail("Zu wenig Zielspeicher: benötigt $needed Byte einschließlich Reserve, verfügbar $available Byte.")
         } catch (error: OfflineBackupValidationException) { throw error }
-        catch (_: IOException) { fail("Der Sicherungsordner konnte nicht geprüft werden.") }
-        catch (_: SecurityException) { fail("Der Zugriff auf den Sicherungsordner wurde verweigert.") }
+        catch (_: IOException) { throw OfflineBackupTargetUnavailable("Der Sicherungsordner konnte nicht geprüft werden.") }
+        catch (_: SecurityException) { throw OfflineBackupTargetUnavailable("Der Zugriff auf den Sicherungsordner wurde verweigert.") }
         catch (_: IllegalArgumentException) { fail("Der Sicherungsordner oder seine Kapazitätsangabe ist ungültig.") }
     }
 
