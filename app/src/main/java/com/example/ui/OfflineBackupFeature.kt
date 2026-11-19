@@ -120,6 +120,8 @@ internal fun OfflineBackupCard(viewModel: ReceiptViewModel) {
                 onConfigure = { password, confirmation, change -> controller.configure(password, confirmation, change) },
                 onManualCredentials = { controller.setManualCredentials(it) },
                 onSave = { controller.save() }, onCancel = { controller.cancel() }, onReload = { controller.reload() })
+            BackupScheduleControls(backupState, busy || prepared != null || inspected != null || restoreUri != null,
+                controller::setSchedule)
             OutlinedButton(onClick = { inspectPicker.launch(arrayOf("application/octet-stream")) },
                 enabled = !busy && !backupState.busy && prepared == null && inspected == null && restoreUri == null,
                 modifier = Modifier.fillMaxWidth().testTag("offline_backup_restore_inspect")) { Text("Verschlüsselte Sicherung prüfen") }

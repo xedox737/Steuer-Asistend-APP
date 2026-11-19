@@ -27,6 +27,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.example.data.OfflineBackupSchedule
+import com.example.data.OfflineBackupScheduleStore
+import com.example.data.OfflineBackupWorker
+import com.example.data.OfflineBackupWorkScheduler
+import java.time.Instant
 import kotlinx.coroutines.launch
 
 /** View-model-owned actions. No passwords in saved state, settings or publication requests. */
@@ -42,7 +47,8 @@ internal class OfflineBackupController(private val context: Context, private val
         val keyProblem: String? = null, val folderReady: Boolean = false, val folderLabel: String = "Kein Sicherungsordner gewählt",
         val status: String? = null, val lastPublished: OfflineBackupDestination.Published? = null,
         val history: OfflineBackupHistory.History? = null, val historyProblem: String? = null,
-        val lastSuccessTargetLabel: String? = null) {
+        val lastSuccessTargetLabel: String? = null,
+        val schedule: OfflineBackupScheduleStore.State? = null, val scheduleProblem: String? = null) {
         val busy get() = operation != null
         val configured get() = generationId != null
         val canSave get() = loaded && configured && folderReady && !busy
@@ -98,6 +104,19 @@ internal class OfflineBackupController(private val context: Context, private val
     fun setManualCredentials(enabled: Boolean): Job? = perform(Operation.OPTIONS) {
         settings.setManualCredentials(enabled); refresh()
     }
+    fun setSchedule(enabled: Boolean, rule: OfflineBackupSchedule.Rule, credentials: Boolean): Job? = perform(Operation.OPTIONS) {
+        val target = settings.load().targetUri
+        if (enabled) {
+            if (!mutable.value.configured || target == null)
+                throw OfflineBackupValidationException("Bitte zuerst Wiederherstellungspasswort und Sicherungsordner einrichten.")
+            destination(Uri.parse(target)).preflight()
+        }
+        val saved = OfflineBackupScheduleStore(context).configure(
+            OfflineBackupScheduleStore.Config(enabled, rule, target, enabled && credentials), Instant.now())
+        mutable.update { it.copy(schedule = saved, scheduleProblem = null) }
+        OfflineBackupWorkScheduler(context, OfflineBackupWorker::class.java).reconcile()
+    }
+
     fun save(): Job? = perform(Operation.SAVING) {
         val config = settings.load()
         val uri = config.targetUri?.let(Uri::parse)
@@ -152,6 +171,12 @@ internal class OfflineBackupController(private val context: Context, private val
         }
         mutable.update { it.copy(loaded = true, config = config, generationId = id, keyProblem = keyProblem,
             folderReady = ready, folderLabel = label, status = keyProblem ?: folderProblem ?: it.status) }
+        try {
+            val schedule = OfflineBackupScheduleStore(context).load()
+            mutable.update { it.copy(schedule = schedule, scheduleProblem = null) }
+        } catch (error: OfflineBackupValidationException) {
+            mutable.update { it.copy(schedule = null, scheduleProblem = error.message) }
+        }
         refreshHistory()
     }
     private fun refreshHistory() {
