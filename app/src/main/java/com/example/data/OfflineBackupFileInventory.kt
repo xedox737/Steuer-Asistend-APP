@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.os.storage.StorageManager
 import android.net.Uri
 import java.io.File
 import java.io.IOException
@@ -22,6 +23,12 @@ internal class OfflineBackupFileInventory(context: Context, private val maximumF
         Regex("Steuerbericht_(Finanzamt|Steuerberater)_.*\\.pdf"),
         Regex("document\\.xml"), Regex("datev_export\\.pdf")
     )
+
+    private val storageManager by lazy { context.getSystemService(StorageManager::class.java) }
+
+    fun isSharedStorage(file: File): Boolean = checkedAccess("Originalverweis") {
+        storageManager?.getStorageVolume(file.canonicalFile) != null
+    }
 
     fun available(): List<Entry> = checkedAccess("Dateibestand") {
         val result = mutableListOf<Entry>()
