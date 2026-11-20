@@ -105,7 +105,14 @@ internal object OfflineBackupRoomProbe {
         catch (_: IOException) { invalid() }
         catch (_: SQLiteException) { invalid() }
         catch (_: org.json.JSONException) { invalid() }
-        catch (_: IllegalArgumentException) { invalid() }
+        catch (error: IllegalArgumentException) {
+            // Preserve the failing check for diagnostics without retaining archive contents.
+            val safeCause = IllegalArgumentException("Isolated Room verification check failed")
+            safeCause.stackTrace = error.stackTrace
+            throw OfflineBackupValidationException(
+                "Die isolierte Datenbankprüfung ist fehlgeschlagen. Es wurden keine Daten übernommen."
+            ).apply { initCause(safeCause) }
+        }
         catch (_: IllegalStateException) { invalid() }
         catch (_: NoSuchElementException) { invalid() }
         catch (_: SecurityException) { invalid() }
