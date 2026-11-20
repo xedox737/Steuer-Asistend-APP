@@ -28,7 +28,7 @@ class OfflineBackupRestoreEmulatorTest {
     @Test
     fun encryptedArchiveRestoresStablePropertyWithoutSourceKeyState() = runBlocking(Dispatchers.IO) {
         val base = InstrumentationRegistry.getInstrumentation().targetContext
-        val root = File(base.cacheDir, "restore-emulator-${UUID.randomUUID()}").apply { check(mkdirs()) }
+        val root = File(base.cacheDir.canonicalFile, "restore-emulator-${UUID.randomUUID()}").apply { check(mkdirs()) }
         fun device(name: String) = object : ContextWrapper(base) {
             private val privateState = File(root, name).apply { check(mkdirs()) }
             override fun getNoBackupFilesDir(): File = privateState

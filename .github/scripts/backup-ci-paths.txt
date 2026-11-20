@@ -152,3 +152,4 @@ docs/backup-persistence-inventory.md
 .github/scripts/tests/test_backup_ci.py
 .github/workflows/android-ci.yml
 .github/workflows/bank-performance.yml
+app/src/androidTest/java/com/example/e2e/OfflineBackupPickerEmulatorTest.kt
