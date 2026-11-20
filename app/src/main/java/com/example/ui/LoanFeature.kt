@@ -94,7 +94,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
             ?: allLoans.filter { it.propertyId == selectedPropertyId }
     } else allLoans
     val receipts = if (propertyScoped || propertyId != null) allReceipts.filter { it.propertyId == selectedPropertyId } else allReceipts
-    val assignmentPrefs = remember(context) { context.getSharedPreferences("loan_interest_assignments", 0) }
+    val assignmentPrefs = remember(context) { com.example.data.PersistentPreferenceInventory.open(context, "loan_interest_assignments") }
 
     var showManager by remember(selectedPropertyId) { mutableStateOf(false) }
     var editingLoan by remember(selectedPropertyId) { mutableStateOf<Loan?>(null) }
@@ -124,7 +124,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
         if (loanId == null) editor.remove("receipt_$receiptId") else editor.putInt("receipt_$receiptId", loanId)
         editor.apply()
         assignmentVersion++
-        viewModel.syncAllToDrive()
+        viewModel.syncAllToDriveAutomatically()
     }
 
     Card(
@@ -336,7 +336,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
             initial = Loan(propertyId = selectedPropertyId),
             title = "Darlehen hinzufügen",
             onDismiss = { showNewLoan = false },
-            onSave = { loan -> scope.launch { database.loanDao().upsertLoan(loan); viewModel.syncAllToDrive() }; showNewLoan = false }
+            onSave = { loan -> scope.launch { database.loanDao().upsertLoan(loan); viewModel.syncAllToDriveAutomatically() }; showNewLoan = false }
         )
     }
 
@@ -345,7 +345,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
             initial = loan,
             title = "Darlehen bearbeiten",
             onDismiss = { editingLoan = null },
-            onSave = { updated -> scope.launch { database.loanDao().upsertLoan(updated); viewModel.syncAllToDrive() }; editingLoan = null }
+            onSave = { updated -> scope.launch { database.loanDao().upsertLoan(updated); viewModel.syncAllToDriveAutomatically() }; editingLoan = null }
         )
     }
 
@@ -358,7 +358,7 @@ fun LoanManagementSection(viewModel: ReceiptViewModel, propertyScoped: Boolean =
                 Button(
                     onClick = {
                         assignments.filterValues { it == loan.id }.keys.forEach { assignReceipt(it, null) }
-                        scope.launch { database.loanDao().deleteLoan(loan.id); viewModel.syncAllToDrive() }
+                        scope.launch { database.loanDao().deleteLoan(loan.id); viewModel.syncAllToDriveAutomatically() }
                         pendingDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = CrimsonRed)

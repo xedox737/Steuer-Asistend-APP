@@ -45,6 +45,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import androidx.compose.animation.core.*
 import androidx.compose.animation.*
 import androidx.camera.core.CameraSelector
@@ -8588,6 +8589,7 @@ fun CameraActiveView(
 
                                         val capture = ImageCapture.Builder()
                                             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                                            .setIoExecutor(com.example.data.OfflineBackupCoordinator.shared.executor(Dispatchers.IO.asExecutor()))
                                             .build()
 
                                         imageCapture = capture
@@ -9585,6 +9587,7 @@ fun exportBankStatementToCsv(
     statementText: String,
     result: com.example.api.BankStatementReconciliationResult?
 ) {
+    com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
     try {
         val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
         val file = File(exportDir, "Kontoauszug_Bankabgleich.csv")
@@ -9605,6 +9608,7 @@ fun exportBankStatementToCsv(
         context.startActivity(Intent.createChooser(intent, "Kontoauszug als CSV exportieren"))
     } catch (e: Exception) {
         android.widget.Toast.makeText(context, "Fehler beim CSV-Export: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+    }
     }
 }
 

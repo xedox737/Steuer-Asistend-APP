@@ -10,6 +10,7 @@ import java.util.UUID
 object DatevCsvOutput {
     fun create(context: Context, records: List<BookingRecord>, profile: DatevProfile,
         report: ValidationReport, period: String): AdvisorPackageResult {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         require(report.isValidForExport && records.isNotEmpty()) { "Der Buchungsstapel ist nicht für den Export freigegeben." }
         val csv = DatevCsvSerializer.serializeToCsvString(records, profile, period.take(4))
         val format = DatevFormatValidator.validate(csv)
@@ -23,5 +24,6 @@ object DatevCsvOutput {
         return AdvisorPackageResult(file, exportId, records.size, report.totalAmount,
             ReceiptManifestService.calculateSha256(file), report.warnings.size,
             "Buchungsstapel erstellt", false, "text/csv")
+      }
     }
 }

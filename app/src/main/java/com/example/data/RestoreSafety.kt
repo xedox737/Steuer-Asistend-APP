@@ -21,6 +21,7 @@ object FullRestoreCoordinator {
         onPhase: (FullRestorePhase) -> Unit = {},
         preflight: suspend () -> Unit = {}
     ): FullRestoreOutcome {
+      OfflineBackupCoordinator.shared.beginWrite().use {
         try {
             preflight()
         } catch (e: Exception) {
@@ -66,5 +67,6 @@ object FullRestoreCoordinator {
             isSuccess = true, phase = FullRestorePhase.COMPLETE,
             message = "Wiederherstellung einschließlich Zusatzdaten erfolgreich."
         )
+      }
     }
 }

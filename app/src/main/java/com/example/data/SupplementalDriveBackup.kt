@@ -90,203 +90,205 @@ object SupplementalDriveBackup {
         restoreMode: RestoreMode = if (replaceManagedDocuments) RestoreMode.REPLACE_FULL else RestoreMode.MERGE,
         localDocumentsBeforeCore: Map<String, ManagedDocument>? = null
     ) {
-        require(root.backupInt("schemaVersion", 1) in 1..SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
-        PersistentPreferenceInventory.validatePayload(root)
-        // A malformed/null array is not an intentional empty snapshot, especially for replace.
-        listOf("loans", "properties", "logbookTrips", "standardRoutes", "exportAuditRuns", "managedDocuments",
-            "bankAccounts", "bankTransactions", "bankReceiptLinks", "bankLearningRules", "bankRuleEvidence",
-            "bankRentAssignments", "bankLoanAssignments", "bankRecurringPatterns").forEach { key ->
-            if (root.has(key)) root.getJSONArray(key)
-        }
-        validatePayload(root)
-        // Validate/decode photos before touching Room; filenames depend on content, never a supplied path.
-        val propertyArray = root.optJSONArray("properties") ?: JSONArray()
-        val restoredProperties = (0 until propertyArray.length()).map { index ->
-            val json = propertyArray.getJSONObject(index)
-            val property = json.toPropertyMetadata()
-            val encoded = json.optString("imageBase64", "")
-            val current = database.propertyDao().getPropertyByPropertyId(property.propertyId)
-            val localImage = if (encoded.isNotBlank()) {
-                val bytes = Base64.decode(encoded, Base64.NO_WRAP)
-                require(bytes.isNotEmpty()) { "Leeres Objektbild in der Sicherung." }
-                val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-                    .joinToString("") { "%02x".format(it) }
-                val folder = File(context.filesDir, "property-images").apply { mkdirs() }
-                val owner = UUID.nameUUIDFromBytes(property.propertyId.toByteArray(Charsets.UTF_8))
-                val file = File(folder, "$owner-$digest.jpg")
-                if (!file.isFile || !file.readBytes().contentEquals(bytes)) {
-                    val staging = File.createTempFile("restore-", ".tmp", folder)
-                    try {
-                        staging.writeBytes(bytes)
-                        check(staging.renameTo(file)) { "Objektbild konnte nicht wiederhergestellt werden." }
-                    } finally { staging.delete() }
-                }
-                file.absolutePath
-            } else {
-                current?.bildPfad?.takeIf { File(it).isFile }
-                    ?: property.bildPfad.takeIf { it.isNotBlank() && File(it).isFile }.orEmpty()
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            require(root.backupInt("schemaVersion", 1) in 1..SCHEMA_VERSION) { "Neuere Sicherung: Bitte die App aktualisieren." }
+            PersistentPreferenceInventory.validatePayload(root)
+            // A malformed/null array is not an intentional empty snapshot, especially for replace.
+            listOf("loans", "properties", "logbookTrips", "standardRoutes", "exportAuditRuns", "managedDocuments",
+                "bankAccounts", "bankTransactions", "bankReceiptLinks", "bankLearningRules", "bankRuleEvidence",
+                "bankRentAssignments", "bankLoanAssignments", "bankRecurringPatterns").forEach { key ->
+                if (root.has(key)) root.getJSONArray(key)
             }
-            if (restoreMode == RestoreMode.MERGE && current != null) {
-                current.copy(bildPfad = current.bildPfad.takeIf { File(it).isFile } ?: localImage)
-            } else property.copy(bildPfad = localImage)
-        }
-        // Full restore's core stage reconstructs original-chain rows. Those rows
-        // are not local user edits and must not compete with supplemental reviews
-        // at an equal/unknown version. Standalone supplemental restore uses Room.
-        val existingDocuments = localDocumentsBeforeCore
-            ?: database.managedDocumentDao().getAll().associateBy { it.documentId }
-        database.withTransaction {
-            val removedParents = if (restoreMode == RestoreMode.REPLACE_FULL) {
-                snapshotParentsRemovedByReplace(database, root).also { clearSnapshotDomains(database, root) }
-            } else null
-            val localLoans = database.loanDao().getAllLoans().associateBy { it.id }
-            val loans = root.optJSONArray("loans") ?: JSONArray()
-            for (index in 0 until loans.length()) {
-                val incoming = loans.getJSONObject(index).toLoan()
-                if (RestoreConflictPolicy.shouldImport(restoreMode, localLoans.containsKey(incoming.id))) {
-                    database.loanDao().upsertLoan(incoming)
-                }
-            }
-            restoredProperties.forEach { database.propertyDao().upsertRestoredPropertyMetadata(it) }
-            val trips = root.optJSONArray("logbookTrips") ?: JSONArray()
-            for (index in 0 until trips.length()) {
-                val incoming = trips.getJSONObject(index).toTrip()
-                val local = database.logbookDao().getTrip(incoming.id)
-                if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.logbookDao().upsertTrip(incoming)
-                }
-            }
-            val auditRuns = root.optJSONArray("exportAuditRuns") ?: JSONArray()
-            for (index in 0 until auditRuns.length()) {
-                val incoming = auditRuns.getJSONObject(index).toExportAuditRun()
-                if (RestoreConflictPolicy.shouldImport(restoreMode, database.exportAuditDao().getRunById(incoming.exportlaufId) != null)) {
-                    database.exportAuditDao().insertRun(incoming)
-                }
-            }
-            val localRoutes = database.logbookDao().getAllStandardRoutes().associateBy { it.id }
-            val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
-            for (index in 0 until routes.length()) {
-                val incoming = routes.getJSONObject(index).toStandardRoute()
-                val local = localRoutes[incoming.id]
-                if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.logbookDao().upsertStandardRoute(incoming)
-                }
-            }
-            val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
-            for (index in 0 until documents.length()) {
-                val backupDocument = documents.getJSONObject(index).toManagedDocument()
-                val localDocument = existingDocuments[backupDocument.documentId]
-                val mergedDocument = mergeManagedDocument(
-                    context = context,
-                    local = localDocument,
-                    backup = backupDocument,
-                    restoreMode = restoreMode
-                )
-                database.managedDocumentDao().upsert(mergedDocument)
-            }
-            val bankAccounts = root.optJSONArray("bankAccounts") ?: JSONArray()
-            for (index in 0 until bankAccounts.length()) {
-                val incoming = bankAccounts.getJSONObject(index).toBankAccount()
-                val local = database.bankDao().getAccount(incoming.accountId)
-                if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.bankDao().upsertAccount(incoming)
-                }
-            }
-            val localTransactions = database.bankDao().getAllTransactions().associateBy { it.transactionId }
-            val bankTransactions = root.optJSONArray("bankTransactions") ?: JSONArray()
-            val incomingTransactions = (0 until bankTransactions.length()).map {
-                bankTransactions.getJSONObject(it).toBankTransaction()
-            }.associateBy { it.transactionId }
-            incomingTransactions.values.forEach { incoming ->
-                val local = localTransactions[incoming.transactionId]
-                if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.bankDao().upsertTransaction(incoming)
-                }
-            }
-            // A link/split can have been removed or moved after this backup. Do not resurrect
-            // relationships of a transaction whose newer local state we just preserved.
-            fun mayAddRelationship(transactionId: String): Boolean {
-                if (restoreMode != RestoreMode.MERGE) return true
-                val local = localTransactions[transactionId] ?: return true
-                val backup = incomingTransactions[transactionId] ?: return false
-                return RestoreConflictPolicy.backupIsNewer(local.updatedAt, backup.updatedAt) ||
-                    (local == backup && runCatching { Instant.parse(local.updatedAt) }.isSuccess)
-            }
-            val bankLinks = root.optJSONArray("bankReceiptLinks") ?: JSONArray()
-            for (index in 0 until bankLinks.length()) {
-                val restored = bankLinks.getJSONObject(index).toBankReceiptLink()
-                val local = database.bankDao().getLink(restored.linkId)
-                if (!RestoreConflictPolicy.shouldImport(restoreMode, local != null) || !mayAddRelationship(restored.transactionId)) continue
-                val resolvedReceiptId = restored.receiptInternalId.takeIf { it.isNotBlank() }
-                    ?.let { database.receiptDao().getReceiptByInternalId(it)?.id }
-                    ?: restored.receiptId
-                database.bankDao().upsertLink(restored.copy(receiptId = resolvedReceiptId))
-            }
-            // Phase 2A learning data is restored on every normal backup restore. It must not
-            // depend on the optional destructive replacement of managed documents above.
-            val learningRules = root.optJSONArray("bankLearningRules") ?: JSONArray()
-            for (index in 0 until learningRules.length()) {
-                val incoming = learningRules.getJSONObject(index).toBankLearningRule()
-                val local = database.bankLearningRuleDao().getRule(incoming.ruleId)
-                if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.bankLearningRuleDao().upsertRule(incoming)
-                }
-            }
-            val learningEvidence = root.optJSONArray("bankRuleEvidence") ?: JSONArray()
-            for (index in 0 until learningEvidence.length()) database.bankLearningRuleDao().insertEvidence(learningEvidence.getJSONObject(index).toBankRuleEvidence())
-            val rentAssignments = root.optJSONArray("bankRentAssignments") ?: JSONArray()
-            for (index in 0 until rentAssignments.length()) {
-                val incoming = rentAssignments.getJSONObject(index).toBankRentAssignment()
-                val local = database.bankRentAssignmentDao().getById(incoming.assignmentId)
-                if ((local != null || mayAddRelationship(incoming.transactionId)) &&
-                    RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.bankRentAssignmentDao().upsert(incoming)
-                }
-            }
-            val loanAssignments = root.optJSONArray("bankLoanAssignments") ?: JSONArray()
-            for (index in 0 until loanAssignments.length()) {
-                val incoming = loanAssignments.getJSONObject(index).toBankLoanAssignment()
-                val local = database.bankLoanAssignmentDao().getForTransaction(incoming.transactionId)
-                if ((local != null || mayAddRelationship(incoming.transactionId)) &&
-                    RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.bankLoanAssignmentDao().upsert(incoming)
-                }
-            }
-            val recurringPatterns = root.optJSONArray("bankRecurringPatterns") ?: JSONArray()
-            for (index in 0 until recurringPatterns.length()) {
-                val incoming = recurringPatterns.getJSONObject(index).toBankRecurringPattern()
-                val local = database.bankRecurringPatternDao().get(incoming.patternId)
-                if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
-                    database.bankRecurringPatternDao().upsert(incoming)
-                }
-            }
-            removedParents?.let { validateRemovedParentReferences(database, it) }
-            if (restoreMode == RestoreMode.REPLACE_FULL) {
-                // Core has assembled the receipt snapshot with its original numeric IDs.
-                // Reject broken historical references; never remap or silently null them.
-                val receiptIds = database.receiptDao().getAllReceiptsIncludingDeletedList().map { it.id }.toSet()
-                database.logbookDao().getAllTrips().forEach { trip ->
-                    require(trip.expenseReceiptId == null || trip.expenseReceiptId in receiptIds) {
-                        "Fahrt ${trip.id}: gesicherter Fahrtkostenbeleg ${trip.expenseReceiptId} fehlt."
+            validatePayload(root)
+            // Validate/decode photos before touching Room; filenames depend on content, never a supplied path.
+            val propertyArray = root.optJSONArray("properties") ?: JSONArray()
+            val restoredProperties = (0 until propertyArray.length()).map { index ->
+                val json = propertyArray.getJSONObject(index)
+                val property = json.toPropertyMetadata()
+                val encoded = json.optString("imageBase64", "")
+                val current = database.propertyDao().getPropertyByPropertyId(property.propertyId)
+                val localImage = if (encoded.isNotBlank()) {
+                    val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+                    require(bytes.isNotEmpty()) { "Leeres Objektbild in der Sicherung." }
+                    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+                        .joinToString("") { "%02x".format(it) }
+                    val folder = File(context.filesDir, "property-images").apply { mkdirs() }
+                    val owner = UUID.nameUUIDFromBytes(property.propertyId.toByteArray(Charsets.UTF_8))
+                    val file = File(folder, "$owner-$digest.jpg")
+                    if (!file.isFile || !file.readBytes().contentEquals(bytes)) {
+                        val staging = File.createTempFile("restore-", ".tmp", folder)
+                        try {
+                            staging.writeBytes(bytes)
+                            check(staging.renameTo(file)) { "Objektbild konnte nicht wiederhergestellt werden." }
+                        } finally { staging.delete() }
                     }
-                    require(trip.sourceReceiptId == null || trip.sourceReceiptId in receiptIds) {
-                        "Fahrt ${trip.id}: gesicherter Quellbeleg ${trip.sourceReceiptId} fehlt."
+                    file.absolutePath
+                } else {
+                    current?.bildPfad?.takeIf { File(it).isFile }
+                        ?: property.bildPfad.takeIf { it.isNotBlank() && File(it).isFile }.orEmpty()
+                }
+                if (restoreMode == RestoreMode.MERGE && current != null) {
+                    current.copy(bildPfad = current.bildPfad.takeIf { File(it).isFile } ?: localImage)
+                } else property.copy(bildPfad = localImage)
+            }
+            // Full restore's core stage reconstructs original-chain rows. Those rows
+            // are not local user edits and must not compete with supplemental reviews
+            // at an equal/unknown version. Standalone supplemental restore uses Room.
+            val existingDocuments = localDocumentsBeforeCore
+                ?: database.managedDocumentDao().getAll().associateBy { it.documentId }
+            database.withTransaction {
+                val removedParents = if (restoreMode == RestoreMode.REPLACE_FULL) {
+                    snapshotParentsRemovedByReplace(database, root).also { clearSnapshotDomains(database, root) }
+                } else null
+                val localLoans = database.loanDao().getAllLoans().associateBy { it.id }
+                val loans = root.optJSONArray("loans") ?: JSONArray()
+                for (index in 0 until loans.length()) {
+                    val incoming = loans.getJSONObject(index).toLoan()
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, localLoans.containsKey(incoming.id))) {
+                        database.loanDao().upsertLoan(incoming)
                     }
                 }
+                restoredProperties.forEach { database.propertyDao().upsertRestoredPropertyMetadata(it) }
+                val trips = root.optJSONArray("logbookTrips") ?: JSONArray()
+                for (index in 0 until trips.length()) {
+                    val incoming = trips.getJSONObject(index).toTrip()
+                    val local = database.logbookDao().getTrip(incoming.id)
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.logbookDao().upsertTrip(incoming)
+                    }
+                }
+                val auditRuns = root.optJSONArray("exportAuditRuns") ?: JSONArray()
+                for (index in 0 until auditRuns.length()) {
+                    val incoming = auditRuns.getJSONObject(index).toExportAuditRun()
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, database.exportAuditDao().getRunById(incoming.exportlaufId) != null)) {
+                        database.exportAuditDao().insertRun(incoming)
+                    }
+                }
+                val localRoutes = database.logbookDao().getAllStandardRoutes().associateBy { it.id }
+                val routes = root.optJSONArray("standardRoutes") ?: JSONArray()
+                for (index in 0 until routes.length()) {
+                    val incoming = routes.getJSONObject(index).toStandardRoute()
+                    val local = localRoutes[incoming.id]
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.logbookDao().upsertStandardRoute(incoming)
+                    }
+                }
+                val documents = root.optJSONArray("managedDocuments") ?: JSONArray()
+                for (index in 0 until documents.length()) {
+                    val backupDocument = documents.getJSONObject(index).toManagedDocument()
+                    val localDocument = existingDocuments[backupDocument.documentId]
+                    val mergedDocument = mergeManagedDocument(
+                        context = context,
+                        local = localDocument,
+                        backup = backupDocument,
+                        restoreMode = restoreMode
+                    )
+                    database.managedDocumentDao().upsert(mergedDocument)
+                }
+                val bankAccounts = root.optJSONArray("bankAccounts") ?: JSONArray()
+                for (index in 0 until bankAccounts.length()) {
+                    val incoming = bankAccounts.getJSONObject(index).toBankAccount()
+                    val local = database.bankDao().getAccount(incoming.accountId)
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.bankDao().upsertAccount(incoming)
+                    }
+                }
+                val localTransactions = database.bankDao().getAllTransactions().associateBy { it.transactionId }
+                val bankTransactions = root.optJSONArray("bankTransactions") ?: JSONArray()
+                val incomingTransactions = (0 until bankTransactions.length()).map {
+                    bankTransactions.getJSONObject(it).toBankTransaction()
+                }.associateBy { it.transactionId }
+                incomingTransactions.values.forEach { incoming ->
+                    val local = localTransactions[incoming.transactionId]
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.bankDao().upsertTransaction(incoming)
+                    }
+                }
+                // A link/split can have been removed or moved after this backup. Do not resurrect
+                // relationships of a transaction whose newer local state we just preserved.
+                fun mayAddRelationship(transactionId: String): Boolean {
+                    if (restoreMode != RestoreMode.MERGE) return true
+                    val local = localTransactions[transactionId] ?: return true
+                    val backup = incomingTransactions[transactionId] ?: return false
+                    return RestoreConflictPolicy.backupIsNewer(local.updatedAt, backup.updatedAt) ||
+                        (local == backup && runCatching { Instant.parse(local.updatedAt) }.isSuccess)
+                }
+                val bankLinks = root.optJSONArray("bankReceiptLinks") ?: JSONArray()
+                for (index in 0 until bankLinks.length()) {
+                    val restored = bankLinks.getJSONObject(index).toBankReceiptLink()
+                    val local = database.bankDao().getLink(restored.linkId)
+                    if (!RestoreConflictPolicy.shouldImport(restoreMode, local != null) || !mayAddRelationship(restored.transactionId)) continue
+                    val resolvedReceiptId = restored.receiptInternalId.takeIf { it.isNotBlank() }
+                        ?.let { database.receiptDao().getReceiptByInternalId(it)?.id }
+                        ?: restored.receiptId
+                    database.bankDao().upsertLink(restored.copy(receiptId = resolvedReceiptId))
+                }
+                // Phase 2A learning data is restored on every normal backup restore. It must not
+                // depend on the optional destructive replacement of managed documents above.
+                val learningRules = root.optJSONArray("bankLearningRules") ?: JSONArray()
+                for (index in 0 until learningRules.length()) {
+                    val incoming = learningRules.getJSONObject(index).toBankLearningRule()
+                    val local = database.bankLearningRuleDao().getRule(incoming.ruleId)
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.bankLearningRuleDao().upsertRule(incoming)
+                    }
+                }
+                val learningEvidence = root.optJSONArray("bankRuleEvidence") ?: JSONArray()
+                for (index in 0 until learningEvidence.length()) database.bankLearningRuleDao().insertEvidence(learningEvidence.getJSONObject(index).toBankRuleEvidence())
+                val rentAssignments = root.optJSONArray("bankRentAssignments") ?: JSONArray()
+                for (index in 0 until rentAssignments.length()) {
+                    val incoming = rentAssignments.getJSONObject(index).toBankRentAssignment()
+                    val local = database.bankRentAssignmentDao().getById(incoming.assignmentId)
+                    if ((local != null || mayAddRelationship(incoming.transactionId)) &&
+                        RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.bankRentAssignmentDao().upsert(incoming)
+                    }
+                }
+                val loanAssignments = root.optJSONArray("bankLoanAssignments") ?: JSONArray()
+                for (index in 0 until loanAssignments.length()) {
+                    val incoming = loanAssignments.getJSONObject(index).toBankLoanAssignment()
+                    val local = database.bankLoanAssignmentDao().getForTransaction(incoming.transactionId)
+                    if ((local != null || mayAddRelationship(incoming.transactionId)) &&
+                        RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.bankLoanAssignmentDao().upsert(incoming)
+                    }
+                }
+                val recurringPatterns = root.optJSONArray("bankRecurringPatterns") ?: JSONArray()
+                for (index in 0 until recurringPatterns.length()) {
+                    val incoming = recurringPatterns.getJSONObject(index).toBankRecurringPattern()
+                    val local = database.bankRecurringPatternDao().get(incoming.patternId)
+                    if (RestoreConflictPolicy.shouldImport(restoreMode, local != null, local?.updatedAt.orEmpty(), incoming.updatedAt)) {
+                        database.bankRecurringPatternDao().upsert(incoming)
+                    }
+                }
+                removedParents?.let { validateRemovedParentReferences(database, it) }
+                if (restoreMode == RestoreMode.REPLACE_FULL) {
+                    // Core has assembled the receipt snapshot with its original numeric IDs.
+                    // Reject broken historical references; never remap or silently null them.
+                    val receiptIds = database.receiptDao().getAllReceiptsIncludingDeletedList().map { it.id }.toSet()
+                    database.logbookDao().getAllTrips().forEach { trip ->
+                        require(trip.expenseReceiptId == null || trip.expenseReceiptId in receiptIds) {
+                            "Fahrt ${trip.id}: gesicherter Fahrtkostenbeleg ${trip.expenseReceiptId} fehlt."
+                        }
+                        require(trip.sourceReceiptId == null || trip.sourceReceiptId in receiptIds) {
+                            "Fahrt ${trip.id}: gesicherter Quellbeleg ${trip.sourceReceiptId} fehlt."
+                        }
+                    }
+                }
+                database.managedDocumentDao().clearSearchIndex()
+                database.managedDocumentDao().getAll().forEach { document ->
+                    database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
+                }
+                val repository = ReceiptRepository(database.receiptDao(), database.propertyDao(), database.receiptEntityDao(),
+                    database.belegDao(), database.exportAuditDao(), database.receiptDocumentDao(), database.managedDocumentDao())
+                database.receiptDao().getAllReceiptsIncludingDeletedList().forEach { receipt ->
+                    val paths = ReceiptOriginalChain.localPaths(receipt, database.managedDocumentDao().getAllByReceiptId(receipt.internalId))
+                    if (paths != receipt.imageUrl) repository.insert(receipt.copy(imageUrl = paths))
+                }
             }
-            database.managedDocumentDao().clearSearchIndex()
-            database.managedDocumentDao().getAll().forEach { document ->
-                database.managedDocumentDao().insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document)))
-            }
-            val repository = ReceiptRepository(database.receiptDao(), database.propertyDao(), database.receiptEntityDao(),
-                database.belegDao(), database.exportAuditDao(), database.receiptDocumentDao(), database.managedDocumentDao())
-            database.receiptDao().getAllReceiptsIncludingDeletedList().forEach { receipt ->
-                val paths = ReceiptOriginalChain.localPaths(receipt, database.managedDocumentDao().getAllByReceiptId(receipt.internalId))
-                if (paths != receipt.imageUrl) repository.insert(receipt.copy(imageUrl = paths))
-            }
+            // Preferences are intentionally written only after the Room transaction committed.
+            PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
         }
-        // Preferences are intentionally written only after the Room transaction committed.
-        PersistentPreferenceInventory.restorePayload(context, root, restoreMode)
     }
 
     /** Core replaces receipts and property/unit metadata before supplemental import.

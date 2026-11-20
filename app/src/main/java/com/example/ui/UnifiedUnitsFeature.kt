@@ -687,33 +687,35 @@ private fun UnifiedUnitDetailScreen(
             periods = periods,
             onDismiss = { showStatusDialog = false },
             onSave = { status, effectiveDate ->
-                if (TenantHistoryStore.read(context, property.propertyId, unitId, unit.name).damaged) {
-                    historyReadError = StoredListRead.ERROR
-                } else {
-                val endsCurrentLease = status in setOf(
-                    "Leerstand",
-                    "Renovierung",
-                    "Vermarktung / Inseriert",
-                    "Neuvermietung geplant"
-                )
-                if (endsCurrentLease) {
-                    val updatedPeriods = periods.map { period ->
-                        if (period.id == activePeriod?.id) period.copy(endDate = effectiveDate) else period
-                    }
-                    if (TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)) {
-                    viewModel.updateWohneinheit(
-                        unit.copy(
-                            status = status,
-                            mieter = "",
-                            mietvertragsstart = ""
-                        )
+                com.example.data.OfflineBackupCoordinator.shared.writing {
+                    if (TenantHistoryStore.read(context, property.propertyId, unitId, unit.name).damaged) {
+                        historyReadError = StoredListRead.ERROR
+                    } else {
+                    val endsCurrentLease = status in setOf(
+                        "Leerstand",
+                        "Renovierung",
+                        "Vermarktung / Inseriert",
+                        "Neuvermietung geplant"
                     )
-                    detailsVersion++
-                    } else historyReadError = StoredListRead.ERROR
-                } else {
-                    viewModel.updateWohneinheit(unit.copy(status = status))
-                }
-                if (historyReadError == null) UnitStatusMetaStore.save(context, property.propertyId, unitId, status, effectiveDate)
+                    if (endsCurrentLease) {
+                        val updatedPeriods = periods.map { period ->
+                            if (period.id == activePeriod?.id) period.copy(endDate = effectiveDate) else period
+                        }
+                        if (TenantHistoryStore.save(context, property.propertyId, unitId, unit.name, updatedPeriods)) {
+                        viewModel.updateWohneinheit(
+                            unit.copy(
+                                status = status,
+                                mieter = "",
+                                mietvertragsstart = ""
+                            )
+                        )
+                        detailsVersion++
+                        } else historyReadError = StoredListRead.ERROR
+                    } else {
+                        viewModel.updateWohneinheit(unit.copy(status = status))
+                    }
+                    if (historyReadError == null) UnitStatusMetaStore.save(context, property.propertyId, unitId, status, effectiveDate)
+                    }
                 }
                 showStatusDialog = false
             }
@@ -1297,7 +1299,7 @@ private object UnitStatusMetaStore {
         status: String,
         effectiveDate: String
     ) {
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS)
             .edit()
             .putString(key(propertyId, unitId, "status"), status)
             .putString(key(propertyId, unitId, "effectiveDate"), effectiveDate)
@@ -1319,7 +1321,7 @@ private object UnitRentalDetailStore {
         "${propertyId}_${unitId}_$field"
 
     fun load(context: android.content.Context, propertyId: String, unitId: String): UnitRentalDetail {
-        val prefs = context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
         return UnitRentalDetail(
             paymentMethod = prefs.getString(key(propertyId, unitId, "paymentMethod"), "").orEmpty(),
             dueDate = prefs.getString(key(propertyId, unitId, "dueDate"), "").orEmpty(),
@@ -1329,7 +1331,7 @@ private object UnitRentalDetailStore {
     }
 
     fun save(context: android.content.Context, propertyId: String, unitId: String, detail: UnitRentalDetail) {
-        context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        com.example.data.PersistentPreferenceInventory.open(context, PREFS)
             .edit()
             .putString(key(propertyId, unitId, "paymentMethod"), detail.paymentMethod)
             .putString(key(propertyId, unitId, "dueDate"), detail.dueDate)

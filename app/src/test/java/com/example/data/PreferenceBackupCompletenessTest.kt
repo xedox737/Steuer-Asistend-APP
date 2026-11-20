@@ -35,6 +35,33 @@ class PreferenceBackupCompletenessTest {
     }
     private fun prefs(name: String) = context.getSharedPreferences(name, Context.MODE_PRIVATE)
 
+    @Test fun everyRoomTableHasAnExplicitBackupClassification() {
+        val businessTables = setOf(
+            "receipts", "property_metadata", "loans", "receipt_entities", "belege",
+            "export_audit_runs", "receipt_documents", "logbook_trips", "standard_routes",
+            "managed_documents", "bank_accounts", "bank_transactions", "bank_receipt_links",
+            "bank_learning_rules", "bank_rule_evidence", "bank_rent_assignments",
+            "bank_loan_assignments", "bank_recurring_patterns"
+        )
+        val proceduralTables = setOf("document_migration_journal")
+        val derivedTables = setOf("document_search_fts")
+        val actual = database.openHelper.readableDatabase.query(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).use { cursor ->
+            buildSet {
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(0)
+                    if (!name.startsWith("sqlite_") &&
+                        !name.startsWith("document_search_fts_") &&
+                        name !in setOf("room_master_table", "android_metadata")
+                    ) add(name)
+                }
+            }
+        }
+        assertEquals("Neue Room-Tabellen benötigen eine bewusste Sicherungszuordnung",
+            businessTables + proceduralTables + derivedTables, actual)
+    }
+
     @Test fun freshInstallRestoresAllBusinessPreferencesAndStableAssignmentsTwice() = runTest {
         val profile = DatevProfile.createDefaultSkr04().copy(
             beraterNummer = "1234567", mandantenNummer = "23456", mandantenName = "Testmandant",

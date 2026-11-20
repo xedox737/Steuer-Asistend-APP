@@ -10,6 +10,10 @@ import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.FileProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -40,11 +44,14 @@ class OfflineBackupPickerEmulatorTest : EmulatorTestSupport() {
         scenario.onActivity { activity ->
             activity.setContent {
                 CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) {
-                    MyApplicationTheme(darkTheme = false) { OfflineBackupCard(model) }
+                    MyApplicationTheme(darkTheme = false) {
+                        Column(Modifier.verticalScroll(rememberScrollState())) { OfflineBackupCard(model) }
+                    }
                 }
             }
         }
         ui.waitForIdle()
+        ui.onNodeWithTag("offline_backup_legacy_options").performScrollTo().performClick()
     }
 
     private fun awaitStatus(text: String) {
@@ -58,7 +65,7 @@ class OfflineBackupPickerEmulatorTest : EmulatorTestSupport() {
         val before = runBlocking(Dispatchers.IO) { db.propertyDao().getAllProperties() }
         val file = File(context.cacheDir, "e2e-offline-empty.zip").apply { writeBytes(byteArrayOf()) }
         showCard(FileProvider.getUriForFile(context, "${context.packageName}.provider", file))
-        ui.onNodeWithTag("offline_backup_import").performClick()
+        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
         awaitStatus("vollständige ImmoPilot-Vollsicherung")
         ui.onAllNodes(hasText("offline-import-", substring = true)).assertCountEquals(0)
         ui.onAllNodes(hasText("snapshot.json", substring = true)).assertCountEquals(0)
@@ -88,14 +95,14 @@ class OfflineBackupPickerEmulatorTest : EmulatorTestSupport() {
         val beforeProperties = runBlocking(Dispatchers.IO) { db.propertyDao().getAllProperties() }
         val file = File(context.cacheDir, "e2e-offline-picker.zip").apply { writeBytes(byteArrayOf()) }
         showCard(FileProvider.getUriForFile(context, "${context.packageName}.provider", file))
-        ui.onNodeWithTag("offline_backup_export").performClick()
+        ui.onNodeWithTag("offline_backup_legacy_export").performScrollTo().performClick()
         awaitStatus("Vollständige lokale Sicherung gespeichert")
         ZipFile(file).use { zip ->
             assertNotNull(zip.getEntry("snapshot.json"))
             assertNotNull(zip.getEntry("snapshot.sha256"))
             assertArrayEquals(originalBytes, zip.getInputStream(zip.getEntry("files/0")).use { it.readBytes() })
         }
-        ui.onNodeWithTag("offline_backup_import").performClick()
+        ui.onNodeWithTag("offline_backup_import").performScrollTo().performClick()
         ui.waitUntil(10_000) { ui.onAllNodesWithText("Lokale Sicherung wiederherstellen?").fetchSemanticsNodes().isNotEmpty() }
         ui.onNodeWithText("${beforeProperties.size} Immobilien · 1 Belege · 1 Originaldateien", substring = true).assertExists()
         ui.onNodeWithText("Abbrechen").performClick()

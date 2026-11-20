@@ -796,6 +796,18 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /** Opens only the existing current-schema database, without startup repair callbacks or migrations. */
+        internal fun openForRestoreRecovery(context: Context, token: OfflineBackupCoordinator.Maintenance): AppDatabase {
+            OfflineBackupCoordinator.shared.requireMaintenance(token)
+            return token.writing {
+                val existing = context.getDatabasePath("receipt_database").canonicalFile
+                require(existing.isFile) { "Die bestehende Datenbank für den Wiederanlauf fehlt." }
+                Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, existing.path)
+                    .openHelperFactory(OfflineBackupCoordinator.shared.sqliteFactory())
+                    .build()
+            }
+        }
+
         fun getDatabase(context: Context, scope: CoroutineScope): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -803,6 +815,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "receipt_database"
                 )
+                .openHelperFactory(OfflineBackupCoordinator.shared.sqliteFactory())
                 // Never erase user receipts when a migration is missing. Unsupported legacy
                 // schemas must fail visibly so they can be migrated explicitly.
                 .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
@@ -813,11 +826,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-            private class AppDatabaseCallback(
-                private val scope: CoroutineScope
+            internal class AppDatabaseCallback(
+                private val scope: CoroutineScope,
+                private val coordinator: OfflineBackupCoordinator = OfflineBackupCoordinator.shared
             ) : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
+                    val initialization = coordinator.beginInitialization()
                     scope.launch(Dispatchers.IO) {
                         try {
                             db.query("SELECT id, displayId, datum FROM receipts WHERE internalId IS NULL OR internalId = ''").use { cursor ->
@@ -835,8 +850,11 @@ abstract class AppDatabase : RoomDatabase() {
                                 }
                             }
                         } catch (e: Exception) {
+                            coordinator.initializationFailed()
                             DiagnosticLog.e("AppDatabase", "Error migrating internalIds on open")
                         }
+                    }.invokeOnCompletion { error ->
+                        initialization.finish(failed = error != null)
                     }
                 }
 
@@ -855,26 +873,28 @@ class ReceiptRepository(
     private val managedDocumentDao: ManagedDocumentDao? = null
 ) {
     suspend fun updateDriveSyncFields(snapshot: Receipt): Receipt {
-        val changed = receiptDao.updateDriveSyncFields(snapshot.id, snapshot.internalId, snapshot.displayId,
-            snapshot.driveFileId, snapshot.driveFolderId, snapshot.driveMetadataFileId, snapshot.storedFilename,
-            snapshot.originalMimeType, snapshot.fileSizeBytes, snapshot.syncStatus, snapshot.syncError,
-            snapshot.lastSyncedAt, snapshot.driveRevision, snapshot.isArchivedToDrive)
-        if (changed != 1) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
-        val latest = receiptDao.getReceiptById(snapshot.id)
-            ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
-        val dao = managedDocumentDao
-        if (dao != null) {
-            val existing = dao.getById(StableDocumentIdentity.receiptDocumentId(latest.internalId))
-                ?: dao.getByReceiptId(latest.internalId)
-            if (existing == null) indexReceiptDocument(latest, latest)
-            else dao.updateDriveStorageIfPresent(existing, existing.copy(
-                driveFileId = latest.driveFileId ?: existing.driveFileId,
-                driveFolderId = latest.driveFolderId ?: existing.driveFolderId,
-                storedFilename = latest.storedFilename ?: existing.storedFilename,
-                mimeType = latest.originalMimeType ?: existing.mimeType,
-                fileSizeBytes = latest.fileSizeBytes?.takeIf { it > 0 } ?: existing.fileSizeBytes), latest)
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val changed = receiptDao.updateDriveSyncFields(snapshot.id, snapshot.internalId, snapshot.displayId,
+                snapshot.driveFileId, snapshot.driveFolderId, snapshot.driveMetadataFileId, snapshot.storedFilename,
+                snapshot.originalMimeType, snapshot.fileSizeBytes, snapshot.syncStatus, snapshot.syncError,
+                snapshot.lastSyncedAt, snapshot.driveRevision, snapshot.isArchivedToDrive)
+            if (changed != 1) throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
+            val latest = receiptDao.getReceiptById(snapshot.id)
+                ?: throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
+            val dao = managedDocumentDao
+            if (dao != null) {
+                val existing = dao.getById(StableDocumentIdentity.receiptDocumentId(latest.internalId))
+                    ?: dao.getByReceiptId(latest.internalId)
+                if (existing == null) indexReceiptDocument(latest, latest)
+                else dao.updateDriveStorageIfPresent(existing, existing.copy(
+                    driveFileId = latest.driveFileId ?: existing.driveFileId,
+                    driveFolderId = latest.driveFolderId ?: existing.driveFolderId,
+                    storedFilename = latest.storedFilename ?: existing.storedFilename,
+                    mimeType = latest.originalMimeType ?: existing.mimeType,
+                    fileSizeBytes = latest.fileSizeBytes?.takeIf { it > 0 } ?: existing.fileSizeBytes), latest)
+            }
+            return latest
         }
-        return latest
     }
 
     suspend fun updateManagedDocumentDriveFields(expected: ManagedDocument, saved: ManagedDocument): ManagedDocument? =
@@ -908,10 +928,12 @@ class ReceiptRepository(
     ): ManagedDocument? = managedDocumentDao?.updateProcessingIfPresent(expected, ocrStatus, ocrText, aiStatus, confidence, fieldsJson)
     suspend fun findManagedDocumentsByHash(hash: String): List<ManagedDocument> = managedDocumentDao?.getByHash(hash).orEmpty()
     suspend fun upsertManagedDocument(document: ManagedDocument, receipt: Receipt? = null) {
-        val dao = managedDocumentDao ?: return
-        dao.upsert(document)
-        dao.deleteSearchEntry(document.documentId)
-        dao.insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, receipt)))
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val dao = managedDocumentDao ?: return
+            dao.upsert(document)
+            dao.deleteSearchEntry(document.documentId)
+            dao.insertSearchEntry(DocumentSearchFts(document.documentId, DocumentSearchTextBuilder.build(document, receipt)))
+        }
     }
     suspend fun searchManagedDocuments(query: String, propertyId: String = "", unitId: String = "", year: String = "", documentType: String = "", category: String = ""): List<ManagedDocument> {
         val normalized = DocumentSearchTextBuilder.ftsQuery(query)
@@ -922,11 +944,13 @@ class ReceiptRepository(
         } else managedDocumentDao?.search(normalized, propertyId, unitId, year, documentType, category).orEmpty()
     }
     suspend fun rebuildDocumentSearchIndex(receipts: List<Receipt>? = null) {
-        val dao = managedDocumentDao ?: return
-        val currentReceipts = receipts ?: getAllReceiptsList()
-        dao.clearSearchIndex()
-        val receiptMap = currentReceipts.associateBy { it.internalId }
-        dao.getAll().forEach { dao.insertSearchEntry(DocumentSearchFts(it.documentId, DocumentSearchTextBuilder.build(it, it.receiptInternalId?.let(receiptMap::get)))) }
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val dao = managedDocumentDao ?: return
+            val currentReceipts = receipts ?: getAllReceiptsList()
+            dao.clearSearchIndex()
+            val receiptMap = currentReceipts.associateBy { it.internalId }
+            dao.getAll().forEach { dao.insertSearchEntry(DocumentSearchFts(it.documentId, DocumentSearchTextBuilder.build(it, it.receiptInternalId?.let(receiptMap::get)))) }
+        }
     }
     suspend fun getDocumentMigrationJournal(): List<DocumentMigrationJournal> = managedDocumentDao?.getMigrationJournal().orEmpty()
     suspend fun upsertDocumentMigrationJournal(entry: DocumentMigrationJournal) { managedDocumentDao?.upsertMigrationJournal(entry) }
@@ -995,86 +1019,90 @@ class ReceiptRepository(
         metadataFileId.takeIf(String::isNotBlank)?.let { receiptDao.getReceiptsByMetadataFileId(it) }.orEmpty()
 
     suspend fun insert(receipt: Receipt): Long {
-        val previousReceipt = if (receipt.id > 0) receiptDao.getReceiptById(receipt.id) else null
-        ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson)
-        if (receipt.id > 0) {
-            val existing = receiptDao.getReceiptById(receipt.id)
-            if (existing != null && existing.positionenJson != receipt.positionenJson) {
-                ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val previousReceipt = if (receipt.id > 0) receiptDao.getReceiptById(receipt.id) else null
+            ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson)
+            if (receipt.id > 0) {
+                val existing = receiptDao.getReceiptById(receipt.id)
+                if (existing != null && existing.positionenJson != receipt.positionenJson) {
+                    ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+                }
             }
-        }
-        val preparedInternalId = if (receipt.internalId.isBlank()) java.util.UUID.randomUUID().toString() else receipt.internalId
-        val year = try { receipt.datum.split("-").firstOrNull()?.trim() ?: "2026" } catch (e: Exception) { "2026" }
-        val preparedDisplayId = receipt.displayId ?: "BLG-$year-${String.format("%06d", if (receipt.id != 0) receipt.id else 0)}"
+            val preparedInternalId = if (receipt.internalId.isBlank()) java.util.UUID.randomUUID().toString() else receipt.internalId
+            val year = try { receipt.datum.split("-").firstOrNull()?.trim() ?: "2026" } catch (e: Exception) { "2026" }
+            val preparedDisplayId = receipt.displayId ?: "BLG-$year-${String.format("%06d", if (receipt.id != 0) receipt.id else 0)}"
         
-        val preparedReceipt = receipt.copy(internalId = preparedInternalId, displayId = preparedDisplayId)
-        val id = receiptDao.insertReceipt(preparedReceipt)
-        val finalId = if (preparedReceipt.id != 0) preparedReceipt.id else id.toInt()
+            val preparedReceipt = receipt.copy(internalId = preparedInternalId, displayId = preparedDisplayId)
+            val id = receiptDao.insertReceipt(preparedReceipt)
+            val finalId = if (preparedReceipt.id != 0) preparedReceipt.id else id.toInt()
         
-        val finalReceipt = if (preparedReceipt.displayId?.contains("000000") == true) {
-            val correctDisplayId = "BLG-$year-${String.format("%06d", finalId)}"
-            val updated = preparedReceipt.copy(id = finalId, displayId = correctDisplayId)
-            receiptDao.insertReceipt(updated)
-            updated
-        } else {
-            preparedReceipt.copy(id = finalId)
-        }
-
-        receiptEntityDao?.insert(
-            ReceiptEntity(
-                id = finalId,
-                datum = finalReceipt.datum,
-                kreditor = finalReceipt.aussteller,
-                betrag = finalReceipt.bruttobetrag,
-                pdfPath = finalReceipt.imageUrl,
-                positionenJson = finalReceipt.positionenJson
-            )
-        )
-        belegDao?.insertBeleg(
-            Beleg(
-                id = finalId.toLong(),
-                betrag = finalReceipt.bruttobetrag,
-                datum = finalReceipt.datum,
-                kategorie = finalReceipt.hauptkategorie,
-                anbieter = finalReceipt.aussteller,
-                bildPfad = finalReceipt.imageUrl
-            )
-        )
-        indexReceiptDocument(finalReceipt, previousReceipt)
-        return id
-    }
-
-    suspend fun insertAll(receipts: List<Receipt>) {
-        val previousReceipts = receipts.filter { it.id > 0 }.associate { it.id to receiptDao.getReceiptById(it.id) }
-        receipts.forEach { candidate ->
-            ReceiptItemConverter.validateJsonForWrite(candidate.positionenJson)
-            if (candidate.id > 0) receiptDao.getReceiptById(candidate.id)?.let { existing ->
-                if (existing.positionenJson != candidate.positionenJson) ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+            val finalReceipt = if (preparedReceipt.displayId?.contains("000000") == true) {
+                val correctDisplayId = "BLG-$year-${String.format("%06d", finalId)}"
+                val updated = preparedReceipt.copy(id = finalId, displayId = correctDisplayId)
+                receiptDao.insertReceipt(updated)
+                updated
+            } else {
+                preparedReceipt.copy(id = finalId)
             }
-        }
-        receiptDao.insertAll(receipts)
-        receipts.forEach { receipt ->
+
             receiptEntityDao?.insert(
                 ReceiptEntity(
-                    id = receipt.id,
-                    datum = receipt.datum,
-                    kreditor = receipt.aussteller,
-                    betrag = receipt.bruttobetrag,
-                    pdfPath = receipt.imageUrl,
-                    positionenJson = receipt.positionenJson
+                    id = finalId,
+                    datum = finalReceipt.datum,
+                    kreditor = finalReceipt.aussteller,
+                    betrag = finalReceipt.bruttobetrag,
+                    pdfPath = finalReceipt.imageUrl,
+                    positionenJson = finalReceipt.positionenJson
                 )
             )
             belegDao?.insertBeleg(
                 Beleg(
-                    id = receipt.id.toLong(),
-                    betrag = receipt.bruttobetrag,
-                    datum = receipt.datum,
-                    kategorie = receipt.hauptkategorie,
-                    anbieter = receipt.aussteller,
-                    bildPfad = receipt.imageUrl
+                    id = finalId.toLong(),
+                    betrag = finalReceipt.bruttobetrag,
+                    datum = finalReceipt.datum,
+                    kategorie = finalReceipt.hauptkategorie,
+                    anbieter = finalReceipt.aussteller,
+                    bildPfad = finalReceipt.imageUrl
                 )
             )
-            indexReceiptDocument(receipt, previousReceipts[receipt.id])
+            indexReceiptDocument(finalReceipt, previousReceipt)
+            return id
+        }
+    }
+
+    suspend fun insertAll(receipts: List<Receipt>) {
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            val previousReceipts = receipts.filter { it.id > 0 }.associate { it.id to receiptDao.getReceiptById(it.id) }
+            receipts.forEach { candidate ->
+                ReceiptItemConverter.validateJsonForWrite(candidate.positionenJson)
+                if (candidate.id > 0) receiptDao.getReceiptById(candidate.id)?.let { existing ->
+                    if (existing.positionenJson != candidate.positionenJson) ReceiptItemConverter.validateJsonForWrite(existing.positionenJson)
+                }
+            }
+            receiptDao.insertAll(receipts)
+            receipts.forEach { receipt ->
+                receiptEntityDao?.insert(
+                    ReceiptEntity(
+                        id = receipt.id,
+                        datum = receipt.datum,
+                        kreditor = receipt.aussteller,
+                        betrag = receipt.bruttobetrag,
+                        pdfPath = receipt.imageUrl,
+                        positionenJson = receipt.positionenJson
+                    )
+                )
+                belegDao?.insertBeleg(
+                    Beleg(
+                        id = receipt.id.toLong(),
+                        betrag = receipt.bruttobetrag,
+                        datum = receipt.datum,
+                        kategorie = receipt.hauptkategorie,
+                        anbieter = receipt.aussteller,
+                        bildPfad = receipt.imageUrl
+                    )
+                )
+                indexReceiptDocument(receipt, previousReceipts[receipt.id])
+            }
         }
     }
 
@@ -1151,29 +1179,37 @@ class ReceiptRepository(
     }
 
     suspend fun deleteById(id: Int) {
-        receiptDao.deleteReceiptById(id)
-        receiptEntityDao?.deleteById(id)
-        belegDao?.deleteBelegById(id.toLong())
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            receiptDao.deleteReceiptById(id)
+            receiptEntityDao?.deleteById(id)
+            belegDao?.deleteBelegById(id.toLong())
+        }
     }
 
     suspend fun clearAllData() {
-        clearRestoreRelevantTables()
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            clearRestoreRelevantTables()
+        }
     }
 
     suspend fun clearRestoreRelevantTables() {
-        clearCoreRestoreRelevantTables()
-        managedDocumentDao?.clearSearchIndex()
-        managedDocumentDao?.deleteAllDocuments()
-        managedDocumentDao?.clearMigrationJournal()
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            clearCoreRestoreRelevantTables()
+            managedDocumentDao?.clearSearchIndex()
+            managedDocumentDao?.deleteAllDocuments()
+            managedDocumentDao?.clearMigrationJournal()
+        }
     }
 
     /** Clears only primary restore data; supplemental tables stay untouched until core verification succeeds. */
     suspend fun clearCoreRestoreRelevantTables() {
-        receiptDao.deleteAll()
-        receiptEntityDao?.deleteAll()
-        belegDao?.deleteAllBelege()
-        receiptDocumentDao?.deleteAll()
-        exportAuditDao?.deleteAll()
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            receiptDao.deleteAll()
+            receiptEntityDao?.deleteAll()
+            belegDao?.deleteAllBelege()
+            receiptDocumentDao?.deleteAll()
+            exportAuditDao?.deleteAll()
+        }
     }
 
     suspend fun getPropertyMetadata(): PropertyMetadata? {

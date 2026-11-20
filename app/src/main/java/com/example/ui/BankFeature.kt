@@ -806,7 +806,7 @@ private fun BankTransactionDetailsScreen(
     val linkedReceipts = linkedLinks.mapNotNull { link -> receiptById[link.receiptId]?.let { link to it } }
     var note by remember(transaction.transactionId) {
         mutableStateOf(
-            context.getSharedPreferences("bank_transaction_notes", android.content.Context.MODE_PRIVATE)
+            com.example.data.PersistentPreferenceInventory.open(context, "bank_transaction_notes")
                 .getString(transaction.transactionId, "")
                 .orEmpty()
         )
@@ -1126,7 +1126,7 @@ private fun BankTransactionDetailsScreen(
                             value = note,
                             onValueChange = { value ->
                                 note = value
-                                context.getSharedPreferences("bank_transaction_notes", android.content.Context.MODE_PRIVATE)
+                                com.example.data.PersistentPreferenceInventory.open(context, "bank_transaction_notes")
                                     .edit().putString(transaction.transactionId, value).apply()
                             },
                             modifier = Modifier.fillMaxWidth(),

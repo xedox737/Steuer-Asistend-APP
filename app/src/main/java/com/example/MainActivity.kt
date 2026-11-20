@@ -5,6 +5,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -13,6 +24,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.OfflineBackupScheduleReceiver
+import com.example.data.OfflineBackupCoordinator
+import com.example.data.OfflineRestoreRecovery
+import kotlinx.coroutines.CancellationException
 import com.example.ui.AppScreen
 import com.example.ui.ReceiptAppUi
 import com.example.ui.ReceiptViewModel
@@ -22,8 +37,37 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    // Read before constructing ReceiptViewModel: it opens Room and starts sync work.
+    // A malformed or unreadable marker is treated as pending, never as absent.
+    val initialRestorePending = OfflineBackupCoordinator.shared.observeRestoreJournal(applicationContext)
     setContent {
       MyApplicationTheme {
+        var restorePending by remember { mutableStateOf(initialRestorePending) }
+        val restoreGuardPending by OfflineBackupCoordinator.shared.restorePending.collectAsStateWithLifecycle()
+        var recoveryFailed by remember { mutableStateOf(false) }
+        var recoveryAttempt by remember { mutableStateOf(0) }
+        if (restorePending || restoreGuardPending) {
+          LaunchedEffect(recoveryAttempt) {
+            recoveryFailed = false
+            try {
+              OfflineRestoreRecovery.recoverOnStartup(applicationContext)
+              restorePending = false
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { recoveryFailed = true }
+          }
+          Surface(Modifier.fillMaxSize().testTag("offline_restore_startup_blocked")) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+              Text("Wiederherstellung noch nicht abgeschlossen", style = MaterialTheme.typography.titleLarge)
+              if (recoveryFailed) {
+                Text("Der Bestand bleibt geschützt. Die Wiederherstellung konnte nicht abgeschlossen werden. Bitte versuche es erneut.")
+                Button(onClick = { recoveryAttempt++ }, modifier = Modifier.testTag("offline_restore_retry")) { Text("Erneut versuchen") }
+              } else {
+                Text("Der aktuelle Bestand bleibt geschützt. Die Wiederherstellung wird geprüft und abgeschlossen.")
+              }
+            }
+          }
+        } else {
+        LaunchedEffect(Unit) { OfflineBackupScheduleReceiver.reconcile(applicationContext) }
         val viewModel: ReceiptViewModel = viewModel()
         val currentScreen by viewModel.currentScreen.collectAsStateWithLifecycle()
         val primaryNavigationReset by viewModel.primaryNavigationReset.collectAsStateWithLifecycle()
@@ -77,6 +121,7 @@ class MainActivity : ComponentActivity() {
         }
 
         ReceiptAppUi(viewModel = viewModel)
+        }
       }
     }
   }

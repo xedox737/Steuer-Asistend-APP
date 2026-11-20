@@ -255,6 +255,21 @@ class DriveConnectionRegressionTest {
         assertEquals("synthetic@example.invalid", prefs.getString("connected_email", null))
         assertFalse(prefs.getBoolean("user_disconnected", true))
     }
+    @Test fun queuedAutomaticSyncRechecksPersistedSettingWhileManualSyncStillWorks() {
+        prefs.edit().putBoolean("auto_backup", true).commit()
+        val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual"); awaitSuccess(vm)
+        assertTrue(vm.autoDriveBackup.value)
+        // Simulate a restore disabling auto sync while the in-memory state is still stale.
+        prefs.edit().putBoolean("auto_backup", false).commit()
+        val before = calls.get()
+        vm.syncAllToDriveAutomatically()
+        assertFalse(vm.isDriveSyncing.value); assertEquals(before, calls.get())
+        fault = IOException("synthetic-offline")
+        vm.syncAllToDrive(); awaitFailure(vm)
+        runBlocking { withTimeout(15_000) { vm.isDriveSyncing.first { !it } } }
+        assertTrue(calls.get() > before)
+        assertFalse(prefs.getBoolean("auto_backup", true))
+    }
     @Test fun failedSyncDoesNotInvalidateSuccessfulLogin() {
         val vm = model(); vm.connectDrive("synthetic@example.invalid", "synthetic-manual"); awaitSuccess(vm)
         fault = IOException("offline"); vm.syncAllToDrive(); awaitFailure(vm)

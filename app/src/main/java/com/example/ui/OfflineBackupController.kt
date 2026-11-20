@@ -1,0 +1,234 @@
+package com.example.ui
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
+import com.example.data.AppDatabase
+import com.example.data.OfflineBackupArchiveEngine
+import com.example.data.OfflineBackupCredentialSection
+import com.example.data.OfflineBackupDestination
+import com.example.data.OfflineBackupGenerationStore
+import com.example.data.OfflineBackupKeyManager
+import com.example.data.OfflineBackupSettings
+import com.example.data.OfflineBackupSnapshot
+import com.example.data.OfflineBackupValidationException
+import com.example.data.OfflineBackupRestoreInspector
+import com.example.data.OfflineBackupHistory
+import com.example.data.OfflineRestoreCoordinator
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import com.example.data.OfflineBackupSchedule
+import com.example.data.OfflineBackupScheduleStore
+import com.example.data.OfflineBackupWorker
+import com.example.data.OfflineBackupWorkScheduler
+import java.time.Instant
+import kotlinx.coroutines.launch
+
+/** View-model-owned actions. No passwords in saved state, settings or publication requests. */
+internal class OfflineBackupController(private val context: Context, private val database: AppDatabase, private val scope: CoroutineScope,
+    private val folders: FolderAccess = AndroidFolderAccess(context),
+    private val refreshAfterRestore: suspend () -> Unit = {},
+    private val restoreAction: suspend (Context, AppDatabase, OfflineBackupRestoreInspector.Prepared, Boolean, suspend () -> Unit) -> OfflineRestoreCoordinator.Result =
+        { ctx, db, prepared, credentials, refresh -> OfflineRestoreCoordinator.restore(ctx, db, prepared, credentials, refresh) },
+    private val destination: (Uri) -> OfflineBackupDestination = { OfflineBackupDestination(context, it) }) {
+    enum class Operation { LOADING, PASSWORD, FOLDER, OPTIONS, SAVING, RESTORING }
+    data class State(val loaded: Boolean = false, val operation: Operation? = null,
+        val config: OfflineBackupSettings.Config = OfflineBackupSettings.Config(), val generationId: String? = null,
+        val keyProblem: String? = null, val folderReady: Boolean = false, val folderLabel: String = "Kein Sicherungsordner gewählt",
+        val status: String? = null, val lastPublished: OfflineBackupDestination.Published? = null,
+        val history: OfflineBackupHistory.History? = null, val historyProblem: String? = null,
+        val lastSuccessTargetLabel: String? = null,
+        val schedule: OfflineBackupScheduleStore.State? = null, val scheduleProblem: String? = null) {
+        val busy get() = operation != null
+        val configured get() = generationId != null
+        val canSave get() = loaded && configured && folderReady && !busy
+    }
+    interface FolderAccess {
+        fun hasGrant(uri: Uri): Boolean
+        fun persist(uri: Uri)
+        fun release(uri: Uri)
+        fun label(uri: Uri): String?
+    }
+    private val settings = OfflineBackupSettings(context)
+    private val history = OfflineBackupHistory(context)
+    private val keys = OfflineBackupKeyManager(context)
+    private val engine = OfflineBackupArchiveEngine(context, database)
+    private val mutable = MutableStateFlow(State())
+    val state: StateFlow<State> = mutable.asStateFlow()
+    private val lock = Any()
+    private var current: Job? = null
+
+    fun reload(): Job? = perform(Operation.LOADING) { refresh() }
+    fun configure(password: CharArray, confirmation: CharArray, change: Boolean = false): Job? {
+        val job = perform(Operation.PASSWORD) {
+            if (!mutable.value.loaded || mutable.value.keyProblem != null)
+                throw OfflineBackupValidationException("Der vorhandene Schlüsselzustand muss zuerst geprüft werden.")
+            if (password.size !in 16..1024 || !password.contentEquals(confirmation))
+                throw OfflineBackupValidationException("Das Wiederherstellungspasswort muss mindestens 16 Zeichen haben und übereinstimmend bestätigt werden.")
+            if (change) {
+                val expected = mutable.value.generationId
+                    ?: throw OfflineBackupValidationException("Bitte zuerst das Wiederherstellungspasswort einrichten.")
+                keys.changePassword(expected, password, confirmation)
+            } else keys.initialize(password, confirmation)
+            refresh()
+            mutable.update { it.copy(status = if (change) "Neues Wiederherstellungspasswort eingerichtet. Ältere Archive benötigen weiterhin ihr bisheriges Passwort."
+                else "Wiederherstellungspasswort eingerichtet. Bitte außerhalb der App sicher aufbewahren.") }
+        }
+        if (job == null) { password.fill('\u0000'); confirmation.fill('\u0000') }
+        else job.invokeOnCompletion { password.fill('\u0000'); confirmation.fill('\u0000') }
+        return job
+    }
+    fun selectFolder(uri: Uri): Job? = perform(Operation.FOLDER) {
+        val previous = settings.load()
+        val alreadyGranted = folders.hasGrant(uri)
+        try {
+            folders.persist(uri)
+            destination(uri).preflight()
+            settings.setTarget(uri)
+        } catch (error: Exception) {
+            if (!alreadyGranted && previous.targetUri != uri.toString()) try { folders.release(uri) } catch (_: Exception) { }
+            throw error
+        }
+        refresh(); mutable.update { it.copy(status = "Sicherungsordner gespeichert und geprüft.") }
+    }
+    fun setManualCredentials(enabled: Boolean): Job? = perform(Operation.OPTIONS) {
+        settings.setManualCredentials(enabled); refresh()
+    }
+    fun setSchedule(enabled: Boolean, rule: OfflineBackupSchedule.Rule, credentials: Boolean, warningDays: Int): Job? = perform(Operation.OPTIONS) {
+        val target = settings.load().targetUri
+        if (enabled) {
+            if (!mutable.value.configured || target == null)
+                throw OfflineBackupValidationException("Bitte zuerst Wiederherstellungspasswort und Sicherungsordner einrichten.")
+            destination(Uri.parse(target)).preflight()
+        }
+        val saved = OfflineBackupScheduleStore(context).configure(
+            OfflineBackupScheduleStore.Config(enabled, rule, target, enabled && credentials, warningDays), Instant.now())
+        mutable.update { it.copy(schedule = saved, scheduleProblem = null) }
+        OfflineBackupWorkScheduler(context, OfflineBackupWorker::class.java).reconcile()
+    }
+
+    fun save(): Job? = perform(Operation.SAVING) {
+        val config = settings.load()
+        val uri = config.targetUri?.let(Uri::parse)
+            ?: throw OfflineBackupValidationException("Bitte zuerst einen Sicherungsordner wählen.")
+        if (mutable.value.generationId == null) throw OfflineBackupValidationException("Bitte zuerst das Wiederherstellungspasswort einrichten.")
+        val result = engine.publish(destination(uri), OfflineBackupCredentialSection.Consent(manual = config.manualCredentials),
+            snapshotProgress = { progress -> mutable.update { it.copy(status = when (progress.stage) {
+                OfflineBackupSnapshot.Stage.METADATA_CAPTURED -> "Daten erfasst; Originale werden fixiert …"
+                OfflineBackupSnapshot.Stage.ORIGINALS_FIXED -> "${progress.completed} Dateiversionen fixiert …"
+                OfflineBackupSnapshot.Stage.SNAPSHOT_FIXED -> "Vollsicherung wird verschlüsselt und geprüft …"
+            }) } }, destinationProgress = { stage -> mutable.update { it.copy(status = when (stage) {
+                OfflineBackupDestination.Stage.WRITING -> "Vollsicherung wird in den Zielordner geschrieben …"
+                OfflineBackupDestination.Stage.VERIFYING -> "Zielsicherung wird vollständig rückgelesen und geprüft …"
+                OfflineBackupDestination.Stage.FINALIZING -> "Geprüfte Vollsicherung wird fertiggestellt …"
+            }) } })
+        mutable.update { it.copy(lastPublished = result, status = "Vollsicherung gespeichert und vollständig geprüft.") }
+    }
+
+    /** Returns true only after ownership was transferred to a ViewModel-scoped job. */
+    fun restore(prepared: OfflineBackupRestoreInspector.Prepared, includeCredentials: Boolean): Boolean = synchronized(lock) {
+        if (current?.isActive == true || mutable.value.busy) return@synchronized false
+        val lease = prepared.acquireLease()
+        val job = try { perform(Operation.RESTORING) {
+            mutable.update { it.copy(status = "Vollständige Wiederherstellung läuft …") }
+            val result = restoreAction(context, database, prepared, includeCredentials, refreshAfterRestore)
+            mutable.update { it.copy(status = if (result.preparationCleanupFailed)
+                "Wiederherstellung abgeschlossen. Private Vorbereitungsdaten konnten nicht vollständig entfernt werden."
+            else "Vollständige Wiederherstellung abgeschlossen. Die automatische Drive-Synchronisierung bleibt ausgeschaltet.") }
+        } } catch (error: Throwable) { lease.close(); throw error }
+        if (job == null) { lease.close(); return@synchronized false }
+        job.invokeOnCompletion {
+            cleanupScope.launch {
+                try { prepared.close() } finally { lease.close() }
+            }
+        }
+        true
+    }
+    fun cancel() = synchronized(lock) { current?.cancel() }
+
+    private fun refresh() {
+        val config = settings.load()
+        var keyProblem: String? = null
+        val id = try { OfflineBackupGenerationStore(context).loadCurrent()?.use { it.recovery.generationId } }
+            catch (error: OfflineBackupValidationException) { keyProblem = error.message; null }
+        var ready = false; var label = "Kein Sicherungsordner gewählt"; var folderProblem: String? = null
+        config.targetUri?.let { raw ->
+            val uri = Uri.parse(raw)
+            label = try { folders.label(uri)?.takeIf(String::isNotBlank) ?: "Gewählter Sicherungsordner" }
+                catch (_: Exception) { "Gewählter Sicherungsordner" }
+            try { destination(uri).preflight(); ready = true }
+            catch (error: OfflineBackupValidationException) { folderProblem = error.message }
+        }
+        mutable.update { it.copy(loaded = true, config = config, generationId = id, keyProblem = keyProblem,
+            folderReady = ready, folderLabel = label, status = keyProblem ?: folderProblem ?: it.status) }
+        try {
+            val schedule = OfflineBackupScheduleStore(context).load()
+            mutable.update { it.copy(schedule = schedule, scheduleProblem = null) }
+        } catch (error: OfflineBackupValidationException) {
+            mutable.update { it.copy(schedule = null, scheduleProblem = error.message) }
+        }
+        refreshHistory()
+    }
+    private fun refreshHistory() {
+        try {
+            val current = history.load()
+            val label = current.lastFullSuccess?.targetUri?.let { raw ->
+                try { context.contentResolver.query(Uri.parse(raw), arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0)?.takeIf { name -> name.isNotBlank() && name.length <= 256 && name.none(Char::isISOControl) } else null
+                } } catch (_: Exception) { null }
+            }
+            mutable.update { it.copy(history = current, historyProblem = null, lastSuccessTargetLabel = label) }
+        } catch (error: OfflineBackupValidationException) {
+            mutable.update { it.copy(history = null, historyProblem = error.message, lastSuccessTargetLabel = null) }
+        }
+    }
+    private fun perform(operation: Operation, block: suspend () -> Unit): Job? = synchronized(lock) {
+        if (current?.isActive == true || mutable.value.busy) return@synchronized null
+        mutable.update { it.copy(operation = operation, status = null) }
+        val job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            try { block() }
+            catch (error: CancellationException) { mutable.update { it.copy(status = if (operation == Operation.RESTORING)
+                "Wiederherstellung abgebrochen. Der Bestand wird gegebenenfalls wiederhergestellt." else "Vorgang abgebrochen. Bisherige Sicherungen bleiben unverändert.") }; throw error }
+            catch (error: OfflineBackupValidationException) { mutable.update { it.copy(status = error.message) } }
+            catch (_: Exception) { mutable.update { it.copy(status = if (operation == Operation.RESTORING)
+                "Die Wiederherstellung konnte nicht abgeschlossen werden. Bitte den angezeigten Wiederanlauf beachten." else "Der Sicherungsvorgang konnte nicht abgeschlossen werden. Bitte Ordner, Speicher und Einstellungen prüfen.") } }
+            finally {
+                if (operation == Operation.SAVING || operation == Operation.RESTORING) refreshHistory()
+                mutable.update { it.copy(operation = null) }
+            }
+        }
+        current = job
+        job.invokeOnCompletion { synchronized(lock) {
+            if (current === job) {
+                current = null
+                if (mutable.value.operation != null) mutable.update { it.copy(operation = null, status = "Vorgang abgebrochen.") }
+            }
+        } }
+        job.start(); job
+    }
+
+    private companion object { val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+
+    private class AndroidFolderAccess(private val context: Context) : FolderAccess {
+        private val resolver get() = context.contentResolver
+        override fun hasGrant(uri: Uri) = resolver.persistedUriPermissions.any { it.uri == uri }
+        override fun persist(uri: Uri) = resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        override fun release(uri: Uri) = resolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        override fun label(uri: Uri): String? {
+            val document = DocumentsContract.buildDocumentUriUsingTree(uri, DocumentsContract.getTreeDocumentId(uri))
+            return resolver.query(document, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+        }
+    }
+}

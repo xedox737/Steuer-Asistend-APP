@@ -20,6 +20,68 @@ class Phase5BDatevOutputTest {
         beschreibung = "Reparatur", bruttobetrag = 100.0, sollHaben = "S", sachkonto = "4800", gegenkonto = "1200",
         belegfeld1 = "BELEG-$id", hauptkategorie = "Renovierung", objektId = "property", kost1 = "property", steuerlichesJahr = 2026) }
 
+    @Test fun savedCsvAndAdvisorZipAreRegisteredBeforeCachePublication() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val coordinator = OfflineBackupCoordinator.shared
+        val observed = mutableListOf<Boolean>()
+        val probe = object : android.content.ContextWrapper(context) {
+            override fun getCacheDir(): java.io.File {
+                observed += runCatching { coordinator.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                return context.cacheDir
+            }
+        }
+        val bookings = records
+        val report = BookingValidationService.validateRecords(bookings, profile)
+        val creators: List<() -> AdvisorPackageResult> = listOf(
+            { DatevCsvOutput.create(probe, bookings, profile, report, "2026") },
+            { AdvisorPackageBuilder.buildPackage(probe, bookings, emptyList(), emptyList(), false, profile, report) }
+        )
+        creators.forEach { create ->
+            observed.clear()
+            val before = coordinator.beginCapture()
+            val result = create()
+            try {
+                assertEquals(listOf(true), observed)
+                assertTrue(result.outputFile.isFile && result.outputFile.length() > 0)
+                assertEquals(ReceiptManifestService.calculateSha256(result.outputFile), result.sha256Checksum)
+                assertEquals(2, result.totalRecords)
+                org.junit.Assert.assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(before) }
+                coordinator.completeCapture(coordinator.beginCapture())
+            } finally { result.outputFile.delete() }
+        }
+    }
+
+    @Test fun legacyZipIsRegisteredBeforeCachePublication() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val coordinator = OfflineBackupCoordinator.shared
+        val observed = mutableListOf<Boolean>()
+        val probe = object : android.content.ContextWrapper(context) {
+            override fun getCacheDir(): java.io.File {
+                observed += runCatching { coordinator.beginCapture() }.exceptionOrNull() is OfflineBackupValidationException
+                return context.cacheDir
+            }
+        }
+        val before = coordinator.beginCapture()
+        val file = DatevExporter.createDatevZipPackage(probe, listOf(approvedReceipt()),
+            DatevConfig(beraterNummer = "1111111", mandantenNummer = "11111", mandantenName = "Testmandant", wirtschaftsjahr = 2026))
+        try {
+            assertEquals(listOf(true), observed)
+            ZipFile(file).use { zip ->
+                assertNotNull(zip.getEntry("EXTF_Buchungsstapel.csv"))
+                assertNotNull(zip.getEntry("document.xml"))
+            }
+            org.junit.Assert.assertThrows(OfflineBackupValidationException::class.java) { coordinator.completeCapture(before) }
+            coordinator.completeCapture(coordinator.beginCapture())
+        } finally { file.delete() }
+    }
+
+    private fun approvedReceipt() = Receipt(id = 2001, aussteller = "Test GmbH", datum = "2026-08-01", uhrzeit = "",
+        bruttobetrag = 100.0, hauptkategorie = "Instandhaltung & Reparaturen", unterkategorie = "Reparatur",
+        kontoNr = "4801", beschreibung = "Anonymisierter Testbeleg", internalId = "receipt-2001",
+        allocationsJson = AccountingApprovalJson.encodeAllocations(listOf(PersistedAllocation("a", "Reparatur", 100.0, 10_000))),
+        bookingProposalsJson = AccountingApprovalJson.encodeBookingProposals(listOf(PersistedBookingProposal("a", "4801", "70000", 10_000, ""))),
+        freigabestatus = "FREIGEGEBEN")
+
     @Test fun csvOutputIsDirectExtfWithCorrectMimeAndTwoRecordsWithoutOriginals() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val bookings = records

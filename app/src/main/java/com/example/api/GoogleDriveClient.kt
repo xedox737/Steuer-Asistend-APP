@@ -76,7 +76,7 @@ object GoogleDriveClient {
 
     private data class CreatePlan(val id: String, val existing: DriveOriginalFingerprint?)
     private fun creationScope(context: Context): String {
-        val account = context.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+        val account = com.example.data.PersistentPreferenceInventory.open(context, "google_drive_prefs")
             .getString("connected_email", null)?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotBlank)
             ?: throw DriveAccessFailure(DriveAccessFailure.Reason.INVALID_METADATA)
         return com.example.data.StableDocumentIdentity.sha256("${DriveEnvironment.appIdentifier}\u0000$account".toByteArray())
@@ -297,7 +297,7 @@ object GoogleDriveClient {
     ) {
         try {
             // 1. Save locally in SharedPreferences
-            val prefs = context.getSharedPreferences("category_folder_mappings_prefs", Context.MODE_PRIVATE)
+            val prefs = com.example.data.PersistentPreferenceInventory.open(context, "category_folder_mappings_prefs")
             prefs.edit().putString(canonicalPathKey, folderId).apply()
 
             // 2. Save in category-folder-mappings.json on Drive
@@ -436,7 +436,7 @@ object GoogleDriveClient {
         val requestKey = if (canonicalPathKey != null) "path#$canonicalPathKey" else "name#$name"
         val cacheKey = "$accountKey#${DriveEnvironment.rootFolderName}#${parentId ?: "root"}#$requestKey"
         val prefs = if (canonicalPathKey != null && context != null)
-            context.getSharedPreferences("category_folder_mappings_prefs", Context.MODE_PRIVATE) else null
+            com.example.data.PersistentPreferenceInventory.open(context, "category_folder_mappings_prefs") else null
         suspend fun checked(id: String): String {
             val meta = getFileMetadataChecked(accessToken, id)
             if (meta.mimeType != "application/vnd.google-apps.folder") throw DriveAccessFailure(DriveAccessFailure.Reason.WRONG_MIME)

@@ -122,7 +122,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     init { viewModelScope.launch { renovationStore.refresh() } }
 
     internal fun bankPhase2DServiceForUi(): com.example.data.BankPhase2DService = com.example.data.BankPhase2DService(
-        database, getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        database, com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
     )
     private val repository = ReceiptRepository(
         database.receiptDao(),
@@ -175,7 +175,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
 
-    private val sharedPrefs = application.getSharedPreferences("google_drive_prefs", Context.MODE_PRIVATE)
+    private val sharedPrefs = com.example.data.PersistentPreferenceInventory.open(application, "google_drive_prefs")
     private val _aiProviderState = MutableStateFlow(AiProviderSettings.loadState(application))
     val aiProviderState: StateFlow<AiProviderState> = _aiProviderState.asStateFlow()
 
@@ -187,37 +187,39 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         newGoogleRoutesKey: String = ""
     ): String? {
         return try {
-            if (newOpenAiKey.isNotBlank()) {
-                AiProviderSettings.storeOpenAiKey(
-                    getApplication(),
-                    newOpenAiKey.toCharArray()
+            com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+                if (newOpenAiKey.isNotBlank()) {
+                    AiProviderSettings.storeOpenAiKey(
+                        getApplication(),
+                        newOpenAiKey.toCharArray()
+                    )
+                }
+                if (newGeminiKey.isNotBlank()) {
+                    AiProviderSettings.storeGeminiKey(
+                        getApplication(),
+                        newGeminiKey.toCharArray()
+                    )
+                }
+                if (newGoogleRoutesKey.isNotBlank()) {
+                    AiProviderSettings.storeGoogleRoutesKey(
+                        getApplication(),
+                        newGoogleRoutesKey.toCharArray()
+                    )
+                }
+                val onlyGoogleUpdate = newGoogleRoutesKey.isNotBlank() &&
+                    newOpenAiKey.isBlank() && newGeminiKey.isBlank() &&
+                    selectedProviderIsUnavailable(provider)
+                if (onlyGoogleUpdate) {
+                    _aiProviderState.value = AiProviderSettings.loadState(getApplication())
+                    return null
+                }
+                _aiProviderState.value = AiProviderSettings.saveSelection(
+                    context = getApplication(),
+                    provider = provider,
+                    model = model
                 )
+                null
             }
-            if (newGeminiKey.isNotBlank()) {
-                AiProviderSettings.storeGeminiKey(
-                    getApplication(),
-                    newGeminiKey.toCharArray()
-                )
-            }
-            if (newGoogleRoutesKey.isNotBlank()) {
-                AiProviderSettings.storeGoogleRoutesKey(
-                    getApplication(),
-                    newGoogleRoutesKey.toCharArray()
-                )
-            }
-            val onlyGoogleUpdate = newGoogleRoutesKey.isNotBlank() &&
-                newOpenAiKey.isBlank() && newGeminiKey.isBlank() &&
-                selectedProviderIsUnavailable(provider)
-            if (onlyGoogleUpdate) {
-                _aiProviderState.value = AiProviderSettings.loadState(getApplication())
-                return null
-            }
-            _aiProviderState.value = AiProviderSettings.saveSelection(
-                context = getApplication(),
-                provider = provider,
-                model = model
-            )
-            null
         } catch (e: IllegalArgumentException) {
             e.message ?: "KI-Einstellungen konnten nicht gespeichert werden."
         } catch (_: Exception) {
@@ -253,7 +255,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun deleteGeminiKey() {
         _aiProviderState.value = AiProviderSettings.clearGeminiKey(getApplication())
     }
-    private val learnedRulesPrefs = application.getSharedPreferences("ki_learned_rules_prefs", Context.MODE_PRIVATE)
+    private val learnedRulesPrefs = com.example.data.PersistentPreferenceInventory.open(application, "ki_learned_rules_prefs")
 
     // KI Adaptive Learning Rules State
     private val _learnedRules = MutableStateFlow<List<LearnedVendorRule>>(emptyList())
@@ -310,7 +312,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun confirmBankAccountImport(accountId: String? = null, newAccountName: String = "") {
         val batches = _pendingBankAccountImports.getAndUpdate { emptyList() }
         if (batches.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val selected = accountId?.let { database.bankDao().getAccount(it) }
                     ?: newAccountName.trim().takeIf(String::isNotBlank)?.let {
@@ -604,7 +606,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun clearRenovationError() { _renovationError.value = null }
 
     fun saveRenovationMeasure(measure: com.example.data.RenovationMeasure, onSaved: () -> Unit = {}) {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             try {
                 kotlinx.coroutines.withContext(Dispatchers.IO) {
                     val property = requireNotNull(database.propertyDao().getPropertyByPropertyId(measure.propertyId)) { "Bitte eine gültige Immobilie wählen." }
@@ -622,7 +624,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun saveRenovationRelation(relation: com.example.data.RenovationReceiptRelation, onSaved: () -> Unit = {}) {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             try {
                 kotlinx.coroutines.withContext(Dispatchers.IO) {
                     val receipt = database.receiptDao().getAllReceiptsList().singleOrNull { it.internalId == relation.receiptInternalId }
@@ -640,7 +642,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun exportRenovationReport(propertyId: String, onCreated: (File) -> Unit) {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             try {
                 val file = kotlinx.coroutines.withContext(Dispatchers.IO) {
                     renovationStore.refresh()
@@ -820,7 +822,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         if (_isDriveConnected.value && _autoDriveBackup.value) {
             viewModelScope.launch {
                 kotlinx.coroutines.delay(1200)
-                syncAllToDrive()
+                syncAllToDriveAutomatically()
             }
         }
 
@@ -855,7 +857,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val cleanAussteller = aussteller.trim()
         if (cleanAussteller.isEmpty() || cleanAussteller.lowercase().contains("unbekannt")) return
 
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val normalizedKey = "rule_" + cleanAussteller.lowercase().replace(Regex("[^a-z0-9]"), "_")
             val existingString = learnedRulesPrefs.getString(normalizedKey, null)
             val previous = existingString?.let { raw ->
@@ -876,7 +878,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteLearnedRule(aussteller: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val normalizedKey = "rule_" + aussteller.trim().lowercase().replace(Regex("[^a-z0-9]"), "_")
             learnedRulesPrefs.edit().remove(normalizedKey).apply()
             loadLearnedRules()
@@ -884,7 +886,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearAllLearnedRules() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val editor = learnedRulesPrefs.edit()
             learnedRulesPrefs.all.keys.forEach { k ->
                 if (k.startsWith("rule_")) editor.remove(k)
@@ -954,66 +956,75 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun loadUnitById(unitPrefs: android.content.SharedPreferences, propertyId: String, unitId: String, name: String): WohneinheitStatus {
-        val idPrefix = scopedUnitPrefix(propertyId, unitId)
-        val namePrefix = scopedUnitNamePrefix(propertyId, name)
-        val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, unitId, name)
-        val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches
-
-        fun string(field: String, legacyKey: String, default: String): String {
-            if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getString(idPrefix + field, default) ?: default
-            if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
-                val value = unitPrefs.getString(namePrefix + field, default) ?: default
-                unitPrefs.edit().putString(idPrefix + field, value).apply()
-                return value
-            }
-            if (legacyAllowed && unitPrefs.contains(legacyKey)) {
-                val value = unitPrefs.getString(legacyKey, default) ?: default
-                unitPrefs.edit().putString(idPrefix + field, value).apply()
-                return value
-            }
-            return default
+        var migrationWriter: java.io.Closeable? = null
+        fun publishMigration(action: () -> Unit) {
+            if (migrationWriter == null) migrationWriter = com.example.data.OfflineBackupCoordinator.shared.beginWrite()
+            action()
         }
+        try {
+            val idPrefix = scopedUnitPrefix(propertyId, unitId)
+            val namePrefix = scopedUnitNamePrefix(propertyId, name)
+            val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, propertyId, unitId, name)
+            val legacyAllowed = propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches
 
-        fun number(field: String, legacyKey: String): Double {
-            if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
-            if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
-                val value = unitPrefs.getFloat(namePrefix + field, 0f)
-                if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
-                return value.toDouble()
+            fun string(field: String, legacyKey: String, default: String): String {
+                if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getString(idPrefix + field, default) ?: default
+                if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
+                    val value = unitPrefs.getString(namePrefix + field, default) ?: default
+                    publishMigration { unitPrefs.edit().putString(idPrefix + field, value).apply() }
+                    return value
+                }
+                if (legacyAllowed && unitPrefs.contains(legacyKey)) {
+                    val value = unitPrefs.getString(legacyKey, default) ?: default
+                    publishMigration { unitPrefs.edit().putString(idPrefix + field, value).apply() }
+                    return value
+                }
+                return default
             }
-            if (legacyAllowed && unitPrefs.contains(legacyKey)) {
-                val value = unitPrefs.getFloat(legacyKey, 0f)
-                if (value.isFinite() && value >= 0f) unitPrefs.edit().putFloat(idPrefix + field, value).apply()
-                return value.toDouble()
+
+            fun number(field: String, legacyKey: String): Double {
+                if (unitPrefs.contains(idPrefix + field)) return unitPrefs.getFloat(idPrefix + field, 0f).toDouble()
+                if (aliasMatches && unitPrefs.contains(namePrefix + field)) {
+                    val value = unitPrefs.getFloat(namePrefix + field, 0f)
+                    if (value.isFinite() && value >= 0f) publishMigration { unitPrefs.edit().putFloat(idPrefix + field, value).apply() }
+                    return value.toDouble()
+                }
+                if (legacyAllowed && unitPrefs.contains(legacyKey)) {
+                    val value = unitPrefs.getFloat(legacyKey, 0f)
+                    if (value.isFinite() && value >= 0f) publishMigration { unitPrefs.edit().putFloat(idPrefix + field, value).apply() }
+                    return value.toDouble()
+                }
+                return 0.0
             }
-            return 0.0
+
+            val stored = WohneinheitStatus(
+                name = name,
+                label = string("label", "unit_label_$name", name),
+                status = string("status", "unit_status_$name", "Leerstand"),
+                mieter = string("mieter", "unit_mieter_$name", ""),
+                kaltmiete = number("rent", "unit_rent_$name"),
+                wohnflaeche = number("area", "unit_area_$name"),
+                mietvertragsstart = string("start", "unit_start_$name", ""),
+                unitId = unitId
+            )
+            val periods = TenantHistoryStore.load(getApplication(), propertyId, unitId, name)
+            if (periods.isEmpty()) return stored
+            val period = TenantHistoryStore.currentAt(periods)
+            return if (period != null) stored.copy(
+                status = "Vermietet", mieter = period.tenantName,
+                kaltmiete = period.amountsAt(java.time.LocalDate.now()).kaltmiete,
+                mietvertragsstart = period.startDate
+            ) else stored.copy(
+                status = stored.status.takeUnless { it == "Vermietet" } ?: "Leerstand",
+                mieter = "", kaltmiete = 0.0, mietvertragsstart = ""
+            )
+        } finally {
+            migrationWriter?.close()
         }
-
-        val stored = WohneinheitStatus(
-            name = name,
-            label = string("label", "unit_label_$name", name),
-            status = string("status", "unit_status_$name", "Leerstand"),
-            mieter = string("mieter", "unit_mieter_$name", ""),
-            kaltmiete = number("rent", "unit_rent_$name"),
-            wohnflaeche = number("area", "unit_area_$name"),
-            mietvertragsstart = string("start", "unit_start_$name", ""),
-            unitId = unitId
-        )
-        val periods = TenantHistoryStore.load(getApplication(), propertyId, unitId, name)
-        if (periods.isEmpty()) return stored
-        val period = TenantHistoryStore.currentAt(periods)
-        return if (period != null) stored.copy(
-            status = "Vermietet", mieter = period.tenantName,
-            kaltmiete = period.amountsAt(java.time.LocalDate.now()).kaltmiete,
-            mietvertragsstart = period.startDate
-        ) else stored.copy(
-            status = stored.status.takeUnless { it == "Vermietet" } ?: "Leerstand",
-            mieter = "", kaltmiete = 0.0, mietvertragsstart = ""
-        )
     }
 
     private fun loadUnits(metaUnitsStr: String, propertyId: String): List<WohneinheitStatus> {
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
         return com.example.data.UnitIdentity.read(metaUnitsStr, propertyId, unitPrefs).entries
             .map { loadUnitById(unitPrefs, propertyId, it.unitId, it.name) }
     }
@@ -1030,7 +1041,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     internal fun unitIdentityError(metadata: PropertyMetadata): String? =
         com.example.data.UnitIdentity.read(metadata.wohneinheiten, metadata.propertyId,
-            getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)).error
+            com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")).error
 
     private fun resolveReceiptUnitId(propertyId: String, unitName: String, existingUnitId: String = ""): String {
         val property = properties.value.firstOrNull { it.propertyId == propertyId }
@@ -1087,90 +1098,94 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateWohneinheit(updated: WohneinheitStatus, correctCurrentContract: Boolean = false) {
-        if (runCatching { com.example.data.NumericWriteBoundary.float(updated.kaltmiete); com.example.data.NumericWriteBoundary.float(updated.wohnflaeche) }.isFailure) {
-            _driveSyncStatus.value = "Bitte gültige Miet- und Flächenwerte eingeben. Der Wert ist möglicherweise zu groß."
-            return
-        }
-        val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
-            propertyMetadata.value?.takeIf { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
-                ?: properties.value.singleOrNull { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
-        } ?: propertyMetadata.value?.takeIf { updated.unitId.isBlank() } ?: run {
-            _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR
-            return
-        }
-        val existing = getWohneinheitenForProperty(targetProperty).singleOrNull {
-            if (updated.unitId.isNotBlank()) it.unitId == updated.unitId else it.name == updated.name
-        } ?: run { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
-        if (correctCurrentContract) {
-            val unitId = existing.unitId
-            if (!TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)) {
-                _driveSyncStatus.value = StoredListRead.ERROR
+        com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+            if (runCatching { com.example.data.NumericWriteBoundary.float(updated.kaltmiete); com.example.data.NumericWriteBoundary.float(updated.wohnflaeche) }.isFailure) {
+                _driveSyncStatus.value = "Bitte gültige Miet- und Flächenwerte eingeben. Der Wert ist möglicherweise zu groß."
                 return
             }
+            val targetProperty = updated.unitId.takeIf(String::isNotBlank)?.let { stableId ->
+                propertyMetadata.value?.takeIf { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
+                    ?: properties.value.singleOrNull { property -> getWohneinheitenForProperty(property).any { it.unitId == stableId } }
+            } ?: propertyMetadata.value?.takeIf { updated.unitId.isBlank() } ?: run {
+                _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR
+                return
+            }
+            val existing = getWohneinheitenForProperty(targetProperty).singleOrNull {
+                if (updated.unitId.isNotBlank()) it.unitId == updated.unitId else it.name == updated.name
+            } ?: run { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
+            if (correctCurrentContract) {
+                val unitId = existing.unitId
+                if (!TenantHistoryStore.correctCurrentRentalDetails(getApplication(), targetProperty.propertyId, unitId, updated)) {
+                    _driveSyncStatus.value = StoredListRead.ERROR
+                    return
+                }
+            }
+            updateWohneinheitForProperty(updated, targetProperty)
         }
-        updateWohneinheitForProperty(updated, targetProperty)
     }
 
     private fun updateWohneinheitForProperty(updated: WohneinheitStatus, targetProperty: PropertyMetadata) {
-        com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
-        com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
-        val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
-        val identities = com.example.data.UnitIdentity.read(targetProperty.wohneinheiten, targetProperty.propertyId, unitPrefs)
-        if (identities.error != null) { _driveSyncStatus.value = identities.error; return }
-        val identity = if (updated.unitId.isNotBlank()) identities.entries.singleOrNull { it.unitId == updated.unitId }
-            else identities.entries.singleOrNull { it.name == updated.name }
-        if (identity == null) { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
-        val stableId = identity.unitId
-        val renamed = identities.entries.map { if (it.unitId == stableId) it.copy(name = updated.name) else it }
-        val encoded = runCatching { com.example.data.UnitIdentity.encode(renamed) }.getOrElse {
-            _driveSyncStatus.value = it.message; return
-        }
-        val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
-        val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, targetProperty.propertyId, stableId, updated.name)
-
-        unitPrefs.edit().apply {
-            putString(idPrefix + "status", updated.status)
-            putString(idPrefix + "label", if (updated.label == identity.name) updated.name else updated.label)
-            putString(idPrefix + "mieter", updated.mieter)
-            putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
-            putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
-            putString(idPrefix + "start", updated.mietvertragsstart)
-
-            if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches) {
-                putString("unit_status_${updated.name}", updated.status)
-                putString("unit_label_${updated.name}", updated.label)
-                putString("unit_mieter_${updated.name}", updated.mieter)
-                putFloat("unit_rent_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
-                putFloat("unit_area_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
-                putString("unit_start_${updated.name}", updated.mietvertragsstart)
-                putString("unit_id_${updated.name}", stableId)
+        com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
+            com.example.data.NumericWriteBoundary.float(updated.kaltmiete)
+            com.example.data.NumericWriteBoundary.float(updated.wohnflaeche)
+            val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
+            val identities = com.example.data.UnitIdentity.read(targetProperty.wohneinheiten, targetProperty.propertyId, unitPrefs)
+            if (identities.error != null) { _driveSyncStatus.value = identities.error; return }
+            val identity = if (updated.unitId.isNotBlank()) identities.entries.singleOrNull { it.unitId == updated.unitId }
+                else identities.entries.singleOrNull { it.name == updated.name }
+            if (identity == null) { _driveSyncStatus.value = com.example.data.UnitIdentity.ERROR; return }
+            val stableId = identity.unitId
+            val renamed = identities.entries.map { if (it.unitId == stableId) it.copy(name = updated.name) else it }
+            val encoded = runCatching { com.example.data.UnitIdentity.encode(renamed) }.getOrElse {
+                _driveSyncStatus.value = it.message; return
             }
-        }.apply()
+            val idPrefix = scopedUnitPrefix(targetProperty.propertyId, stableId)
+            val aliasMatches = com.example.data.UnitIdentity.legacyAliasMatches(unitPrefs, targetProperty.propertyId, stableId, updated.name)
 
-        val structuredProperty = targetProperty.copy(wohneinheiten = encoded)
-        if (targetProperty.wohneinheiten != encoded) viewModelScope.launch(Dispatchers.IO) {
-            repository.updatePropertyMetadata(structuredProperty)
-        }
-        if (propertyMetadata.value?.propertyId == targetProperty.propertyId) {
-            _wohneinheitenStatus.value = getWohneinheitenForProperty(structuredProperty)
-        }
+            unitPrefs.edit().apply {
+                putString(idPrefix + "status", updated.status)
+                putString(idPrefix + "label", if (updated.label == identity.name) updated.name else updated.label)
+                putString(idPrefix + "mieter", updated.mieter)
+                putFloat(idPrefix + "rent", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
+                putFloat(idPrefix + "area", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
+                putString(idPrefix + "start", updated.mietvertragsstart)
 
-        if (FirestoreService.isCloudActive()) {
-            viewModelScope.launch {
-                FirestoreService.saveWohneinheit(updated.copy(unitId = stableId), targetProperty.propertyId)
+                if (targetProperty.propertyId == com.example.data.StableDocumentIdentity.LEGACY_PROPERTY_ID && aliasMatches) {
+                    putString("unit_status_${updated.name}", updated.status)
+                    putString("unit_label_${updated.name}", updated.label)
+                    putString("unit_mieter_${updated.name}", updated.mieter)
+                    putFloat("unit_rent_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.kaltmiete))
+                    putFloat("unit_area_${updated.name}", com.example.data.NumericWriteBoundary.float(updated.wohnflaeche))
+                    putString("unit_start_${updated.name}", updated.mietvertragsstart)
+                    putString("unit_id_${updated.name}", stableId)
+                }
+            }.apply()
+
+            val structuredProperty = targetProperty.copy(wohneinheiten = encoded)
+            if (targetProperty.wohneinheiten != encoded) com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
+                repository.updatePropertyMetadata(structuredProperty)
             }
-        }
+            if (propertyMetadata.value?.propertyId == targetProperty.propertyId) {
+                _wohneinheitenStatus.value = getWohneinheitenForProperty(structuredProperty)
+            }
 
-        if (_isDriveConnected.value && _autoDriveBackup.value && propertyMetadata.value?.propertyId == targetProperty.propertyId) {
-            val email = _googleAccountEmail.value
-            if (email != null) {
-                viewModelScope.launch(Dispatchers.IO) {
-                    try {
-                        val token = getValidToken(email)
-                        val folderId = GoogleDriveClient.getOrCreateFolder(token) ?: return@launch
-                        GoogleDriveClient.uploadWohneinheitenCsv(token, folderId, _wohneinheitenStatus.value)
-                    } catch (e: Exception) {
-                        DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed for units")
+            if (FirestoreService.isCloudActive()) {
+                com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
+                    FirestoreService.saveWohneinheit(updated.copy(unitId = stableId), targetProperty.propertyId)
+                }
+            }
+
+            if (_isDriveConnected.value && _autoDriveBackup.value && propertyMetadata.value?.propertyId == targetProperty.propertyId) {
+                val email = _googleAccountEmail.value
+                if (email != null) {
+                    com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
+                        try {
+                            val token = getValidToken(email)
+                            val folderId = GoogleDriveClient.getOrCreateFolder(token) ?: return@launch
+                            GoogleDriveClient.uploadWohneinheitenCsv(token, folderId, _wohneinheitenStatus.value)
+                        } catch (e: Exception) {
+                            DiagnosticLog.w("ReceiptViewModel", "Drive sync postponed for units")
+                        }
                     }
                 }
             }
@@ -1252,7 +1267,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             isRunning = true,
             googleAccount = email
         )
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val dateFormat = SimpleDateFormat("dd.MM.yyyy, HH:mm 'Uhr'", Locale.GERMANY)
                 if (email == "Nicht angemeldet") {
@@ -1388,7 +1403,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             return
         }
         val session = driveSession.get()
-        driveInitializationJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+        driveInitializationJob = com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO, start = CoroutineStart.LAZY) {
             try {
                 _driveSyncStatus.value = "Initialisiere dauerhafte Datenstruktur..."
                 val (token, result) = initializeDriveWithToken(email, session)
@@ -1456,7 +1471,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun checkForDriveRestore() {
         val email = _googleAccountEmail.value ?: return
         val session = driveSession.get()
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 _driveSyncStatus.value = "Prüfe Google-Drive-Bestand für Wiederherstellung..."
                 val (token, initResult) = initializeDriveWithToken(email, session)
@@ -1488,6 +1503,13 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     internal fun offlineBackupServiceForUi() = com.example.data.OfflineBackupService(getApplication(), database)
 
+    private val offlineBackupController by lazy {
+        OfflineBackupController(getApplication(), database, viewModelScope,
+            refreshAfterRestore = { refreshPreferencesAfterRestore() }).also { it.reload() }
+    }
+
+    internal fun offlineBackupControllerForUi() = offlineBackupController
+
     internal suspend fun refreshPreferencesAfterRestore() {
         val application = getApplication<Application>()
         renovationStore.refresh()
@@ -1515,7 +1537,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val session = driveSession.get()
         _isRestoring.value = true
         _driveSyncStatus.value = "Wiederherstellung aus Google Drive läuft..."
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val (token, initResult) = initializeDriveWithToken(email, session)
                 if (initResult is com.example.data.DriveInitializationResult.Failure) {
@@ -1593,7 +1615,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val session = driveSession.get()
         _isRestoring.value = true
         _driveSyncStatus.value = "Führe Restore-Test (Dry Run) durch..."
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val (token, initResult) = initializeDriveWithToken(email, session)
                 if (initResult is com.example.data.DriveInitializationResult.Failure) {
@@ -1670,23 +1692,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun forceDocumentDownload(receipt: Receipt) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
-                // Delete existing local files if they exist to force redownload
-                if (!receipt.imageUrl.isNullOrEmpty()) {
-                    val paths = com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl)
-                    paths.forEach { path ->
-                        val file = java.io.File(path)
-                        if (file.exists()) {
-                            file.delete()
-                            DiagnosticLog.d("ReceiptViewModel", "Deleted corrupted or empty local file at")
-                        }
-                    }
-                }
-                
-                // Clear the status and trigger download
+                // Keep previous versions until all remote originals have passed validation.
                 _documentDownloadStatus.value = _documentDownloadStatus.value.toMutableMap().apply { remove(receipt.internalId) }
-                downloadReceiptDocument(receipt)
+                downloadReceiptDocument(receipt, forceRemote = true)
             } catch (e: Exception) {
                 DiagnosticLog.e("ReceiptViewModel", "Error in forceDocumentDownload")
             }
@@ -1699,7 +1709,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             DiagnosticLog.e("ReceiptViewModel", "Diagnose failed: No account email")
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val token = getValidToken(email)
                 val receipts = repository.getAllReceiptsList()
@@ -1803,7 +1813,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun downloadReceiptDocument(receipt: Receipt) {
+    fun downloadReceiptDocument(receipt: Receipt, forceRemote: Boolean = false) {
         val email = _googleAccountEmail.value
         if (email.isNullOrEmpty()) {
             _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Nicht an Google Drive angemeldet."))
@@ -1812,7 +1822,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         
         _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.DOWNLOADING))
         
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
             DiagnosticLog.d("ReceiptViewModel", "Start Drive-Download für Beleg")
             try {
@@ -1820,7 +1830,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                     val token = getValidToken(email)
                     _driveSyncStatus.value = "Lade Dokument für Beleg '${receipt.displayId}' herunter..."
                     
-                    val localPath = drivePersistenceRepository.downloadDocumentOnDemand(token, receipt)
+                    val localPath = drivePersistenceRepository.downloadDocumentOnDemand(token, receipt, forceRemote = forceRemote)
                     
                     val endTime = System.currentTimeMillis()
                     val targetFile = java.io.File(localPath)
@@ -1965,6 +1975,12 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _autoDriveBackup.value = enabled
     }
 
+    /** Recheck persisted state when queued automatic work actually starts. */
+    fun syncAllToDriveAutomatically() {
+        if (!sharedPrefs.getBoolean("auto_backup", true)) return
+        syncAllToDrive()
+    }
+
     @Synchronized
     fun syncAllToDrive() {
         val email = _googleAccountEmail.value ?: return
@@ -1977,7 +1993,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val initialization = driveInitializationJob
         _isDriveSyncing.value = true
         _driveSyncStatus.value = "Synchronisiere mit Google Drive..."
-        driveSyncJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+        driveSyncJob = com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO, start = CoroutineStart.LAZY) {
             var persistedReportKey: Triple<Int, com.example.api.DriveSyncOutcome, Int>? = null
             val recorder = com.example.api.DriveSyncRecorder(onUpdate = { report ->
                 if (session == driveSession.get()) {
@@ -2189,7 +2205,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         val email = _googleAccountEmail.value ?: return
         if (!_isDriveConnected.value) return
         val session = driveSession.get()
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             driveMutationGate.withLock {
             if (!_autoDriveBackup.value || session != driveSession.get()) return@withLock
             val currentReceipt = repository.getReceiptById(receipt.id) ?: return@withLock
@@ -2218,7 +2234,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun syncReceiptManually(receipt: Receipt) {
         val email = _googleAccountEmail.value ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             driveMutationGate.withLock {
             if (!_isDriveConnected.value) return@withLock
             val currentReceipt = repository.getReceiptById(receipt.id) ?: return@withLock
@@ -2252,7 +2268,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun importBankFile(uri: android.net.Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _pendingBankAccountImports.value = emptyList()
             _bankImportStatus.value = "Kontoauszug wird eingelesen …"
             try {
@@ -2374,7 +2390,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         overwriteProtected: Boolean = false
     ) {
         if (transactionIds.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val result = com.example.data.BankBatchActionService(database).apply(
                 transactionIds = transactionIds,
                 action = action,
@@ -2401,7 +2417,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun undoLastBankBatchAction() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val snapshot = bankUndoSnapshot
             if (snapshot.isEmpty()) return@launch
             com.example.data.BankBatchActionService(database).restore(snapshot)
@@ -2416,7 +2432,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun updateBankTransactionReviewState(transactionId: String, reviewState: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val now = java.time.Instant.now().toString()
             database.bankDao().updateTransactionReviewState(transactionId, reviewState, now)
             _bankImportStatus.value = if (reviewState == com.example.data.BankReviewState.DONE) {
@@ -2428,7 +2444,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun confirmBankTransferPair(transactionId: String, counterpartTransactionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val dao = database.bankDao()
             val first = dao.getTransaction(transactionId) ?: return@launch
             val second = dao.getTransaction(counterpartTransactionId) ?: return@launch
@@ -2453,7 +2469,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun unlinkBankTransferPair(transactionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val dao = database.bankDao()
             val selected = dao.getTransaction(transactionId) ?: return@launch
             val counterpart = selected.linkedTransferTransactionId.takeIf { it.isNotBlank() }?.let { dao.getTransaction(it) }
@@ -2508,7 +2524,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         transferCounterAccountId: String = "",
         linkedTransferTransactionId: String = ""
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val dao = database.bankDao()
             val transaction = dao.getTransaction(transactionId) ?: return@launch
             val now = java.time.Instant.now().toString()
@@ -2643,7 +2659,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun confirmBankReceiptLink(transactionId: String, receiptId: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
             val receipt = repository.getReceiptById(receiptId) ?: return@launch
             _bankImportStatus.value = confirmBankReceiptLinkInternal(transaction, receipt)
@@ -2652,7 +2668,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
     fun confirmManyBankTransactionsForReceipt(transactionIds: Set<String>, receiptId: Int) {
         if (transactionIds.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val receipt = repository.getReceiptById(receiptId) ?: return@launch
             var linked = 0
             val messages = mutableListOf<String>()
@@ -2706,7 +2722,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
 
     fun confirmPhase2DCombination(suggestionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val suggestion = bankPhase2DCombinations.value.firstOrNull { it.suggestionId == suggestionId }
             if (suggestion == null) {
                 _bankImportStatus.value = "Kombinationsvorschlag ist nicht mehr aktuell."
@@ -2718,7 +2734,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun executePhase2DSafeBatch(stableKeys: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val selected = bankPhase2DReviewQueue.value.filter { it.stableKey in stableKeys }
             _bankImportStatus.value = com.example.data.BankPhase2DService(database)
                 .executeSafeBatch(selected, explicitlyConfirmed = true).message
@@ -2726,14 +2742,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun changePhase2DAllocation(linkId: String, amount: Double) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _bankImportStatus.value = com.example.data.BankPhase2DService(database)
                 .changeAllocation(linkId, amount, explicitlyConfirmed = true).message
         }
     }
 
     fun unlinkPhase2DLink(linkId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _bankImportStatus.value = com.example.data.BankPhase2DService(database).unlink(linkId).message
         }
     }
@@ -2743,7 +2759,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         asPartial: Boolean = false,
         allocatedAmount: Double? = null
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val transaction = database.bankDao().getTransaction(suggestion.transactionId) ?: return@launch
             val alreadyConfirmed = database.bankRentAssignmentDao().confirmedRentAmount(
                 suggestion.propertyId, suggestion.unitId, suggestion.rentMonth
@@ -2766,7 +2782,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         tenantReference: String,
         allocatedAmount: Double
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
             val property = properties.value.firstOrNull { it.propertyId == propertyId }
             val month = runCatching { java.time.YearMonth.parse(rentMonth) }.getOrNull()
@@ -2868,7 +2884,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun unlinkBankRentAssignment(assignmentId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val assignment = database.bankRentAssignmentDao().getById(assignmentId) ?: return@launch
             database.bankRentAssignmentDao().deleteById(assignmentId)
             refreshBankTransactionStatus(assignment.transactionId)
@@ -2885,14 +2901,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         runCatching { com.example.data.NumericWriteBoundary.bankRule(rule) }.exceptionOrNull()?.let {
             _driveSyncStatus.value = it.message ?: "Bitte die Betragsgrenzen prüfen."; return false
         }
-        viewModelScope.launch(Dispatchers.IO) { database.bankLearningRuleDao().upsertRule(rule) }
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { database.bankLearningRuleDao().upsertRule(rule) }
         return true
     }
-    fun acceptBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).accept(ruleId) } }
-    fun rejectBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).reject(ruleId) } }
-    fun setBankRuleEnabled(ruleId: String, enabled: Boolean) { viewModelScope.launch(Dispatchers.IO) { val dao=database.bankLearningRuleDao(); val r=dao.getRule(ruleId)?:return@launch; dao.upsertRule(r.copy(enabled=enabled, state=com.example.data.BankRuleState.ACTIVE, updatedAt=java.time.Instant.now().toString())) } }
-    fun deleteBankRule(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { database.bankLearningRuleDao().deleteRule(ruleId) } }
-    fun rejectBankRuleMatch(ruleId: String) { viewModelScope.launch(Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).recordRuleRejection(ruleId) } }
+    fun acceptBankRule(ruleId: String) { com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).accept(ruleId) } }
+    fun rejectBankRule(ruleId: String) { com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).reject(ruleId) } }
+    fun setBankRuleEnabled(ruleId: String, enabled: Boolean) { com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { val dao=database.bankLearningRuleDao(); val r=dao.getRule(ruleId)?:return@launch; dao.upsertRule(r.copy(enabled=enabled, state=com.example.data.BankRuleState.ACTIVE, updatedAt=java.time.Instant.now().toString())) } }
+    fun deleteBankRule(ruleId: String) { com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { database.bankLearningRuleDao().deleteRule(ruleId) } }
+    fun rejectBankRuleMatch(ruleId: String) { com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { com.example.data.BankLearningService(database.bankLearningRuleDao()).recordRuleRejection(ruleId) } }
 
     private suspend fun refreshBankTransactionStatus(transactionId: String) {
         val dao = database.bankDao()
@@ -2916,7 +2932,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markBankTransactionNoReceiptRequired(transactionId: String, reason: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val dao = database.bankDao()
             if (dao.getLinksForTransaction(transactionId).isNotEmpty()) {
                 _bankImportStatus.value =
@@ -2934,7 +2950,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun markBankTransactionForReview(transactionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val status = com.example.data.BankReviewStatusService(database.bankDao())
                 .markForReview(transactionId)
             _bankImportStatus.value = when (status) {
@@ -2948,7 +2964,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun reopenBankTransaction(transactionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val status = com.example.data.BankReviewStatusService(database.bankDao())
                 .reopen(transactionId)
             _bankImportStatus.value = when (status) {
@@ -2961,7 +2977,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun proposeBankRuleFromConfirmedReceipt(transactionId: String, receiptId: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val bankDao = database.bankDao()
             val transaction = bankDao.getTransaction(transactionId) ?: return@launch
             val receipt = repository.getReceiptById(receiptId) ?: return@launch
@@ -2991,7 +3007,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun removeBankReceiptLink(linkId: String, transactionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val dao = database.bankDao()
             val link = dao.getLink(linkId)
             dao.deleteLink(linkId)
@@ -3014,7 +3030,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun confirmBankLoanAssignment(transactionId: String, loanId: Int, paymentType: String? = null) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val transaction = database.bankDao().getTransaction(transactionId) ?: return@launch
             val loan = database.loanDao().getAllLoans().firstOrNull { it.id == loanId } ?: return@launch
             val account = database.bankDao().getAccount(transaction.accountId)
@@ -3043,14 +3059,14 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun unlinkBankLoanAssignment(transactionId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao()).unlink(transactionId)
             _bankImportStatus.value = "Darlehenszuordnung gelöst; bestehende Beleglinks wurden nicht verändert."
         }
     }
 
     fun updateBankLoanSplit(transactionId: String, interest: Double?, principal: Double?, accept: Boolean, edited: Boolean = false) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             com.example.data.BankLoanAssignmentService(database.bankLoanAssignmentDao(), database.bankDao())
                 .updateSplit(transactionId, interest, principal, accept, edited)
             _bankImportStatus.value = if (accept) "Zins-/Tilgungsvorschlag aktualisiert." else "Zins-/Tilgungsvorschlag abgelehnt."
@@ -3058,7 +3074,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun proposeBankRuleFromRecurringPattern(patternId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val pattern = bankRecurringAnalysis.value.patterns.firstOrNull { it.patternId == patternId } ?: return@launch
             if (pattern.occurrenceCount < com.example.data.BankRecurringThresholds.MIN_OCCURRENCES_FOR_PATTERN) {
                 _bankImportStatus.value = "Für einen Regelvorschlag fehlen noch bestätigende Vorkommen."
@@ -3105,7 +3121,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun saveRecurringPattern(patternId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val detected = bankRecurringAnalysis.value.patterns.firstOrNull { it.patternId == patternId } ?: return@launch
             val existing = database.bankRecurringPatternDao().get(patternId)
             val now = java.time.Instant.now().toString()
@@ -3115,7 +3131,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setRecurringPatternEnabled(patternId: String, enabled: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             database.bankRecurringPatternDao().setEnabled(patternId, enabled, java.time.Instant.now().toString())
         }
     }
@@ -3536,6 +3552,7 @@ data class AiSearchUiState(
     suspend fun executeWizardExport(
         context: Context
     ): com.example.util.AdvisorPackageResult? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val currentReceipts = database.receiptDao().getAllReceiptsList()
         recalculateWizardStepData(currentReceipts)
         val records = _wizardMappedRecords.value
@@ -3589,7 +3606,7 @@ data class AiSearchUiState(
         _lastExportResult.value = packageResult
 
         // Audit Run Record
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             val auditRun = com.example.data.ExportAuditRun(
                 exportlaufId = packageResult.exportId,
                 timestamp = System.currentTimeMillis(),
@@ -3640,6 +3657,7 @@ data class AiSearchUiState(
 
         _wizardStep.value = 6
         return packageResult
+      }
     }
 
     // DATEV Export State
@@ -3664,6 +3682,7 @@ data class AiSearchUiState(
         mandantenName: String = "",
         wirtschaftsjahr: Int = java.time.LocalDate.now().year
     ): File? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val metaName = propertyMetadata.value?.name.orEmpty()
         val propName = metaName
         val propShort = metaName.take(15)
@@ -3764,12 +3783,15 @@ data class AiSearchUiState(
             DiagnosticLog.e("ReceiptViewModel", "Error exporting to DATEV")
             null
         }
+      }
     }
 
     fun exportToPdf(context: Context, taxYear: Int, includeTaxAdvisorSummary: Boolean = false): File? {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val currentReceipts = receipts.value
         val currentMeta = propertyMetadata.value
         return PdfExporter.exportReceiptsToPdf(context, taxYear, currentReceipts, currentMeta, includeTaxAdvisorSummary)
+      }
     }
 
     // Preloaded templates for mock scanning
@@ -4044,13 +4066,13 @@ data class AiSearchUiState(
                 it.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(metadata.propertyId, it.name) }, it.name) })
         }
         if (validation.isFailure) { _driveSyncStatus.value = validation.exceptionOrNull()?.message ?: "Bitte Eingaben prüfen."; return }
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val propertyId = metadata.propertyId.ifBlank { java.util.UUID.randomUUID().toString() }
             val stored = metadata.copy(id = repository.nextPropertyId(), propertyId = propertyId,
                 wohneinheiten = com.example.data.UnitIdentity.encode(units.map {
                     com.example.data.UnitIdentity.Entry(it.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, it.name) }, it.name)
                 }))
-            val unitPrefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+            val unitPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
             units.forEachIndexed { index, unit ->
                 val stableId = unit.unitId.ifBlank { com.example.data.StableDocumentIdentity.legacyUnitId(propertyId, unit.name) }
                 val prefix = scopedUnitPrefix(propertyId, stableId)
@@ -4084,7 +4106,7 @@ data class AiSearchUiState(
     fun importManagedDocument(uri: android.net.Uri, unitId: String? = null, propertyId: String? = null) {
         // Freeze the chosen scope before asynchronous IO; a later global selection must not move the import.
         val targetPropertyId = propertyId ?: propertyMetadata.value?.propertyId.orEmpty()
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _documentOperationStatus.value = "Dokument wird geprüft …"
             val property = database.propertyDao().getPropertyByPropertyId(targetPropertyId)
             if (property == null || (unitId != null && getWohneinheitenForProperty(property).none { it.unitId == unitId })) {
@@ -4129,7 +4151,7 @@ data class AiSearchUiState(
     fun resolvePossibleDocumentDuplicate(useExisting: Boolean, keepSeparate: Boolean = false) {
         val pending = _pendingDocumentDuplicate.value ?: return
         val uri = pendingDocumentDuplicateUri
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             when {
                 useExisting -> _documentOperationStatus.value = "Vorhandenes Dokument wird weiterverwendet."
                 keepSeparate && uri != null -> {
@@ -4158,7 +4180,7 @@ data class AiSearchUiState(
     }
 
     fun runDocumentOcr(documentId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _documentOperationStatus.value = "Texterkennung läuft …"
             val updated = managedDocumentService.runOcr(documentId)
             _documentOperationStatus.value = if (updated?.ocrStatus == com.example.data.DocumentProcessingStatus.ERFOLGREICH.name) "Texterkennung abgeschlossen." else "Texterkennung fehlgeschlagen."
@@ -4171,7 +4193,7 @@ data class AiSearchUiState(
             _documentOperationStatus.value = "Bitte zuerst Google Drive verbinden."
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val document = repository.getManagedDocument(documentId)
             if (document == null) {
                 _documentOperationStatus.value = "Das Dokument ist nicht mehr verfügbar."
@@ -4182,13 +4204,9 @@ data class AiSearchUiState(
             try {
                 val bytes = GoogleDriveClient.downloadFileBytes(getValidToken(email), fileId)
                     ?: throw IllegalStateException("Original nicht gefunden")
-                if (document.sha256.isNotBlank() && com.example.data.StableDocumentIdentity.sha256(bytes) != document.sha256) {
-                    throw IllegalStateException("Sicherheitsprüfung des Originals fehlgeschlagen")
-                }
-                val extension = document.storedFilename.substringAfterLast('.', "bin")
-                val file = java.io.File(getApplication<Application>().filesDir, "managed_documents/${document.documentId}.$extension")
-                file.parentFile?.mkdirs(); file.outputStream().use { it.write(bytes) }
-                repository.upsertManagedDocument(document.copy(localUri = file.absolutePath, fileSizeBytes = bytes.size.toLong(), updatedAt = java.time.Instant.now().toString()))
+                val downloaded = com.example.data.ReceiptOriginalStorage(getApplication<Application>())
+                    .storeDownloadedOriginal(document, bytes)
+                repository.upsertManagedDocument(downloaded)
                 document.receiptInternalId?.let { receiptId ->
                     repository.getReceiptByInternalId(receiptId)?.let { receipt ->
                         val paths = com.example.data.ReceiptOriginalChain.localPaths(receipt,
@@ -4204,7 +4222,7 @@ data class AiSearchUiState(
     }
 
     fun analyzeManagedDocument(documentId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             analyzeDocumentForReview(documentId)
         }
     }
@@ -4260,7 +4278,7 @@ data class AiSearchUiState(
     }
 
     fun syncManagedDocumentNow(documentId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _documentOperationStatus.value = "Dokument wird in Google Drive gesichert …"
             val synced = tryAutoSyncManagedDocument(documentId, ignoreAutoBackupSetting = true)
             _documentOperationStatus.value = if (synced) {
@@ -4298,7 +4316,7 @@ data class AiSearchUiState(
     }
 
     fun ensureManagedDocumentReady(documentId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             var document = repository.getManagedDocument(documentId) ?: return@launch
             documentAiReviewStore.restore(document)
 
@@ -4314,7 +4332,7 @@ data class AiSearchUiState(
     }
 
     fun updateManagedDocumentPresentation(documentId: String, title: String, description: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val document = repository.getManagedDocument(documentId) ?: return@launch
             val metadata = try {
                 org.json.JSONObject(document.extractedFieldsJson.ifBlank { "{}" })
@@ -4367,7 +4385,7 @@ data class AiSearchUiState(
     fun confirmDocumentStorageMigration() {
         val preview = _documentMigrationPreview.value ?: return
         val email = _googleAccountEmail.value ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _documentOperationStatus.value = "Bestätigte Dokumentmigration läuft …"
             try {
                 val token = getValidToken(email)
@@ -4395,7 +4413,7 @@ data class AiSearchUiState(
             documentReviewMessage(documentId, "Das Prüfergebnis ist nicht mehr aktuell oder wird gerade bearbeitet. Bitte erneut prüfen.")
             return
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val document = repository.getManagedDocument(documentId)
                 if (document == null) {
@@ -4531,7 +4549,7 @@ data class AiSearchUiState(
 
     // Trigger Gemini Receipt Analysis
     fun analyzeReceipt(text: String, bitmap: Bitmap? = null, bitmaps: List<Bitmap>? = null) {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             _scanState.value = ScanUiState.Loading
             try {
                 // Determine all bitmaps to persist
@@ -4801,7 +4819,7 @@ data class AiSearchUiState(
 
     fun applyDescriptionBackfill(receiptIds: Set<Int>) {
         if (receiptIds.isEmpty()) return
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             val selected = _descriptionBackfillCandidates.value.filter { it.receiptId in receiptIds }
             var updatedCount = 0
             var skippedCount = 0
@@ -4915,7 +4933,7 @@ data class AiSearchUiState(
 
     fun backfillPaymentMethods() {
         if (_isBackfillingPaymentMethods.value) return
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             _isBackfillingPaymentMethods.value = true
             try {
                 val candidates = receipts.value.filter { normalizePaymentMethod(it.zahlungsart) == "Unbekannt" }
@@ -4986,7 +5004,7 @@ data class AiSearchUiState(
             return
         }
         val stableUnitId = selection.unitId
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             try {
                 kotlinx.coroutines.withContext(Dispatchers.IO) { com.example.data.ReceiptOriginalStorage.validate(originals) }
             } catch (e: Exception) {
@@ -5068,7 +5086,7 @@ data class AiSearchUiState(
 
     // Update an existing receipt in database
     fun updateReceipt(receipt: Receipt, selectedUnitId: String? = null) {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             if (runCatching { com.example.data.ReceiptItemConverter.validateJsonForWrite(receipt.positionenJson) }.isFailure) {
                 _driveSyncStatus.value = com.example.data.ReceiptItemConverter.WRITE_ERROR
                 return@launch
@@ -5118,7 +5136,7 @@ data class AiSearchUiState(
 
     // Insert a new receipt quietly (without changing screen or resetting state)
     fun insertReceiptQuietly(receipt: Receipt) {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             repository.insert(receipt)
 
             if (FirestoreService.isCloudActive()) {
@@ -5128,7 +5146,7 @@ data class AiSearchUiState(
     }
 
     fun updatePropertyMetadata(metadata: PropertyMetadata, explicitUnitListEdit: Boolean = false) {
-        val prefs = getApplication<Application>().getSharedPreferences("wohneinheiten_prefs", Context.MODE_PRIVATE)
+        val prefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "wohneinheiten_prefs")
         val previous = properties.value.singleOrNull { it.propertyId == metadata.propertyId }
             ?: propertyMetadata.value?.takeIf { it.propertyId == metadata.propertyId }
         if (previous != null && metadata.wohneinheiten != previous.wohneinheiten) {
@@ -5139,7 +5157,7 @@ data class AiSearchUiState(
                 return
             }
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             if (previous != null && previous.wohneinheiten != metadata.wohneinheiten) {
                 val before = getWohneinheitenForProperty(previous).associateBy { it.unitId }
                 val after = com.example.data.UnitIdentity.read(metadata.wohneinheiten, metadata.propertyId, prefs)
@@ -5155,25 +5173,25 @@ data class AiSearchUiState(
 
             // Keep the cloud backup current, but never use it to overwrite existing local metadata.
             if (_isDriveConnected.value && _autoDriveBackup.value) {
-                syncAllToDrive()
+                syncAllToDriveAutomatically()
             }
         }
     }
 
     /** Keeps the stable object identity and all historical references by archiving the property. */
     fun deleteProperty(property: PropertyMetadata) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             repository.updatePropertyMetadata(property.copy(status = "Archiviert"))
             if (_selectedPropertyId.value == property.propertyId) {
                 _selectedPropertyId.value = ""
                 sharedPrefs.edit().remove("selected_property_id").apply()
             }
-            if (_isDriveConnected.value && _autoDriveBackup.value) syncAllToDrive()
+            if (_isDriveConnected.value && _autoDriveBackup.value) syncAllToDriveAutomatically()
         }
     }
 
     fun deleteReceipt(id: Int, deletedBy: String = "LocalUser", reason: String = "Vom Nutzer gelöscht") {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val receipt = repository.getReceiptById(id) ?: return@launch
             val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
                 receiptId = receipt.id,
@@ -5238,7 +5256,7 @@ data class AiSearchUiState(
     }
 
     fun restoreReceipt(receipt: Receipt) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val email = _googleAccountEmail.value
             val isDriveActive = _isDriveConnected.value && !email.isNullOrBlank()
             if (!isDriveActive) {
@@ -5277,7 +5295,7 @@ data class AiSearchUiState(
     }
 
     fun permanentlyDeleteReceipt(receipt: Receipt, onComplete: (com.example.data.PermanentDeleteResult) -> Unit = {}) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val deleteDecision = com.example.data.BankReceiptDeletionPolicy.decide(
                 receiptId = receipt.id,
                 links = bankReceiptLinks.value
@@ -5377,7 +5395,7 @@ data class AiSearchUiState(
     }
 
     fun resumeDuplicateCleanupOperation(operationId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
             try {
                 val (controller, _, _) = createDuplicateCleanupController()
@@ -5392,7 +5410,7 @@ data class AiSearchUiState(
     }
 
     fun analyzeReceiptDuplicates() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _duplicateCleanupState.value = DuplicateCleanupUiState.Loading
             try {
                 val (controller, indexEntries, tombstones) =
@@ -5408,7 +5426,7 @@ data class AiSearchUiState(
     }
 
     fun requestDuplicateMerge(preview: com.example.data.DuplicateGroupPreview) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val controller = duplicateCleanupController ?: return@launch
             controller.requestMerge(preview)
             _duplicateCleanupState.value = controller.state
@@ -5416,7 +5434,7 @@ data class AiSearchUiState(
     }
 
     fun confirmDuplicateMerge() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val controller = duplicateCleanupController ?: return@launch
             controller.confirmMerge()
             _duplicateCleanupState.value = controller.state
@@ -5426,7 +5444,7 @@ data class AiSearchUiState(
     fun requestWholeDuplicateGroupDeletion(
         preview: com.example.data.DuplicateGroupPreview
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val controller = duplicateCleanupController ?: return@launch
             controller.requestWholeGroupDeletion(preview)
             _duplicateCleanupState.value = controller.state
@@ -5440,7 +5458,7 @@ data class AiSearchUiState(
     }
 
     fun confirmWholeDuplicateGroupDeletion() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val controller = duplicateCleanupController ?: return@launch
             controller.confirmWholeGroupDeletion()
             _duplicateCleanupState.value = controller.state
@@ -5453,7 +5471,7 @@ data class AiSearchUiState(
     }
 
     fun clearAll() {
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             database.receiptDao().deleteAll()
         }
     }
@@ -5463,7 +5481,7 @@ data class AiSearchUiState(
      * property, cloud connection, or AI provider settings.
      */
     fun resetLocalReceiptData() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             repository.clearAllData()
             database.bankDao().clearLinks()
             database.bankDao().reopenLinkedTransactions(java.time.Instant.now().toString())
@@ -5494,7 +5512,7 @@ data class AiSearchUiState(
             publishFirestoreStatus("Cloud-Modus lokal: Bitte anmelden, um Daten zu sichern.")
             return
         }
-        viewModelScope.launch {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope) {
             publishFirestoreStatus("Synchronisiere mit Firestore...")
             try {
                 // 1. Sync Wohneinheiten
@@ -5761,7 +5779,7 @@ data class AiSearchUiState(
     }
 
     fun deleteStandardRoute(id: Long) {
-        viewModelScope.launch(Dispatchers.IO) { database.logbookDao().deleteStandardRoute(id) }
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) { database.logbookDao().deleteStandardRoute(id) }
     }
 
     private val logbookBookingStore by lazy { com.example.data.LogbookBookingStore(database, repository) }
@@ -5792,7 +5810,7 @@ data class AiSearchUiState(
         logbookBookingStore.correct(id, date, purpose, km, reason, time)
     suspend fun cancelLogbookTrip(id: Long, reason: String) = logbookBookingStore.cancel(id, reason)
 
-    private val logbookDraftPrefs = getApplication<Application>().getSharedPreferences("logbook_drafts", Context.MODE_PRIVATE)
+    private val logbookDraftPrefs = com.example.data.PersistentPreferenceInventory.open(getApplication<Application>(), "logbook_drafts")
     private val _logbookDrafts = MutableStateFlow(logbookDraftPrefs.all.mapNotNull { (key, value) -> (value as? String)?.let { key to it } }.toMap())
     val logbookDrafts = _logbookDrafts.asStateFlow()
     fun saveLogbookDraft(key: String, json: String) {
@@ -5839,7 +5857,7 @@ data class AiSearchUiState(
     val originalReceiptAuditError: StateFlow<String?> = _originalReceiptAuditError.asStateFlow()
 
     fun runOriginalReceiptAudit() {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _isAuditingOriginalReceipts.value = true
             _originalReceiptAuditError.value = null
             try {
@@ -5946,7 +5964,7 @@ data class AiSearchUiState(
 
     fun confirmMetadataDuplicateCleanup() {
         val plan = _metadataCleanupPreview.value ?: return
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _isCleaningMetadataDuplicates.value = true
             _metadataDuplicateError.value = null
             try {
@@ -6009,7 +6027,7 @@ data class AiSearchUiState(
     }
 
     fun correctReceiptMetadata(internalId: String, newMimeType: String, newFilename: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 val email = _googleAccountEmail.value ?: ""
                 val token = if (email.isNotEmpty()) getValidToken(email) else ""
@@ -6109,7 +6127,7 @@ data class AiSearchUiState(
     }
 
     fun repairReceiptDocument(receipt: Receipt, tempFile: File, validation: FileValidationResult) {
-        viewModelScope.launch(Dispatchers.IO) {
+        com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             _repairUiState.value = RepairUiState.Processing("Prüfe und sichere Datei in Google Drive...")
             try {
                 val email = _googleAccountEmail.value

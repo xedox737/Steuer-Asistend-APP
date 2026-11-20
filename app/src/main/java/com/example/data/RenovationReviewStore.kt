@@ -142,7 +142,7 @@ class RenovationReviewStore(context: Context) {
             o.getBoolean("advisorMarked"), if (o.isNull("confirmedNetAmount")) null else o.getDouble("confirmedNetAmount"), o.getString("updatedAt"))
     }
 
-    private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val prefs = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
     private val mutex = Mutex()
     private val _snapshot = MutableStateFlow(RenovationReviewSnapshot())
     val snapshot = _snapshot.asStateFlow()

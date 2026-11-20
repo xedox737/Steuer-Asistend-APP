@@ -36,6 +36,11 @@ class OfflineBackupServiceTest {
 
     @Before fun setUp() {
         val context: Context = ApplicationProvider.getApplicationContext()
+        // Robolectric changes the application directory between tests; FileProvider caches it.
+        @Suppress("UNCHECKED_CAST")
+        val providerCache = androidx.core.content.FileProvider::class.java.getDeclaredField("sCache")
+            .apply { isAccessible = true }.get(null) as MutableMap<Any?, Any?>
+        providerCache.clear()
         source = TestContext(context, "offline-source-${UUID.randomUUID()}")
         target = TestContext(context, "offline-target-${UUID.randomUUID()}")
         sourceDatabase = Room.inMemoryDatabaseBuilder(source, AppDatabase::class.java).build()
@@ -100,6 +105,216 @@ class OfflineBackupServiceTest {
     }
 
     private suspend fun backup(): ByteArray = ByteArrayOutputStream().also { sourceService.create(it) }.toByteArray()
+
+    @Test fun referencedOriginalFromRetiredDownloadDirectoryRemainsPortableAndRestoresTwice() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val legacy = File(source.filesDir, "restored_receipts/legacy-original.pdf")
+        legacy.parentFile!!.mkdirs()
+        legacy.writeBytes(originalBytes)
+        sourceDatabase.managedDocumentDao().upsert(document.copy(localUri = legacy.absolutePath))
+        assertTrue(File(document.localUri).delete())
+        val bytes = backup()
+        assertEquals(legacy.absolutePath, sourceDatabase.managedDocumentDao().getById(document.documentId)!!.localUri)
+        assertArrayEquals(originalBytes, legacy.readBytes())
+        repeat(2) {
+            targetService.inspect(ByteArrayInputStream(bytes)).use { prepared ->
+                assertEquals(1, prepared.fileCount)
+                targetService.restore(prepared)
+            }
+            val restored = targetDatabase.managedDocumentDao().getById(document.documentId)!!
+            assertEquals(document, restored.copy(localUri = document.localUri))
+            assertArrayEquals(originalBytes, File(restored.localUri).readBytes())
+            assertTrue(File(restored.localUri).canonicalPath.startsWith(target.filesDir.canonicalPath + File.separator))
+            assertEquals(1, targetDatabase.managedDocumentDao().getAll().size)
+        }
+    }
+
+    @Test fun missingPathUsesOnlyAnExactHashVerifiedManagedOriginalWithoutRewritingTheSource() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val copy = File(source.filesDir, "managed_documents/${document.storedFilename}")
+        File(document.localUri).copyTo(copy)
+        assertTrue(File(document.localUri).delete())
+        targetService.inspect(ByteArrayInputStream(backup())).use { targetService.restore(it) }
+        val restored = targetDatabase.managedDocumentDao().getById(document.documentId)!!
+        assertArrayEquals(originalBytes, File(restored.localUri).readBytes())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+        assertFalse(File(document.localUri).exists())
+        assertArrayEquals(originalBytes, copy.readBytes())
+    }
+
+    @Test fun emptyLocalReferenceCanUseAHashVerifiedCopyWithoutUpdatingTheSourceRow() = runBlocking {
+        seedPortfolio()
+        val original = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val copy = File(source.filesDir, "managed_documents/${original.storedFilename}")
+        File(original.localUri).copyTo(copy)
+        assertTrue(File(original.localUri).delete())
+        val document = original.copy(localUri = "")
+        sourceDatabase.managedDocumentDao().upsert(document)
+        targetService.inspect(ByteArrayInputStream(backup())).use { targetService.restore(it) }
+        assertArrayEquals(originalBytes, File(targetDatabase.managedDocumentDao().getById(document.documentId)!!.localUri).readBytes())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+        assertArrayEquals(originalBytes, copy.readBytes())
+    }
+
+    @Test fun aMatchingFilenameWithDifferentBytesCannotReplaceAMissingOriginal() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val copy = File(source.filesDir, "managed_documents/${document.storedFilename}").apply { writeText("different original") }
+        assertTrue(File(document.localUri).delete())
+        val output = ByteArrayOutputStream()
+        assertTrue(runCatching { sourceService.create(output) }.isFailure)
+        assertEquals(0, output.size())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+        assertEquals("different original", copy.readText())
+    }
+
+    @Test fun aMissingOriginalWithoutARecordedHashCannotBeGuessedByFilename() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!.copy(sha256 = "")
+        sourceDatabase.managedDocumentDao().upsert(document)
+        val copy = File(source.filesDir, "managed_documents/${document.storedFilename}")
+        File(document.localUri).copyTo(copy)
+        assertTrue(File(document.localUri).delete())
+        for (reference in listOf(document.localUri, "")) {
+            val withReference = document.copy(localUri = reference)
+            sourceDatabase.managedDocumentDao().upsert(withReference)
+            val output = ByteArrayOutputStream()
+            assertTrue(runCatching { sourceService.create(output) }.isFailure)
+            assertEquals(0, output.size())
+            assertArrayEquals(originalBytes, copy.readBytes())
+            assertEquals(withReference, sourceDatabase.managedDocumentDao().getById(document.documentId))
+        }
+    }
+
+    @Test fun oversizedPrimaryCannotBeSilentlyReplacedByAnOlderVerifiedCopy() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val copy = File(source.filesDir, "managed_documents/${document.storedFilename}")
+        File(document.localUri).copyTo(copy)
+        java.io.RandomAccessFile(document.localUri, "rw").use { it.setLength(1024L * 1024 * 1024 + 1) }
+        val output = ByteArrayOutputStream()
+        val failure = runCatching { sourceService.create(output) }.exceptionOrNull()
+        assertTrue(failure is OfflineBackupValidationException)
+        assertTrue(failure!!.message.orEmpty().contains("1 GiB"))
+        assertEquals(0, output.size())
+        assertArrayEquals(originalBytes, copy.readBytes())
+        assertEquals(1024L * 1024 * 1024 + 1, File(document.localUri).length())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+    }
+
+    @Test fun encodedFileUriPreservesTheOriginalBytesAndSourceReference() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val file = File(source.filesDir, "managed_documents/original with spaces.pdf")
+        assertTrue(File(document.localUri).renameTo(file))
+        val withUri = document.copy(localUri = android.net.Uri.fromFile(file).toString())
+        sourceDatabase.managedDocumentDao().upsert(withUri)
+        targetService.inspect(ByteArrayInputStream(backup())).use { targetService.restore(it) }
+        assertArrayEquals(originalBytes, File(targetDatabase.managedDocumentDao().getById(document.documentId)!!.localUri).readBytes())
+        assertEquals(withUri, sourceDatabase.managedDocumentDao().getById(document.documentId))
+        assertArrayEquals(originalBytes, file.readBytes())
+    }
+
+    @Test fun authorizedContentUriOriginalIsStreamedAndRestoredAsAPrivateFile() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val uri = androidx.core.content.FileProvider.getUriForFile(source.baseContext,
+            "${source.packageName}.provider", File(document.localUri))
+        val withUri = document.copy(localUri = uri.toString())
+        sourceDatabase.managedDocumentDao().upsert(withUri)
+        targetService.inspect(ByteArrayInputStream(backup())).use { targetService.restore(it) }
+        val restored = targetDatabase.managedDocumentDao().getById(document.documentId)!!
+        assertTrue(File(restored.localUri).canonicalPath.startsWith(target.filesDir.canonicalPath + File.separator))
+        assertArrayEquals(originalBytes, File(restored.localUri).readBytes())
+        assertEquals(withUri, sourceDatabase.managedDocumentDao().getById(document.documentId))
+    }
+
+    @Test fun contentUriQueryCredentialsAreNotExportedAndOpaqueReferencesRestoreIdempotently() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        val uri = androidx.core.content.FileProvider.getUriForFile(source.baseContext,
+            "${source.packageName}.provider", File(document.localUri)).buildUpon()
+            .appendQueryParameter("token", "TEST_URI_TOKEN_NOT_FOR_ARCHIVE").build()
+        val withUri = document.copy(localUri = uri.toString())
+        sourceDatabase.managedDocumentDao().upsert(withUri)
+        val secondBytes = "%PDF-1.4\nSynthetic second URI original\n%%EOF".toByteArray()
+        val secondFile = File(source.filesDir, "managed_documents/second-uri-page.pdf").apply { writeBytes(secondBytes) }
+        val secondUri = androidx.core.content.FileProvider.getUriForFile(source.baseContext,
+            "${source.packageName}.provider", secondFile).buildUpon()
+            .appendQueryParameter("token", "TEST_SECOND_URI_TOKEN_NOT_FOR_ARCHIVE").build()
+        val secondDocument = document.copy(documentId = "offline-second-document", localUri = secondUri.toString(),
+            originalFilename = secondFile.name, storedFilename = secondFile.name,
+            sha256 = StableDocumentIdentity.sha256(secondBytes), fileSizeBytes = secondBytes.size.toLong())
+        sourceDatabase.managedDocumentDao().upsert(secondDocument)
+        val withPages = receipt.copy(imageUrl = org.json.JSONArray(listOf(uri.toString(), secondUri.toString())).toString())
+        sourceDatabase.receiptDao().insertReceipt(withPages)
+        val bytes = backup()
+        val snapshot = zipEntries(bytes).getValue("snapshot.json").toString(Charsets.UTF_8)
+        assertFalse(snapshot.contains("TEST_URI_TOKEN_NOT_FOR_ARCHIVE"))
+        assertFalse(snapshot.contains("TEST_SECOND_URI_TOKEN_NOT_FOR_ARCHIVE"))
+        assertFalse(snapshot.contains("token="))
+        repeat(2) { targetService.inspect(ByteArrayInputStream(bytes)).use { targetService.restore(it) } }
+        assertEquals(2, targetDatabase.managedDocumentDao().getAll().size)
+        assertArrayEquals(originalBytes, File(targetDatabase.managedDocumentDao().getById(document.documentId)!!.localUri).readBytes())
+        assertArrayEquals(secondBytes, File(targetDatabase.managedDocumentDao().getById(secondDocument.documentId)!!.localUri).readBytes())
+        val restoredPages = ReceiptOriginalChain.paths(targetDatabase.receiptDao().getReceiptById(receipt.id)!!.imageUrl)
+        assertEquals(2, restoredPages.size)
+        assertArrayEquals(originalBytes, File(restoredPages[0]).readBytes())
+        assertArrayEquals(secondBytes, File(restoredPages[1]).readBytes())
+        assertEquals(withUri, sourceDatabase.managedDocumentDao().getById(document.documentId))
+        assertEquals(secondDocument, sourceDatabase.managedDocumentDao().getById(secondDocument.documentId))
+        assertEquals(withPages, sourceDatabase.receiptDao().getReceiptById(receipt.id))
+    }
+
+    @Test fun revokedContentUriAccessReportsPermissionFailureWithoutLeakingProviderDetails() = runBlocking {
+        seedPortfolio()
+        val authority = "offline-backup-denied-original"
+        val provider = object : android.content.ContentProvider() {
+            override fun onCreate() = true
+            override fun getType(uri: android.net.Uri) = "application/pdf"
+            override fun query(uri: android.net.Uri, projection: Array<out String>?, selection: String?,
+                selectionArgs: Array<out String>?, sortOrder: String?): android.database.Cursor? = null
+            override fun insert(uri: android.net.Uri, values: android.content.ContentValues?): android.net.Uri? = error("Read only")
+            override fun update(uri: android.net.Uri, values: android.content.ContentValues?, selection: String?,
+                selectionArgs: Array<out String>?) = error("Read only")
+            override fun delete(uri: android.net.Uri, selection: String?, selectionArgs: Array<out String>?) = error("Read only")
+            override fun openFile(uri: android.net.Uri, mode: String): android.os.ParcelFileDescriptor =
+                throw SecurityException("private-provider-secret")
+        }
+        provider.attachInfo(source.baseContext, android.content.pm.ProviderInfo().apply { this.authority = authority })
+        org.robolectric.shadows.ShadowContentResolver.registerProviderInternal(authority, provider)
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+            .copy(localUri = "content://$authority/private-original?token=private-provider-secret",
+                originalFilename = "", storedFilename = "")
+        sourceDatabase.managedDocumentDao().upsert(document)
+        val output = ByteArrayOutputStream()
+        val failure = runCatching { sourceService.create(output) }.exceptionOrNull()
+        assertTrue(failure is OfflineBackupValidationException)
+        val message = failure!!.message.orEmpty()
+        assertTrue(message, message.contains("verweigert"))
+        assertTrue(message, message.contains(document.documentId))
+        assertFalse(message.contains("private-provider-secret"))
+        assertFalse(message.contains("token="))
+        assertFalse(message.contains("content://"))
+        assertEquals(0, output.size())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+    }
+
+    @Test fun storedFilenameTraversalCannotSupplyAFallbackEvenWithMatchingBytes() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+            .copy(storedFilename = "../unrelated.pdf")
+        sourceDatabase.managedDocumentDao().upsert(document)
+        val unrelated = File(source.filesDir, "unrelated.pdf").apply { writeBytes(originalBytes) }
+        assertTrue(File(document.localUri).delete())
+        val output = ByteArrayOutputStream()
+        assertTrue(runCatching { sourceService.create(output) }.isFailure)
+        assertEquals(0, output.size())
+        assertArrayEquals(originalBytes, unrelated.readBytes())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+    }
 
     @Test fun emptySelectedFileIsRejectedWithoutExposingAnInternalPathOrChangingLocalData() = runBlocking {
         assertIncompleteArchiveRejectedWithoutLocalChanges(byteArrayOf())
@@ -208,6 +423,42 @@ class OfflineBackupServiceTest {
         assertEquals(receipt, sourceDatabase.receiptDao().getReceiptById(receipt.id))
         assertEquals(listOf(link), sourceDatabase.bankDao().getAllLinks())
         assertEquals(1, sourceDatabase.managedDocumentDao().getAll().size)
+    }
+
+    @Test fun missingOriginalReportsDocumentIdentityWithoutPrivateDirectory() = runBlocking {
+        seedPortfolio(missingOriginal = true)
+        assertOriginalFailure("fehlt")
+    }
+
+    @Test fun emptyOriginalHasItsOwnCauseAndDoesNotChangeTheSource() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        File(document.localUri).writeBytes(byteArrayOf())
+        assertOriginalFailure("leer")
+        assertEquals(0L, File(document.localUri).length())
+        assertEquals(document, sourceDatabase.managedDocumentDao().getById(document.documentId))
+    }
+
+    @Test fun oversizedOriginalReportsTheLimitWithoutReadingItsBytes() = runBlocking {
+        seedPortfolio()
+        val document = sourceDatabase.managedDocumentDao().getById("offline-document")!!
+        java.io.RandomAccessFile(document.localUri, "rw").use { it.setLength(1024L * 1024 * 1024 + 1) }
+        assertOriginalFailure("1 GiB")
+        assertEquals(1024L * 1024 * 1024 + 1, File(document.localUri).length())
+    }
+
+    private suspend fun assertOriginalFailure(cause: String) {
+        val output = ByteArrayOutputStream()
+        val failure = runCatching { sourceService.create(output) }.exceptionOrNull()
+        assertTrue(failure is OfflineBackupValidationException)
+        val message = failure!!.message.orEmpty()
+        assertTrue(message, message.contains(cause))
+        assertTrue(message, message.contains("Synthetic invoice"))
+        assertTrue(message, message.contains("offline-document"))
+        assertTrue(message, message.contains("invoice.pdf"))
+        assertFalse(message, message.contains(source.filesDir.absolutePath))
+        assertEquals("Validation must precede writing an archive", 0, output.size())
+        assertEquals(receipt, sourceDatabase.receiptDao().getReceiptById(receipt.id))
     }
 
     @Test fun changedSourceOriginalMustMatchThePreviouslyRecordedDocumentChecksum() = runBlocking {

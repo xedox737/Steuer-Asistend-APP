@@ -43,6 +43,7 @@ object AdvisorPackageBuilder {
         annualSummary: AdvisorAnnualSummary? = null,
         originalDocuments: List<com.example.data.ManagedDocument> = emptyList()
     ): AdvisorPackageResult {
+      com.example.data.OfflineBackupCoordinator.shared.beginWrite().use {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.GERMANY).format(Date())
         val timestampIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.GERMANY).format(Date())
         val exportId = "EXP_${timestamp}_${(1000..9999).random()}"
@@ -286,6 +287,7 @@ object AdvisorPackageBuilder {
             advisorStatus = readiness.status,
             packageStructureVerified = structureValidation.valid
         )
+      }
     }
 
 }

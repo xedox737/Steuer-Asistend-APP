@@ -1,7 +1,13 @@
 # Persistenz- und Backup-Inventar
 
-Geprüfte Basis: `ed2c42ef420a93a7b9ba4be2694815ebb61c7d85` (main, PR #95).
-Room: 33 → 33. Zusatzbackup: 13 → 14. Drive-AppConfig und Beleg-Metadaten behalten Schema 1.
+Quellcodeabgleich für die lokale Vollsicherung: `302b007ad510c44fb596a0081197490d3430374e`
+(main, 09.11.2026). Room: 34; bestehendes lokales Archiv: V1; Zusatzbackup: 14.
+Drive-AppConfig und Beleg-Metadaten behalten Schema 1.
+
+Die bisherigen Tabellen unten beschreiben überwiegend die app-eigene Drive-Sicherung.
+Der lokale Export-/Importweg und seine noch offenen Lücken stehen im folgenden
+Abschnitt „Lokaler Archivweg“. Dieses Inventar belegt noch keine vollständige
+oder konsistente neue Vollsicherung.
 
 `BACKUP` sind fachliche Daten, `LOCAL_ONLY` geräte-/operationsgebundene Daten,
 `SECRET` Zugangsdaten, `CACHE` rekonstruierbare Daten. Die Laufzeitliste für
@@ -15,6 +21,8 @@ neuen, nicht klassifizierten `getSharedPreferences`-Aufrufen fehl.
 | rent_plan_prefs | Nebenkosten und sonstige Mietbeträge, stabile Objekt-/Einheitenschlüssel und Altdaten | BACKUP |
 | tenant_history_prefs | Mietperioden und Miethistorie | BACKUP |
 | loan_interest_assignments | Zuordnung von Belegen zu Darlehen | BACKUP |
+| afa_confirmed_values_prefs | Bestätigte AfA-Werte je Objekt, Stichtag und fachliche Herkunft | BACKUP |
+| renovation_review_prefs | Sanierungsmaßnahmen, Belegbeziehungen und Prüfstand | BACKUP |
 | annual_tax_approval_prefs | Jahresprüfung, Freigabe-Fingerprint und Zeitpunkt | BACKUP |
 | wohneinheiten_prefs | Einheiten, Status, Mieter, Flächen, Mieten und stabile IDs | BACKUP |
 | datev_kanzleiprofil_prefs | Bestehendes DatevProfile mit Kontenrahmen, Berater/Mandant und Mapping | BACKUP: nur active_profile_json |
@@ -53,7 +61,7 @@ zu leeren. String, Int, Long, Float, Boolean und StringSet bleiben typgetreu.
 | logbook_trips | Fahrten, Quelle, Zuordnung, Wiederholkennung, Korrektur-/Stornohistorie | BACKUP, Zusatzbackup |
 | standard_routes | Gespeicherte Strecken und Routensignaturen | BACKUP, Zusatzbackup |
 | managed_documents | Dokumentmetadaten, stabile Zuordnungen, Prüfentscheidungen und Drive-Referenzen | BACKUP, Zusatzbackup und Dokumentindex; lokale Pfade nicht exportiert |
-| document_search_fts | Suchindex, inkl. abgeleiteter OCR-Suche | CACHE, wird nach Restore neu aufgebaut; OCR bei Bedarf erneut erzeugt |
+| document_search_fts | Suchindex, inkl. abgeleiteter OCR-Suche | CACHE, aus managed_documents neu aufgebaut; gespeicherter OCR-Text bleibt fachlicher Bestand |
 | document_migration_journal | Lokaler technischer Dokumentmigrationsverlauf | LOCAL_ONLY |
 | bank_accounts | Kontodaten ohne Zugangsdaten | BACKUP, Zusatzbackup |
 | bank_transactions | Buchungen, Klassifikation und Bearbeitungsstand | BACKUP, Zusatzbackup |
@@ -70,8 +78,13 @@ zu leeren. String, Int, Long, Float, Boolean und StringSet bleiben typgetreu.
 |---|---|---|
 | receipt_page_* und referenzierte Belegoriginale | Scanbilder, PDFs und Originaldateien | BACKUP, vorhandener Belegupload; Fehlschlag zählt jetzt als unvollständige Sicherung |
 | filesDir/managed_documents | Importierte/gescannte Objekt- und Einheitsdokumente | BACKUP, vorhandener Dokumentupload + Dokumentindex; Fehlschlag verhindert Erfolgsmeldung |
+| filesDir/offline-backup-staging | Vor Zieldialog erstelltes und geprüftes V1-Archiv | LOCAL_ONLY, nach Zielkopie, Fehler oder Dialogabbruch entfernen; noch kein prozessfester Coordinator |
+| noBackupFilesDir/drive-pending-writes | Drive-Schreibabsichten, Bestätigungen und Hash-Vorstände, keine Originalbytes | LOCAL_ONLY; auf ein anderes Gerät weder übertragen noch als auszuführende Aufträge wiederherstellen |
+| filesDir/restored_receipts, filesDir/receipt_documents, filesDir/offline-originals | Wiederhergestellte Originale und zusätzliche Beleganhänge | BACKUP über persistierte Dateireferenzen; unreferenzierte Dateien nicht still als vollständig erfasst ausgeben |
 | filesDir/property-images | Objektbilder | BACKUP, neu als Bytes im Zusatzbackup; Restore unter objektbezogenem SHA-256-Dateiname statt fremdem Dateipfad |
-| cacheDir (DATEV-CSV/ZIP, Berichte, Vorschauen, Ersatzdateien) | Generierte Exporte und temporäre Dateien | CACHE; Exportprotokolle werden separat gesichert |
+| cacheDir (DATEV-CSV/ZIP) | Noch vorhandene Exportartefakte aus DatevCsvOutput und DatevExporter | Fachlich aufbewahrte Exporte separat inventarisieren; aktuell im lokalen V1 nicht erfasst |
+| cacheDir/exports, cacheDir/reports, PdfExporter, AdvisorPackageBuilder | Gespeicherte Export-/Bericht-/Beraterpakete | Aufbewahrte Bytes fachlich inventarisieren; V1 erfasst sie nur bei einer vorhandenen fachlichen Dateireferenz |
+| cacheDir (Vorschauen, Ersatzdateien) | Rekonstruierbare temporäre Darstellungen | CACHE nur soweit unreferenziert; referenzierte Originale und aufbewahrte Exporte sind keine Cache-Ausnahme |
 | AndroidKeyStore | Geräteschlüssel für API-Credentials | SECRET, niemals exportieren |
 | .env / BuildConfig-Platzhalter | Entwicklungs-/Build-Konfiguration | LOCAL_ONLY / SECRET, kein Drive-Backup |
 | firebase-applet-config.json | Unreferenzierte Applet-Konfiguration, kein Android-google-services.json | Unbenutzt, aus Git entfernt; vorhandene Android-Firebase-Integration bleibt erhalten |
@@ -94,4 +107,3685 @@ zu leeren. String, Int, Long, Float, Boolean und StringSet bleiben typgetreu.
 - Echte Anmeldung und Neuinstallation auf einem physischen Gerät mit Google Drive benötigen einen separaten Integrationstest. Die automatisierten Tests prüfen serialisierte Payloads, frische Room-Datenbanken und geleerte Preferences.
 - Objektbilder vergrößern das Zusatz-JSON durch Base64. Bei großen Portfolios ist ein eigener Drive-Bildtransport eine spätere Optimierung.
 - Room und mehrere Preference-Dateien bilden keine gemeinsame atomare Transaktion. Ein Dateisystem-/Commit-Fehler wird gemeldet; ein erneuter Restore ist möglich.
-- Cache-/gerätegebundene Journale, OCR-Volltext und lokale Dateipfade werden bewusst nicht als fachliche Originaldaten übertragen.
+- Gerätegebundene Journale werden nicht auf ein anderes Gerät übertragen. Gespeicherter OCR-Volltext, KI-Ergebnisse und Nutzerkorrekturen in managed_documents sind fachliche Daten; nur der daraus abgeleitete FTS-Index ist rekonstruierbar. Absolute Quellpfade sind keine portablen Zielreferenzen.
+
+
+## Lokaler Archivweg (Quellcode, noch keine neue Implementierung)
+
+`OfflineBackupService.create` liest alle SQL-Tabellen außer SQLite-/Room-internen
+Tabellen und `document_search_fts*`. `inspect` prüft die Tabellen und Spalten gegen
+die aktuelle Datenbank. `restore` importiert die Zeilen transaktional und baut FTS
+über `DocumentSearchTextBuilder` neu auf. Die vorhandene Datenbank registriert
+20 Entities: 19 reguläre Tabellen und einen virtuellen FTS-Index.
+
+| Quellen | Lokaler Export / Import | Originalzuordnung | Vorhandener Nachweis / offene Abnahme |
+|---|---|---|---|
+| receipts | create / restore, komplette SQL-Zeilen | imageUrl, stabile internalId; managed_documents.receiptInternalId | OfflineBackupServiceTest, OfflineBackupRelationTest; weitere Fehler-/Snapshotfälle offen |
+| property_metadata | create / restore | bildPfad, propertyId | OfflineBackupServiceTest, OfflineBackupRelationTest |
+| receipt_entities, belege | create / restore, auch diese Projektionen werden lokal gespeichert | pdfPath bzw. bildPfad, sofern vorhanden | Lokaler V1 behandelt sie nicht als ausgelassene Caches; vollständiger Zeilenvergleich offen |
+| receipt_documents | create / restore | driveFileId; zugehöriges lokales Original muss auflösbar sein | OfflineBackupServiceTest; zusätzliches Original ohne lokalen Pfad darf nicht still fehlen |
+| managed_documents | create / restore, einschließlich ocrText und extractedFieldsJson | localUri, documentId, sha256, receiptInternalId | OfflineBackupServiceTest, OfflineBackupRelationTest; OCR-/Korrekturvergleich ergänzen |
+| loans | create / restore | keine eigene Dateispalte; Belegzuordnung separat | OfflineBackupRelationTest |
+| logbook_trips, standard_routes | create / restore | Beleg-IDs bei Fahrten | OfflineBackupRelationTest; Entwurfsdaten zusätzlich in logbook_drafts |
+| export_audit_runs | create / restore | zipFileName ist keine portable Dateizuordnung | PreferenceBackupCompletenessTest prüft Historie über Zusatzbackup; Exportbytes fehlen im lokalen V1 |
+| bank_accounts, bank_transactions, bank_receipt_links | create / restore | stabile Konten-/Transaktions-/Beleg-IDs | OfflineBackupRelationTest; vollständiger Feldvergleich ergänzen |
+| bank_rent_assignments, bank_loan_assignments | create / restore | Objekt-/Einheiten-/Darlehens-IDs | OfflineBackupRelationTest |
+| bank_learning_rules, bank_rule_evidence, bank_recurring_patterns | create / restore | fachliche Regel- und Transaktionsreferenzen | Vollständigen lokalen Roundtrip ergänzen; keine Cache-Ausnahme |
+| document_migration_journal | V1 exportiert/importiert die Tabelle ebenfalls | technischer Verfahrenszustand | Für neuen Vertrag ausschließen bzw. neutralisieren; keine alten Migrationsaufträge starten |
+| alle 16 BACKUP-Preference-Stores | writePayload / validatePayload / restorePayload | unveränderte fachliche Schlüssel; gemischte Stores nur Positivliste | PreferenceBackupCompletenessTest; PersistentStorageInventoryTest erkennt unbekannte SharedPreferences-Aufrufe |
+| Originaldateien | files/N mit SHA-256 und Größe / filesDir/offline-originals | V1-Pfadabbildung; pathColumns = imageUrl, pdfPath, bildPfad, localUri | OfflineBackupServiceTest; Content-URIs und zusätzliche Dateiquellen noch nicht vollständig gelöst |
+
+### Geklärte APK-Hinweise und Sicherheitsgrenzen
+
+- Im App-Quellcode kein DataStore-Eigentümer und kein Aufruf von
+  `preferencesDataStore`/`DataStoreFactory` gefunden. Die Gradle-Abhängigkeit allein
+  belegt keinen eigenen Store `preferences_pb`. Bei späterem Einführen muss das
+  Inventar ausdrücklich erweitert werden.
+- `settings` ist im Quellcode eine UI-Seite, kein eigener Preference-Store.
+  `safety_settings` ist kein gefundener eigener App-Store.
+- `app_installation_prefs` erzeugt die lokale Installationskennung in
+  `DrivePersistenceRepository`; auf dem Zielgerät neu erzeugen, nicht übertragen.
+- Android-Systembackup bleibt bewusst deaktiviert (`allowBackup=false`).
+  `backup_rules.xml` und `data_extraction_rules.xml` enthalten nur Vorlagen und
+  Kommentare, keine aktive Include-/Exclude-Auswahl. OEM-Geräteübertragung daraus
+  nicht als geprüft ableiten. Die app-eigene Drive-Sicherung bleibt gesondert.
+- `AiProviderSettings` verwendet AndroidKeyStore und AES/GCM direkt. Eine nutzbare
+  Tink-Streaming-Compile-API ist durch den APK-Befund nicht bewiesen; im
+  Versionskatalog steht keine direkte Tink-/Security-Crypto-Abhängigkeit.
+- Der bestehende `RestoreJournal` hält Phasen und Zähler in Preferences fest,
+  aber keinen dauerhaften Rückfallbestand für den lokalen Restore. Wiederverwendung
+  setzt einen nachgewiesenen Startup-/Rollback-Vertrag voraus.
+
+### Noch offene Voraussetzungen des Codingplans
+
+Die Inventar-Abdeckungstests prüfen SharedPreferences, die tatsächlichen Room-Tabellen
+und die im Quellcode angelegten `filesDir`-/`noBackupFilesDir`-Dateiwurzeln. Neue DataStore-Erzeuger oder
+anders aufgebaute Dateiablagen verlangen eine explizite Erweiterung der Klassifikation.
+Dies belegt die Quellenzuordnung, noch nicht den vollständigen fachlichen Roundtrip
+oder die Konsistenz der späteren Engine. Noch vorhandene Exportartefakte im Cache
+bleiben ein expliziter Umsetzungspunkt; kein flächiges Cache-Backup.
+
+Vor produktiven Kernänderungen bleiben der Archiv-/Kryptovertrag und die komplette
+Writer-Matrix festzulegen. Direkte Preference-Writer liegen unter anderem in
+`PropertyUnitScopedData.setRentValues`, `PropertyTaskStore.save`,
+`ConfirmedAfaValuesStore.write`, `RenovationReviewStore.saveMeasure/saveRelation`,
+`ReceiptViewModel`, `LoanFeature` und `BankFeature`; daneben schreiben Repository,
+DAOs und Drive-Restore. `ReceiptOriginalStorage.importOriginal` sowie
+`ManagedDocumentService` erzeugen Originaldateien. Diese Aufzählung ist ein
+belegter Einstieg, keine vollständige Writer-Matrix und kein Konsistenznachweis.
+Ein Backup-Mutex allein darf nicht als deren Ersatz gelten.
+
+Optionale Teilsicherung und automatische Aufbewahrung sind nicht beauftragt;
+Aufbewahrung und Credential-Transport bleiben standardmäßig aus. Das spätere
+CI-Profil erfordert laut Codingplan vor einem Implementierungs-Push ausdrückliche
+Freigabe; bis dahin keinen Push mit sachfremden Vollsuiten auslösen.
+
+
+## Festgelegter Umsetzungsvertrag für die folgenden Schritte
+
+Diese Festlegungen definieren das Ziel; sie beschreiben ausdrücklich noch nicht
+bereits implementierte Eigenschaften des vorhandenen V1-Service.
+
+- Neue Archive: Format V2, Endung `.immopilot`, vollständig verschlüsselter
+  ZIP-Datenstrom mit Tink AES256-GCM-HKDF-Streaming (1-MiB-Segmente), authentifizierter
+  letzter Segmentkennung. Tink als direkte Compile-Abhängigkeit mit geprüftem
+  Dependency-Graph deklarieren; konkrete verfügbare Version vor Schritt 5 prüfen.
+  Kein zweites alternatives Archiv-Kryptoverfahren.
+- Envelope: zufälliger 256-Bit-MK pro Schlüsselgeneration, zufälliger DEK pro
+  Archiv; Umhüllung mit AES-256-GCM. Recovery-Umhüllung des MK über
+  PBKDF2-HMAC-SHA256, zufälligem Salt von mindestens 16 Bytes und 600.000 Iterationen.
+  Erlaubter Importbereich: 600.000 bis 2.000.000 Iterationen, genau 32 abgeleitete
+  Bytes, Header höchstens 64 KiB; sonst vor Ableitung ablehnen. Für API 24/25 eine
+  geprüfte bibliotheksgestützte PBKDF2-Implementierung verwenden, keine eigene KDF.
+  Die konkrete Bibliotheks-API ist vor Schritt 5 zu verifizieren.
+- Einrichtung: mindestens 16 Zeichen, Passwortbestätigung und erfolgreicher
+  Testarchiv-Roundtrip. Passwort nicht speichern; Automatik erhält ausschließlich
+  die Keystore-Umhüllung. Passwortwechsel erzeugt atomar einen unabhängigen neuen
+  MK. Format, Generation und KDF-Parameter in authentifizierte Kontextdaten binden.
+  Alte Archive benötigen das alte Passwort. Credentials ausschließlich im
+  authentifiziert verschlüsselten Abschnitt und nie unverschlüsselt im Staging.
+- Snapshot: gemeinsames Writer-Gate für Room, fachliche Preferences und Dateien;
+  Room-Lesetransaktion plus Preference-Erfassung und geprüfte Originalkopien in
+  privatem `filesDir` innerhalb der Erfassungsphase. Erst danach Gate freigeben.
+  Archivierung und Zielkopie lesen nur dieses fixierte Staging. Ohne vollständige
+  Writer-Matrix und den Nachweis jedes Übergabepunkts bleibt Schritt 4 gesperrt.
+- Restore: validierter Zeilenimport bei unverändertem Schema, kein roher Tausch
+  einer offenen Datenbank. Rückfallbestand für DB, fachliche Preferences und
+  Dateizuordnungen vor Anwendung dauerhaft sichern; Phasenjournal atomar schreiben.
+  App-Start prüft das Journal vor fachlicher Initialisierung. Bei unvollständigem
+  Restore Rückfall vollständig herstellen; Wartungsmodus sperrt manuelle Sicherung,
+  Worker und Drive-Sync. Bestehender Drive-Phasenkoordinator allein genügt nicht.
+- Standardumfang: nur vollständige Archive; keine optionale Teilsicherung,
+  Aufbewahrung aus, manueller und automatischer API-Schlüsseltransport aus.
+  Warnfrist für vollständigen Erfolg: sieben Tage, sofern die Warnfunktion umgesetzt
+  wird. Zielrechte auf neuem Gerät erneut freigeben; kein automatischer Sync.
+- Schritte 2 und 2b korrigieren zunächst den bestehenden V1-Export, ohne dessen
+  Format zu ändern: genaue Originalfehler, private Vorbereitung vor Zieldialog und
+  getrennte Export-/Importmeldungen. Das ist noch kein V2-Vollständigkeitsnachweis.
+- Hintergrundvertrag und konkrete WorkManager-Konfliktpolitik vor Schritt 10 anhand
+  offizieller Android-Quellen bestätigen. Abruf am 09.11.2026 von
+  `developer.android.com` (long-running, fgs/timeout, notification-permission) derzeit
+  mit HTTP 403 gesperrt; keine aktuelle Dokumentenprüfung behaupten. Dieser offene
+  Punkt blockiert Hintergrundimplementierung, nicht die V1-Sofortkorrektur.
+
+
+### Ergänzender Quellenabgleich Android / KDF (09.11.2026)
+
+Die API-Dokumentationen der offiziellen Quellrepositorys waren alternativ erreichbar:
+
+- [ServiceInfo.dataSync](https://github.com/aosp-mirror/platform_frameworks_base/blob/master/core/java/android/content/pm/ServiceInfo.java): Backup/Restore gehört zum Typ
+  `dataSync`; ab Android 15 gilt dessen Sechs-Stunden-Limit und die typbezogene
+  Berechtigung `FOREGROUND_SERVICE_DATA_SYNC`. Ab Ziel-API 34 ist der Typ explizit
+  anzugeben, kein Typ `NONE`.
+- [Service.onTimeout](https://github.com/aosp-mirror/platform_frameworks_base/blob/master/core/java/android/app/Service.java): nach Timeout nur wenige Sekunden zum
+  Stoppen; das Zeitbudget gilt über ein rollierendes 24-Stunden-Fenster.
+- [ListenableWorker](https://github.com/androidx/androidx/blob/androidx-main/work/work-runtime/src/main/java/androidx/work/ListenableWorker.java): normale Arbeit hat ein
+  Zehn-Minuten-Limit; langlebige Arbeit muss den Foreground-Übergang erfolgreich
+  abschließen, bevor sie ein Ergebnis meldet. Der Foreground-Start kann wegen
+  Systembeschränkungen scheitern.
+- [ExistingWorkPolicy](https://github.com/androidx/androidx/blob/androidx-main/work/work-runtime/src/main/java/androidx/work/ExistingWorkPolicy.kt): `KEEP` ignoriert neue Arbeit
+  bei ausstehender Arbeit, `REPLACE` bricht sie ab, `APPEND` übernimmt fehlgeschlagene
+  Voraussetzungen; `APPEND_OR_REPLACE` verwirft solche Voraussetzungen. Keine dieser
+  Eigenschaften ersetzt die dauerhafte Sollplanung und die geforderten Absturztests.
+- [OWASP Password Storage Cheat Sheet](https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Password_Storage_Cheat_Sheet.md): für PBKDF2-HMAC-SHA256 werden
+  mindestens 600.000 Iterationen empfohlen; Argon2id bleibt die bevorzugte Alternative.
+
+Die gesperrten Android-Webseiten sind dadurch nicht als gelesen zu melden. Vor
+Schritt 10 bleiben die konkreten Quoten für Ziel-API 36, die verwendete
+WorkManager-Version und das Benachrichtigungsverhalten zu bestätigen.
+
+
+## Verifizierter Zwischenstand der Sofortkorrektur (09.11.2026)
+
+- Basis `302b007ad510c44fb596a0081197490d3430374e`, Featurebranch
+  `feat/local-full-backup`; kein Push, kein PR und kein Merge.
+- Inventar aktualisiert; neue Tests erkennen unbekannte Room-Tabellen,
+  private Dateiwurzeln und DataStore-Erzeuger. Der gesamte neue Archivumfang
+  und seine fachliche Roundtrip-Abnahme sind dadurch noch nicht implementiert.
+- Schritt 2: fehlende, leere, nicht lesbare und über 1 GiB große Originale
+  getrennt melden; Datensatz, Titel und Dateiname benennen. Keine Quelldatenänderung.
+- Schritt 2b: `OfflineBackupService.prepareExport` erstellt und prüft das V1-Archiv
+  im privaten Speicher vor dem Zieldialog. Die Oberfläche behält Export- und
+  Importmeldungen getrennt; Dialogabbruch räumt das vorbereitete Archiv auf.
+  Nach der Zielkopie wird das Zielarchiv erneut eingelesen und geprüft.
+- Java 21 / Gradle 9.3.1: 47 gezielte Methoden bestanden: PreferenceBackupCompletenessTest
+  (13), die beiden aufgabenbezogenen PersistentStorageInventoryTest-Methoden (2),
+  OfflineBackupServiceTest (23), OfflineBackupRelationTest (4),
+  OfflineBackupPickerComposeTest (5). JUnit-XML gegen die Methoden der Quellen
+  geprüft: keine Fehler, Skips, Duplikate oder Suite-Platzhalter. Roborazzi-Verify
+  aktiviert; keine neue Screenshotaufnahme und kein behaupteter Bildvergleich.
+- Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden;
+  Lint-XML ohne Error-/Fatal-Befunde. `git diff --check` bestanden.
+- Debug-Signatur gegen das Zertifikat des unveränderten Repository-Keystores
+  geprüft: SHA-256 `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
+  Dies ist kein Signaturvergleich mit einem echten Nutzergerät.
+- Android-Emulatortest nicht ausgeführt: lokal kein `/dev/kvm`; GitHub-Ausführung
+  erst nach ausdrücklich freigegebenem, aufgabenbezogenem CI-Profil.
+- Weiter offen: Schritt 3 (Originalauflösung), vollständige Writer-Matrix und
+  Snapshot-Konsistenz, V2-Verschlüsselung, Destination-Coordinator, Probe-Restore,
+  vollständiger ersetzender Restore mit Wiederanlauf, dauerhafter Status,
+  Zeitplanung und Worker sowie deren Gerätewechsel-/Emulatorabnahme.
+- Konkreter Eingriffspunkt für die spätere Writer-Matrix: `ReceiptRepository`
+  ist in `ReceiptDatabase.kt` definiert; eine eigene `ReceiptRepository.kt`
+  existiert an dieser Basis nicht. Die vorhandenen Drive-Mutexe koordinieren
+  Initialisierung, Index und Einzelmetadaten, kein gemeinsames Snapshot-Gate.
+
+## Schritt 3: lokale Originalauflösung
+
+`OfflineBackupResolver` übernimmt das begrenzte, abbrechbare Lesen und Prüfen
+vorhandener lokaler Originale. Er erhält ausschließlich Referenzen aus dem für
+den Lauf erfassten Datenbestand und schreibt nur in das laufbezogene Staging.
+
+- Absolute Pfade, dekodierte `file:`-URIs und bereits berechtigte `content:`-URIs
+  werden unterstützt. Keine neue Ordner-/URI-Freigabe, Anmeldung oder Berechtigung
+  wird ausgelöst; fehlender Zugriff führt zum kontrollierten Fehler.
+- Ist ein Original nicht erreichbar, darf eine vorhandene Kopie nur mit dem
+  gespeicherten SHA-256 des angeforderten Originals einspringen. Kandidaten stammen
+  aus dessen exaktem `storedFilename` im kanonischen privaten Verzeichnis
+  `managed_documents` oder aus erfassten Dokumentreferenzen mit demselben Hash.
+  Keine Verzeichnissuche nach ähnlichen Namen, kein Fallback ohne aufgezeichneten
+  Hash und keine Traversal-/Symlink-Flucht über `storedFilename`.
+- Auch ein leerer lokaler Dokumentverweis kann über die gespeicherte Identität und
+  Prüfsumme aufgelöst werden. Dafür entsteht ausschließlich im Archiv eine eigene
+  Referenz; der leere produktive Verweis wird nicht repariert oder überschrieben.
+  Die bestehende Ausnahme für reine Beleg-Metadatenprojektionen bleibt unverändert.
+- Mehrere widersprüchliche Hash-/Größenangaben für denselben Pfad werden abgelehnt.
+  Eine vorhandene, aber inhaltlich veränderte Primärdatei wird nicht still durch
+  eine ältere passende Kopie ersetzt. Gespeicherte positive Größen werden geprüft.
+- Die Grenze von 1 GiB je Original bleibt erhalten und gilt auch beim Lesen von
+  Providern mit unbekannter Länge. SHA-256 wird aus den tatsächlich gelesenen
+  Bytes berechnet; Fehler-Sentinels wie `SHA_ERROR` sind kein Inhaltsnachweis.
+- Eine zweite vollständige Quellenlesung muss zum kopierten Inhalt passen.
+  Abbruch und Fehler räumen ausschließlich die neu angelegte Staging-Datei auf.
+  Quellbytes, produktive Dateiverweise und Metadaten bleiben unverändert.
+- URI-Queryparameter und Fragmente werden weder in Fehlermeldungen angezeigt noch
+  als Klartext-Referenzen im V1-Archiv gespeichert. Solche Referenzen werden nur
+  innerhalb des Archivs durch deterministische, undurchsichtige Kennungen ersetzt,
+  einschließlich mehrseitiger Belegketten und Manifestzuordnung. Produktive Daten
+  werden dafür nicht umgeschrieben. Es werden keine URI-Rechte übertragen.
+- Der Restore ordnet die gesicherten Bytes wie bisher einem privaten Zielpfad zu;
+  ursprüngliche URI-Zugangsdaten sind dafür nicht erforderlich.
+  Das ist noch kein gemeinsamer Room-/Preference-/Datei-Snapshot: eine nachträgliche
+  Hash-Prüfung ersetzt ausdrücklich nicht den Vertrag und die Writer-Matrix aus Schritt 4.
+
+Optionales automatisches Cloud-Nachladen ist in diesem Teil nicht aktiviert.
+Die geprüften vorhandenen Drive-Downloader liefern vollständige `ByteArray`s;
+ihre unveränderte Verwendung wäre für Originale bis 1 GiB kein geeigneter
+Streaming-Pfad. Cloud-only-Originale bleiben daher ein sichtbarer Abbruch mit
+Benutzeraktion; kein automatischer Sync, keine Drive-Schreibzugriffe und keine
+Anmeldedialoge aus der lokalen Sicherung. Ein späterer Downloadadapter muss den
+vorhandenen autorisierten Zugriff lesend und mit begrenztem Speicher verwenden.
+
+### Zusätzliche Befunde für Schritt 4 (noch keine vollständige Writer-Matrix)
+
+- Die einzige produktive `Room.databaseBuilder`-Stelle liegt in
+  `ReceiptDatabase.kt`, `AppDatabase.getDatabase`. Ein DAO-Mutex allein wäre
+  trotzdem unvollständig: `AppDatabaseCallback.onOpen` startet einen asynchronen
+  `UPDATE receipts` für fehlende `internalId`/`displayId` über `execSQL`.
+  Dieser Start-/Reparaturpfad muss in Gate und Identitätsprüfung einbezogen werden.
+- `DrivePendingWrites` schreibt eigene atomare Vorgangsdateien unter
+  `noBackupFilesDir/drive-pending-writes`. Es sind technische Verbindungsnachweise,
+  keine fachlichen Originale. Die Dateiwurzelprüfung wurde im folgenden Inventarschritt auf
+  `filesDir` und `noBackupFilesDir` erweitert; nicht zugeordnete Getter-/
+  Speicherzugriffe werden ebenfalls abgelehnt. Die Android-Bezeichnung `noBackupFilesDir` allein
+  wäre keine ausreichende fachliche Klassifikation für künftige neue Quellen.
+- Ein Vorab-Suchlauf fand zusätzlich zu den DAO-Deklarationen direkte
+  Preference-, Datei- und SQL-Schreibstellen. Diese Fundstellen sind erst noch
+  Funktionen, Datenquellen und konkreten Koordinationspunkten zuzuordnen;
+  eine vollständige Matrix oder globale Snapshot-Sperre wird hier nicht behauptet.
+
+
+### Prüfnachweis der lokalen Originalauflösung (09.11.2026)
+
+- Ausgangs-Head `c98a226a75bf6d246ae84d29257442d31c23da04`, weiterhin Basis
+  `302b007ad510c44fb596a0081197490d3430374e`; ausschließlich Featurebranch.
+- Vor der Korrektur gezielt rot nachgewiesen: veralteter Pfad trotz passender
+  Kopie, leeres `localUri`, kodierte Datei-URI, berechtigte Content-URI,
+  URI-Parameter in Fehlermeldung/Archiv und übergroße Primärdatei trotz älterer Kopie.
+- Abschließend 49 gezielte Methoden bestanden: OfflineBackupServiceTest (33),
+  OfflineBackupResolverTest (6), OfflineBackupRelationTest (4),
+  OfflineBackupPickerComposeTest (5) und die Dateiwurzel-Methode aus
+  PersistentStorageInventoryTest (1). JUnit-XML gegen die Methoden der Quellen
+  geprüft: keine Fehler, Skips, Duplikate oder Suite-Platzhalter.
+- Neue Schutzfälle umfassen falsche Kopien, fehlende Hashes bei veraltetem und
+  leerem Verweis, Traversal, verweigerte URI-Rechte, Mehrseiten-Restore ohne
+  URI-Queryparameter, zweimaligen Restore ohne Dubletten, Datenänderung beim
+  Rücklesen, Größenabweichung, Streaming-Limit, Abbruch und vorhandene Zieldatei.
+- Eine fehlgeschlagene Mehrseitenprüfung wurde auf den statischen FileProvider-
+  Cache zwischen Robolectric-Anwendungsinstanzen zurückgeführt. Die Testisolation
+  wurde nach dem vorhandenen Compose-Testmuster korrigiert; alle Assertions blieben
+  erhalten. Der vollständige betroffene Service-Lauf und die Abschlusssammlung
+  wurden danach erfolgreich geprüft, ohne Timeout-Erhöhung oder blinden Retry.
+- Java 21 / Gradle 9.3.1 für Tests, Roborazzi-Verify ohne neue Screenshotaufnahme;
+  Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden.
+  Lint-XML ohne Error-/Fatal-Befunde; `git diff --check` bestanden.
+- Debug-Signierzertifikat unverändert:
+  `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
+- Keine Room-Migration, Preference-Serialisierungsänderung, neue Bibliothek,
+  Manifest-/Berechtigungsänderung oder produktive Datenreparatur.
+  Kein automatischer Cloud-Download, kein Push/PR/Merge, kein Emulatorlauf.
+- Der Gesamtplan bleibt offen: vollständiges Inventar und Writer-Matrix,
+  konsistenter Snapshot, V2-Verschlüsselung, sichere Destination und Probe-Restore,
+  ersetzender Restore mit Wiederanlauf, dauerhafter Verlauf, Scheduler/Worker und
+  Geräte-/Emulatorabnahme. Das gesondert freizugebende enge CI-Profil bleibt offen.
+
+
+## Schreibweg-Katalog vor dem Snapshot-Gate (09.11.2026, Basis 992b7d9)
+
+Die folgenden Tabellen ordnen die gefundenen produktiven Mutationsgrenzen zu.
+**Keiner der vorgeschlagenen Koordinationspunkte ist damit schon implementiert.**
+Die Katalogisierung ist kein Nachweis eines gemeinsamen Snapshots und keine
+pauschale Änderungsfreigabe für die aufgeführten Screens oder Fachlogik.
+
+Koordinationspunkte für die weitere Umsetzung:
+
+- **DB:** gemeinsame Room-/SQLite-Grenze des einzigen produktiven Builders
+  `ReceiptDatabase.kt: AppDatabase.getDatabase`, einschließlich generierter
+  Statements, direkter SQL-Aufrufe und vollständiger Transaktionslebensdauer.
+- **PREF:** sämtliche fachlichen Editor-Commits und `apply`-Aufrufe, einschließlich
+  Entfernen/Clear und Migration beim Lesen. `apply` aktualisiert den Speicher
+  synchron und darf nicht als ausschließlich spätere Dateisystemarbeit gelten.
+- **FILE:** Veröffentlichung, Überschreiben und Löschen fachlicher Originalversionen
+  sowie vorhandener aufbewahrter Exporte. Vor Gate-Freigabe müssen die zum
+  Snapshot gehörenden Versionen fixiert sein; ein offener Deskriptor oder späterer
+  Hash-Vergleich allein genügt nicht.
+- **REMOTE:** Wartungs-/Operationsgrenze für laufende und neue Synchronisation
+  beim Restore. Ein Backup-Mutex ersetzt weder diese Grenze noch DB/PREF/FILE.
+
+### Room: alle 14 produktiv bereitgestellten DAOs
+
+Die DAO-Grenze erfasst auch direkte Aufrufer aus ViewModels, Repository,
+Drive-/Firestore-Import und Zusatzrestore. Eine ausschließlich in
+`ReceiptRepository` eingebaute Sperre würde diese direkten Wege nicht abdecken.
+
+| Datei / DAO | Mutierende Funktionen | Quellen | Geplanter Punkt |
+|---|---|---|---|
+| ReceiptDatabase.kt / ReceiptDao | insertReceipt, updateDriveSyncFields, deleteReceiptById, insertAll, deleteAll | receipts, einschließlich Löschzustand und Sync-Bestätigung | DB |
+| ReceiptDatabase.kt / PropertyDao | deletePropertyByPropertyId, insertPropertyMetadata, upsertRestoredPropertyMetadata | property_metadata | DB; Bildveröffentlichung zusätzlich FILE |
+| ReceiptDatabase.kt / LoanDao | upsertLoan, deleteLoan | loans | DB |
+| ReceiptDatabase.kt / ReceiptEntityDao | insert, deleteById, deleteAll | receipt_entities | DB |
+| Beleg.kt / BelegDao | insertBeleg, deleteBelegById, deleteAllBelege | belege | DB |
+| ReceiptDatabase.kt / ExportAuditDao | insertRun, deleteAll | export_audit_runs | DB; Exportbytes zusätzlich FILE |
+| ReceiptDatabase.kt / ReceiptDocumentDao | insertDocument, deleteDocumentById, deleteAll | receipt_documents | DB |
+| DocumentModels.kt / ManagedDocumentDao | upsert, updateExisting, upsertAll, deleteById, deleteAllDocuments | managed_documents | DB; Originaldateien zusätzlich FILE |
+| DocumentModels.kt / ManagedDocumentDao | adoptOriginalBaseline, updateDriveStorageIfPresent, updateLoanIfPresent, updateReviewIfPresent, updateProcessingIfPresent | Originalnachweis, OCR, KI-Ergebnis, Prüfung und Zuordnungen | DB, vollständige @Transaction-Grenze |
+| DocumentModels.kt / ManagedDocumentDao | deleteSearchEntry, insertSearchEntry, clearSearchIndex | abgeleiteter FTS-Index | DB; beim Restore neu aufbauen |
+| DocumentModels.kt / ManagedDocumentDao | clearMigrationJournal, upsertMigrationJournal, deleteMigrationJournal | document_migration_journal, technischer Zustand | DB; nicht als alte Aufträge reaktivieren |
+| LogbookModels.kt / LogbookDao | upsertTrip, deleteTrip, upsertStandardRoute, deleteStandardRoute | logbook_trips, standard_routes | DB |
+| BankingModels.kt / BankDao | upsertAccount, insertTransactions, upsertTransaction, updateTransactionStatus, updateTransactionClassification, updateTransactionReviewState | bank_accounts, bank_transactions | DB |
+| BankingModels.kt / BankDao | upsertLink, deleteLink, clearLinks, deleteAllTransactions, deleteAllAccounts, reopenLinkedTransactions | bank_receipt_links und abhängige Buchungen/Konten | DB |
+| BankLearningRules.kt / BankLearningRuleDao | upsertRule, deleteRule, insertEvidence, deleteEvidence | bank_learning_rules, bank_rule_evidence | DB |
+| BankRentAssignments.kt / BankRentAssignmentDao | upsert, deleteById, clearAll | bank_rent_assignments | DB |
+| BankLoanRecurringPersistence.kt / BankLoanAssignmentDao | upsert, deleteForTransaction | bank_loan_assignments | DB |
+| BankLoanRecurringPersistence.kt / BankRecurringPatternDao | upsert, setEnabled, delete | bank_recurring_patterns | DB |
+
+Zusätzliche SQL-Wege außerhalb der DAO-Mutatoren:
+
+| Datei / Funktion | Wirkung | Bedarf / Koordination |
+|---|---|---|
+| ReceiptDatabase.kt / MIGRATION_10_11 bis MIGRATION_33_34 | DDL und Datenübernahmen beim Öffnen alter Schemata | normalen Schemaaufbau vor Snapshot abschließen; keine neue Migration für das Gate |
+| ReceiptDatabase.kt / AppDatabaseCallback.onOpen | startet asynchron UPDATE receipts für internalId/displayId; Anmeldung vor dem Einplanen, Abschluss-/Fehlerbarriere im Coordinator | DB; Initialisierung vor Erfassung abwarten, Fehler sperrt koordinierte Snapshots |
+| OfflineBackupService.kt / restore | direkte INSERT-Statements in Room-Transaktion, FTS-Neuaufbau | DB + PREF + FILE, gemeinsamer Restore-Wartungsmodus |
+| SupplementalDriveBackup.kt / restorePayload, clearSnapshotDomains | DAO-Import, Ersetzen/Löschen, Preferences und Objektbilder | DB + PREF + FILE; darf nicht am lokalen Restore vorbeilaufen |
+| DrivePersistenceRepository.kt / executeFullDriveRestore und Restore-Aufrufer | orchestrieren fachlichen Import und Journal | dieselbe Wartungsgrenze wie lokaler Restore; bestehende Semantik erhalten |
+
+### Fachliche Preference-Schreibwege
+
+Dateien liegen unter `app/src/main/java/com/example`; `ui/` und `data/` sind
+jeweils im Dateinamen angegeben. Genannt werden auch implizite Schreibvorgänge
+beim Lesen und beim Entfernen anderer Werte.
+
+| Datei / Funktion | Store / fachliche Daten | Geplanter Punkt |
+|---|---|---|
+| util/DatevProfileService.kt / saveActiveProfile | datev_kanzleiprofil_prefs, active_profile_json | PREF |
+| ui/UnifiedUnitsFeature.kt / UnitStatusMetaStore.save | unit_status_meta_prefs | PREF |
+| ui/UnifiedUnitsFeature.kt / UnitRentalDetailStore.save | unit_rental_detail_prefs | PREF |
+| ui/TenantHistoryFeature.kt / TenantHistoryStore.read | tenant_history_prefs; übernimmt gültige Legacy-Werte beim Lesen | PREF, auch dieser Lesepfad schreibt |
+| ui/TenantHistoryFeature.kt / TenantHistoryStore.save, saveInitialPeriods | tenant_history_prefs, neue und Legacy-Schlüssel | PREF; einen Editor vollständig erfassen |
+| ui/PropertyUnitScopedData.kt / rentValue | rent_plan_prefs; Migration beim Lesen | PREF |
+| ui/PropertyUnitScopedData.kt / setRentValues | rent_plan_prefs, neue und Legacy-Schlüssel | PREF |
+| ui/PropertyTaskFeature.kt / PropertyTaskStore.save (einschließlich upsert-Aufrufern) | property_tasks_prefs | PREF |
+| ui/ConfirmedAfaValuesStore.kt / write | afa_confirmed_values_prefs | PREF |
+| ui/LoanFeature.kt / LoanManagementSection.assignReceipt | loan_interest_assignments | PREF |
+| ui/BankFeature.kt / BankTransactionDetailsScreen, Notiz-onValueChange | bank_transaction_notes | PREF, keine Änderung der Bank-Fachlogik |
+| ui/AnnualTaxAssistantFeature.kt / AnnualTaxAssistantScreen, Freigabe und Widerruf | annual_tax_approval_prefs | PREF |
+| data/RenovationReviewStore.kt / saveMeasure, saveRelation | renovation_review_prefs | PREF; vorhandenen Store-Mutex nicht mit globaler Abdeckung verwechseln |
+| ui/ReceiptViewModel.kt / learnVendorRule, deleteLearnedRule, clearAllLearnedRules | ki_learned_rules_prefs | PREF |
+| ui/ReceiptViewModel.kt / loadUnitById, lokale string-/number-Helfer | wohneinheiten_prefs; migriert Namen-/Legacy-Schlüssel beim Lesen | PREF |
+| ui/ReceiptViewModel.kt / updateWohneinheitForProperty, createProperty, updatePropertyMetadata | wohneinheiten_prefs und zugehörige Property-Zeilen | PREF + DB |
+| ui/ReceiptViewModel.kt / selectProperty, deleteProperty, toggleAutoBackup | google_drive_prefs: selected_property_id, auto_backup, auch remove | PREF; keine Autorisierung durch gesicherte Einstellungen |
+| ui/ReceiptViewModel.kt / resetLocalReceiptData | entfernt gelernte Regeln und Room-Belegbestand | PREF + DB; kein automatischer Reset durch Backup |
+| ui/ReceiptViewModel.kt / saveLogbookDraft, clearLogbookDraft | logbook_drafts | PREF, einschließlich Entfernen |
+| data/DrivePersistenceRepository.kt / saveWohneinheitenToPrefs, saveLearnedRulesToPrefs | wohneinheiten_prefs, ki_learned_rules_prefs | PREF; aktive Drive-Importe berücksichtigen |
+| data/PersistentPreferenceInventory.kt / restorePayload | alle BACKUP-Stores, Merge/Replace und remove | PREF; Restore-/Rollback-Zuständigkeit, keine neue Autorisierung/Planaktivierung |
+| api/AiProviderSettings.kt / saveSelection | ai_provider_settings: Anbieter und Modell | PREF; Credentials bleiben ausgeschlossen |
+| api/AiProviderSettings.kt / clearOpenAiKey | entfernt Ciphertext/IV **und ändert den fachlichen Anbieter** | PREF trotz Key-Methodenname; auch getOpenAiKey-Fehlerpfad kann diesen Aufruf auslösen |
+
+Gemischte und technische Preference-Wege sind ausdrücklich zu unterscheiden:
+
+| Datei / Funktionen | Klassifikation | Bedeutung für das Gate |
+|---|---|---|
+| ui/ReceiptViewModel.kt / connectDrive, disconnectDrive, initializeDrivePersistence, publishIncompleteDriveInventory, checkForDriveRestore, handleDriveFailure, handleDriveOperationFailure, syncAllToDrive | google_drive_prefs, überwiegend Verbindungs-/Fehler-/Zeitstempelzustand | Feldweise Positivliste erhalten; REMOTE beim Restore. Nicht den Drive-Zeitstempel als lokalen Erfolg verwenden |
+| api/AiProviderSettings.kt / storeOpenAiKey, storeGeminiKey, storeGoogleRoutesKey, clearGeminiKey, clearGoogleRoutesKey | Geheimnisse im gemischten ai_provider_settings | keine pauschale Store-Kopie; Opt-in bleibt aus. Gemeinsamen Store nicht beim Restore leeren |
+| data/DrivePersistenceRepository.kt / getOrCreateInstallationId, saveRestoreJournal | app_installation_prefs, restore_journal_prefs, LOCAL_ONLY | nicht übertragen; Journal darf bei Wiederanlauf nicht durch Backup zurückgesetzt werden |
+| data/SharedPreferencesDuplicateCleanupJournalStore.kt / save, removeCompleted | duplicate_cleanup_journals, LOCAL_ONLY | keine alten Bereinigungsaufträge wiederherstellen |
+| ui/ReceiptViewModel.kt / persistMetadataCleanupAudit | metadata_duplicate_cleanup_audit, LOCAL_ONLY | kein fachlicher Sicherungsumfang |
+| api/GoogleDriveClient.kt / saveCategoryMapping, invalidLocalMapping | category_folder_mappings_prefs, verbindungsgebundener Cache | auf Zielkonto neu auflösen; REMOTE-Operation während Restore sperren |
+
+### Dateien: Originale, Exportartefakte und technische Staging-Daten
+
+| Datei / Funktion | Betroffene Quelle / Mutationsart | Geplanter Punkt |
+|---|---|---|
+| data/ReceiptOriginalStorage.kt / importOriginal | schreibt Staging, veröffentlicht managed_documents/UUID.ext per rename | FILE: vollständige Veröffentlichung und zugehörige Metadatenzuordnung |
+| data/ManagedDocumentService.kt / persistPrepared | schreibt managed_documents und persistiert Dokumentmetadaten | FILE + DB; mögliche In-place-Schreibweise vor einer Unveränderlichkeitsbehauptung prüfen |
+| ui/ReceiptViewModel.kt / downloadManagedDocument | veröffentlicht über ReceiptOriginalStorage.storeDownloadedOriginal eine neue physische Version und aktualisiert danach lokale Referenz | FILE + DB; alte Version bleibt erhalten, gemeinsames Gate noch offen |
+| ui/ReceiptViewModel.kt / analyzeReceipt | schreibt receipt_page_*.jpg | FILE + zugehöriger Beleg-/Dokumentimport |
+| ui/ReceiptViewModel.kt / forceDocumentDownload | fordert Remote-Neuabruf ohne Vorablöschung an | FILE + DB + REMOTE; Versionsübergabe nach vollständiger Prüfung, gemeinsames Gate offen |
+| ui/ImmobilienManagerFeature.kt / PropertyImagePicker | kopiert Objektbild nach property-images, startet Metadatenupdate | FILE + DB; keine Kopf-/Navigationsänderung |
+| data/DrivePersistenceRepository.kt / downloadDocumentOnDemand | Legacy-Einzelbeleg wird über ReceiptOriginalStorage.storeDownloadedVersion neu veröffentlicht; bisherige restored_receipts bleiben erhalten | FILE + DB; Mehrseitenpfad gesondert erfasst, gemeinsames Gate noch offen |
+| data/DrivePersistenceRepository.kt / downloadReceiptOriginals | vorhandene lokale Bytes oder expliziter Remote-Neuabruf; neue Versionen über ReceiptOriginalStorage, Referenzübergabe nach Seitenprüfung | FILE + DB; gemeinsame Erfassung/Mutation noch zu koordinieren |
+| data/DrivePersistenceRepository.kt / repairAndUploadOriginalDocument | copyTo(overwrite=true) nach receipt_documents, Beleg-Update und Drive-Schreiben | FILE + DB + REMOTE |
+| data/SupplementalDriveBackup.kt / restorePayload | Objektbild-Staging und rename nach property-images | FILE + DB + PREF |
+| data/OfflineBackupService.kt / restore | kopiert Original-Staging, rename nach offline-originals, wendet SQL/Preferences an | FILE + DB + PREF, Restore-Wartungsmodus |
+| util/DatevExporter.kt / createDatevZipPackage; util/DatevCsvOutput.kt / create | noch vorhandene DATEV-ZIP-/CSV-Artefakte im Cache | FILE für tatsächlich aufbewahrte Exportdateien; kein pauschales Cache-Backup |
+| util/AdvisorPackageBuilder.kt / buildPackage; util/PdfExporter.kt / exportReceiptsToPdf | Beraterpaket und PDF-Exportdateien | Inventar/FILE für vorhandene aufbewahrte Artefakte |
+| ui/ReceiptViewModel.kt / exportToDatev | CSV, document.xml und datev_export.pdf im Cache | vorhandene aufbewahrte Ausgaben von temporären Zwischenständen unterscheiden |
+| ui/ReceiptAppUi.kt / exportBankStatementToCsv | cacheDir/exports | gespeicherte CSV-Datei gesondert inventarisieren |
+| ui/ReceiptDetailScreen.kt / ReceiptDetailDialog, ReceiptDetailScreen; ui/ReceiptAppUi.kt / ReceiptPreviewSection, DocumentStatusOverviewDialog | receipt_replacement_*, repair_file_*, repair_scan_*, overview_repair_* | Staging ist temporär, aber anschließende Originalersetzung muss über FILE/DB laufen |
+| ui/ReceiptDetailScreen.kt / Datei-Exportcallback; ui/LogbookManagement.kt / CSV-Exportcallback | openOutputStream in ausdrücklich gewähltes SAF-Ziel | keine Wiederherstellungsberechtigung ableiten; externe Exporte nicht unbemerkt zum lokalen Bestand erklären |
+| data/OfflineBackupService.kt / prepareExport, create, inspect, Prepared.close; data/OfflineBackupResolver.kt / copy; ui/OfflineBackupFeature.kt / Pickerablauf | eigene Archiv-/Import-/Original-Staging-Dateien und Zielkopie | eigene Operationskennung/Ownership, kein fachlicher Writer-Gate-Nachweis durch diese Dateien |
+| data/DrivePendingWrites.kt / rememberOriginalChange, rememberBackupOriginalChange, rememberReceiptIndexPending, rememberJsonBaseline, creation, completed* | atomare lokale Drive-Vorgangsdateien | LOCAL_ONLY; aus fachlichem Snapshot ausschließen, aktive Sync-Operation über REMOTE berücksichtigen |
+
+### Weitere aktive Synchronisation: Firestore
+
+`ReceiptViewModel.syncWithCloud` importiert Firestore-Belege über
+`ReceiptRepository.insertAll` und Einheiten über `updateWohneinheitForProperty`.
+Andere ViewModel-Schreibpfade rufen `FirestoreService.saveReceipt`,
+`deleteReceipt` und `saveWohneinheit` auf. Das sind tatsächlich vorhandene
+Schreibwege, keine Freigabe einer neuen Cloud-Funktion. Die eingehenden Änderungen
+müssen DB/PREF durchlaufen. Beim Restore müssen zusätzlich bereits gestartete
+Firestore-Schreibfolgen unterbrochen/abgewartet und neue Folgen gesperrt werden;
+ein ausschließlich auf Drive begrenzter Wartungsmodus wäre unvollständig.
+
+### Noch zu schließende Nachweise vor Produktivcode des Snapshot-Gates
+
+1. Die ausgewählte DB-Grenze gegen die tatsächlich verwendete Room-/SQLite-API
+   prüfen: generierte DAO-Statements, direkte SQL-Aufrufe, Startup-Reparatur,
+   Commit/Rollback und verschachtelte Transaktionen müssen erfasst sein.
+2. Die Preference-Adapter müssen sämtliche oben genannten fachlichen Wege
+   einschließlich Lesemigration, remove/clear und des gemischten Key-Fehlerpfads
+   abdecken. Anmelde-/Credential-Daten nicht exportieren oder überschreiben.
+3. Große Originale nicht bei blockiertem UI-Thread über eine lang gehaltene
+   globale Sperre kopieren. Entweder einen nachweislich kurzen Erfassungsschritt
+   oder vorher dokumentierte Versionierungsalternative wählen. Nicht nur einen
+   Deskriptor öffnen und später einen Hash als gemeinsamen Zeitpunkt ausgeben.
+4. Unbekannte externe/Content-URI-Versionen, Löschung und In-place-Änderung müssen
+   einen fixierten Inhalt oder Abbruch ergeben. Erst nach vollständiger Fixierung
+   freigeben und ausschließlich aus dem unveränderlichen Staging archivieren.
+5. Gezielte Nachweise sind in den noch zu erstellenden Coordinator-/Restore-Tests
+   entlang der produktiven Verantwortlichkeiten zu ergänzen: SQL/PREF/Originale
+   während Erfassung ändern, nach Freigabe Datei ändern/löschen, Startup-Schreiber,
+   paralleler manueller Lauf/Worker, laufender Drive-/Firestore-Sync und Prozessende.
+   Diese Tests werden hier **nicht** als erstellt oder ausgeführt gemeldet.
+
+Der Katalog nennt die bei dieser Basis gefundenen Grenzen. Er beweist noch keine
+lückenlose instrumentierte Writer-Abdeckung; diese ist vor einer Erfolgsaussage
+für den neuen Snapshot zwingend durch Implementierung und gezielte Tests zu belegen.
+
+### Dateiversionsgrenze für einzelne Dokument-Downloads (09.11.2026)
+
+Konkreter Bedarf aus der Writer-Matrix: `ReceiptViewModel.downloadManagedDocument`
+schrieb bisher unmittelbar in `managed_documents/documentId.ext`. Ein Leser einer
+bereits erfassten Referenz konnte dadurch während des Downloads verkürzte oder
+neue Bytes erhalten. Die minimale Verdrahtung dieser Funktion verwendet jetzt
+`ReceiptOriginalStorage.storeDownloadedOriginal`; kein Umbau des ViewModels oder
+des allgemeinen Drive-Syncs.
+
+Die Speicherfunktion prüft nichtleeren Inhalt, vorhandenen SHA-256 und eine
+vorhandene positive Größenangabe, schreibt zunächst privates Staging, synchronisiert
+den Dateideskriptor und veröffentlicht per Rename auf einen neuen UUID-Pfad im
+selben Verzeichnis. Erst danach erhält der bestehende Repository-Aufruf die neue
+Referenz. Dokument-ID, Objekt-/Einheiten-/Belegzuordnung, Drive-ID und fachlicher
+Dateiname bleiben erhalten. Auch Legacy-Dokumente ohne Inhaltsnachweise erhalten
+Hash und Größe. Pfaderweiterungen aus Metadaten werden begrenzt und validiert.
+
+Vorherige Versionen werden hier weder überschrieben noch gelöscht. Auch ein Fehler
+nach der Veröffentlichung darf keine möglicherweise bereits referenzierte Datei
+entfernen. Es gibt bewusst noch keine automatische Bereinigung oder Aufbewahrung;
+zusätzliche Downloads benötigen daher zusätzlichen lokalen Speicher. Das ist keine
+globale Löschsperre: andere erfasste Schreib-/Löschwege sind weiterhin einzubinden.
+
+Gezielter Nachweis: `ReceiptOriginalStorageVersionTest` prüft unveränderte alte
+Bytes, mehrere gleichzeitig lesbare Versionen, Identitäts-/Metadatenerhalt,
+Hash-/Größen-/Leerdateifehler ohne Veröffentlichung, Legacy-Nachweise, sichere
+Pfadbildung und nicht verfügbaren Speicher. `OfflineBackupResolverTest` und
+`ReceiptOriginalPersistenceTest` sichern die unmittelbar betroffenen Lese- und
+Originalpersistenzpfade ab. Alle 17 ausgewählten Methoden bestanden, ohne Fehler,
+Skips oder Platzhalter (JUnit-XML geprüft, Kopien unter
+`/tmp/immopilot-original-version-results`). Java 21 / Gradle 9.3.1,
+Roborazzi-Verify: `/tmp/immopilot-original-version-tests.log`.
+Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-original-version-build.log`), Lint ohne Error/Fatal.
+`git diff --check` bestanden. Kein Emulatorlauf, Push oder CI-Eingriff.
+
+Diese Grenze ist eine Voraussetzung für die im Folgenden festgelegte, noch
+umzusetzende Snapshot-Fixierung. Sie koordiniert weder Room mit Preferences noch andere
+Dateiproduzenten und belegt deshalb **noch keinen global konsistenten Snapshot**.
+
+### Festgelegte Snapshot-Alternative für Schritt 4: geprüfte Mutationsgeneration
+
+Für die weitere Umsetzung wird eine optimistische Erfassungsphase mit gemeinsamer
+Mutationsgeneration festgelegt. Sie vermeidet eine UI-Sperre über das Kopieren
+großer Originale. Das folgende Verfahren ist **noch nicht implementiert**; der
+bestehende V1-Exporter erhält durch diese Festlegung keine Konsistenzgarantie.
+
+1. Jeder fachliche Schreibweg aus der Matrix meldet Beginn und Ende an derselben
+   prozessweiten Koordination. Ein atomar geschützter Zustand enthält eine monoton
+   wachsende Generation und die Zahl aktiver Schreiber. Jede Mutation einschließlich
+   fehlgeschlagener/abgebrochener Versuche verändert die Generation. Eine fachliche
+   Operation über mehrere Stores bleibt vom ersten möglichen Schreibzugriff bis
+   zum Abschluss aller Teiländerungen aktiv; zwischen DB und Preference-/Dateischritt
+   darf keine scheinbar ruhende Lücke entstehen. Verschachtelte Schreiber sind erlaubt.
+2. Erfassung startet nur bei null aktiven Schreibern und merkt sich die Generation.
+   Sie liest Room in konsistenter Lesetransaktion, materialisiert die inventarisierten
+   Preferences und kopiert sämtliche referenzierten Originalbytes in eigenes privates
+   Staging. Die Room-Transaktion muss nicht über große Dateikopien gehalten werden:
+   jede zwischenzeitliche Mutation macht die gesamte Erfassung ungültig.
+3. Nach vollständiger Fixierung aller Bytes prüft die Koordination atomar dieselbe
+   Generation und erneut null aktive Schreiber. Schon ein einziger Schreibbeginn
+   erzwingt Abbruch und Entfernung ausschließlich des laufbezogenen Stagings.
+   Keine automatische Wiederholung und keine Aktualisierung des letzten Erfolgs.
+   Bei unveränderter Generation gab es im gesamten Erfassungsintervall keine
+   registrierte fachliche Mutation; Room, Preferences und Originalzuordnungen
+   stammen deshalb aus demselben ruhenden Stand.
+4. Erst dieser Abschluss gibt das unveränderliche Staging zur Archivierung frei.
+   Änderungen danach sind erlaubt und betreffen ausschließlich spätere Sicherungen.
+   Archivierung, Verschlüsselung und Zielkopie verwenden keine Live-Dateien mehr.
+   Bei Prozessende wird ein unvollständiges Staging niemals als Erfolg übernommen.
+5. Für externe/Content-URI-Originale reicht eine Generation der App nicht: vorab in
+   den erfassten Metadaten vorhandene Inhaltsnachweise müssen die kopierten Bytes
+   eindeutig identifizieren. Fehlen belastbare Nachweise einer nicht vollständig
+   koordinierten Quelle, wird abgebrochen. Hashes, die erst nach der Erfassung an
+   einer veränderlichen Live-Quelle berechnet werden, ersetzen diese Bedingung nicht.
+
+Die Aktivierung des neuen Snapshots ist gesperrt, bis die gesamte Matrix angebunden
+und geprüft ist: alle DAO-/Repository-Zugänge, direkte SQL-Schreiber einschließlich
+Startup-Reparatur, Preference-Editoren einschließlich Migrationen beim Lesen,
+Dateiproduzenten/-löscher und laufender Drive-/Firestore-Sync. Ein nur teilweise
+angebundener Zähler wäre genauso unzureichend wie ein alleiniger Backup-Mutex.
+Die Originalveröffentlichung oben ist nur eine vorbereitende Dateigrenze.
+
+Verpflichtende gezielte Nachweise bei der Anbindung: aktiver Schreiber vor Beginn;
+DB-, Preference- und Originaländerung während Erfassung; mehrteiliger Schreiber
+zwischen seinen Store-Schritten; Fehler und Abbruch ohne hängenden Aktivzähler;
+Originaländerung direkt nach Freigabe bei anschließendem Lesen ausschließlich
+aus Staging; unbekannte externe Version; Startup-/Sync-Schreiber. Erfolgreich ist
+ein vollständig konsistenter Stand oder ein sichtbarer Abbruch. Eine hohe
+Schreibaktivität darf die Sicherung verhindern, aber niemals das UI für die
+Dauer einer großen Dateikopie blockieren oder einen Mischstand veröffentlichen.
+
+### Dateiversionsgrenze für Legacy-Einzelbeleg-Downloads (09.11.2026)
+
+Konkreter weiterer Bedarf aus der Matrix: der Legacy-Zweig von
+`DrivePersistenceRepository.downloadDocumentOnDemand` schrieb direkt in
+`restored_receipts/internalId/filename`, auch wenn dieser Pfad bereits referenziert
+war. Nur dieser Veröffentlichungspunkt wird auf die gemeinsam verwendete
+`ReceiptOriginalStorage.storeDownloadedVersion` umgestellt. Die vorhandene
+Speicherfunktion wird dafür aufgeteilt, ohne den Validierungsvertrag des
+ManagedDocument-Downloads zu ändern. Neue Bytes werden vollständig geschrieben,
+per fsync gesichert und unter neuem UUID-Pfad in managed_documents veröffentlicht;
+die Metadaten werden anschließend über den bestehenden Repository-Aufruf angepasst.
+Bestehende restored_receipts-Dateien und fachliche IDs/Dateinamen bleiben erhalten.
+
+Der Download verwendet die bereits vorhandene `ManagedDocumentDriveGateway`-
+Schnittstelle. Deren Produktivadapter ruft weiterhin dieselbe vorhandene
+GoogleDriveClient-Downloadfunktion auf; die Änderung ermöglicht isolierte Tests
+ohne echte Konten, Netzwerk, neue Berechtigungen oder Cloud-Schreiboperationen.
+Keine Änderung an allgemeinem Sync, Formatdetektion oder Mehrseiten-Auswahl.
+
+Gezielte Nachweise: zwei neue Methoden in `DrivePersistenceManagedDocumentE2eTest`
+für Legacy-Download mit weiterhin lesbarer alter Version, stabile Zuordnungen,
+Wiederholung ohne Dubletten und fehlende/leere Downloads ohne veränderte Referenz
+oder neue Datei. Zusätzlich dessen bestehender Mehrseiten-Roundtrip und die fünf
+Methoden von `ReceiptOriginalStorageVersionTest`, da deren Speicherpfad jetzt
+gemeinsam genutzt wird. Alle acht ausgewählten Methoden bestanden, ohne Fehler,
+Skips oder Platzhalter; exakte Methodennamen im JUnit-XML geprüft und Ergebnisse
+unter `/tmp/immopilot-legacy-version-results` gesichert. Testprotokoll:
+`/tmp/immopilot-legacy-version-tests.log` (Java 21, Gradle 9.3.1, Roborazzi-Verify).
+Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-legacy-version-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Kein Emulatorlauf, echter Cloud-Test, Push oder CI-Eingriff.
+
+Die zu diesem Prüfstand noch vorhandene Vorablöschung in
+`ReceiptViewModel.forceDocumentDownload` wird im nachfolgenden Schritt bearbeitet;
+die übrigen Schreib-/Löschgrenzen der Matrix sind noch nicht koordiniert. Die oben
+festgelegte globale Snapshot-Alternative bleibt bis zur vollständigen Anbindung
+und ihren Nebenläufigkeitsnachweisen inaktiv.
+
+### Keine Vorablöschung beim erzwungenen Belegdownload (09.11.2026)
+
+Konkreter Bedarf aus der Matrix: `ReceiptViewModel.forceDocumentDownload` löscht
+löschte alle lokalen Originalpfade, bevor Anmeldung, Remote-Verfügbarkeit und
+Prüfsummen geklärt sind. Dadurch zerstört schon ein fehlgeschlagener Neuversuch
+vorhandene Dateien und gegebenenfalls eine gerade erfasste Live-Referenz.
+`ReceiptOriginalPersistenceTest.forcedDownloadWithoutAccountPreservesEveryExistingOriginal`
+weist diesen Fehler ohne Anmeldung oder Netzwerk mit zwei synthetischen Originalen nach.
+Der Test schlug vor der Korrektur genau an der Assertion zum Erhalt der alten
+Dateien fehl (ein ausgeführter Test, ein Assertion-Fehler, keine Skips;
+`/tmp/immopilot-force-download-before.log` und zugehörige gesicherte XML-Datei).
+
+Die kleinste notwendige Verdrahtung ist in `forceDocumentDownload`,
+`downloadReceiptDocument`, `DrivePersistenceRepository.downloadDocumentOnDemand`
+und `downloadReceiptOriginals` vorgenommen: expliziter Remote-Neuabruf ohne
+Vorablöschung, Veröffentlichung neuer physischer Versionen über den vorhandenen
+Originalspeicher, Referenzübergabe erst nach Prüfung aller Seiten. Normale Aufrufe
+verwenden weiterhin vorhandene gültige lokale Originale. Zusätzliche gezielte
+Repository-Tests prüfen korruptes lokales Original mit gültigem Remote-Ersatz,
+fehlenden Remote-Inhalt und Fehler der zweiten Seite vor Referenzübergabe.
+Das ist keine Freigabe für sonstige Sync-/UI- oder Navigationsänderungen.
+
+Neue Remote-Versionen werden auch für Mehrseitenbelege nur unter neuen UUID-Pfaden
+veröffentlicht. Vorherige Bytes bleiben unverändert, auch wenn die zweite Seite
+fehlschlägt. Die bestehende Reihenfolge bleibt erhalten: erst alle Seiten prüfen,
+dann Dokument- und Belegreferenzen aktualisieren. Ein Fehler bei späteren DB-
+Schritten ist damit noch kein transaktionaler Gesamt-Rollback; das gemeinsame
+Mutationsfenster und der Restore-Wiederanlauf sind weiterhin gesondert umzusetzen.
+Nach einem Fehler können neue unreferenzierte Dateien verbleiben; es gibt keine
+automatische Bereinigung und keinen irreführenden erfolgreichen Snapshot-Status.
+Der erste kombinierte Lauf enthielt einen Synchronisationsfehler des neuen UI-
+Tests: `runTest` ließ den virtuellen 5000-ms-Timer vor dem echten IO-Job ablaufen.
+Die Prüfung wartet jetzt innerhalb von `withContext(Dispatchers.Default)` mit
+demselben 5000-ms-Limit auf den abschließenden Fehlerstatus. Keine Assertion,
+Produktions-Timeouts oder Synchronisierungsbedingung wurden abgeschwächt.
+Protokoll des ersten Laufs: `/tmp/immopilot-force-download-tests.log`.
+
+Alle 18 gezielten Methoden sind abschließend bestanden: sieben Methoden aus
+`ReceiptOriginalPersistenceTest`, fünf Speicher-Versionsmethoden, fünf gezielt
+ausgewählte Repository-Methoden und
+`Phase10DRestoreMetadataTest.originalDownloadMustPreserveVersionAndSubsequentMergeOrdering`.
+Die zehn bereits bestandenen unveränderten Speicher-/Repository-Methoden wurden
+nach der reinen UI-Testkorrektur nicht erneut ausgeführt. Der zweite Lauf prüfte
+die sieben betroffenen UI-Methoden und die zusätzlich identifizierte Metadaten-
+Regression (`/tmp/immopilot-force-download-final-tests.log`). Alle endgültigen
+JUnit-XML-Dateien liegen unter `/tmp/immopilot-force-download-results`; exakte
+Methoden, Klassen, Fehler/Skips und Platzhalter wurden geprüft.
+Java 21 / Gradle 9.3.1, Roborazzi-Verify. Java 17: `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden (`/tmp/immopilot-force-download-build.log`),
+Lint ohne Error/Fatal; `git diff --check` bestanden. Debug-Signatur unverändert:
+SHA-256 `ee446593dea9492fa2eaa7fd9602206eb22a38e107de2d3a4e2ecfcc92b4005d`.
+Keine Emulatorausführung, kein echter Cloud-Zugriff, Push, Merge oder CI-Eingriff.
+
+### Zentrale Anbindung: SQLite und Startup-Reparatur (09.11.2026)
+
+Die Writer-Matrix benennt `ReceiptDatabase.kt/AppDatabase.getDatabase` als einzigen
+produktiven Room-Einstieg. Hier wird die vorhandene Framework-OpenHelper-Factory
+mit einer delegierenden Mutationsverfolgung verbunden. Sie erfasst direkte SQL-
+Aufrufe, DAO-Statements und Transaktionsenden, ohne SQL, Schema, Migrationen oder
+Konfliktregeln zu ändern. Bei verschachtelten Transaktionen bleibt ein begonnener
+Schreiber bis zum Ende der äußeren Transaktion aktiv, auch bei Rollback.
+Readonly-Erfassung selbst darf die Generation nicht verändern.
+
+`AppDatabaseCallback.onOpen` besitzt zusätzlich eine vom Start des asynchronen
+Reparaturjobs bis zu dessen Abschluss gehaltene Schreibanmeldung. Fehler oder
+Abbruch der Initialisierung sperren neue koordinierte Snapshots; ein nur
+bereits eingeplanter Job gilt nicht als ruhender Datenstand. Die bestehende
+V1-Exportfunktion wird hier noch nicht auf eine unvollständig angebundene
+Koordination umgeschaltet. Preferences, Dateien, Sync und mehrteilige fachliche
+Operationen bleiben anschließend ausdrücklich anzubinden.
+
+Versionsnachweis: `gradle/libs.versions.toml` verwendet Room 2.7.0; dessen
+API-Abhängigkeiten enthalten SQLite/SQLite-Framework 2.5.0. Originalquellen:
+[Room 2.7.0 Sources](https://dl.google.com/dl/android/maven2/androidx/room/room-runtime-android/2.7.0/room-runtime-android-2.7.0-sources.jar),
+Einträge `RoomDatabase.android.kt`, `RoomConnectionManager.android.kt` und
+`driver/SupportSQLiteStatement.android.kt`;
+[SQLite 2.5.0 Sources](https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-android/2.5.0/sqlite-android-2.5.0-sources.jar),
+Einträge `SupportSQLiteDatabase.android.kt`, `SupportSQLiteOpenHelper.android.kt`.
+Die Definitionen sind zusätzlich gegen die tatsächlich eingebundenen Klassen
+geprüft (`/tmp/immopilot-sqlite-2.5-api.txt`). Room dokumentiert
+`openHelperFactory` als austauschbaren Datenbankzugang mit Framework-Default;
+SQLite dokumentiert `inTransaction()` für den aktuellen Thread und Commit/Rollback
+am Ende der äußeren Transaktion. Factory-Flags, Callback-Reihenfolge und
+Rückgabewerte sind unverändert zu delegieren. Gezielte Tests müssen echte Room-
+DAOs, direkte/kompilierte Statements, verschachtelte Transaktion/Rollback,
+Readonly-Erfassung sowie den erfolgreichen und abgebrochenen Startup-Job prüfen.
+
+Implementiert in `OfflineBackupCoordinator`: atomare Generation mit aktiven
+Schreibern, idempotentes Schließen einer Anmeldung, Prüfung der Erfassungsmarke
+und getrennte Initialisierungs-Abschlussbarriere. `awaitInitialization` wartet die
+bekannten Jobs ab; `beginCapture` prüft anschließend Fehler und aktive Schreiber.
+Die Fortsetzung wartender Coroutinen erfolgt außerhalb des Monitors. SQL und
+Dateikopien laufen nicht unter dem Monitor. Neue spätere Schreibanmeldungen
+entwerten eine laufende Erfassung; es gibt keine automatische Wiederholung.
+
+Die Factory behält den Framework-Delegate, Datenbanknamen, Flags, Ergebnisse und
+Exceptions bei. Schreibende Statements bleiben während äußerer Transaktionen
+registriert. Nicht als reine SELECT-/bekannte Lese-PRAGMA erkannte Cursor werden
+vorsorglich bis zum Schließen registriert. Die App und die geprüften Room-2.7.0-
+Quellen haben keinen Aufruf von `execPerConnectionSQL`; sollte dieser künftig
+auftreten, bleiben die Delegate-Semantik erhalten und koordinierte Snapshots
+werden gesperrt, da diese API SQL erst auf später geöffneten Verbindungen ausführen
+kann. Das ist keine stille Annahme über künftig unbekannte Schreibwege.
+
+Zusätzliche versionsgenaue Quelle:
+[SQLite-Framework 2.5.0 Sources](https://dl.google.com/dl/android/maven2/androidx/sqlite/sqlite-framework-android/2.5.0/sqlite-framework-android-2.5.0-sources.jar),
+Einträge `FrameworkSQLiteDatabase.android.kt` und `FrameworkSQLiteOpenHelper.android.kt`.
+Zwei geprüfte Besonderheiten: der Cancellation-Overload dereferenziert trotz
+nullable Interface-Signatur das Signal; bei null wird deshalb der ursprüngliche
+Overload ohne Signal verwendet. Nach Migration öffnet der Helper erneut und ruft
+`onConfigure` ein zweites Mal auf. Native Create-/Migrationstransaktionen enden
+außerhalb des Support-Interfaces. Ihre Schreibanmeldungen werden beim Öffnungs-
+abschluss auch nach dem nativen Schließen einer alten Verbindung aufgelöst.
+
+13 gezielte Methoden aus `OfflineBackupCoordinatorTest` bestanden: zwölf
+Koordinations-/Integrationsfälle und ein anschließend ergänzter V1-Kompatibilitäts-
+fall. Exakte Methoden und Klassen, Fehler/Skips, Duplikate und Platzhalter im
+JUnit-XML geprüft; Ergebnisse `/tmp/immopilot-sql-coordination-results`.
+Protokolle: `/tmp/immopilot-sql-coordination-verification.log` (zwölf Methoden),
+`/tmp/immopilot-sql-coordination-v1-tests.log` (V1). Die bereits bestandenen zwölf
+unveränderten Methoden wurden nach Ergänzung des V1-Falls nicht erneut ausgeführt.
+Java 21 / Gradle 9.3.1, Roborazzi-Verify; Java 17: `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden (`/tmp/immopilot-sql-coordination-build.log`),
+Lint ohne Error/Fatal; `git diff --check` bestanden. Debug-Signatur unverändert.
+
+Die vorangehenden Läufe sind nachvollziehbar getrennt: eine neue Testsignatur
+benötigte explizites Unit; danach fand der erste Runtime-Lauf den null-Signal-
+Fehler im Adapter. Die zusätzliche Integrationsprüfung fand eine falsche neue
+Erwartung zur Callback-Anzahl; diese wurde anhand der Originalquelle auf die
+exakte tatsächliche Reihenfolge korrigiert. Keine Assertion entfernt, kein
+Timeout erhöht, keine Testwiederholung ohne zugehörige Änderung. Die Protokolle
+`immopilot-sql-coordination-tests.log`, `-final-tests.log`, `-overload-tests.log`
+und `-integration-tests.log` bleiben unter `/tmp` erhalten.
+
+Diese vier Dateien bilden **nur die SQL-/Startup-Grundlage**. Auch bei erfassten
+SQL-Statements benötigen mehrteilige Repository-/Fachoperationen noch durchgehende
+Anmeldungen über ihre Teiltransaktionen hinweg. Preference-, Datei- und Sync-
+Schreibwege sind ebenfalls noch anzubinden. Der bestehende Export wird weiterhin
+nicht über eine teilweise angebundene Koordination als konsistenter Vollsnapshot
+ausgegeben. Keine Schema-/Migrationsänderung, neue Produktionstabelle, CI-Änderung,
+Emulatorausführung, echter Nutzer-/Cloud-Test, Push oder Merge.
+
+### Schritt 4, Preference-Grenze im Inventar (09.11.2026)
+
+Konkreter Bedarf aus der Matrix: direkte Preference-Editoren sind bislang nicht
+an die gemeinsame Generation angebunden. Zunächst ist in
+`OfflineBackupCoordinator` ein delegierender Editor-Adapter ergänzt und über
+`PersistentPreferenceInventory.open` für bekannte BACKUP-Stores verwendet.
+Die bestehenden Inventar-Lese-/Restore-Funktionen verwenden jetzt diesen Zugang;
+sonstige fachliche Öffnungsstellen werden anschließend einzeln umgestellt.
+Der globale Snapshot bleibt bis zum Abschluss dieser Anbindung inaktiv.
+
+Nur commit/apply veröffentlichen Änderungen; sämtliche put/remove/clear-
+Ketten müssen den erfassten Editor zurückgeben. Listener erhalten denselben
+erfassten Preference-Zugang und bleiben schwach referenziert. Rückgabewerte,
+unveröffentlichte Editor-Puffer und die asynchrone apply-Semantik bleiben erhalten.
+Kind-/Key-Filter, MERGE-/REPLACE-Regeln und Credential-Schutz werden nicht geändert.
+Unbekannte Store-Namen müssen abgelehnt und neue Öffnungsstellen von der
+Inventarprüfung erkannt werden, auch beim neuen zentralen Zugang.
+
+Quelle zur unmittelbaren atomaren Veröffentlichung im Speicher, Editor-Ketten
+und Listener-Lebensdauer: [Android SharedPreferences, API 36](https://github.com/aosp-mirror/platform_frameworks_base/blob/android-16.0.0_r1/core/java/android/content/SharedPreferences.java).
+Gezielte Nachweise: alle Editor-Typen einschließlich Verkettung, getrennte Puffer,
+commit-Rückgabe/Fehler, Listener und Deregistrierung, reine Reads, unbekannter
+Store, tatsächlicher Inventar-Restore sowie vorhandener Secret-/V1-Schutz.
+Genau fünf Dateien: Coordinator, Preference-Inventar, dessen bestehende
+Koordinationstests, PersistentStorageInventoryTest und dieses Dokument.
+
+Der Adapter ist je zugrundeliegendem Preference-Objekt stabil wiederverwendet.
+Listener-Proxys halten den eigentlichen Listener nur schwach, geben bei Aufrufen
+den erfassten Zugang weiter und lassen sich über diesen wieder deregistrieren.
+Technische Stores bleiben außerhalb der fachlichen Generation. Der Editor zählt
+auch fehlgeschlagene Commit-/Apply-Versuche, gibt boolesche Ergebnisse unverändert
+weiter und lässt bei Exceptions keine aktive Anmeldung zurück.
+
+Die Inventarprüfung erfasst nun beide Öffnungsformen. Jede gefundene Öffnung muss
+vollständig mit einem Literal oder einer vorher definierten Konstante auflösbar
+sein; ein nur erkanntes bekanntes Präfix vor einer Namensverkettung genügt nicht.
+Neue synthetische Klassifizierungsfälle prüfen bekannte Zugänge sowie unbekannte,
+zusammengesetzte und zur Laufzeit berechnete Namen. Die Prüfung wird weiterhin
+über sämtliche Kotlin-/Java-Dateien des vorhandenen Main-Quellverzeichnisses
+ausgeführt; zentrale Inventarzugriffe bleiben wie zuvor gesondert behandelt und
+verweigern unbekannte Namen jetzt zusätzlich zur Laufzeit.
+
+13 ausgewählte Methoden bestanden (erster Lauf): sieben Koordinationsmethoden,
+drei Inventarmethoden und drei vorhandene Preference-Backup-Regressionen. Darunter
+der V1-Export über erfasstes Room, Credential-Ausschluss/Injection-Abwehr, alle
+primitiven Typen und String-Sets sowie Wiederherstellung aller fachlichen
+Preferences und stabilen Zuordnungen auf frischer Installation zweimal.
+Exakte Methoden und Klassen, Fehler/Skips, Duplikate und Platzhalter im XML geprüft;
+Ergebnisse `/tmp/immopilot-preference-coordination-results`, Protokoll
+`/tmp/immopilot-preference-coordination-tests.log` (Java 21, Gradle 9.3.1,
+Roborazzi-Verify). Java 17: `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest`
+bestanden (`/tmp/immopilot-preference-coordination-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Keine zusätzlichen fachfremden Tests, kein Emulator,
+Push, Merge oder CI-Eingriff.
+
+Der Secret-/Key-Filter und die MERGE-/REPLACE-Fachregeln blieben unverändert.
+Die tatsächlichen Store-Öffnungsstellen außerhalb des Inventars verwenden bisher
+weiterhin ihre bisherigen Zugänge. Als nächste konkrete Anbindung sind
+`TenantHistoryFeature.kt/TenantHistoryStore` und `PropertyUnitScopedData.kt`
+erfasst: beide besitzen Migrationen beim Lesen sowie Setter mit getrennten
+Veröffentlichungen für stabile Schlüssel und historische Aliasse. Solche Setter
+benötigen eine durchgehende fachliche Schreibanmeldung über beide Editor-Aufrufe.
+Eine globale Konsistenzbehauptung oder Aktivierung erfolgt hier weiterhin nicht.
+
+### Schritt 4: Mietverlauf und Einheitenwerte anbinden
+
+Konkrete nächste Grenzen: `TenantHistoryFeature.kt/TenantHistoryStore` sowie
+`PropertyUnitScopedData.kt/selectedPropertyId`, `rentValue`, `setRentValues`.
+Ihre bekannten Preference-Öffnungen werden über das Inventar geführt. Die Setter
+halten eine Anmeldung über kanonische und historische Editor-Veröffentlichungen;
+Migrationen beim Lesen werden erst bei tatsächlicher Veröffentlichung gezählt.
+Schlüssel, IDs, Beträge, Validierungen und Aliasregeln bleiben unverändert.
+Gezielte Tests prüfen tatsächliche Migrationen und einen beobachteten Zwischenraum
+zwischen den beiden Editor-Aufrufen, ergänzt um vorhandene Identitätsregressionen.
+Vier Dateien: die beiden Schreibstellen, Coordinator-Test und dieses Dokument.
+
+Abnahme: fünf ausgewählte Methoden bestanden, ohne Fehler/Skips/Platzhalter;
+exakte XML-Namen geprüft, Ergebnisse `/tmp/immopilot-domain-preferences-results`.
+Protokoll `/tmp/immopilot-domain-preferences-tests.log`. Java 21, Gradle 9.3.1,
+Roborazzi-Verify; Java 17: lintDebug, assembleDebug, assembleDebugAndroidTest
+bestanden (`/tmp/immopilot-domain-preferences-build.log`), Lint ohne Error/Fatal,
+git diff --check bestanden. Die neuen Tests beobachten echte Store-Migrationen
+und die Aliasabfrage zwischen zwei Editor-Veröffentlichungen; dort ist die
+Erfassung gesperrt. Bereits kanonische Reads ändern die Generation nicht.
+
+### Schritt 4: weitere einzelne Preference-Veröffentlichungen
+
+Nächste konkret benannte Grenzen: AiProviderSettings (Selection, Key-Speicherung
+und Reset), RenovationReviewStore (saveMeasure/saveRelation), ConfirmedAfaValuesStore
+(load/save) und AnnualTaxAssistantFeature (Freigaben sowie zugehörige Lesezugänge).
+Alle dortigen Öffnungen verwenden den erfassten Inventarzugang. Die jeweiligen
+Veröffentlichungen erfolgen bereits über einzelne Editor-Commits/Apply-Ketten;
+Cipher, Schlüsselbehandlung, Berechnungen, Steuersachlogik und UI bleiben gleich.
+Fünf Dateien einschließlich dieses Dokuments. Prüfung über Inventarguard,
+Provider-Key-Sicherheit und bestehende Sanierungs-/AfA-Persistenzregressionen.
+
+
+### Prüfnachweis der Inventarergänzung und des Schreibweg-Katalogs (09.11.2026)
+
+- Ausgangs-Head `992b7d9455782733f4b0a55dc1d6b2d4e5299159`, weiterhin
+  Basis `302b007ad510c44fb596a0081197490d3430374e`.
+- Die erweiterte Prüfung schlug vor der Klassifikation gezielt an
+  `DrivePendingWrites.kt: noBackupFilesDir/drive-pending-writes` fehl.
+  Die technische Quelle ist nun ausdrücklich LOCAL_ONLY zugeordnet.
+- Die Guard-Schlüssel enthalten Speicher-API und Wurzelname; ein Wechsel von
+  `noBackupFilesDir` nach `filesDir` ist daher keine still akzeptierte gleiche
+  Quelle. Neue nicht zugeordnete Getter-/Speicherzugriffe verlangen eine bewusste
+  Inventarergänzung. Java- und Kotlin-Dateien im vorhandenen Main-Quellverzeichnis
+  werden für Datei-/DataStore- und Preference-Öffnungen geprüft.
+- Zwei gezielte Methoden bestanden: `persistentFileRootsAndDataStoreOwnersRequireExplicitClassification`
+  und `everySharedPreferenceOpeningMustResolveToAnExplicitClassification` aus
+  `PersistentStorageInventoryTest`. JUnit-XML auf exakte Methoden, Fehler, Skips,
+  Duplikate und Platzhalter geprüft. Keine anderen Testsuiten ausgeführt.
+- Java 21 / Gradle 9.3.1 für Tests, Roborazzi-Verify; Java 17:
+  `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden.
+  Lint-XML ohne Error-/Fatal-Befunde; `git diff --check` bestanden.
+- Geändert wurden ausschließlich diese Inventar-Testdatei und dieses Dokument.
+  App-Code, Daten, Datenbankschema, Signierung, CI und bestehende Aufgabenpläne
+  blieben unverändert. Kein Push, PR, Merge oder Emulatorlauf.
+- Der Schreibweg-Katalog benennt produktive Funktionen und notwendige
+  Koordinationspunkte. Die Implementierung und vollständige Laufzeit-Abnahme
+  eines gemeinsamen Snapshot-Gates bleiben offen; es gibt hier noch keinen
+  neuen Konsistenz- oder Vollständigkeitsnachweis für die Sicherungs-Engine.
+
+Abnahme dieser vier Preference-Anbindungen: acht gezielte Methoden bestanden
+(Provider-Key-Sicherheit, Sanierungspersistenz, AfA-/Credential-Backup und
+Inventarguard), XML ohne Fehler/Skips/Duplikate geprüft. Ergebnisse:
+`/tmp/immopilot-settings-writers-results`, Testprotokoll
+`/tmp/immopilot-settings-writers-tests.log`. `lintDebug`, `assembleDebug` und
+`assembleDebugAndroidTest` bestanden, Lint ohne Error/Fatal; Buildprotokoll
+`/tmp/immopilot-settings-writers-build.log`. Kein GitHub-Upload.
+
+### Schritt 4: Aufgaben, Darlehenszuordnungen und Einheiten-Metadaten
+
+Nächste fünf Dateien: PropertyTaskFeature, LoanFeature, UnifiedUnitsFeature,
+DatevProfileService und dieses Dokument. Die bekannten Preference-Zugänge
+werden über das Inventar geöffnet. Der bestehende Statusdialog veröffentlicht
+Mietverlauf, Einheitenstatus und Statusdatum zusammen unter einer logischen
+Schreibanmeldung; seine Validierungen und Werte bleiben unverändert. Die
+asynchronen ViewModel-/Cloud-Pfade werden anschließend separat angebunden.
+Prüfung: Inventarguard, vollständige Preference-Wiederherstellung mit stabilen
+Zuordnungen und Aktualisierung des bestehenden ViewModels nach Restore.
+
+Abnahme: alle drei ausgewählten Methoden bestanden; exakte XML-Namen,
+Fehlerfreiheit und keine Skips/Duplikate geprüft. XML:
+`/tmp/immopilot-unit-settings-results`; Tests:
+`/tmp/immopilot-unit-settings-tests.log`. `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden (`/tmp/immopilot-unit-settings-build.log`),
+Lint ohne Error/Fatal, `git diff --check` bestanden. Kein Push.
+
+### Schritt 4: weitere Zugänge in Dokumenten- und Drive-Pfaden
+
+Fünf Dateien: GoogleDriveClient, ManagedDocumentBookingPreparation,
+OfflineBackupService, BankFeature und dieses Dokument. Ausschließlich bekannte
+Preference-Öffnungen auf den Inventarzugang umstellen; Cache-Zugänge des
+Drive-Clients bleiben ausdrücklich Cache. Keine Bank-/DATEV-Fachlogik ändern.
+Prüfung über Inventarguard, portablen V1-Roundtrip mit Beziehungen und
+wiederholte Dokumentenvorbereitung ohne doppelte Belege oder Originalindizes.
+
+Abnahme: drei gezielt ausgewählte Methoden bestanden; XML auf exakte
+Namen und keine Fehler/Skips/Duplikate geprüft und unter
+`/tmp/immopilot-document-preferences-results` gesichert. Testprotokoll:
+`/tmp/immopilot-document-preferences-tests.log`. `lintDebug`, `assembleDebug`
+und `assembleDebugAndroidTest` bestanden; Lint ohne Error/Fatal. Build:
+`/tmp/immopilot-document-preferences-build.log`. `git diff --check` bestanden.
+
+### Schritt 4: Preference-Zugänge schließen und Umgehungen erkennen
+
+Vier Dateien: DrivePersistenceRepository, ReceiptViewModel,
+PersistentStorageInventoryTest und dieses Dokument. Die verbleibenden sieben
+fachlichen Öffnungen im Drive-Repository und neun im ViewModel werden über
+PersistentPreferenceInventory.open geführt. Technische LOCAL_ONLY-Journale
+bleiben gesondert. Der Inventarguard lehnt zusätzlich direkte Öffnungen aller
+BACKUP-Stores ab; ein gezielter Vorab-Lauf muss die bestehenden Umgehungen
+erkennen, bevor diese umgestellt werden. Werte, Schlüssel, Restore-Modi und
+Fachlogik bleiben unverändert. Anschließend Inventarguard und bestehende
+Preference-/Identitätsregressionen prüfen.
+
+Vorab-Nachweis: genau zwei Guard-Methoden ausgeführt, eine gezielte Assertion
+in everySharedPreferenceOpeningMustResolveToAnExplicitClassification:
+`DrivePersistenceRepository.kt: wohneinheiten_prefs umgeht die
+Snapshot-Schreibkoordination`. Die zweite Methode prüfte erfolgreich alle
+BACKUP-Stores gegen direkte Öffnung und den Inventarzugang. Keine Skips oder
+unerwarteten Fehler. Belege: `/tmp/immopilot-final-preferences-red.xml` und
+`/tmp/immopilot-final-preferences-red.log`. Anschließend ausschließlich die
+16 dokumentierten Öffnungen umgestellt; kein Wiederholungsversuch zum
+Verdecken eines Fehlers.
+
+Abnahme: sieben exakt ausgewählte Methoden bestanden, XML-Namen und keine
+Fehler/Skips/Duplikate geprüft. Ergebnisse:
+`/tmp/immopilot-final-preferences-results`, Testprotokoll:
+`/tmp/immopilot-final-preferences-tests.log`. Der Umgebungsneustart beendete
+den ersten Build vor Task-Ausführung; keine Tests wiederholt. Der danach
+gestartete Prüflauf bestand `lintDebug`, `assembleDebug` und
+`assembleDebugAndroidTest` (`/tmp/immopilot-final-preferences-build-resumed.log`),
+Lint ohne Error/Fatal; `git diff --check` bestanden. Alle derzeit inventarisierten
+fachlichen Preference-Öffnungen verwenden nun die koordinierte Factory. Das
+ersetzt weiterhin nicht die noch offene Anmeldung mehrteiliger Operationen.
+
+### Schritt 4: asynchrone Übergabe bei Einheitenänderungen
+
+Vier Dateien: OfflineBackupCoordinator, dessen Test, ReceiptViewModel und
+dieses Dokument. Coroutine-Mutationen werden vor dem Einplanen angemeldet
+und erst nach Abschluss aller strukturierten Kinder freigegeben; auch Abbruch
+vor Eintritt und LAZY-Aufträge müssen die Anmeldung freigeben. Die drei
+Schreib-/Cloud-Aufträge in updateWohneinheitForProperty verwenden diesen
+Zugang. updateWohneinheit und updateWohneinheitForProperty halten zusätzlich
+die synchrone Übergabe über Mietverlauf, Preferences und Einplanung zusammen.
+Prüfung: beobachtete Warteschlange, Suspendierung, Kinder und Abbruch sowie
+bestehende Einheiten-/Identitätsregressionen. Andere ViewModel-Aufträge
+werden im nächsten Teilschritt geprüft und angebunden.
+
+Vorab: genau der Warteschlangen-Test schlug erwartungsgemäß fehl, weil
+vor Eintritt keine OfflineBackupValidationException ausgelöst wurde. Keine
+Zeitüberschreitung oder Infrastrukturursache. Belege:
+`/tmp/immopilot-coroutine-writers-red.xml` und
+`/tmp/immopilot-coroutine-writers-red.log`. Danach Anmeldung vor launch
+und Freigabe per Job.invokeOnCompletion ergänzt; anschließend die drei
+Einheiten-Aufträge und ihre synchrone Übergabe angebunden.
+
+Abnahme: acht exakt ausgewählte Methoden bestanden (drei neue Coroutine-,
+zwei bestehende Domain-Koordinations-, zwei Einheiten-/Backup- und ein
+Inventartest). XML ohne Fehler/Skips/Duplikate geprüft und unter
+`/tmp/immopilot-coroutine-writers-results` gesichert. Testprotokoll:
+`/tmp/immopilot-coroutine-writers-tests.log`. Der bekannte KSP-AWT-Threadfehler
+beendete weder Compiler noch Tests; Gradle und XML bestanden. `lintDebug`,
+`assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-coroutine-writers-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Der ViewModel-Diff wurde zusätzlich nach
+Rücknahme ausschließlich der Koordinationshüllen und Einrückungen exakt
+gegen die unveränderte fachliche Ausgangslogik verglichen. Kein Push.
+
+### Schritt 4: mehrteilige Einheitenmigration beim Lesen
+
+Drei Dateien: ReceiptViewModel, OfflineBackupViewModelSnapshotTest und dieses
+Dokument. loadUnitById kopiert ältere Felder bisher über mehrere Editoren.
+Die Anmeldung beginnt erst bei der ersten tatsächlich erforderlichen Kopie
+und bleibt bis zum Ende des Lese-/Migrationsvorgangs bestehen. Kanonische
+Reads ohne Veröffentlichung bleiben unverändert ruhig. Ein echter ViewModel-
+Test beobachtet die Statusabfrage zwischen erster und zweiter Feldkopie;
+Robolectric-Application delegiert sämtliche Preference-Daten an echte Stores.
+Keine Änderung der Schlüssel, Werte, Aliasregeln oder Mietberechnungen.
+
+Vorab-Nachweis: Der neue Test erreichte tatsächlich die Abfrage zwischen
+den Editoren und meldete `expected:<[true]> but was:<[false]>`: Erfassung
+war dort noch erlaubt. Keine Timeout-/Initialisierungsursache. XML:
+`/tmp/immopilot-unit-read-migration-red.xml`; Protokoll:
+`/tmp/immopilot-unit-read-migration-red.log`. Danach eine erst bei
+tatsächlicher Veröffentlichung beginnende Anmeldung ergänzt, Freigabe
+auch bei Ausnahme/Return im finally. Alle vier Kopierstellen nutzen sie.
+
+Offener Hinweis für den vollständigen Snapshot-/Restore-Vertrag: Die V1-
+Schemasuche lässt `sqlite_*` aus. Für REPLACE_FULL sind neben den expliziten
+Zeilen-IDs auch ursprüngliche AUTOINCREMENT-Höchststände (`sqlite_sequence`)
+zu erfassen und zu prüfen, damit nach archivierten Löschungen keine alten
+Kennungen erneut vergeben werden. Dies ist noch kein implementierter
+V2-Transport; keine Änderung an Room-Schema oder Migrationen.
+
+Abnahme: fünf ausgewählte Methoden bestanden, exakte XML-Namen und keine
+Fehler/Skips/Duplikate geprüft (`/tmp/immopilot-unit-read-migration-results`;
+`/tmp/immopilot-unit-read-migration-tests.log`). Der neue tatsächliche
+ViewModel-Test prüft den beobachteten Editor-Zwischenraum, unveränderte
+Kennung/Werte/Legacy-Daten und den ruhigen anschließenden kanonischen Read.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-unit-read-migration-build.log`), Lint ohne Error/Fatal,
+`git diff --check` bestanden. Fachliche Ausgangslogik nach Abzug allein der
+Anmeldung/Hüllen/Einrückungen exakt verglichen. Kein GitHub-Upload.
+
+### Schritt 4: weitere endliche ViewModel-Mutationen
+
+Drei Dateien: ReceiptViewModel, OfflineBackupViewModelSnapshotTest und dieses
+Dokument. Mutierende Aufträge in Import, Bearbeitung, Bankzuordnung, Export,
+Löschen, Reparatur sowie Drive-/Firestore-Synchronisation werden vor der
+Einplanung angemeldet und bleiben bis zum Jobabschluss erfasst. Reine
+Such-/Analyseanzeigen und der unbegrenzte propertyMetadata-Collector bleiben
+Leseaufträge. Der Integrationstest hält Room vor dem ersten Datenbankzugriff
+einer echten createProperty-Anforderung an und prüft dort die Sperre. Nach
+Freigabe müssen stabile Einheiten-ID, Room-Zeile, Preferences und Auswahl
+vollständig veröffentlicht sein. Nur synthetische In-Memory-Daten.
+Die hier ausgewählten Robolectric-Klassen deklarieren SDK 35; für diese
+eng gefilterten Läufe genügt Java 17 (keine globale SDK-Erlaubnisliste).
+Java 21 bleibt für ausgewählte SDK-36-Fälle erforderlich.
+
+Vorab: genau die neue createProperty-Integrationsmethode scheiterte mit
+fehlender OfflineBackupValidationException vor Room-Eintritt; der Test
+ließ den angehaltenen Auftrag im finally vollständig fertiglaufen. Keine
+Timeout-/Infrastrukturursache, keine Skips. Belege:
+`/tmp/immopilot-viewmodel-mutations-red.xml` und
+`/tmp/immopilot-viewmodel-mutations-red.log` (Java 17, SDK 35).
+
+Angebunden: 88 weitere Coroutine-Starts in 88 ausdrücklich
+zugeordneten mutierenden Funktionen. Vollständige Liste dieser Anbindungen:
+
+- `ReceiptViewModel.acceptBankRule`
+- `ReceiptViewModel.analyzeManagedDocument`
+- `ReceiptViewModel.analyzeReceipt`
+- `ReceiptViewModel.analyzeReceiptDuplicates`
+- `ReceiptViewModel.applyBankBatchAction`
+- `ReceiptViewModel.applyDescriptionBackfill`
+- `ReceiptViewModel.backfillPaymentMethods`
+- `ReceiptViewModel.changePhase2DAllocation`
+- `ReceiptViewModel.checkForDriveRestore`
+- `ReceiptViewModel.classifyBankTransaction`
+- `ReceiptViewModel.clearAll`
+- `ReceiptViewModel.clearAllLearnedRules`
+- `ReceiptViewModel.confirmBankAccountImport`
+- `ReceiptViewModel.confirmBankLoanAssignment`
+- `ReceiptViewModel.confirmBankReceiptLink`
+- `ReceiptViewModel.confirmBankRentSuggestion`
+- `ReceiptViewModel.confirmBankTransferPair`
+- `ReceiptViewModel.confirmDocumentStorageMigration`
+- `ReceiptViewModel.confirmDuplicateMerge`
+- `ReceiptViewModel.confirmManagedDocumentReview`
+- `ReceiptViewModel.confirmManualBankRentAssignment`
+- `ReceiptViewModel.confirmManyBankTransactionsForReceipt`
+- `ReceiptViewModel.confirmMetadataDuplicateCleanup`
+- `ReceiptViewModel.confirmPhase2DCombination`
+- `ReceiptViewModel.confirmWholeDuplicateGroupDeletion`
+- `ReceiptViewModel.correctReceiptMetadata`
+- `ReceiptViewModel.createProperty`
+- `ReceiptViewModel.deleteBankRule`
+- `ReceiptViewModel.deleteLearnedRule`
+- `ReceiptViewModel.deleteProperty`
+- `ReceiptViewModel.deleteReceipt`
+- `ReceiptViewModel.deleteStandardRoute`
+- `ReceiptViewModel.diagnoseAndFixAllReceipts`
+- `ReceiptViewModel.downloadManagedDocument`
+- `ReceiptViewModel.downloadReceiptDocument`
+- `ReceiptViewModel.ensureManagedDocumentReady`
+- `ReceiptViewModel.executePhase2DSafeBatch`
+- `ReceiptViewModel.executeWizardExport`
+- `ReceiptViewModel.exportRenovationReport`
+- `ReceiptViewModel.forceDocumentDownload`
+- `ReceiptViewModel.importBankFile`
+- `ReceiptViewModel.importManagedDocument`
+- `ReceiptViewModel.initializeDrivePersistence`
+- `ReceiptViewModel.insertReceiptQuietly`
+- `ReceiptViewModel.learnVendorRule`
+- `ReceiptViewModel.markBankTransactionForReview`
+- `ReceiptViewModel.markBankTransactionNoReceiptRequired`
+- `ReceiptViewModel.performFullRestoreConfirmation`
+- `ReceiptViewModel.permanentlyDeleteReceipt`
+- `ReceiptViewModel.proposeBankRuleFromConfirmedReceipt`
+- `ReceiptViewModel.proposeBankRuleFromRecurringPattern`
+- `ReceiptViewModel.rejectBankRule`
+- `ReceiptViewModel.rejectBankRuleMatch`
+- `ReceiptViewModel.removeBankReceiptLink`
+- `ReceiptViewModel.reopenBankTransaction`
+- `ReceiptViewModel.repairReceiptDocument`
+- `ReceiptViewModel.requestDuplicateMerge`
+- `ReceiptViewModel.requestWholeDuplicateGroupDeletion`
+- `ReceiptViewModel.resetLocalReceiptData`
+- `ReceiptViewModel.resolvePossibleDocumentDuplicate`
+- `ReceiptViewModel.restoreReceipt`
+- `ReceiptViewModel.resumeDuplicateCleanupOperation`
+- `ReceiptViewModel.runDocumentOcr`
+- `ReceiptViewModel.runOriginalReceiptAudit`
+- `ReceiptViewModel.runRealDriveTest`
+- `ReceiptViewModel.runRestoreDryRun`
+- `ReceiptViewModel.saveBankRule`
+- `ReceiptViewModel.saveReceipt`
+- `ReceiptViewModel.saveRecurringPattern`
+- `ReceiptViewModel.saveRenovationMeasure`
+- `ReceiptViewModel.saveRenovationRelation`
+- `ReceiptViewModel.setBankRuleEnabled`
+- `ReceiptViewModel.setRecurringPatternEnabled`
+- `ReceiptViewModel.syncAllToDrive`
+- `ReceiptViewModel.syncManagedDocumentNow`
+- `ReceiptViewModel.syncReceiptManually`
+- `ReceiptViewModel.syncWithCloud`
+- `ReceiptViewModel.undoLastBankBatchAction`
+- `ReceiptViewModel.unlinkBankLoanAssignment`
+- `ReceiptViewModel.unlinkBankRentAssignment`
+- `ReceiptViewModel.unlinkBankTransferPair`
+- `ReceiptViewModel.unlinkPhase2DLink`
+- `ReceiptViewModel.updateBankLoanSplit`
+- `ReceiptViewModel.updateBankTransactionReviewState`
+- `ReceiptViewModel.updateManagedDocumentPresentation`
+- `ReceiptViewModel.updatePropertyMetadata`
+- `ReceiptViewModel.updateReceipt`
+- `ReceiptViewModel.uploadReceiptToDriveInternal`
+
+Die unveränderten Lese-/Anzeige- und Übergabeaufträge sind explizit
+klassifiziert; init-Feld-Refresh, propertyMetadata-Collector und Starttimer
+gehören dazu. Timer, Consent- und Anmeldeübergaben starten ihre tatsächlichen
+Mutationen über die jeweils angemeldeten Methoden. Alle ausstehenden
+viewModelScope.launch-Stellen sind so zugeordnet. Nach Rücknahme nur dieser
+Launch-Ersetzungen stimmt die gesamte Quelldatei exakt mit dem Ausgangsstand
+überein; keine fachlichen Bodies oder Parameter verändert.
+
+Abnahme: acht ausgewählte Methoden unter Java 17/SDK 35 bestanden,
+exakte XML-Namen und keine Fehler/Skips/Duplikate geprüft
+(`/tmp/immopilot-viewmodel-mutations-results`,
+`/tmp/immopilot-viewmodel-mutations-tests.log`). Der angehaltene tatsächliche
+Immobilien-Auftrag ist vor Datenbankeintritt angemeldet; nach Freigabe sind
+Room-Zeile, stabile Einheit, Preferences und Auswahl vollständig vorhanden.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-viewmodel-mutations-build.log`), Lint ohne Error/Fatal,
+`git diff --check` bestanden. Keine Änderung an SDK-Auswahl oder Prüfregeln.
+
+### Separater Inventarschritt: inaktiver Legacy-Erzeugerpfad
+
+Der Backend-Prüflauf bestand zehn Methoden und zeigte einen bereits bestehenden
+Inventarfehler: Der Quelltest verlangte weiterhin eine aktive Öffnung von
+`filesDir/restored_receipts`. Auch am unveränderten Head `c6fef75` gibt es keine
+solche produktive Quellstelle (`rg`); Historie `3673862` ersetzte den alten
+Downloadpfad durch neue Versionen in managed_documents. Die Backend-Änderungen
+sind deshalb unverändert in einem benannten lokalen Stash gesichert und dieser
+Prüfvertrag wird als eigener Dreidateien-Schritt bearbeitet, bevor die fünf
+Backend-Dateien fortgeführt werden.
+
+`restored_receipts` bleibt bewusst klassifizierter Legacy-Datenbestand.
+Lediglich seine Erzeugerwurzel ist ausdrücklich inaktiv. Die Gleichheitsprüfung
+verlangt weiterhin genau alle aktiven Quellwurzeln; unbekannte Zugriffe, neue
+DataStores und eine unkommentierte Reaktivierung des alten Pfads werden weiterhin
+abgelehnt. Keine Absenkung auf eine bloße Teilmengenprüfung. Ein neuer Service-
+Roundtrip legt das einzige referenzierte Original in den alten Ordner, entfernt
+nur dessen synthetische frühere Kopie und prüft Export sowie zweimaliges Restore
+mit unveränderten Bytes, stabilen IDs und Beziehungen. Keine Nutzerdaten berührt.
+
+Abnahme des getrennten Inventarschritts: drei exakt ausgewählte Methoden
+bestanden; XML ohne Fehler/Skips/Duplikate geprüft und unter
+`/tmp/immopilot-retired-root-inventory-results` gesichert. Tests:
+`/tmp/immopilot-retired-root-inventory-tests.log`. Der Legacy-Roundtrip erhält
+Originalbytes, stabile IDs und Beziehungen auch beim zweiten Restore.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-retired-root-inventory-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Ausschließlich zwei Testdateien und Dokument
+geändert; Backend-Fortsetzung folgt mit unveränderten gesicherten Dateien.
+
+### Schritt 4: Repository- und Originalspeicher-Grenzen
+
+Fünf Dateien: ReceiptDatabase (ReceiptRepository), ReceiptOriginalStorage,
+ManagedDocumentService, OfflineBackupCoordinatorTest und dieses Dokument.
+Mehrteilige Repository-Veröffentlichungen werden vom ersten bis zum letzten
+DAO-Aufruf angemeldet; direkte Aufrufe müssen denselben Schutz besitzen.
+Original-Import/-Download meldet Staging, Veröffentlichung und Aufräumen an.
+ManagedDocumentService hält mehrphasige Import-/OCR-/Analyse-/Review-Vorgänge
+zusammen; Dateischreiben wird vor Metadatenveröffentlichung synchronisiert.
+Prüfung: reale Unterbrechung nach Commit der Belegzeile vor Projektion,
+Dateiveröffentlichungen sowie bestehende Originalversions-/Dokumenttests.
+
+Vorab: beide neuen Methoden scheiterten erwartungsgemäß an fehlender
+OfflineBackupValidationException. Beim Repository war die Belegzeile bereits
+committed, die Projektion noch nicht geschrieben; beim Dateitest war eine
+Downloadversion vollständig veröffentlicht. Keine Skips/Timeouts/unerwarteten
+Fehler (`/tmp/immopilot-backend-writers-red.xml`,
+`/tmp/immopilot-backend-writers-red.log`). Danach neun Repository-, drei
+Originalspeicher- und vier ManagedDocumentService-Grenzen angebunden.
+Importanmeldung im privaten persistPrepared umfasst Datei und Upsert;
+reines URI-Lesen und Duplikatvorprüfung ändern keinen Bestand. Der Dateistream
+wird vor dem Upsert per fd.sync synchronisiert. Abgesehen davon wurden alle
+ursprünglichen Funktions-Bodies nach Abzug von Hüllen/Einrückungen exakt
+verglichen. Keine fachlichen Rückgaben, Werte oder Aufrufparameter geändert.
+
+Backend-Fortsetzung: die vier gesicherten Quelldateien wurden nach dem
+separaten Inventar-Commit bytegenau aus dem eigenen Stash wiederaufgenommen;
+die korrigierte Legacy-Klassifikation und ihr zusätzlicher Test bleiben
+erhalten. Erneute gezielte Abnahme mit dem korrigierten Inventarguard folgt.
+
+Abnahme der Backend-Fortsetzung: zwölf exakt ausgewählte Methoden bestanden,
+XML ohne Fehler/Skips/Duplikate geprüft
+(`/tmp/immopilot-backend-writers-verified-results`,
+`/tmp/immopilot-backend-writers-verified-tests.log`). Der zuvor fehlgeschlagene
+Inventarfall wurde in `5f57308` mit Legacy-Roundtrip separat behoben; sämtliche
+ursprünglichen Backend-Funktions-Bodies blieben währenddessen unverändert
+gesichert. Aktuell bestehen Repository-Zwischenraum, Original-Publikation,
+alle fünf Versions-/Fehlerfälle, tatsächlicher Fünf-Format-Import, geprüfter
+Dokument-Restore, beide Inventarguards und Legacy-Roundtrip.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-backend-writers-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Kein Push und kein Emulatorlauf.
+
+### Schritt 4: vollständige Drive-Original-Downloads anmelden
+
+Drei Dateien: DrivePersistenceRepository, DrivePersistenceManagedDocumentE2eTest
+und dieses Dokument. downloadDocumentOnDemand sowie downloadReceiptOriginals
+halten die Anmeldung von der Auflösung über sämtliche Dateiveröffentlichungen
+bis zur letzten Dokument-/Belegreferenz. Ein direkter Backend-Aufruf mit zwei
+Originalseiten beobachtet die zweite Remote-Abfrage: Die erste neue Dateiversion
+ist bereits vorhanden, die fachlichen Referenzen sind noch unverändert. Genau
+in diesem Zwischenraum muss die Erfassung gesperrt bleiben. Nur der Transport
+ist ein vorhandener Fake; Originalspeicher, Repository und Room sind echt.
+
+Vorab-Nachweis: Der tatsächliche erste Download war abgeschlossen und
+die Referenzen noch alt; bei zweiter Seitenabfrage blieb Erfassung möglich
+(`expected:<true> but was:<false>`). Genau eine neue Methode ausgeführt,
+keine Skips/Timeouts (`/tmp/immopilot-drive-download-coordination-red.xml`,
+`/tmp/immopilot-drive-download-coordination-red.log`). Danach beide
+Download-Funktionen über den gesamten Ablauf angemeldet. Ursprüngliche
+Funktions-Bodies nach Abzug nur der Hüllen/Einrückung exakt verglichen;
+keine Änderung von Referenzreihenfolge, Validierungen oder Rückgaben.
+
+Abnahme: neun gezielte Methoden bestanden; exakte XML-Namen und keine
+Fehler/Skips/Duplikate geprüft
+(`/tmp/immopilot-drive-download-coordination-results`,
+`/tmp/immopilot-drive-download-coordination-tests.log`). Der beobachtete
+Zwischenraum ist nun gesperrt; vorherige Bytes und Referenzen bleiben bei
+fehlenden/defekten Seiten erhalten. Nur Leerraum auf Leerzeilen der beiden
+geänderten Methoden nach dem Testlauf bereinigt; kein Verhalten verändert.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-drive-download-coordination-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Kein Push und kein Emulatorlauf.
+
+### Schritt 4: zusammenhängende Restore-Veröffentlichungen
+
+Fünf Dateien: PersistentPreferenceInventory, SupplementalDriveBackup,
+OfflineBackupService, OfflineBackupCoordinatorTest und dieses Dokument.
+Die bestehenden restorePayload-/restore-Aufrufe melden alle ihre Datei-,
+Room- und Preference-Phasen gemeinsam an. Keine Änderung an MERGE/REPLACE,
+Validierung, Reihenfolge oder bisherigen Fehler-/Rollbackpfaden; das dauerhafte
+Wiederanlaufjournal und der Wartungsmodus aus Schritt 8 bleiben eine spätere,
+gesonderte Implementierung. Drei reale Beobachtungen prüfen den Zwischenraum
+zwischen Preference-Stores sowie den Eintritt vor Objektbild-/Originalspeicher-
+Veröffentlichung. Kontextprobes beobachten nur; Speicher und Room bleiben echt.
+
+Vorab: alle drei neuen Methoden erreichten ihre tatsächlichen Grenzen
+und scheiterten mit `expected:<[true]> but was:<[false]>`, ohne zusätzliche
+Fehler/Skips/Timeouts (`/tmp/immopilot-restore-publications-red.xml`,
+`/tmp/immopilot-restore-publications-red.log`). Danach jeweils die komplette
+Restore-Funktion angemeldet. Sämtliche ursprünglichen Bodies und unveränderten
+Dateibereiche nach Abzug nur der Hülle/Einrückungen exakt verglichen.
+
+Prüfumgebung nachträglich gegen die Projektkonfiguration abgeglichen:
+PreferenceBackupCompletenessTest verwendet AndroidJUnit4 ohne SDK-Override;
+app/src/test/resources/robolectric.properties legt standardmäßig SDK 35 fest.
+Die damalige Annahme eines Standard-SDK 36 war falsch. Der Java-17-Start wurde
+deshalb unnötig, aber vor testDebugUnitTest beendet (Client 143; keine Methode
+lief). Der Folgelauf mit Java 21 führte dieselben zwölf Fälle mit ihren echten
+SDKs vollständig aus. Keine SDK-Erlaubnisliste oder Teständerung. Explizite
+SDK-36-Klassen, etwa RestoreSafetyTest, benötigen weiterhin Java 21.
+
+Der anschließende Umgebungsneustart beendete den Java-21-Prozess nach der
+Testkompilierung und vor der testDebugUnitTest-Aufgabe. Kein Gradle-Prozess
+blieb aktiv und es lag noch kein Ergebnis dieses Laufs vor. Derselbe eng
+gefilterte Prüflauf wird nach Wiederverfügbarkeit fortgesetzt; Infrastruktur-
+unterbrechung, keine ausgeblendete Testfehlermeldung.
+
+Abnahme: zwölf exakt ausgewählte Methoden bestanden; XML ohne Fehler,
+Skips oder Duplikate geprüft (`/tmp/immopilot-restore-publications-results`,
+`/tmp/immopilot-restore-publications-verified-tests-resumed.log`). Alle drei
+vorher beobachteten Grenzen sind gesperrt; Roundtrip, Konfliktabbruch,
+Objektbilder, ungültige Payloads, Credentials, höhere Schemaversion und
+vollständige Preferences bestehen weiterhin. `lintDebug`, `assembleDebug`,
+`assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-restore-publications-build.log`), Lint ohne Error/Fatal,
+`git diff --check` bestanden. Keine neue Journal-/Wartungssemantik in diesem
+Teilschritt, kein GitHub-Upload und kein Emulatorlauf.
+
+### Schritt 4: weitere Drive-Mutationsgrenzen
+
+Drei Dateien: DrivePersistenceRepository, DrivePersistenceManagedDocumentE2eTest
+und dieses Dokument. Die verbleibenden mutierenden Backend-Einstiege für
+Initialisierung/Import, Stammdaten, Sync/Index, Löschen/Restore, Originalreparatur
+und Dokumentmigration werden vor ihrer Persistenzphase gemeinsam angemeldet.
+Reine Inventar-, Vorschau-, Parser- und Lesewege bleiben Lesewege. Ein direkter
+Preference-Mutationsaufruf prüft die frühzeitige Anmeldung bereits beim Öffnen
+des Stores; zahlreiche bestehende Fake-Drive-Regressionen sichern die bisherige
+Fach- und Konfliktsemantik. Netzwerk-/Ordnerlogik wird dabei nicht geändert.
+
+Vor dem Schreiben weiterer Dateien wird dieser Drive-Schritt auf fünf Dateien
+erweitert und vollständig abgegrenzt: zusätzlich RestoreSafety und der vorhandene
+Coordinator-Test. FullRestoreCoordinator.execute hält auch die Übergabe zwischen
+fertigem Core-Import und beginnendem Zusatzimport zusammen. Der Test liest dort
+die bereits geänderte echte Belegzeile und die noch alten Preferences und prüft
+die Erfassungssperre; nur die äußeren Drive-Ergebnisobjekte sind synthetisch.
+Ein zweites paralleles Restore-Journal wird dadurch nicht eingeführt.
+
+Vorab: der direkte Preference-Aufruf erreichte den Store ohne Anmeldung
+(`expected:<[true]> but was:<[false]>`). Der zusätzliche tatsächliche
+Core-/Supplemental-Übergang war ebenfalls offen (`expected:<true> but
+was:<false>`); geänderte Core-Zeile und alte Preferences wurden davor
+erfolgreich beobachtet. Keine Skips/Timeouts oder unerwarteten Fehler.
+Belege: `/tmp/immopilot-drive-mutations-red.xml`,
+`/tmp/immopilot-drive-restore-handoff-red.xml` und zugehörige .log-Dateien.
+
+Angebunden sind 37 weitere Drive-Funktions-/Gate-Grenzen sowie
+FullRestoreCoordinator.execute. Bei Ausdrucksbodies beginnt die Anmeldung
+im bestehenden Mutex-/Sync-Gate-/Trace-Block vor der Persistenzphase; diese
+Gate-Semantik bleibt erhalten. Queued ViewModel-Anforderungen besitzen
+bereits ihre äußere Anmeldung. GetDriveAppConfig ist ausdrücklich keine
+reine Leseoperation: es delegiert an die angemeldete Initialisierung.
+GetExistingDriveAppConfigReadOnly, Inventar/Vorschau und Parser bleiben
+Lesewege. Privat-Metadaten-Upsert ist innerhalb seines Trace-Blocks angemeldet;
+sein öffentlicher Overload delegiert unverändert dorthin. Vollständige Liste:
+
+- `DrivePersistenceRepository.saveWohneinheitenToPrefs`
+- `DrivePersistenceRepository.saveLearnedRulesToPrefs`
+- `DrivePersistenceRepository.initializeDriveStorage`
+- `DrivePersistenceRepository.initializeDriveStorageForSync`
+- `DrivePersistenceRepository.initializeDriveStorageLocked`
+- `DrivePersistenceRepository.saveStammdatenToDrive`
+- `DrivePersistenceRepository.restoreStammdatenFromDrive`
+- `DrivePersistenceRepository.saveDriveAppConfig`
+- `DrivePersistenceRepository.updateReceiptIndexInDrive`
+- `DrivePersistenceRepository.syncReceiptOriginalAttachments`
+- `DrivePersistenceRepository.validateSynchronizationInventory`
+- `DrivePersistenceRepository.syncReceiptToDrive`
+- `DrivePersistenceRepository.getOrCreateDeletionsFolder`
+- `DrivePersistenceRepository.uploadTombstone`
+- `DrivePersistenceRepository.deleteReceiptWithSync`
+- `DrivePersistenceRepository.processPendingDeletions`
+- `DrivePersistenceRepository.restoreDeletedReceipt`
+- `DrivePersistenceRepository.permanentlyDeleteReceipt`
+- `DrivePersistenceRepository.executeFullDriveRestore`
+- `DrivePersistenceRepository.restoreReceiptOriginalMetadata`
+- `DrivePersistenceRepository.auditOriginalReceipts`
+- `DrivePersistenceRepository.correctReceiptMetadata`
+- `DrivePersistenceRepository.runFullRestoreEndToEndTest`
+- `DrivePersistenceRepository.restoreReceiptsFromDrive`
+- `DrivePersistenceRepository.retireLegacyDriveDiagnostic`
+- `DrivePersistenceRepository.testDriveReceiptStorage`
+- `DrivePersistenceRepository.upsertReceiptMetadata`
+- `DrivePersistenceRepository.uploadReceiptMetadata`
+- `DrivePersistenceRepository.repairAndUploadOriginalDocument`
+- `DrivePersistenceRepository.replaceReceiptIndexEntries`
+- `DrivePersistenceRepository.ensureDocumentFolder`
+- `DrivePersistenceRepository.ensurePropertyDocumentStructure`
+- `DrivePersistenceRepository.syncManagedDocumentToDrive`
+- `DrivePersistenceRepository.acknowledgeOriginalBackupChanges`
+- `DrivePersistenceRepository.updateManagedDocumentIndex`
+- `DrivePersistenceRepository.executeReceiptDocumentMigration`
+- `DrivePersistenceRepository.resumeInterruptedDocumentMigration`
+- `FullRestoreCoordinator.execute`
+
+Alle ursprünglichen Bodies nach Entfernen nur der äußeren Anmeldung bytegenau
+verglichen; keine Triple-Quote-Literale in diesen geänderten Bodies. Keine
+Änderungen an Parametern, Ergebnissen, Netzwerkprotokoll, Konfliktlogik oder
+Restore-Reihenfolge. Es werden weder neue Journale noch neue Replay-Wege gebaut.
+
+Abnahme: sechzehn exakt ausgewählte Methoden bestanden; XML ohne Fehler,
+Skips oder Duplikate geprüft (`/tmp/immopilot-drive-mutations-results`,
+`/tmp/immopilot-drive-mutations-tests.log`). Erfolgs-/Konflikt-/Hash-/404-/429-/
+Timeoutfälle, vorhandene Restore-Sicherheitsfälle und beide Inventarguards
+bestehen. Der Core-/Supplemental-Zwischenraum ist nun gesperrt.
+`lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` bestanden
+(`/tmp/immopilot-drive-mutations-build.log`), Lint ohne Error/Fatal;
+`git diff --check` bestanden. Alle 38 alten Bodies bytegenau erhalten,
+37 Drive-Hüllen und eine äußere Restore-Hülle ergänzt. Kein GitHub-Upload
+und kein Emulatorlauf.
+
+### Schritt 4: gespeicherte Exportdateien und direkte ViewModel-Einstiege
+
+Fünf Dateien: DatevCsvOutput, AdvisorPackageBuilder, ReceiptViewModel,
+Phase5BDatevOutputTest und dieses Dokument. CSV-/Beraterpaket-Dateien erhalten
+eine Anmeldung über Erstellung, Schließen und Prüfsumme. Die direkten Methoden
+executeWizardExport(context), exportToDatev und exportToPdf melden ebenfalls
+vor ihrer Persistenzphase an; beim Assistenten bleibt die Anmeldung bis zur
+bereits koordiniert eingeplanten Audit-/Statusfortsetzung überlappend aktiv.
+Der neue Cache-Kontexttest erzeugt gültige CSV-/ZIP-Dateien aus vorhandenen
+synthetischen Buchungsfixtures und prüft den Eintritt vor Dateianlage sowie
+vollständige Ausgabe und Freigabe danach. Fachliche Freigaben, Mapping,
+Serialisierung, Statuslogik und UI bleiben unverändert.
+
+Vorab: eine neue Methode erreichte die gültige CSV-Dateierstellung ohne
+Anmeldung (`expected:<[true]> but was:<[false]>`), ohne Skips/Timeouts oder
+unverwandte Fehler (`/tmp/immopilot-export-file-coordination-red.xml` und
+.log). Danach zwei Dateierzeuger und drei direkte ViewModel-Einstiege
+angemeldet. Alle fünf ursprünglichen Bodies bytegenau erhalten; nur äußere
+Lebensdauerzeilen ergänzt. Die bestehende Audit-Fortsetzung wird bereits
+vor Einplanung angemeldet und überlappt jetzt mit der direkten Exportphase.
+
+Umgebungsunterbrechung beim Exportdatei-Schritt: beide APK-Aufgaben waren
+beendet, der Gesamtabschluss einschließlich Lint fehlte. Nach Neustart kein
+Gradle-Prozess aktiv; die neun bestandenen Test-XMLs bleiben gesichert. Nur
+lintDebug und die beiden APK-Aufgaben werden mit unverändertem Quellcode
+fortgesetzt, ohne Wiederholung bestandener Tests.
+
+Abnahme: neun exakt ausgewählte Methoden bestanden; XML ohne Fehler,
+Skips oder Duplikate geprüft (`/tmp/immopilot-export-file-coordination-results`,
+`/tmp/immopilot-export-file-coordination-tests.log`). Gültige CSV-/ZIP-Ausgaben,
+Hashes, Originalmanifest/Reihenfolge sowie Freigabe-/Formatregressionen
+bestehen. `lintDebug`, `assembleDebug`, `assembleDebugAndroidTest` nach
+Umgebungsneustart bestanden
+(`/tmp/immopilot-export-file-coordination-build-resumed.log`), Lint ohne
+Error/Fatal; `git diff --check` bestanden. Alle fünf alten Funktions-Bodies
+bytegenau erhalten. Kein GitHub-Upload und kein Emulatorlauf.
+
+### Schritt 4: eigenständige ZIP-/PDF-Datei-Erzeuger
+
+Fünf Dateien: DatevExporter, PdfExporter, Phase5BDatevOutputTest,
+OfflineBackupFilePublicationEmulatorTest und dieses Dokument. Beide verbleibenden
+ZIP-/PDF-Dateierzeuger melden ihre volle Lebensdauer an; die ursprünglichen
+Berechnungs- und Formatierungs-Bodies bleiben bytegenau erhalten.
+
+Der ZIP-Test scheiterte vorab gezielt an der fehlenden Anmeldung
+(expected [true], actual [false]). Der neue PDF-Nachweis wurde aus dem JVM-Test
+in einen geschützten Android-Test verlegt: Robolectric 4.16.1 enthält keinen
+PdfDocument-Shadow; selbst mit nativer Grafik ergibt startPage bereits
+"document is closed!". Eine vorübergehende Weitergabe der Originalausnahme
+wurde bytegenau entfernt. Der Android-Test prüft echte PDF-Bytes, Anmeldung vor
+Cache-Zugriff, Invalidierung älterer Capture-Tokens und Freigabe danach. Er nutzt
+ein eigenes Ausgabeverzeichnis und die vorhandene isolierte Emulator-Schutzregel.
+Dieser Android-Test ist bis zur tatsächlichen Emulatorausführung ausdrücklich
+nur implementiert, nicht als bestanden zu werten. PropertyImagePicker folgt im
+nächsten Inkrement zusammen mit dem verbleibenden Bank-CSV-Dateischreiber.
+
+Abnahme: vier echte JVM-Methoden in Phase5BDatevOutputTest bestanden, XML ohne
+Fehler/Skips/Duplikate (`/tmp/immopilot-leaf-file-coordination-green.xml`).
+Lint sowie App-/Test-APK-Build bestanden
+(`/tmp/immopilot-leaf-file-coordination-build.log`); keine Error/Fatal-Lintbefunde.
+Die zwei ursprünglichen Dateierzeuger-Bodies sind bytegenau erhalten.
+Der PDF-Android-Test kompiliert; Ausführung bleibt wegen fehlendem lokalem KVM
+bis zum gezielten isolierten Emulatorlauf offen. Kein GitHub-Upload.
+
+### Schritt 4: Objektbild- und Bank-CSV-Veröffentlichung
+
+Geplant sind vier Dateien: ImmobilienManagerFeature, ReceiptAppUi,
+OfflineBackupBankExportCoordinationTest und dieses Dokument. Der Bildauftrag
+wird vor dem Einplanen bis zum strukturierten Abschluss angemeldet; die bereits
+koordinierte Metadatenfortsetzung überlappt damit. Der Bank-CSV-Erzeuger erhält
+eine äußere Anmeldung. Die vorhandenen Bodies, CSV-Inhalte und UI bleiben
+unverändert. Der neue synthetische Test prüft echte gespeicherte CSV-Bytes,
+Freigabe-Intent, Anmeldung vor Dateizugriff und saubere Freigabe danach.
+Der bereits geprüfte launch-Helfer deckt Einplanung, Kindaufträge und Abbruch ab.
+
+Vorab scheiterte genau die Anmeldung vor Cache-Publikation (Testzeile 43),
+nach bereits erfolgreichem Inhalts- und Freigabe-Intent-Nachweis.
+Kein Fixture-, Format- oder Providerfehler; RED-XML gesichert unter
+`/tmp/immopilot-ui-file-coordination-red.xml`. Nun nur die äußere Bank-CSV-
+Lebensdauer und den koordinierten Bildauftrag ergänzt. Beide bestehenden
+Bodies einschließlich gemischter Zeilenenden bytegenau erhalten.
+
+Abnahme: vier ausgewählte Methoden bestanden, XML ohne Fehler, Skips oder
+Duplikate geprüft (`/tmp/immopilot-ui-file-coordination-results`). CSV-Bytes,
+Freigabe-Intent sowie Lebensdauer vor Einplanung, über Kindaufträge und bei
+Abbruch sind nachgewiesen. Lint und beide APK-Builds bestanden
+(`/tmp/immopilot-ui-file-coordination-build.log`), keine Error/Fatal-Lintbefunde.
+`git diff --check` bestanden; kein Emulatorlauf oder GitHub-Upload.
+
+### Schritt 4: verfügbare Originalversionen und gespeicherte Exporte
+
+Vier Dateien: neue OfflineBackupFileInventory, deren gezielte Nachweistests,
+PersistentStorageInventoryTest und dieses Dokument. Das neue Inventar erfasst
+alle vorhandenen Versionen in fachlichen Originalverzeichnissen sowie noch
+vorhandene gespeicherte Export-/Berichtsdateien, auch ohne aktuelle Zeilenreferenz.
+Einträge erhalten portable relative Zuordnung und Original-/Exportklassifikation;
+Originale werden dabei weder gelesen, verändert noch entfernt. Nur ausdrücklich
+klassifiziertes unreferenziertes Staging wird ausgelassen. Null-Byte-Dateien bleiben
+sichtbar, damit die spätere Inhaltsprüfung gezielt abbricht. Verzeichnisfehler,
+unsichere Links und Mengenüberschreitung dürfen keinen Teilerfolg ergeben.
+Ein zusätzlicher Quellcodeguard ordnet alle eigenen Cache-Zugriffe bewusst zu.
+Das aktiviert noch keinen Snapshot und ändert das V1-Archivformat nicht.
+
+Vorab: alle sechs neuen Verhaltensfälle scheiterten an den noch fehlenden
+Inventareigenschaften, ohne Skips oder Fremdfehler
+(`/tmp/immopilot-complete-file-inventory-red.xml`). Anschließend Erfassung,
+sichere relative Zuordnung, Quellenklassifikation und begrenzte Dateimenge ergänzt.
+
+Zusätzlicher Quellcodebefund: CameraX hält `cacheDir/temp_receipt_*.jpg` nach dem
+Einlesen weiter vor; analyzeReceipt erstellt daraus gegebenenfalls verkleinerte
+JPEGs in filesDir. Diese noch vorhandenen ursprünglichen Aufnahmebytes sind
+kein rekonstruierbarer Vorschaucache. Sie werden als ORIGINAL mit erfasst.
+Die asynchrone CameraX-Veröffentlichung wird vor Snapshot-Aktivierung separat
+koordiniert; bis dahin meldet isCoordinated für diese Quelle ausdrücklich false.
+Der neue Vollständigkeitstest umfasst die erhaltenen Kamerabytes zusätzlich.
+Der Exporter bleibt unverändert und verwendet das neue Inventar noch nicht.
+
+Review-Korrektur vor Commit: ein zusätzlicher Fehlertest wies eine rohe
+IOException mit privatem absoluten Pfad bereits beim Öffnen des Inventars nach
+(`/tmp/immopilot-file-inventory-privacy-red.xml`). Konstruktion, Aufzählung und
+Quellenprüfung normalisieren nun ausschließlich IO-/Berechtigungsfehler zu
+pfadfreien Validierungsmeldungen. Die Originalausnahme wird weder angehängt
+noch protokolliert. Der Test prüft IO- und SecurityException sowohl beim
+Initialisieren als auch beim späteren Verzeichnislesen. Frühere bestandene
+Neunerprüfung und Builds gelten noch nicht als Abnahme dieser Korrektur.
+
+Abnahme des endgültigen Standes: zehn echte Methoden bestanden, ohne Fehler,
+Skips, Duplikate oder Platzhalter
+(`/tmp/immopilot-complete-file-inventory-final-results`). Lint und beide APK-
+Builds bestanden (`/tmp/immopilot-complete-file-inventory-final-build.log`);
+keine Error/Fatal-Lintbefunde. `git diff --check` bestanden. Erfasst werden alle
+getesteten erhaltenen Versionen/Exporte, einschließlich der Rohkamera-Datei;
+private Dateisystempfade gelangen auch bei Fehlern nicht in die Meldung.
+Keine Aktivierung des Snapshots, kein Emulatorlauf und kein GitHub-Upload.
+
+### Schritt 4: tatsächliche CameraX-I/O-Veröffentlichung
+
+Vier Dateien: OfflineBackupCoordinator, dessen Tests, ReceiptAppUi und dieses
+Dokument. Die vorhandene CameraX-Version 1.5.0 wurde anhand ihres offiziellen
+Sources-JARs geprüft:
+https://dl.google.com/dl/android/maven2/androidx/camera/camera-core/1.5.0/camera-core-1.5.0-sources.jar
+ImageCapture.Builder.setIoExecutor wird über ImagePipeline an ProcessingNode
+weitergegeben. Dessen I/O-Auftrag umfasst JpegBytes2Disk, EXIF-Änderung und das
+abschließende Umbenennen aus FileUtil. RequestWithCallback kann bei Abbruch
+bereits onError senden, während diese Verarbeitung noch ausläuft; ein bloßer
+Callback-Zähler wäre daher kein vollständiger Nachweis.
+
+Geplant ist eine Anmeldung vor Einplanung des tatsächlichen Executor-Auftrags,
+die bis zu dessen Rückkehr oder Fehler aktiv bleibt. Der vorhandene IO-Dispatcher
+wird weiterverwendet; keine neuen Threads, kein CameraX-Upgrade und keine Änderung
+an UI oder Aufnahmeformat. Drei deterministische Tests prüfen echte Dateipublikation
+mit eingeplanter Fortsetzung, Ablehnung vor Eintritt und Fehler bei synchroner
+Ausführung. Das Inventar bleibt für Kameraquellen vorerst bewusst konservativ;
+seine Freigabe erfolgt erst mit dem folgenden Snapshot-Nachweis.
+
+Vorab scheiterten alle drei neuen Tests ausschließlich an der fehlenden
+Capture-Sperre/Invalidierung; keine Fremdfehler oder Skips
+(`/tmp/immopilot-camera-io-coordination-red.xml`). Nun vor Executor-Einplanung
+anmelden, nach tatsächlicher I/O-Rückkehr im finally freigeben und Ablehnung
+unverändert weiterreichen. Der CameraX-Builder erhält nur diese Executor-Grenze;
+Import und Builderzeile sind die einzigen Änderungen in ReceiptAppUi. Alle
+bisherigen Aufnahme-/Fehler-/Callback-Bodies bleiben bytegenau erhalten.
+
+Abnahme: sieben echte ausgewählte Methoden bestanden; XML ohne Fehler, Skips,
+Duplikate oder Platzhalter geprüft (`/tmp/immopilot-camera-io-coordination-results`).
+Wartende und ineinander eingeplante Dateiveröffentlichung, Ablehnung und
+synchroner Fehler geben den Zähler korrekt frei; vorhandene Coroutine-Grenzen
+und der Cache-Guard bestehen. Lint und beide APK-Builds bestanden
+(`/tmp/immopilot-camera-io-coordination-build.log`), keine Error/Fatal-Lintbefunde.
+`git diff --check` bestanden. Originale UI-/Callback-Bodies bytegenau erhalten;
+CameraX I/O-Grenze durch offizielle Sources 1.5.0 nachvollzogen.
+Kein Kamera-/PDF-Emulatorlauf und kein GitHub-Upload.
+
+### Schritt 4: gestreamter V2-Metadatenvertrag
+
+Drei Dateien: neue OfflineBackupMetadataWriter, zugehöriger Nachweis und dieses
+Dokument. Der neue Serializer liefert ausdrücklich nur einen noch nicht global
+fixierten Entwurf. Er liest alle klassifizierten fachlichen Room-Tabellen und
+inventarisierten Preferences in derselben Lesetransaktion, erhält SQL-Werte und
+sqlite_sequence-Hochstände und schreibt Tabellenzeilen gestreamt in ein eigenes
+privates Metadatenfile. Keine Sammlung der gesamten Datenbank als JSONObject.
+Technischer document_migration_journal und abgeleitete FTS-Daten bleiben explizit
+lokal; unbekannte Tabellen müssen eine neue Klassifikation erzwingen.
+
+Dateiverweise werden als portable Alias-IDs ausgegeben; Live-Pfade, Besitzer,
+Hash-/Größenansprüche und geprüfte Alternativkandidaten bleiben ausschließlich
+im internen Entwurfsvertrag zur folgenden Originalfixierung. Der gesamte Snapshot
+wird erst nach Kopie aller Originalversionen und Generationsprüfung freigegeben.
+Metadaten bleiben auf 64 MiB, Referenzen auf 10.000 begrenzt; bestehende Grenzen
+werden nicht erhöht. Vorhandene Ziele werden nicht überschrieben; Fehler oder
+Abbruch entfernen nur das eigene neu erstellte Metadatenfile. Das V1-Format bleibt
+unverändert; weder Archivfreigabe noch Erfolgseintrag entstehen in diesem Schritt.
+
+Erster Testaufbau korrigiert: der Ausdrucksrumpf von setUp leitete Boolean statt
+JUnit-void ab. Der Lauf endete vor Ausführung der Methoden und zählt ausdrücklich
+nicht als Verhaltens-RED (`/tmp/immopilot-streamed-metadata-invalid-fixture.xml`).
+Nur die Setup-Signatur wurde zu Unit korrigiert; die fünf Assertionsfälle bleiben
+unverändert und werden vor der Implementierung erneut ausgeführt.
+
+Nach Setup-Korrektur: alle fünf echten Methoden erreichten die beabsichtigten
+fehlenden Eigenschaften (leere Tabellen-/Referenzdaten, fehlende Ablehnung bzw.
+falscher Zielkonflikttyp), ohne Skips oder Fremdfehler
+(`/tmp/immopilot-streamed-metadata-red-valid-fixture.xml`). Der Serializer ist
+nun implementiert: Zeilen einzeln schreiben, UTF-8 strikt kodieren, 64-MiB-Grenze
+vor Ausgabe prüfen, Encoder schließen und Dateideskriptor danach synchronisieren.
+Technische Tabellen bleiben explizit klassifiziert. Gefilterte Preferences und
+SQLite-Zählerstände stammen aus derselben Lesetransaktion. Der Entwurf ersetzt
+Live-Pfade durch Alias-IDs; Originalbytes werden erst im folgenden Schritt fixiert.
+
+Erster Implementierungslauf: sieben von acht Methoden bestanden. Der
+Mehrseitennachweis wies auf die Live-Datei-Abhängigkeit der Legacy-Kommatrennung
+hin (`/tmp/immopilot-streamed-metadata-multipage-failure.xml`). Gemischte
+Datei-/Content-URI-Quellen werden im neuen Test ausdrücklich als JSON-Liste
+vorgegeben; V2 gibt mehrere Alias-IDs immer als JSON-Liste aus. Der Legacy-Helfer
+und bestehende Belegpfade werden nicht verändert. Zusätzlich SHA-256 direkt im
+Ausgabestrom berechnen: der alte allgemeine Dateihash-Helfer kann Fehler-Sentinels
+zurückgeben und wird für den neuen Metadatenvertrag deshalb nicht verwendet.
+Die vorhandene Prüfsummenassertion vergleicht weiterhin unabhängig die echten
+Dateibytes. Fertig-Markierung erst nach vollständiger Entwurfserstellung setzen.
+
+Abnahme: acht exakt ausgewählte Methoden bestanden, XML ohne Fehler, Skips,
+Duplikate oder Platzhalter geprüft (`/tmp/immopilot-streamed-metadata-results`).
+Quellwerte/OCR/Korrekturen, 64-Bit-Hochstand, Preferences/Credential-Sperre,
+Mehrseitenreihenfolge, private URI-Aliase, Grenzen, Zielkonflikt und Abbruchstart
+sind nachgewiesen. Metadatenlesung invalidiert keinen eigenen Capture-Token und
+ändert keine fachlichen Quellen. Lint und beide APK-Builds bestanden
+(`/tmp/immopilot-streamed-metadata-build.log`), keine Error/Fatal-Lintbefunde.
+`git diff --check` bestanden. Dies ist ein Metadatenentwurf, noch kein freigegebener
+gemeinsamer Snapshot. Kein Emulatorlauf, GitHub-Upload oder Erfolgseintrag.
+
+### Schritt 4: gemeinsame Snapshot-Fixierung
+
+Fünf Dateien: neue OfflineBackupSnapshot, zugehöriger Nachweis,
+OfflineBackupFileInventory, dessen Test und dieses Dokument. Die neue Factory
+führt Metadatenentwurf und alle inventarisierten Original-/Exportversionen in
+app-privatem laufbezogenem Staging zusammen. Inhaltsgleiche Payloads dürfen
+zusammenfallen; jede physische Version behält ihren portablen Manifest-Eintrag.
+Externe Quellen erfordern einen bereits erfassten Inhaltsnachweis. Ein Archiv
+liest ausschließlich diese fixierten privaten Dateien und prüft Größe/Hash.
+
+Vorher DB öffnen und Initialisierungen abwarten. Die Dateiliste wird vollständig
+vor der ersten Kopie erfasst und nach der Fixierung erneut verglichen: auch ein
+OS-Cache-Unlink ohne App-Schreibanmeldung darf keinen gemischten Bestand ergeben.
+Kameraquellen werden jetzt als koordiniert klassifiziert, nachdem der tatsächliche
+CameraX-I/O-Auftrag nachweislich angebunden ist. Der gemeinsame Generationsnachweis
+wird erst nach den gezielten Zwischenraumtests aktiviert. Kein UI-Anschluss,
+keine Zielveröffentlichung und kein Erfolgseintrag in diesem Inkrement.
+
+Vorab: acht echte Methoden liefen; exakt drei scheiterten an der noch fehlenden
+gemeinsamen Capture-Grenze (aktiver Schreiber, DB-/Original-Zwischenraummutation,
+Preference-Publikation). Fünf bestanden bereits, einschließlich unveränderlicher
+Archivbytes nach späteren Live-Änderungen, Cache-Unlink, Payload-Deduplizierung,
+Grenzen/Abbruch und externer Quelle ohne Inhaltsnachweis
+(`/tmp/immopilot-global-snapshot-red.xml`). Nun beginCapture nach DB-Öffnung und
+Initialisierungsbarriere setzen und completeCapture erst nach geschlossenen,
+synchronisierten Metadaten-, Manifest- und Originalkopien ausführen. Keine
+Wiederholung bei Konflikt. Frühzeitige Framework-/Staging-Zugriffsfehler erhalten
+ebenfalls pfadfreie Meldungen. Der neue Snapshot bleibt bis zur V2-Verschlüsselung
+und geprüften Veröffentlichung intern; der V1-Bildschirm wird nicht umgestellt.
+
+Abnahme der gemeinsamen Fixierung: 17 echte ausgewählte Methoden bestanden;
+erhaltene XML-Ergebnisse nach Umgebungsneustart erneut ohne Fehler, Skips oder
+Duplikate geprüft (Snapshot 8, Dateiinventar 7, Quellcodeguards 2). Der abgebrochene
+Build wurde ohne Wiederholung bestandener Tests fortgesetzt. lintDebug,
+assembleDebug und assembleDebugAndroidTest bestanden
+(`/workspace/immopilot-global-snapshot-build-resumed.log`), Lint ohne Error/Fatal.
+`git diff --check` bestanden. Kein UI-Anschluss, Emulatorlauf oder GitHub-Upload.
+
+### Schritt 5: authentifizierte Streaming-Schicht
+
+Vier Dateien: direkte Tink-Abhängigkeit, OfflineBackupStreamCipher, dessen
+gezielter Test und dieses Dokument. Offizielle Sources von tink-android 1.24.0
+bestätigen AesGcmHkdfStreaming mit 256-Bit-Eingangsschlüssel, HmacSha256,
+1-MiB-Segmenten und Offset 0. Der vorhandene Runtime-Graph enthielt bislang
+Tink Android 1.5.0 über Security-Crypto/ReCAPTCHA; der neue Graph wird geprüft.
+Diese innere Schicht akzeptiert authentifizierte Headerbytes und verlangt beim
+Lesen vollständigen EOF-Nachweis. Envelope, Recovery-KDF, Keystore und UI werden
+in den folgenden Teilschritten angeschlossen; noch keine neue Exportfreigabe.
+Nur die vier neuen unmittelbar relevanten Streaming-Tests werden ausgeführt.
+
+Abnahme der Streaming-Schicht: ausschließlich vier neue Kryptotests bestanden,
+JUnit-XML auf echte Methoden ohne Fehler/Skips geprüft. Lint und assembleDebug
+nach Wiederaufnahme bestanden (/workspace/immopilot-stream-cipher-build-resumed.log),
+Lint ohne Error/Fatal. Der neue Runtime-Graph und EOF-/Manipulationsnachweise
+liegen in /workspace/immopilot-stream-cipher-tests.log. Keine Wiederholung
+unveränderter Tests. Envelope und Recovery-Schlüssel bleiben nächster Teilschritt.
+
+### Schritt 5: Recovery-Passwortableitung
+
+Vier Dateien: direkte BC-Abhängigkeit 1.86, OfflineBackupPasswordKdf, dessen
+gezielter Test und dieses Dokument. Offizielle Sources bestätigen den expliziten
+SHA256Digest im PKCS5S2ParametersGenerator; dessen SHA-1-Standardkonstruktor wird
+nicht verwendet. PBKDF2 erzeugt genau 32 Bytes bei 600.000 bis 2.000.000 Iterationen;
+Salt 16–32 Bytes und Passwort 16–1024 Zeichen werden vor Ableitung geprüft.
+Passwort- und UTF-8-Eingangspuffer werden auch bei Ablehnung gelöscht. Kein
+Passwortspeicher, keine Logs, keine API-Aufrufe. Der unabhängige 600.000er Testwert
+wurde mit Python hashlib.pbkdf2_hmac erzeugt. Nur drei neue KDF-Methoden prüfen.
+
+Abnahme KDF: ausschließlich drei neue Methoden bestanden, XML ohne Fehler/Skips
+geprüft. Unabhängiger 600.000er SHA256-Vektor stimmt überein, Parametergrenzen
+und Löschen der Eingangspuffer sind nachgewiesen. lintDebug und assembleDebug
+bestanden (/workspace/immopilot-password-kdf-build.log), keine Error/Fatal-
+Lintbefunde. Kein Envelope-/Keystore-Anschluss oder GitHub-Upload.
+
+### Schritt 5: MK-/DEK-Schlüsselumhüllung
+
+Drei Dateien: OfflineBackupKeyEnvelope, dessen fünf gezielte Methoden und dieses
+Dokument. Zufälliger neuer 256-Bit-MK je Generation, AES-256-GCM mit 12-Byte-IV und
+128-Bit-Tag. Recovery bindet Generation, Formatkontext, Salt und Iterationen;
+DEK-Umhüllung bindet Generation und Archivkennung. Keine eigene Cipher- oder
+KDF-Implementierung; JCA AES/GCM und geprüfte PBKDF2-Schicht verwenden.
+Neue Generationen erzeugen unabhängig neues Material; alte MKs werden nicht nur
+neu umhüllt. Geöffnete Generationen sind schließbar, temporäre Schlüsselkopien
+werden gelöscht. Noch kein persistenter Schlüssel-/Passwortspeicher und kein
+Exportanschluss. Nur fünf neue Envelope-Tests ausführen.
+
+Abnahme Envelope: ausschließlich fünf echte Methoden bestanden, XML ohne
+Fehler/Skips geprüft. Passwort-Roundtrip, AAD-/Ciphertext-Manipulation,
+unabhängiger neuer MK trotz gleicher neuer Kontextkennung beim Negativtest,
+altes Passwort für alte Generation und geschlossene Generation nachgewiesen.
+lintDebug und assembleDebug bestanden (/workspace/immopilot-key-envelope-build.log),
+keine Error/Fatal-Lintbefunde. Kein persistenter Store, Archivanschluss oder Push.
+
+### Schritt 5: begrenzter binärer Archivheader
+
+Drei Dateien: OfflineBackupArchiveHeader, dessen vier gezielte Methoden und
+Inventardokument. Magic/Version/Länge, feste Crypto-Suite, Generation/Archiv-ID,
+KDF-Parameter und verschlüsselte MK-/DEK-Umhüllungen werden binär kodiert.
+Header insgesamt maximal 64 KiB; Längenprüfung vor Allokation, KDF-Grenzen vor
+jeder späteren Ableitung. Unbekannte Versionen/Suites und zusätzliche Felder
+ablehnen. Exakte gelesene Headerbytes werden zur Streaming-AAD weitergereicht;
+Ciphertext bleibt beim Headerlesen unangetastet. Noch keine Entschlüsselungs-
+oder Restore-Freigabe durch erfolgreiches Headerparsen allein.
+
+Abnahme Header: nur vier neue echte Methoden ausgeführt und bestanden, XML
+ohne Fehler/Skips geprüft. Exakte AAD-Bytes und Ciphertext-Position, Header-/KDF-
+Grenzen, Versions-/Suite-Sperre, Trunkierung und zusätzliche Daten nachgewiesen.
+lintDebug und assembleDebug bestanden (/workspace/immopilot-archive-header-build.log),
+keine Error/Fatal-Lintbefunde. Kein Entschlüsselungs-/Restore-Anschluss oder Push.
+
+### Schritt 5: verschlüsselter Archiv-Datenstrom
+
+Drei Dateien: OfflineBackupArchiveCrypto, dessen vier neue Integrationstests und
+dieses Dokument. Pro Archiv zufälligen 256-Bit-DEK erzeugen, unter MK umhüllen,
+Header voranstellen und alle Headerbytes als Streaming-AAD binden. Entschlüsselung
+liefert erst nach authentifiziertem EOF und fsync erfolgreich zurück; nur ein
+neuer privater Staging-Platz, maximal 2 GiB Klartext. Fehler/Abbruch löschen nur
+diesen eigenen Platz, vorhandene Dateien bleiben erhalten. Passwort/DEK-Puffer
+auch bei ungültigem Header löschen. Authentifiziert bedeutet noch nicht
+manifest-/schema-/beziehungsgeprüft. API-Credentials werden hier nicht eingebaut;
+eine spätere Credential-Sektion muss auch im entschlüsselten ZIP selbst
+verschlüsselt bleiben und ausschließlich im Speicher geöffnet werden.
+Nur vier neue Crypto-Integrationstests ausführen.
+
+Erster Viererlauf bestanden. Zusätzlicher gezielter Abbruchtest wies danach
+nach, dass Cancellation vor Eintritt in withContext den Passwortpuffer noch
+nicht löschte (/workspace/immopilot-archive-crypto-cancel-red.xml). Bereinigung
+liegt nun zusätzlich außerhalb des Dispatcher-Wechsels; vor Dateianlage
+Cancellation erneut prüfen. Ein sechster Test prüft den echten ZIP-Abschluss
+innerhalb des Cipher-Streams einschließlich erneutem äußeren Close. Nach der
+Korrektur nur diese sechs unmittelbar betroffenen Crypto-Methoden ausführen.
+
+Abnahme Archiv-Krypto: sechs echte Integrationstests bestanden, XML ohne Fehler
+oder Skips geprüft. Vollständiger Wire-Roundtrip, Passwort-/Headerfehler,
+fehlendes Schlusssegment, Größenbegrenzung, Schutz vorhandener Daten,
+Dispatcher-Abbruch und ZIP-/Cipher-Abschluss sind nachgewiesen. lintDebug und
+assembleDebug bestanden (/workspace/immopilot-archive-crypto-build.log), keine
+Error/Fatal-Lintbefunde. Nur unmittelbar betroffene Tests ausgeführt. Noch kein
+Keystore, Manifest-/Probe-Restore-Nachweis, UI-Anschluss oder GitHub-Upload.
+
+### Schritt 5: Geräte-Keystore-Adapter
+
+Drei Dateien: OfflineBackupDeviceKey, dessen gezielter Test und dieses Dokument.
+Explizite Einrichtung eines 256-Bit-AES-Keystore-Schlüssels mit GCM, zufälliger
+Provider-IV und ohne interaktive Authentisierung für später autorisierte Worker.
+Der Keystore-Schlüssel wird niemals exportiert. MK-Umhüllung bindet den gesamten
+Recovery-Kontext als AAD. Öffnen fehlender/defekter Schlüssel erzeugt keinen
+Ersatz; erneute Einrichtung ersetzt keinen vorhandenen Eintrag. Temporäre MK-
+Kopien werden gelöscht. Noch keine persistente Ablage der geschützten Records.
+Fünf unmittelbar relevante Methoden auf Mindest-API 24 und API 35 ausführen;
+Keystore-Adapter ist simuliert, AES-GCM real. Keine Geräte-/Hardware-Abnahme behaupten.
+
+Abnahme Geräteadapter: fünf Methoden auf API 24 und 35, zehn echte Ausführungen
+bestanden; XML ohne Fehler/Skips und mit beiden SDK-Fällen geprüft. Frische IVs,
+identischer wiedergeöffneter MK, unveränderter vorhandener Alias, fehlender Alias
+und manipulierte Records sind nachgewiesen. lintDebug und assembleDebug bestanden
+(/workspace/immopilot-device-key-build.log), keine Error/Fatal-Lintbefunde.
+Keystore-Simulation mit realem AES-GCM; kein physischer Hardware-Nachweis,
+keine persistente Record-Ablage, kein UI-Anschluss oder GitHub-Upload.
+
+### Schritt 5: persistente geschützte Schlüsselgeneration
+
+Vier Dateien: GenerationStore, gezielte Tests, Speicherinventar-Test und dieses
+Dokument. `noBackupFilesDir/offline-backup-keys` ist LOCAL_ONLY und wird nicht als
+portabler Nutzdatenbestand exportiert. Der Record enthält ausschließlich den
+öffentlichen Recovery-Kontext und die Keystore-Umhüllung des MK. Keine Passwörter
+oder ungeschützten MKs auf Datenträger. Begrenztes Lesen, kanonische Headerprüfung,
+AEAD-Prüfung und exaktes EOF verhindern unbemerkte Record-Manipulation.
+
+Explizite Ersteinrichtung und Austausch mit erwarteter Generationskennung sind
+getrennt. Globaler Prozess-Lock verhindert konkurrierende lokale Austausche.
+Temporäre Datei im selben Verzeichnis, fsync, erneutes Entschlüsseln und MK-
+Vergleich liegen vor atomarem Rename. Anders als SharedPreferences.commit
+veröffentlicht der Pfad keinen fehlgeschlagenen Schreibversuch im Speicher.
+Keine Zusage für Stromausfall-Durabilität des Verzeichnis-Rename; kein
+prozessübergreifender Lock. Einrichtungstestarchiv, UI, Worker-Koordination und
+vollständige Passwortwechsel-Orchestrierung bleiben nachfolgende Arbeiten.
+
+Gezielt prüfen: Installation und Wiederöffnen, kein implizites Anlegen/kein
+Klartext-MK, CAS-Austausch mit veralteter Kennung, manipulierte/verkürzte Records,
+fehlender Keystore-Alias sowie die unmittelbar betroffene Dateiroot-Klassifizierung.
+
+Abnahme Schlüsselablage: vier echte Store-Testmethoden und die betroffene
+Dateiroot-Klassifizierung bestanden, XML ohne Fehler oder Skips geprüft.
+`lintDebug` und `assembleDebug` bestanden, keine Error/Fatal-Lintbefunde;
+`git diff --check` sauber. Nachweise: /workspace/immopilot-generation-store-tests.log
+und /workspace/immopilot-generation-store-build.log. Keine Geräte-/Hardware-
+Abnahme, kein UI-Anschluss und kein GitHub-Upload.
+
+### Schritt 5: geprüfte Einrichtung und koordinierter Passwortwechsel
+
+Drei Dateien: KeyManager, dessen gezielter Integrationstest und dieses Dokument.
+Ein globaler Coroutine-Mutex umfasst vollständige Archivverschlüsselung und
+Einrichtung/Rotation über alle Manager-Instanzen. Einrichtung validiert doppelte
+Passworteingabe und prüft vor der Veröffentlichung ein kleines Testarchiv durch
+passwortbasierte Entschlüsselung bis zum authentifizierten EOF, ausschließlich
+im Speicher. Ein Wechsel verlangt die erwartete aktuelle Generation, lehnt das
+bisherige Passwort ab und erzeugt einen unabhängigen MK. Alte Archive bleiben
+unverändert. Alle übergebenen Passwortpuffer werden auch bei Dispatcher- oder
+Lock-Abbruch gelöscht. UI-Warnhinweis und tatsächliche Worker-Anbindung folgen
+in ihren Planabschnitten; hier noch keine vollständige Benutzereinrichtung.
+
+Gezielt prüfen: Einrichtung/portabler Recovery-Roundtrip, abweichende Bestätigung,
+Altes-Passwort-/Alt-MK-Ausschluss nach Wechsel, unverändertes Passwort und
+Abbruch eines hinter einer Archivverschlüsselung wartenden Wechsels.
+
+Abnahme KeyManager: erster Lauf fand einen JUnit-Initialisierungsfehler wegen
+eines inferierten Nicht-Unit-Rückgabetyps einer Coroutine-Testmethode. Explizites
+runBlocking<Unit> korrigiert ausschließlich die Testsignatur. Anschließend alle
+fünf echten Methoden bestanden, XML ohne Fehler/Skips geprüft. Altes Passwort
+und alter MK können das neue Archiv nicht entschlüsseln; alte Archive bleiben
+lesbar. Bestätigungsfehler, gleiches Passwort und Abbruch während einer laufenden
+Archivverschlüsselung verändern den gespeicherten Record nicht. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-key-manager-tests-fixed.log und
+/workspace/immopilot-key-manager-build.log. Noch kein Credential-Abschnitt,
+UI-Anschluss, physischer Keystore-Nachweis oder GitHub-Upload.
+
+### Schritt 5: unabhängiger portabler Credential-Abschnitt
+
+Drei Dateien: CredentialSection, dessen gezielter Test und dieses Dokument.
+Separates Format IMMCRED2 mit dem begrenzten V2-Envelope-Header, zufälligem DEK,
+MK-Umhüllung und AES-256-GCM. Magic und vollständiger Header sind AAD. Der
+Abschnitt bleibt auch innerhalb eines entschlüsselten ZIPs verschlüsselt.
+Keine Dateizugriffe oder Preference-Schreibzugriffe im Codec. Öffnen gibt erst
+nach vollständiger AEAD- und Strukturprüfung einen schließbaren Speicherbesitzer
+zurück; Schließen löscht dessen CharArrays. Rohpuffer und temporäre DEKs werden
+auch bei Fehlern gelöscht. Binäre Char-Codierung: begrenzte UTF-16-Codeeinheiten
+als Big-Endian-16-Bit-Werte, ohne unveränderliche Schlüssel-Strings im Codec.
+Höchstens drei bekannte Anbieter, je 1..4096 Zeichen, keine doppelten Anbieter,
+keine unbekannten/trailing Felder. Eingangsgrößen vor Dekodierung begrenzen.
+
+Manuelles und geplantes Opt-in sind getrennt, beide standardmäßig aus. Ausgeschlossene
+Abschnitte erzeugen keinen Ciphertext und verbrauchen trotzdem übergebene
+Schlüsselpuffer. Noch keine UI-/Einstellungspersistenz oder Service-Anbindung.
+Bestehende AiProviderSettings-Getter löschen bei Fehlern einzelne Einträge;
+Export benötigt vor Integration einen nachweislich seiteneffektfreien Zugriff.
+Keine echten Credentials lesen und keine Anbieteraufrufe ausführen.
+
+Gezielt prüfen: portabler Drei-Anbieter-Roundtrip, Pufferlöschung, frische
+Verschlüsselung, getrennte Opt-ins, Manipulation/Abbruch/Anhang/Größenlimit,
+Alt-MK-Ausschluss sowie authentifizierte, aber unzulässige innere Strukturen.
+
+Abnahme Credential-Codec: sechs echte Testmethoden bestanden, XML ohne Fehler
+oder Skips geprüft. lintDebug und assembleDebug bestanden, keine Error/Fatal-
+Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-credential-section-tests.log und
+/workspace/immopilot-credential-section-build.log. Nur synthetische Schlüssel;
+keine Anbieteraufrufe, keine echten Credentials. Service-/UI-Anbindung folgt.
+
+### Schritt 5: seiteneffektfreier Export persönlicher API-Schlüssel
+
+Drei Dateien: AiProviderSettings, dessen gezielt ergänzter Sicherheitstest und
+dieses Dokument. Neues internes Exportverfahren prüft das getrennte Opt-in vor
+jedem Preference-/Keystore-Zugriff und liefert ausschließlich den verschlüsselten
+Credential-Abschnitt. Ein Snapshot der vorhandenen Preferences dient als Quelle.
+Bestehende interaktive Getter bleiben unverändert; deren Fehlerbereinigung wird
+beim Backup nicht aufgerufen. Kein neues Anlegen oder Ersetzen von Geräteschlüsseln,
+keine Preference-Schreibvorgänge, keine Anbieteraufrufe. Fehlende Einträge werden
+übersprungen; halbe, falsch typisierte, beschädigte, unlesbare oder übergroße
+vorhandene Einträge führen zu statischem Fehler ohne Bestandsänderung. Rohbytes
+und ausgegebene CharArrays werden nach Transport bzw. bei Fehlern gelöscht.
+
+Gezielt nur drei neue backupExport-Testmethoden ausführen: drei Anbieter samt
+unveränderten fachlichen Einstellungen, fehlendes/falsches Opt-in bei defekten
+Einträgen sowie kaputte Ciphertexte, halbe/falsch typisierte/überlange Einträge
+und fehlender Keystore-Alias ohne Löschen oder Ersetzen. Ausschließlich synthetische
+Schlüssel, simuliertes AndroidKeyStore mit echtem AES-GCM. UI-Einstellung und
+Snapshot-/Service-Anbindung bleiben folgende Arbeit.
+
+Abnahme Credential-Export: genau drei echte backupExport-Testmethoden bestanden,
+XML ohne Fehler/Skips geprüft. Alle drei Anbieter roundtripfähig, fachliche
+Einstellungen unverändert, ausgeschlossene Trigger greifen nicht auf defekte
+Schlüssel zu. Defekte/halbe/falsch typisierte/übergroße Einträge und fehlender
+Keystore-Alias bleiben unverändert; kein Ersatzschlüssel. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-credential-export-tests.log und
+/workspace/immopilot-credential-export-build.log. Keine echten Schlüssel oder
+Anbieteraufrufe. Snapshot-/Engine-Integration und UI-Persistenz noch offen;
+Schritt 5 und der Gesamtplan sind noch nicht vollständig abgeschlossen.
+
+### Schritt 5: verschlüsselte Snapshot-Engine und Credential-Fixierung
+
+Fünf Dateien: Snapshot, KeyManager, neue ArchiveEngine, SnapshotTest und dieses
+Dokument. Die Engine hält die gemeinsame Generationssperre während vollständiger
+Erfassung und Verschlüsselung. Der Snapshot erfasst optionale Credentials nach
+Beginn seiner Generationserfassung über den seiteneffektfreien Export und legt
+nur den bereits separat verschlüsselten Abschnitt privat ab. Manifest enthält
+Entry, SHA-256 und Größe; ausgeschlossene Credentials bleiben null/abwesend.
+Credential-Bytes zählen zur Metadatengrenze und Gesamtsumme. Auch Änderungen der
+Schlüssel während der Erfassung invalidieren den gesamten Capture-Vertrag.
+
+Das äußere Arbeitsarchiv entsteht ausschließlich privat in der bereits lokalen
+Staging-Root. ZIP/Cipher-Abschluss schließen über einen NonClosing-Adapter nicht
+den FileDescriptor; fsync erfolgt anschließend auf offenem Deskriptor. Ausgabe
+wird erst danach übergeben. Neue verschlüsselte Datei gehört bis zur erfolgreichen
+Übergabe der Engine und wird auch bei Dispatch-Rückgabeabbruch entfernt. Snapshot
+wird separat geschlossen; frühere Archive und Quelldaten bleiben erhalten.
+Prepared ist ausdrücklich noch kein veröffentlichtes oder vollständig probe-
+validiertes Backup. Vollständiges Wiederlesen/Manifestprüfung und echter Room-
+Probe-Restore bleiben Schritt 6 vor jeder externen Veröffentlichung.
+
+Gezielt SnapshotTest (acht bisherige plus vier Engine-Fälle) und KeyManagerTest
+(fünf unmittelbar durch den gemeinsamen Generationszugriff betroffene Fälle)
+ausführen. Neue Nachweise: vollständiges verschlüsseltes Archiv, konsistent
+fixierter Altbestand, standardmäßig keine Credentials, separater Ciphertext im
+entschlüsselten ZIP mit Manifest-Hash/Größe und portablem Öffnen, Credential-
+Mutation und kaputte Credentials brechen ohne verwaiste eigene Ausgabe ab.
+
+Abnahme Engine-Integration: zwölf echte Snapshot-/Engine-Methoden und fünf
+Schlüsselmanager-Methoden bestanden; XML ohne Fehler/Skips geprüft. APK-Build im
+ursprünglichen kombinierten Lauf abgeschlossen. Umgebung während Lint neu
+ gestartet; ursprünglicher Lint-Lauf hat keinen Abschlussnachweis. Nur lintDebug
+fortgesetzt, keine bestandenen Tests oder APK-Build wiederholt. Fortgesetztes
+Lint bestanden, XML ohne Error/Fatal; git diff --check sauber. Nachweise:
+/workspace/immopilot-archive-engine-tests.log,
+/workspace/immopilot-archive-engine-build.log und
+/workspace/immopilot-archive-engine-lint-resumed.log. Kein GitHub-Upload, kein
+physischer Geräte-Nachweis, noch keine Veröffentlichung oder vollständige
+Probe-Validierung des Arbeitsarchivs.
+
+### Schritt 6: passwortlose authentifizierte Rückprüfung eigener Archive
+
+Drei Dateien: ArchiveCrypto, dessen gezielt erweiterter Test und dieses Dokument.
+Neuer interner Entschlüsselungseinstieg nimmt die während Vorbereitung gehaltene
+Generation entgegen. Kein Passwortspeicher und keine neue Schlüsselablage.
+Passwortbasierter portabler Restore und Geräte-Rückprüfung teilen denselben
+begrenzten Staging-/EOF-/fsync-/Abbruch-/Aufräumpfad. Der neue Einstieg besitzt
+die übergebene Generation nicht und schließt/löscht sie nicht. Unpassende
+Generation, Größenüberschreitung und fehlender authentifizierter Abschluss
+verwerfen nur neue eigene Staging-Dateien; vorhandene Dateien bleiben erhalten.
+Die äußere Passwort-Finally-Grenze bleibt auch bei Dispatch-Abbruch bestehen.
+
+Gezielt acht ArchiveCrypto-Methoden ausführen: sechs vorhandene Regressionen
+wegen des gemeinsamen Pfads sowie zwei neue Tests mit gehaltenem MK ohne
+Passwort, abweichender Generation, abgeschnittenem Abschluss, Größenlimit und
+vorhandenem Ausgangspfad. Noch keine Manifest-/Schema-/Room-Probe-Validierung
+oder externe Veröffentlichung durch diesen Kryptoeinstieg.
+
+Abnahme passwortlose Rückprüfung: acht echte ArchiveCrypto-Testmethoden
+bestanden, XML ohne Fehler/Skips geprüft. lintDebug und assembleDebug bestanden,
+keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-passwordless-validation-tests.log und
+/workspace/immopilot-passwordless-validation-build.log. Bestehender Passwort-
+Restore inklusive Abbruch-Pufferlöschung unverändert nachgewiesen. Noch kein
+vollständiger Validierungs- oder Veröffentlichungserfolg durch diesen Einstieg.
+
+### Schritt 6: begrenzte Containerprüfung ohne Bestandsänderung
+
+Drei Dateien: ArchiveValidator, dessen neue Testklasse und dieses Dokument.
+Erster Validator-Teil ist stageZip und gibt ausdrücklich nur StagedContents
+zurück, keinen erfolgreichen Probe-Nachweis. Erwartete Namen sind manifest.json,
+metadata.json, optional credentials.bin und kanonische files/0..9999. Keine
+Verzeichnis-, Traversal-, unbekannten oder doppelten Einträge. Zentralverzeichnis
+und tatsächlich gelesene Einträge müssen vollständig übereinstimmen; tatsächliche
+Größe und CRC sowie SHA-256 werden beim begrenzten Lesen geprüft. Eigene Dateien
+haben ausschließlich generierte flache Namen in eindeutig eigenem verify-Staging.
+Harte Grenzen: 10003 Einträge, 1 GiB je Payload, 2 GiB insgesamt, 64 MiB für
+Manifest+Metadaten+Credential-Abschnitt, Credentials höchstens 128 KiB. Testlimits
+dürfen ausschließlich verschärfen. Abbruch bleibt Cancellation; fehlgeschlagenes
+oder nicht übergebenes Staging wird nur im eigenen Verzeichnis entfernt.
+
+Credential-Inhalt wird bei Containerprüfung niemals auf Datenträger geschrieben,
+auch nicht bei absichtlich unverschlüsseltem/maliziösem credentials.bin. Er bleibt
+begrenzt im Speicher, wird bei Fehler und StagedContents.close gelöscht und muss
+vor einem späteren vollständigen Validierungserfolg im Speicher authentifiziert
+und strukturell geprüft werden. Manifest-/Schema-/Room-Probe fehlen hier bewusst
+noch; keine UI-/Zielveröffentlichung und keine Erfolgsmarkierung.
+
+Gezielt sechs neue Container-Testmethoden: normales Staging mit tatsächlichem
+Hash/Größe, Credentials ausschließlich im löschbaren Speicher, Pfad-/Namens-/
+Duplikat-/Zentralverzeichnisfehler, CRC/verkürztes ZIP, getrennte Quoten und
+komprimierter übergroßer Inhalt sowie Abbruch ohne verwaiste eigene Dateien.
+
+Abnahme Containerprüfung: sechs echte Testmethoden bestanden, XML ohne Fehler
+oder Skips geprüft. Pfad-/Duplikat-/Zentralverzeichnis-/CRC-/Trunkierungsfehler,
+getrennte Ressourcenlimits, Credential-Speicherhaltung und Abbruchbereinigung
+sind nachgewiesen. lintDebug und assembleDebug bestanden, keine Error/Fatal-
+Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-archive-container-tests.log und
+/workspace/immopilot-archive-container-build.log. Kein vollständiger Backup-
+Erfolg; Manifest-/Schema-/Room-Probe und Veröffentlichung noch offen.
+
+### Schritt 6: strikter Manifestvertrag und Credential-Authentifizierung
+
+Drei Dateien: neues OfflineBackupManifest, vier Ergänzungen in der bestehenden
+ArchiveValidatorTest und dieses Dokument. Streaming-JsonReader mit strengem
+UTF-8, festen Feldmengen, Duplikatprüfung, begrenzten Listen und Texten sowie
+kanonischen nichtnegativen Ganzzahlen. Vor dem Parsen konservativer Heap-
+Preflight anhand tatsächlicher Manifestgröße; keine vollständige JSON-Baumkopie.
+Neue Version verlangt App-Aktualisierung. Keine unerkannten Zusatzfelder oder
+nachgestellten JSON-Dokumente. Metadata-/Payload-/Credential-Referenzen müssen
+mit tatsächlicher Größe und SHA-256 übereinstimmen; tatsächliche Entry-Menge
+muss exakt zum Manifest passen. Payload-Indizes und Originalaliase sind kanonisch
+und lückenlos, Dateiversionen eindeutig, alle Payloads besitzen eine Version,
+alle Aliase lösen auf. Portable Pfade nur für vorhandene Original-/Export-
+Verantwortlichkeiten; technische Staging- und Traversalpfade sind unzulässig.
+
+Credential-Inhalt bleibt im StagedContents-Speicher und wird bei deklariertem
+Abschnitt mit der gehaltenen Generation authentifiziert und strukturell geprüft.
+Entschlüsselte Schlüssel werden unmittelbar geschlossen/gelöscht; Ergebnis enthält
+nur Anbietermenge. Kein Passwortspeicher oder Credential-Dateischreiben. Checked
+ist ausschließlich der Manifestnachweis; exakte Tabellen-/Zeilenzahlen, Schema,
+IDs, Beziehungen und echte isolierte Room-Probe bleiben zwingend nachfolgend.
+
+Nur vier neue manifest*-Methoden prüfen: konsistente Referenzen/Versionen/Aliase,
+Vertrags- und Pfadfehler, doppelte JSON-Felder/ungültiges UTF-8/angehängtes JSON,
+sowie echte Credential-Authentifizierung mit richtiger/falscher/fehlender
+Generation und Ablehnung unverschlüsselter Credential-Daten. Unveränderte sechs
+Container-Tests nicht erneut ausführen.
+
+Abnahme Manifestprüfung: genau vier neue manifest*-Methoden bestanden, XML ohne
+Fehler/Skips geprüft. Referenz-/Hash-/Größen-/Pfad-/JSON-Vertragsfehler und
+Credential-Authentifizierung sind nachgewiesen. lintDebug und assembleDebug
+bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-manifest-validation-tests.log und
+/workspace/immopilot-manifest-validation-build.log. Kein vollständiger Backup-
+oder Probe-Erfolg; Schema-/Room-/Beziehungsprüfung und Veröffentlichung folgen.
+
+### Schritt 6: isolierte echte Room-Prüfdatenbank
+
+Fünf Dateien: neue RoomProbe und deren Tests, minimale Wiederverwendung in
+MetadataWriter/OfflineBackupService sowie dieses Dokument. Probe erstellt eine
+neue Room-Datenbank ausschließlich im eigenen Unterverzeichnis des privaten
+Stagings. Kein Live-DB-Öffnen, keine Live-Preference-Writes oder Editor-Zugriffe.
+Streaming-Import bindet Werte gegen die tatsächliche aktuelle Room-Spaltenstruktur,
+prüft Version, Typen, Pflichtfelder, vollständige Tabellen und exakte Zeilenzahlen.
+Metadaten folgen der vom V2-Writer erzeugten kanonischen Feldreihenfolge, insbesondere
+Spaltendeklaration vor Rows. Beliebige SQL-Namen werden nicht aus Eingaben ausgeführt.
+Originalaliase werden ausschließlich auf bereits geprüfte private Payloads abgebildet,
+auch mehrseitige JSON-Ketten. Keine Live-Pfad-Auflösung als fehlender Originalersatz.
+
+Foreign Keys werden aktiviert und für den vollständigen Import aufgeschoben;
+Unterstützung wird explizit geprüft. SQLite integrity_check und foreign_key_check,
+tatsächliche Zeilenzahlen und wiederhergestellte sqlite_sequence-Stände sind
+Pflicht. Nachgelagerter MetadataWriter-Lauf prüft vollständige Originalansprüche
+und stellt sicher, dass alle auflösbaren Originale private geprüfte Payloads sind.
+Bestehende fachliche Beziehungsprüfung wird wiederverwendet; sie erhält optional
+explizite archivierte Einheiten-Preferences. Ihr bestehender Default-Pfad bleibt
+für V1 unverändert. Konstanten des Writer-Inventars sind nun intern wiederverwendbar.
+
+Alle archivierten fachlichen Preference-Stores sind erforderlich, Typen werden
+streng gelesen. Read-only Preferences bleiben rein im Speicher. Bestehende
+Payload-Validierung und erneuter Exportfilter werden verwendet; weggefilterte
+Credential-/unerlaubte Schlüssel führen hier zu Fehler statt stiller Übernahme.
+Heap-/Platz-Preflight vor dem DB-Aufbau. Prepared besitzt nur die private Room-DB
+und löscht beim Schließen eigene DB/WAL/SHM-Dateien. Fehler und Dispatch-Abbruch
+schließen/entfernen ausschließlich die eigene Prüfdatenbank.
+
+Gezielt zunächst fünf neue Probe-Methoden und vier bestehende Relation-Methoden ausführen,
+weil die gemeinsame Beziehungsfunktion um die explizite Pref-Quelle ergänzt wurde.
+Neue Fälle: echte Tabellen-/Original-/ID-/Zähler-/Preference-Isolation, Schema/
+Typ-/PK-/Zählfehler, Beziehungs-/Originalhashfehler, unerlaubte/fehlende Preferences
+und Abbruchbereinigung. Noch keine Engine-/Zielveröffentlichungs-Anbindung.
+
+Zusätzlicher belegter Integritätsfall: gezielter neuer Regressionstest zeigte,
+dass ein nachträglich geändertes privates Manifest trotz fachlich plausibler
+Daten zunächst akzeptiert wurde (echtes RED, XML unter
+/workspace/immopilot-room-probe-staging-red-results.xml). Vor Manifest-/DB-Prüfung
+werden nun alle tatsächlich fixierten Staging-Dateien erneut vollständig gelesen
+und gegen erfasste Größe/SHA-256 geprüft, einschließlich Manifest und Metadaten.
+Credential-Puffer werden ausschließlich im Speicher gehasht. Neuer sechster Test
+prüft geändertes Manifest, geänderte Metadaten mit gleicher Größe und geändertes
+Original. Wegen geändertem Probe-Pfad alle sechs Probe-Methoden ausführen;
+unveränderte gemeinsame Relationstests nicht erneut starten.
+
+Abnahme Room-Probe: sechs aktuelle echte Probe-Testmethoden bestanden, XML ohne
+Fehler/Skips geprüft (/workspace/immopilot-room-probe-final-tests.log). Vier
+unveränderte gemeinsame Relationstests bereits bestanden; erhaltenes XML unter
+/workspace/immopilot-room-probe-relations-results.xml. Ein anfänglicher Test-
+Vorlagenfehler verwendete einen falschen Preference-Payloadnamen; ausschließlich
+dieser Test wurde nach Inventar-Lookup-Korrektur erneut geprüft und bestanden
+(/workspace/immopilot-room-probe-preference-test-fixed.log). Nach dem separaten
+belegten Staging-Integritätsfehler und dessen Quellcodekorrektur wurden gezielt
+alle sechs betroffenen Probe-Methoden ausgeführt, keine unveränderten Relationen
+wiederholt. lintDebug und assembleDebug bestanden, keine Error/Fatal-Lintbefunde;
+git diff --check sauber. Buildnachweis: /workspace/immopilot-room-probe-build.log.
+Keine Live-Änderung, keine Geräte-Abnahme oder externe Veröffentlichung.
+
+### Schritt 6: verbindliche Rückprüfung vor Engine-Rückgabe
+
+Vier Dateien: ArchiveValidator, ArchiveEngine, bestehender SnapshotTest und
+dieses Dokument. Gezielter RED-Test zeigte: bisher konnte ein verschlüsseltes
+Arbeitsarchiv mit ungültiger Objektbeziehung zurückgegeben werden. Nachweis:
+/workspace/immopilot-engine-probe-gate-red-results.xml. Die Engine ruft nun nach
+ZIP/Cipher-Abschluss, Dateischließen und fsync zwingend verifyPrepared auf,
+weiterhin innerhalb derselben gehaltenen Schlüsselgeneration. Kein Passwort
+für Worker-Rückprüfung und kein Generationswechsel zwischen Schreiben/Prüfen.
+
+Rückprüfung liest das fertige verschlüsselte Archiv vollständig bis zum
+Streaming-AEAD-Ende in ein eindeutig eigenes privates Reread-Verzeichnis. Dann
+begrenzte Containerprüfung, erneutes tatsächliches Staging-Hashlesen, strikter
+Manifestvertrag und echte isolierte Room-/Preference-/Beziehungsprobe. Der
+festgestellte Umfang muss zusätzlich mit Snapshot-Tabellenzahlen, Dateiversionen,
+Payloadanzahl und gesamter Entry-Bytesumme übereinstimmen. Erst danach darf
+Prepared zurückgegeben werden. Jede Fehler-/Abbruchgrenze schließt private Probe
+und Staging; Engine entfernt ihr eigenes verschlüsseltes Arbeitsarchiv, alte
+Archive bleiben erhalten. Keine Veröffentlichung oder Erfolgshistorie hier.
+
+Alle 13 Snapshot-/Engine-Methoden prüfen, da prepare nun den vollständigen
+Probe-Pfad umfasst. Neuer Fall: ungültige, aber verschlüsselbare Objektbeziehung
+verhindert Rückgabe und hinterlässt weder Cipher-Arbeitsarchiv noch Probe-/
+Reread-/Verify-Verzeichnis. Unveränderte separate Probe-/Manifest-/Crypto-Tests
+nicht zusätzlich wiederholen. SAF-Zielwahl, Zielrücklesen und vollständiger
+Ressourcen-Preflight bleiben folgende Teile von Schritt 6.
+
+Abnahme Engine-Vollprüfung: 13 echte Snapshot-/Engine-Methoden bestanden, XML
+mit eindeutigen Methoden ohne Fehler/Skips geprüft. Der vorher rote Beziehungs-
+Gate-Test ist nach der Verdrahtung grün; auch bestehende Snapshot-/Credential-
+Fälle und vollständige Aufräumgrenzen sind nachgewiesen. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-engine-full-probe-tests.log und
+/workspace/immopilot-engine-full-probe-build.log. origin/main erneut geprüft:
+bfbee32. Noch keine SAF-Zielveröffentlichung, kein GitHub-Upload.
+
+### Schritt 6: privater Speicher-Preflight mit konkreten Größen
+
+Fünf Dateien: ResourceBudget, dessen Test, minimale Snapshot-/Engine-Anbindung
+und dieses Dokument. Nach privater Metadatenerfassung, vor Originalkopien,
+Archivdateianlage und jeder externen Zieländerung konservative Abschätzung der
+weiteren privaten Belegung. Berücksichtigt Snapshot-Kopien/Manifest, ZIP- und
+Cipher-Expansion, vollständiges Reread-ZIP, extrahierte Payloads/Metadaten,
+SQLite-/Index-/Kontrollmetadatenplatz und 16 MiB Reserve. Bekannte bereits
+inventarisierte Originale nicht nochmals als externe Kopie zählen. Fehlende
+externe Größen werden mit der erlaubten Einzeldateigrenze abgeschätzt und im
+Fehlertext gezählt; Gesamtabschätzung bleibt innerhalb des unterstützten
+vollständigen Payloadbudgets. Überlange Einzeloriginale werden abgelehnt.
+
+Nach Fixierung vor Anlegen des verschlüsselten Archivs erneute Prüfung mit
+actual Snapshot-Payload-/Metadatenbytes und tatsächlicher Payloadanzahl. Die
+bereits belegten Snapshot-Bytes werden dabei nicht nochmals als künftiger Platz
+gezählt. Fehlermeldung enthält benötigte/verfügbare Bytes und Reserve. Keine
+Bestandsänderung, keine Teilsicherung und kein Löschen älterer Archive. Schätzungen
+können konservativ zu hoch liegen; konkurrierender Platzverbrauch bleibt ein
+späterer IO-Fehler mit bestehender eigener Aufräumgrenze. Geschätzte Zielarchivgröße
+wird bereitgestellt, die konkrete SAF-Zielplatzprüfung gehört zur Destination.
+
+Gezielt vier Budgetmethoden und die 13 durch die beiden Guards unmittelbar
+betroffenen Snapshot-/Engine-Methoden prüfen. Budgetfälle: gleichzeitige
+Prüfartefakte, ausstehende/bereits fixierte Kopien, kein doppeltes Zählen von
+Originalreferenzen, bekannte/unbekannte Größen/Versionkandidaten, Defizitmeldung
+mit Zahlen, Überlauf-/Größengrenzen und unverändertes Vorarchiv.
+
+Abnahme privater Preflight: vier echte Budget- und 13 Snapshot-/Engine-Methoden
+bestanden, XML ohne Fehler/Skips geprüft. lintDebug und assembleDebug bestanden,
+keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-resource-preflight-tests.log und
+/workspace/immopilot-resource-preflight-build.log.
+
+Offene optionale Produktklärung für konkrete Destination: Androids offizieller
+DocumentsContract.Root-Vertrag erlaubt fehlende/null available_bytes-Werte
+(https://github.com/aosp-mirror/platform_frameworks_base/blob/master/core/java/android/provider/DocumentsContract.java).
+User nach striktem Abbruch oder ausdrücklicher Ausnahme bei unbekanntem Zielplatz
+gefragt. Bis zu einer abweichenden Antwort strikt nach Plan: vor Zieländerung
+abbrechen, wenn freier Zielplatz nicht zuverlässig bestimmbar ist. Privater
+Preflight und weitere unabhängige Implementierung werden dadurch nicht blockiert.
+
+### Schritt 6: sichere Ziel-Destination und vollständiges Rücklesen
+
+Vier Dateien: neue Destination und deren Tests, Prepared-Ressourcenmodell der
+Engine und dieses Dokument. Backend-Grenze trennt SAF-Zugriffe von testbaren
+Fehler-/Abbruchabläufen. Android-Adapter prüft persistierte Read+Write-Tree-Grants,
+Verzeichnistyp und Erstellungsflag. Freier Platz wird nur aus einem echten
+Verzeichnis-FD per fstatvfs bestimmt; Pipes sind kein Speicherplatznachweis.
+Nicht bestimmbare Zielkapazität führt gemäß bisheriger strikter Planvorgabe vor
+Dateierstellung zum Abbruch. Rückfrage an User für eine ausdrückliche Ausnahme
+bleibt optional offen; keine Ausnahme still implementiert.
+
+Vor Zielanlage Zielbytes+Reserve und weiterer privater Reread-/Probe-/Cipher-
+Spoolplatz prüfen. Nur neue zufällige .partial-Datei anlegen. Keine bestehenden
+Archive öffnen, überschreiben oder nach Dateinamen bereinigen. Schreibstream
+flushen/schließen; Android-FD bei regulären Dateien vor Schließen synchronisieren.
+Danach Ziel vollständig in privates begrenztes Cipher-Spool rücklesen, tatsächliche
+Länge und SHA-256 mit geschriebenem Ciphertext vergleichen und unabhängig die
+vollständige AuthEOF-/Container-/Manifest-/Room-Prüfung ausführen. Erst dann auf
+neuen zufälligen fertigen Namen umbenennen; endgültige URI nochmals vollständig
+lesen und Hash/Länge vergleichen. Published erst nach letztem Streamschluss.
+Sicherungs-ID kommt aus dem Archivheader, Zielnamen besitzen zusätzliche frische
+zufällige Komponenten. Neue URI bei Rename berücksichtigen.
+
+Fehler/Abbruch löschen ausschließlich die aus eigener Erzeugung/Umbenennung
+bekannte URI, nie alte oder fremde URIs. Fehlgeschlagene Bereinigung wird separat
+als Fehler gemeldet, unvermeidliche Restdatei bleibt .partial. Backend-Adapter
+braucht für sicheren Abschluss Rename-Unterstützung. Alle eigenen Cipher-
+Spool-/Verify-/Reread-/Probe-Verzeichnisse schließen und entfernen. Gen muss vom
+Aufrufer während der gesamten Veröffentlichung gehalten werden; Engine-Publish-
+Anbindung folgt separat. Noch keine UI-/History-Veröffentlichung angebunden.
+
+Sechs neue Destination-Methoden prüfen mit echtem Archiv-/Room-Kern und simuliertem
+Provider: Erfolg/Reihenfolge/finale neue URI, Rechte/Kapazitätsfehler/Foreign-URI,
+Schreib-/Close-/Read-/Trunkierungs-/Manipulations-/Rename-/Finalreadfehler,
+Abbruch in jeder Phase, fehlender Rename/fehlgeschlagene Löschung und tatsächliche
+Room-Ablehnung trotz passender Cipher-Hashkopie. Nur synthetische Inhalte;
+Android-SAF-/fstatvfs-Adapter ist hier noch kein physischer Geräte-Nachweis.
+
+Abnahme Destination: sechs echte Methoden bestanden, XML ohne Fehler/Skips
+geprüft (/workspace/immopilot-destination-initial-results.xml). Fehlermatrix um
+native Android-Errno-Dateideskriptorfehler ergänzt, statisch abgefangen und nur
+diese betroffene Methode erneut bestanden. Nachweis:
+/workspace/immopilot-destination-native-failures-tests.log. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber
+(/workspace/immopilot-destination-build.log). Reale SAF-Kernel-/Anbieterprüfung
+bleibt Emulatorarbeit; kein echter Zielordner oder GitHub-Upload verwendet.
+
+### Archivvertrag: Erstellungszeit und App-Version vervollständigen
+
+Fünf Dateien: neue ArchiveInfo, Snapshot, Manifest, bestehende Validator-Tests
+und dieses Dokument. Snapshot erfasst einmal UTC-Instant, tatsächlichen
+BuildConfig.VERSION_CODE und VERSION_NAME. Verschlüsseltes Manifest enthält
+verpflichtenden archive-Abschnitt; Schema-/Formatversion und authentifizierte
+Sicherungs-ID bleiben in ihren vorhandenen Metadaten-/Envelope-Feldern. Zeit
+wird kanonisch als Instant validiert, App-Code begrenzt und Name ohne Controls
+auf 128 Zeichen begrenzt. Metadaten sind beschreibend und erteilen niemals
+Lösch- oder Eigentumsrechte. Snapshot hält unveränderliche ArchiveInfo auch für
+spätere Engine-/History-Anbindung bereit.
+
+Strikter V2-Manifestparser prüft alle drei Angaben, fehlende/ungültige Angaben
+verwerfen das Archiv vor Room-/Zielerfolg. V2 ist in diesem Branch bislang nicht
+veröffentlicht; V1-Service und dessen Importvertrag bleiben unverändert. Kein
+zusätzliches paralleles Verschlüsselungsverfahren und kein Password-/Keymaterial
+in den Versionsangaben.
+
+Gezielt vier geänderte Manifest-Methoden und 13 Snapshot-/Engine-Methoden prüfen,
+weil Erzeugung und Pflichtfelder gemeinsam verändert wurden. Zusätzliche Fälle
+innerhalb bestehender Tests: Info-Roundtrip, fehlender Abschnitt, ungültige Zeit,
+negativer Versionscode und überlanger Name. Unveränderte Probe-/Destination-
+Fehlermatrizen nicht zusätzlich erneut ausführen.
+
+Abnahme ArchiveInfo: vier echte Manifest- und 13 Snapshot-/Engine-Methoden
+bestanden, XML ohne Fehler/Skips geprüft. Zeit-/Versionspflichtfelder und ihre
+ungültigen Formen sind nachgewiesen. lintDebug und assembleDebug bestanden,
+keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-archive-info-tests.log und
+/workspace/immopilot-archive-info-build.log. Keine weiteren alten Testgruppen
+wiederholt, kein GitHub-Upload oder echtes Ziel verwendet.
+
+### Schritt 6: gemeinsame Engine hält Generation bis zur Zielverifikation
+
+Fünf Dateien: Engine, Destination, beide vorhandenen Tests und dieses Dokument.
+Engine.publish führt Ziel-Preflight vor Snapshot-Arbeit aus, hält die gemeinsame
+Generation während prepareHeld UND Destination.publish und gibt erst endgültig
+geprüftes Published zurück. prepareHeld besitzt eigene Fehlerräumung; öffentlicher
+prepare behält zusätzlich Dispatch-Rückgabe-Cancellation-Schutz. Snapshot ist vor
+Zieldateianlage geschlossen, damit seine Kopien nicht unnötig neben Ziel/Reread
+belegt bleiben. Nach Fixierung Ziel-Preflight nochmals mit konservativer
+Cipher-Größenschätzung vor privater Archivdateianlage, beim tatsächlichen
+Publizieren erneut mit gemessener Größe. Rechte/Platz dürfen zwischenzeitlich
+verloren gehen; Fehler erzeugt keinen Erfolg und entfernt nur eigene Artefakte.
+
+Prepared/Published führen die einmal erfasste ArchiveInfo für spätere Historie
+mit. Keine Passwortübergabe an publish nötig, keine vorzeitige Generationsfreigabe
+und keine separate schwächere Automatik-Pipeline. History/Settings/UI bleiben
+nachfolgende Anbindung; dies erzeugt noch keinen Verlaufseintrag.
+
+Gezielt 15 Snapshot-/Engine-Methoden (13 bestehende plus zwei Integrationen) und
+sechs Destination-Methoden prüfen. Neue Integrationen: passwortlose echte
+Pipeline, Snapshot-Freigabe vor erster Zielanlage, aktuelle Generation während
+Zielzugriffen, portabel lesbares fertiges Archiv samt identischer Erstellungsinfo,
+keine privaten Artefakte nach Erfolg und unavailable Ziel vor erster Erfassung.
+Separate unveränderte Crypto-/Manifest-/Probe-Tests nicht zusätzlich starten.
+
+Abnahme Engine-Publish: 15 echte Snapshot-/Engine- und sechs Destination-Methoden
+bestanden, XML ohne Fehler/Skips geprüft. Durchgehende passwortlose Pipeline,
+Descriptor-Erhaltung, frühe Zielablehnung und eigene Ressourcenfreigabe sind
+nachgewiesen. lintDebug und assembleDebug bestanden, keine Error/Fatal-
+Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-engine-publishing-tests.log und
+/workspace/immopilot-engine-publishing-build.log. Kein realer SAF-Zugriff,
+keine Emulator-Abnahme, keine UI-/History-Anbindung oder GitHub-Veröffentlichung.
+
+### Schritt 6: dauerhafte lokale Ordnerauswahl und manuelles Opt-in
+
+Vier Dateien: OfflineBackupSettings, dessen Test, Speicherinventar-Test und
+dieses Dokument. Gerätegebundene Konfiguration unter noBackupFilesDir/
+offline-backup-state ist LOCAL_ONLY. Keine Room-Tabelle oder Migration, keine
+portable Ordnerberechtigung. Gespeicherte Tree-URI ersetzt nie die Laufprüfung
+persistierter Grants/Erreichbarkeit/Kapazität. Manuelle Credentials standardmäßig
+aus; getrennte Konfigurationsfelder folgen für Automatik in ihren Planabschnitten.
+
+AtomicFile mit fsync, Finish, Readback, keinem langlebigen In-Memory-Cache und
+prozessweitem kurzen Lock über Store-Instanzen. Eng begrenztes UTF-8/JSON mit
+Version und exakter Feldmenge, keine Duplikate/Typumdeutung/angehängten Dokumente.
+Unterbrochene AtomicFile-Writes werden über openRead zur letzten vollständigen
+Konfiguration zurückgeführt. Fehlende Datei bedeutet sichere Defaults; beschädigte
+vorhandene Konfiguration führt zu Fehler statt Rücksetzen oder Weiterschreiben.
+Target-/Opt-in-Updates erhalten jeweils die anderen Felder.
+
+Fünf Methoden auf API 24 und 35 plus ausschließlich betroffene Speicherroot-
+Klassifizierung prüfen: Defaults ohne Anlage, Instanz-/Neustartpersistenz,
+unterbrochener Write, defekte/überlange/duplizierte/falsch typisierte Konfiguration
+und ungültige neue URI ohne Veränderung des vorherigen gültigen Datensatzes.
+Keine echten Ordner-/Systemgrants oder persönlichen Daten verwenden.
+
+Abnahme lokale Ordner-/Opt-in-Einstellungen: fünf Methoden auf API 24 und 35,
+zehn echte Ausführungen, sowie betroffene Speicherroot-Klassifizierung bestanden.
+XML ohne Fehler/Skips und mit beiden SDK-Fällen geprüft. lintDebug und
+assembleDebug bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber.
+Nachweise: /workspace/immopilot-folder-settings-tests.log und
+/workspace/immopilot-folder-settings-build.log. Keine echten Grants oder
+persönlichen Daten; UI und vollständiger Verlauf bleiben nachfolgend.
+
+### Schritt 6: UI-Aktionscontroller ohne Passwortpersistenz
+
+Drei Dateien: neuer OfflineBackupController, dessen gezielter Test und dieses
+Dokument. ViewModel-scope-fähige StateFlow-Steuerung für Laden, Einrichtung/
+Rotation, Ordnerwahl, manuelles Opt-in, Export und expliziten Abbruch. Nur ein
+eigener aktiver Auftrag; doppelte Anforderungen werden nicht eingereiht. Passwort-
+CharArrays sind niemals Bestandteil von State/Settings/Publish; zusätzlich zu
+Kern-Finally-Grenzen Job-Completion-Löschung auch bei gar nicht gestarteter oder
+wegen Busy abgelehnter Anfrage. UI-brauchbare Bestätigungs-/Längenfehler statisch.
+
+Neue Ordnerrechte zuerst übernehmen und echten Ziel-Preflight ausführen, erst
+danach atomar speichern. Bei Fehlschlag nur einen gerade neu übernommenen Grant
+freigeben, keine bereits vorhandenen/alten Zielrechte entziehen. Zielstatus und
+Label erneut lesen; gespeicherte URI ist kein Verfügbarkeitsnachweis. Schlüssel-
+Ladefehler werden angezeigt statt stiller Neueinrichtung. Publish verwendet den
+vollständigen gemeinsamen Kern ohne Passwort und getrennte manuelle Einwilligung.
+Erfolg erst nach Published; späterer Fehler ersetzt letzten erfolgreichen
+Controller-Nachweis nicht. Dauerhafte Historie folgt weiter in Schritt 9.
+
+Fünf Methoden prüfen mit echten Room-/Keystore-/Archive-Kernen, synthetischen
+Daten und simulierter Ordner-/Anbietergrenze: Setup/Rotation/Wischen, Grant-
+Fehler und vorherige Konfiguration, erfolgreicher Export und Folgefehler,
+Passwortpuffer bei vorher abgebrochenem Scope sowie Busy/Cancel ohne Doppelauftrag
+und ohne Löschen alter Dokumente. Noch keine Compose-/ReceiptViewModel-Anbindung.
+
+Abnahme UI-Controller: fünf echte Methoden bestanden, XML ohne Fehler/Skips
+geprüft. Tatsächlicher Exportkern samt Folgefehler, Busy/Cancel, Grant-Rollback,
+Setup/Rotation und Pufferlöschung sind nachgewiesen. lintDebug und assembleDebug
+bestanden, keine Error/Fatal-Lintbefunde; git diff --check sauber. Nachweise:
+/workspace/immopilot-backup-controller-tests.log und
+/workspace/immopilot-backup-controller-build.log. Keine realen Systemgrants,
+keine Compose-/Emulator-Abnahme oder echte Zielveröffentlichung.
+
+### Schritt 6 – verschlüsselte Bedienelemente (Darstellung)
+
+`EncryptedBackupControls` ergänzt die reine Compose-Darstellung mit separaten
+Callbacks: passwortgeschützte Einrichtung/Rotation, menschenlesbarer Zielordner,
+standardmäßig ausgeschaltete manuelle Schlüssel-Einwilligung, Save-Sperren,
+Fortschritt, Abbruch und Fehlermeldungen. Passwörter liegen ausschließlich im
+flüchtigen Dialogzustand (`remember`, kein SavedState); maskierte Felder,
+16–1024 Zeichen, übereinstimmende Bestätigung, ausdrücklicher Verlusthinweis.
+Der Dialog ist für begrenzte Höhe scrollbar. Bestätigte CharArrays gehen in die
+Verantwortung des Controllers; beim Schließen wird kein Passwort übernommen.
+
+Vier Compose-Methoden prüfen Bestätigung/Maskierung, verworfene Eingaben,
+Opt-in/Callbacks/Rotation und Busy/Cancel/Schlüsselfehler. Erster Lauf:
+3 Dialogfälle scheiterten am bekannten Native-Robolectric-Wrap-Content-
+Fensterproblem (AppNotIdle); die vorhandene begrenzte Android-Fenster-Testhilfe
+wurde übernommen, keine Zeitlimits oder Assertions abgeschwächt. Danach alle
+vier Methoden bestanden. Kein Emulator-/Gerätenachweis. Verbindung zur
+Sicherungskarte folgt im nächsten Inkrement.
+
+Abnahme Darstellung: finaler Lauf einschließlich scrollbarerer Dialogdarstellung
+mit vier echten Methoden ohne Fehler/Skips, lintDebug ohne Error/Fatal und
+assembleDebug erfolgreich; git diff --check sauber. Nachweise:
+/workspace/immopilot-backup-controls-verify.log sowie die Test-/Lint-XML-Berichte.
+
+### Schritt 6 – Einbindung in die bestehende Sicherungskarte
+
+ReceiptViewModel besitzt den Controller lazy und lädt seinen lokalen Zustand
+bei erstmaliger Benutzung. Die bestehende Karte sammelt dessen StateFlow und
+verbindet Einrichtung, Rotation, Einwilligung, Start/Abbruch und erneute Prüfung.
+OpenDocumentTree liefert die Ordnerauswahl an die geprüfte Grant-/Settings-
+Grenze. Ein abgebrochener Picker verändert keine Konfiguration.
+
+V2 ist die sichtbare Standardsicherung. Der unveränderte V1-Kern bleibt unter
+expliziten erweiterten Optionen erreichbar, mit Warnung vor unverschlüsseltem
+ZIP und eindeutiger Beschriftung des ergänzenden Imports. Gegenseitige Busy-
+Sperren verhindern parallele Aufträge über diese Karte. Die bestehende V1-
+Fehleranzeige bleibt von V2-Status getrennt. Header/Navigation unverändert.
+
+Die betroffenen Picker-Compose-Tests verwenden jetzt den vorhandenen
+scrollbaren Bildschirmaufbau und öffnen V1 ausdrücklich. Ein zusätzlicher
+Fall prüft den Tree-Vertrag, ausgeschaltetes Opt-in und unveränderte Settings
+bei abgebrochener Ordnerwahl. Reale SAF-Anbieter-/Emulatorprüfung steht aus.
+
+Abnahme Anbindung: fünf bisherige Picker-Methoden im ersten Lauf bestanden
+(/workspace/immopilot-backup-card-first.xml); nur der neue Abbruchfall hatte eine
+uninitialisierte Test-URI in der Picker-Fixture. Korrektur: RESULT_CANCELED
+liefert keine URI, wie beim Android-Vertrag. Danach beide betroffenen
+Abbruchmethoden ohne Fehler/Skips bestanden. Final lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check erfolgreich. Logs:
+/workspace/immopilot-backup-card-tests.log und
+/workspace/immopilot-backup-card-verify.log. Native visuelle Geräteprüfung und
+SAF-Anbietermatrix folgen in Schritt 12; keine Aussage über echte Grants.
+
+### Schritt 7 – portable, ausschließlich prüfende Wiederherstellungsvorbereitung
+
+`OfflineBackupRestoreInspector` öffnet den ausgewählten Eingabestrom erst im
+IO-Auftrag, begrenzt und prüft den Header vor der KDF und gewinnt die Generation
+ausschließlich aus Recovery-Blob und eingegebenem Passwort. Kein Geräte-Key,
+keine lokale Schlüsselinstallation, keine Änderung von Live-Room/Preferences.
+Der komplette authentifizierte Datenstrom wird privat begrenzt entschlüsselt,
+dann über die bestehenden ZIP-/Manifest- und echten Room-Probe-Prüfungen gelesen.
+Erst danach entsteht die Vorschau mit Backup-ID, Erstellungs-/App-Version,
+Tabellenumfang, Dateiversionen, Payloadbytes und enthaltenen Credential-Providern.
+
+Der Passwortpuffer wird auch bei vorzeitig abgebrochenem Dispatcher gewischt.
+Die Eingabe gehört einem einzigen `use`-Block; Crypto erhält nur einen geborgten
+Stream. Prepared besitzt Generation, versiegelte Credential-Puffer, isolierte
+Room-DB und private Dateien, räumt diese bei Schließen idempotent auf. Jeder
+Fehler vor Übergabe räumt dieselben Ressourcen auf. Für Entschlüsselung und
+Extraktion bleibt ein begrenztes privates Platzbudget samt Reserve; die Probe
+prüft ihren tatsächlichen zusätzlichen Metadaten-/DB-Platz vor dem Anlegen.
+Es wird noch kein Restore angewendet; Journal/Bestandsänderung folgt in Schritt 8.
+
+Abnahme Inspector: drei echte Methoden ohne Fehler/Skips bestanden. Nachweis
+umfasst getrennten Zielbestand und fehlenden ursprünglichen Test-Keystore,
+Credentials nur versiegelt im Speicher, unveränderte Live-Daten/Preferences/
+Snapshot-Generation, falsches Passwort, abgeschnittenen Stream, authentifizierte
+Nicht-ZIP-Daten, verweigerten Anbieterzugriff und Abbruch vor IO-Eintritt.
+lintDebug ohne Error/Fatal, assembleDebug und git diff --check erfolgreich.
+Logs: /workspace/immopilot-restore-inspector-tests.log und
+/workspace/immopilot-restore-inspector-build.log. Kein echter Gerätewechsel-Test.
+
+### Schritt 7 – verschlüsselte Prüfung und Vorschau in der Karte
+
+Die Karte öffnet für V2 einen eigenen OpenDocument-Dialog und fragt anschließend
+nach dem Archivpasswort. Dieses bleibt ausschließlich in flüchtigem, maskiertem
+Dialogzustand; Schließen verwirft die Eingabe. Nur bestätigte CharArrays gelangen
+an den Inspector und werden auch bei abgebrochenem UI-Scope gewischt. Die
+laufende Prüfung ist abbrechbar; V1-/V2-Aktionen sind dabei gegenseitig gesperrt.
+
+Die Vorschau zeigt authentifizierte Zeit-/Umfangsdaten und Credential-Provider,
+weist ausdrücklich auf den bisher unveränderten Bestand hin und ist in diesem
+Inkrement ausschließlich lesend. Tatsächliches Anwenden folgt mit dem Journal
+in Schritt 8. Schließen entfernt private Prüfressourcen auf IO, auch bei
+anschließendem Bildschirmwechsel; laufende Prüfung wird beim Verlassen
+abgebrochen. V1 bleibt separat ergänzend lesbar und ausführbar.
+
+Zusätzliche Picker-Methoden: echter verschlüsselter Snapshot über Content-URI,
+Passwortdialog, vollständige Prüfung/Vorschau, unveränderte fachliche Daten und
+Cleanup; Abbrechen und erneutes Öffnen ohne behaltenes Passwort oder gestartete
+Prüfung. Vorhandene V1-/Ordner-Pickerfälle werden wegen der Kartenänderung gezielt
+mitgeprüft; keine fachfremde Suite.
+
+Abnahme Vorschau: sieben Pickerfälle im ersten Lauf bestanden; der neue
+Archivfall scheiterte am Activity-Zugriff aus dem IO-Testthread. Nach Zugriff
+auf dem Testthread bestand auch dieser gezielt erneut. lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check erfolgreich. Logs: /workspace/immopilot-restore-preview-tests.log,
+/workspace/immopilot-restore-preview-fixed.log und /workspace/immopilot-restore-preview-build.log.
+
+### Schritt 8 – Zuständigkeit des Wiederanlaufjournals
+
+Der vorhandene Drive-Journal in `restore_journal_prefs/latest_journal` enthält
+`restoreId`, Modus, Phase, Zeitpunkte und Belegzähler. Er wird mit `apply()`
+geschrieben und sein Leser behandelt fehlerhaftes JSON wie einen fehlenden
+Eintrag. Er enthält weder Rückfallstand noch dessen Integritätsnachweis und
+besitzt keinen nachgewiesenen Wiederanlauf vor fachlicher Initialisierung.
+`FullRestoreCoordinator` meldet außerdem einen Fehler im Zusatzdatenimport,
+nachdem der Kern bereits übernommen worden sein kann. Diese Drive-Semantik
+reicht für einen atomaren lokalen Ersatz-Restore nicht aus.
+
+Für den lokalen Restore ist deshalb ein getrennt gekennzeichneter, dauerhaft
+atomar geschriebener Journalvertrag vorzusehen. Seine Operationskennung muss
+Phase, Staging und Rückfallstand eindeutig binden. Ein unlesbares oder offenes
+lokales Journal darf beim Start nicht als fehlend interpretiert werden. Der
+vorhandene Drive-Journal bleibt für seine bisherigen Drive-Abläufe zuständig;
+beide Restore-Wege müssen über dieselbe Wartungssperre koordiniert werden. Der
+bereits festgelegte Zeilenimport in einer Room-Transaktion bleibt verbindlich.
+
+Diese Festlegung ist eine Architekturentscheidung, keine Behauptung einer
+bereits implementierten Sperre, Wiederanlaufprüfung oder Rückfallfunktion. Vor
+Bestandsänderungen müssen insbesondere Wiederanlauf, Speicherprüfung,
+Rollback auch bei bereits fehlenden Originalen und die Unterdrückung des
+anschließenden automatischen Drive-Sync nachgewiesen werden.
+
+### Schritt 8 – Grundlage der gemeinsamen Wartungssperre
+
+Der bestehende OfflineBackupCoordinator kann bei ruhendem Bestand eine exklusive
+Wartung aufnehmen. Bereits registrierte, auch nur vorgemerkte Schreiber verhindern
+den Eintritt. Während der Wartung werden neue registrierte Schreiber und Snapshot-
+Erfassungen abgewiesen; eine vorher begonnene Erfassung wird ungültig. Ein
+Wartungstoken erlaubt nur ausdrücklich darin ausgeführte synchrone Schreibarbeit
+auf dem jeweiligen Thread. Die Berechtigung überträgt sich nicht auf andere Threads;
+ein Token mit noch laufendem Schreibvorgang kann nicht freigegeben werden.
+
+Drei gezielte Tests prüfen aktiven Schreiber, Konkurrenz zu Sicherungen und
+Wartungen, eigene Schreiber, Threadisolation und Freigabe. Die Sperre wird vom
+lokalen Restore noch nicht betreten; Journal, Startwiederanlauf, gemeinsame
+Koordination mit sämtlichen Drive-Einstiegspunkten und Coroutine-Übergänge sind
+noch nachzuweisen. Diese Grundlage allein belegt keinen vollständigen Restore.
+
+Abnahme Wartungsgrundlage: drei Methoden ohne Fehler/Skips, lintDebug ohne
+Error/Fatal und assembleDebug erfolgreich; git diff --check sauber. Nachweise:
+/workspace/immopilot-maintenance-tests.log und /workspace/immopilot-maintenance-build.log.
+
+### Schritt 8 – lokales Wiederanlaufjournal
+
+`OfflineRestoreJournal` verwaltet unter dem bereits als LOCAL_ONLY eingestuften
+`noBackupFilesDir/offline-backup-state` einen eigenen atomaren Journaleintrag.
+Eine lokale Owner-Kennung und drei kanonische UUIDs binden Operation, Staging und
+Rückfallstand. Die einzigen erlaubten Phasen sind PREPARED, FILES, DATABASE,
+PREFERENCES, ROLLBACK, COMMITTED und ROLLED_BACK; Übergänge verlangen den genau
+zuletzt gelesenen Eintrag. Nur ein expliziter Endzustand darf entfernt werden.
+Schreiben verwendet AtomicFile, fsync und anschließendes erneutes Lesen.
+Unbekannte Felder/Owner/Phasen, doppelte Felder, ungültiges UTF-8, Übergröße und
+verwaiste unvollständige Erstschreibdateien werden als Fehler behandelt und
+nicht überschrieben. Kein Passwort oder Credential wird im Journal gespeichert.
+
+Der Journalbaustein bestätigt selbst keinen Restore und prüft nicht, ob die
+zugehörigen Rückfalldaten existieren. Die kommende Wiederanlauf-/Restore-Logik
+muss diese nachweisen, vor fachlichem App-Start auswerten und bei Problemen den
+Normalbetrieb sperren. Die bestehende Drive-Journal-Semantik bleibt getrennt.
+
+Abnahme Journalbaustein: drei Testmethoden jeweils auf API 24 und 35 ohne
+Fehler oder Skips, lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Nachweise: /workspace/immopilot-restore-journal-tests.log und
+/workspace/immopilot-restore-journal-build.log.
+
+### Schritt 8 – geschützter App-Start
+
+MainActivity prüft das lokale Journal vor `setContent` und vor Erzeugung des
+`ReceiptViewModel`, das Room und Synchronisationsabläufe initialisiert. Ein
+vorhandener oder nicht lesbarer Eintrag zeigt ausschließlich einen geschützten
+Hinweis; der Journal wird weder entfernt noch verändert. Ohne Eintrag wird die
+bestehende Oberfläche einschließlich Navigation unverändert gestartet. Ein
+Terminalzustand bleibt ebenfalls gesperrt, bis der spätere Wiederanlauf dessen
+Rückfall-/Abschlussdaten geprüft und das Journal ausdrücklich bereinigt hat.
+
+Drei isolierte Compose-Tests prüfen offenen Journal, beschädigten Journal und
+normalen Start ohne Eintrag. Dies ist eine Eintrittssperre für MainActivity,
+noch kein automatischer Rollback und kein Nachweis für zukünftige Worker oder
+andere Prozesse; deren Eintrittspunkte müssen vor Verwendung gesondert über
+den Wiederanlaufvertrag abgesichert werden.
+
+Abnahme Startschutz: drei echte Compose-Methoden ohne Fehler/Skips, lintDebug
+ohne Error/Fatal, assembleDebug und git diff --check bestanden. Ein anfänglicher
+Test-Kompilierfehler durch zwei falsche Imports wurde korrigiert. Nachweise:
+/workspace/immopilot-restore-startup-tests-final.log und
+/workspace/immopilot-restore-startup-build.log. Kein Emulator-Gerätenachweis.
+
+### Schritt 8 – privater Datenbank-Rückfallstand
+
+`OfflineRestoreDatabaseSnapshot` erstellt unter der gemeinsamen Wartungssperre
+und nach konservativer Speicherprüfung eine eigene Room-Datenbank im lokalen
+Rückfallbereich. Die 18 fachlichen Tabellen und das lokale Migrationsjournal
+werden zeilenweise in einer Transaktion kopiert; `sqlite_sequence` wird ebenfalls
+übernommen. Bidirektionale Zeilenvergleiche und eine anschließende Room-/SQLite-
+Integritätsprüfung prüfen die Kopie. Ergebnis sind UUID, Dateigröße, SHA-256 und
+Tabellenzähler. Bereits belegte Pfade werden nicht überschrieben; Fehlschläge
+räumen nur die eigenen neu angelegten Dateien auf.
+
+Die Kopie übernimmt Dateipfade als Daten, ohne deren Existenz vorauszusetzen.
+Dadurch bleibt ein aktueller Bestand mit bereits fehlenden Originalen als
+Datenbank-Rückfallstand erfassbar; die fehlenden Originale sind gesondert im
+vollständigen Rückfalljournal zu dokumentieren. Die Kopie allein umfasst weder
+Preferences noch Originaldateien und ist keine vollständige Sicherung. Ihre
+Integrität und Zuordnung zum Journal müssen vor späterem Zurückspielen erneut
+geprüft werden.
+
+Das Wartungstoken registriert jetzt auch die gesamte Dauer seiner ausdrücklich
+berechtigten synchronen Aktion. Dadurch kann es nicht zwischen einzelnen
+Datenbankoperationen durch einen anderen Thread freigegeben werden. Sieben
+gezielte Testmethoden prüfen fehlende Pfade, IDs und Zählerstände, belegten
+Rückfallplatz, fremde/abgelaufene Tokens und konkurrierende Tokenfreigabe.
+
+Abnahme Datenbank-Rückfallkopie: drei Snapshot- und vier Wartungstests ohne
+Fehler/Skips; lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Nachweise: /workspace/immopilot-restore-db-maintenance-tests.log und
+/workspace/immopilot-restore-db-maintenance-build.log. Noch kein vollständiger
+Rollback oder Geräte-/Prozessneustarttest.
+
+### Schritt 8 – privater Preference-Rückfallstand
+
+`OfflineRestorePreferenceSnapshot` schreibt während der gemeinsamen Wartung
+nur die im bestehenden Preference-Inventar als BACKUP zugelassenen Werte in
+eine private, neue und größenbegrenzte Datei. Die Streaming-Serialisierung nutzt
+dieselbe Schlüsselauswahl und dieselben Typen wie der bestehende Export, prüft
+Abbruch und meldet ungültiges UTF-8 statt Zeichen zu ersetzen. Datei und
+Schreibstrom werden synchronisiert, anschließend Größe und SHA-256 vollständig
+rückgelesen. Belegte Pfade bleiben unverändert; bei Fehlschlag werden nur eigene
+unvollständige Daten entfernt. Ein lokaler Rückfallstand darf nicht als
+portables oder vollständiges Backup bezeichnet werden.
+
+Geheimschlüssel und Geräte-Ciphertexte werden anhand der bestehenden
+Inventargrenzen nicht in diese fachliche Datei geschrieben. Der separate Vertrag
+für einen bei Restore tatsächlich geänderten Credential-Bestand ist noch nicht
+implementiert; vor Anwendung müssen dessen Rückfall, die Zugehörigkeit der
+Datei zum Journal und Integritätsprüfung beim Wiederanlauf ergänzt werden.
+
+Abnahme Preference-Rückfallkopie: zwei Methoden jeweils auf API 24 und 35 ohne
+Fehler/Skips, einschließlich Vergleich mit dem bestehenden Inventar und Ausschluss
+synthetischer Geheimniswerte. lintDebug ohne Error/Fatal, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-restore-prefs-verify.log.
+
+### Schritt 8 – strukturierte Wartungsarbeit über Coroutine-Wechsel
+
+Das Wartungstoken unterstützt zusätzlich einen strukturierten suspendierbaren
+Ablauf. Die ausschließlich dem Token zugeordnete ThreadLocal-Berechtigung wird
+über Coroutine-Kontextwechsel weitergegeben; die gesamte Laufzeit einschließlich
+strukturierter Kindaufgaben bleibt als aktiver Wartungsschreiber registriert.
+Bei Abbruch wird diese Registrierung im `finally` freigegeben. Ein bereits
+freigegebenes Token kann keine neue Arbeit beginnen; andere Threads ohne den
+Kontext erhalten keine Berechtigung.
+
+Dies ist ein interner Baustein für die noch zu implementierende Dateierfassung
+und Restore-Anwendung, keine Freigabe für unstrukturierte Hintergrundaufgaben.
+
+Abnahme Coroutine-Wartungsablauf: fünf Methoden ohne Fehler/Skips, lintDebug ohne
+Error/Fatal, assembleDebug und git diff --check bestanden. Der erste JUnit-Lauf
+meldete einen nicht-void Rückgabetyp der neuen Testmethode; nach Korrektur des
+Test-Rückgabetyps lief die unveränderte Prüfung erfolgreich. Nachweise:
+/workspace/immopilot-maintenance-coroutines-tests-fixed.log und
+/workspace/immopilot-maintenance-coroutines-build.log.
+
+### Schritt 8 – Rückfallkopien vorhandener app-eigener Dateien
+
+`OfflineRestoreOwnedFilesSnapshot` erfasst unter gemeinsamer Wartung die vom
+Dateiinventar gefundenen app-eigenen Originale, aufbewahrten Versionen und
+gespeicherten Exporte. Der private Rückfallbereich wird neu angelegt; belegte
+Verzeichnisse werden nicht überschrieben. Vor dem Kopieren werden Größen und
+Speicherreserve geprüft. Jede Kopie wird synchronisiert und vollständig
+rückgelesen; außerdem wird die Quelle nochmals gelesen und das Inventar am Ende
+erneut verglichen. Größenänderungen seit der Speicherprüfung führen zum Abbruch.
+Auch vorhandene leere Dateien bleiben für den Rückfall erhalten.
+
+Ein privates Manifest enthält portable Pfade, Kategorie, internen Dateinamen,
+Größe und SHA-256; es wird synchronisiert und rückgelesen. Beim Fehler wird nur
+der selbst angelegte Rückfallbereich entfernt. Dies ist bewusst erst der Anteil
+für vorhandene app-eigene Dateien: externe Referenzen, bereits fehlende Originale,
+Wiederanlaufvalidierung und die Verknüpfung mit dem Gesamtjournal müssen noch
+ergänzt werden. Die Kopie ist kein vollständiges Backup und führt keinen Restore aus.
+
+Abnahme app-eigene Dateirücklage: drei Methoden ohne Fehler/Skips, lintDebug ohne
+Error/Fatal, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-owned-files-verify.log. Noch kein vollständiger
+Dateirückfall oder Prozessneustarttest.
+
+### Schritt 8 – externe und bereits nicht verfügbare Originalreferenzen
+
+`OfflineRestoreReferenceSnapshot` liest die aktuellen Referenzen aus den
+Room-Metadaten unter der gemeinsamen Wartungssperre. Zuvor prüft es den
+zugehörigen app-eigenen Dateirückfallstand anhand von UUID, Manifest-Hash,
+Inventar und den Bytes beider Seiten. App-eigene Referenzen werden mit dessen
+fixierten Kopien verknüpft. Erreichbare externe Dateien und Content-URIs werden
+in einen eigenen privaten Bereich kopiert, synchronisiert sowie Quelle und Kopie
+vollständig rückgelesen. Nicht verfügbare Verweise werden ausdrücklich als
+UNAVAILABLE festgehalten; sie werden nicht durch andere Dateien ersetzt. Bei
+Anbieteränderung oder beschädigter eigener Kopie wird abgebrochen und nur der
+neu angelegte Referenzbereich entfernt.
+
+Vor externen Kopien werden bekannter lokaler Umfang und für Content-URIs je
+konservativ 1 GiB plus Reserve geprüft; ein größerer unbekannter Inhalt führt zum
+Abbruch. Der private Referenzindex enthält UUID, interne Referenzkennung,
+Pfad-Hash statt Klartextpfad, Beschreibung, Zustand sowie Kopie/Größe/Hash.
+Die benötigten ursprünglichen Pfade bleiben im bereits gesicherten Datenbank-
+Rückfallstand. Die durch die Metadatenerfassung erzeugte temporäre Datei wird vor
+Übergabe entfernt. Dies ist noch kein abgeschlossener Rollback: Journalbindung,
+Validierung bei erneutem App-Start, Credentials und tatsächlich transaktionales
+Anwenden/Zurückspielen fehlen weiterhin.
+
+Abnahme Referenzrücklage: drei Methoden ohne Fehler/Skips einschließlich
+lokaler und simulierter Content-URI, bereits nicht verfügbarer Verweise,
+beschädigter eigener Kopie und einer Anbieteränderung beim Rücklesen. lintDebug
+ohne Error/Fatal, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-references-verify.log. Keine echten Anbieter oder
+Nutzerdateien verwendet.
+
+### Schritt 8 – vorbereiteter Rückfallverbund
+
+`OfflineRestoreRollbackBundle` erstellt unter einem durchgehend gehaltenen
+Wartungstoken eine neue UUID und bereitet dazu Datenbank-, Preference-, app-eigene
+Datei- und externe Referenzrücklage nacheinander vor. Ein kleines privates
+Verzeichnis bindet deren Größen, Prüfsummen und Anzahlen an diese UUID; es wird
+synchronisiert und größenbegrenzt rückgelesen. Bei einem späteren Fehler oder
+Abbruch werden nur die bereits erfolgreich neu erzeugten eigenen Bestandteile
+entfernt, nicht fremde vorhandene Dateien. Die Vorbereitung verändert keinen
+fachlichen Bestand und schreibt noch keinen Journal.
+
+Der Verbund allein ist noch keine Freigabe zur Wiederherstellung. Der spätere
+Journal muss die Prüfsumme dieses Verzeichnisses dauerhaft binden; vor einem
+Wiederanlauf müssen alle Bestandteile und ihre Dateiverzeichnisse erneut strikt
+validiert werden. Credential-Rückfall, Restore-Anwendung, Rückrollen und
+Wiederanlauf bleiben weitere notwendige Schritte.
+
+Abnahme Rückfallverbund: drei Methoden ohne Fehler/Skips, darunter ein bereits
+fehlendes Original und Bereinigung nach spätem Fehler; lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-bundle-verify.log. Kein Restore oder Neustarttest.
+
+### Schritt 8 – Journal bindet das Rückfallverzeichnis
+
+Der lokale Journalvertrag trägt jetzt zusätzlich die begrenzte Byteanzahl und
+SHA-256 des Rückfallverzeichnisses. Vor dem Anlegen prüft der Journal den anhand
+UUID gebildeten privaten Pfad, reguläre Datei, erwartete Größe und vollständigen
+Hash. Eine fehlende, veränderte oder nicht sicher zuordenbare Datei kann keinen
+neuen Journal eröffnen. Die Werte bleiben über jeden Phasenwechsel unverändert;
+beim Lesen werden Format, Typen, kanonische Größe und Hash strikt geprüft.
+Der lokale Journal verwendet dafür Formatversion 2. Ein älterer oder beschädigter
+Eintrag gilt weiterhin als blockierend und wird nicht still zurückgesetzt.
+
+Diese Bindung überprüft bisher nur die Verzeichnisdatei selbst. Vor einem
+Wiederanlauf müssen deren vollständige Struktur und alle einzelnen Datenbank-,
+Preference-, Datei- und Referenzbestandteile anhand des gebundenen Verzeichnisses
+separat verifiziert werden; die vorbereitete Rücklage wird noch nicht angewendet.
+
+Abnahme Journalbindung: acht Journal-Testausführungen auf API 24/35 und drei
+Startschutzmethoden ohne Fehler/Skips; lintDebug ohne Error/Fatal, assembleDebug
+und git diff --check bestanden. Nachweise:
+/workspace/immopilot-restore-journal-binding-tests.log und
+/workspace/immopilot-restore-journal-binding-build.log.
+
+### Schritt 8 – erste Prüfung des Rückfallverzeichnisses
+
+`OfflineRestoreRollbackVerifier.verifyIndex` prüft lesend den erwarteten
+aktuellen Journal vor und nach der Prüfung. Das über Größe und SHA-256 gebundene
+Rückfallverzeichnis wird begrenzt und mit strengem UTF-8/JSON gelesen: nur
+bekannte und genau einmal vorhandene Felder, kanonische Zahlen, begrenzte
+Anzahlen, gültige Hashes und passende Rückfall-UUID. Die daraus abgeleiteten
+privaten Pfade müssen reguläre, kanonisch zuordenbare Dateien sein. Datenbank,
+Preference-Datei und beide Dateimanifeste werden vollständig gestreamt und gegen
+ihre gebundenen Größen und Hashes geprüft. Ein Fehler verändert weder Journal
+noch den fachlichen Bestand.
+
+Dieses Ergebnis ist ausdrücklich noch keine vollständige Rückfallfreigabe:
+Inhalt und Schema der Datenbank, Preference-Struktur, die einzelnen Datei- und
+Referenzmanifeste samt sämtlicher Payloadbytes und deren Zuordnung zum Bestand
+müssen anschließend geprüft werden. Vor einer tatsächlichen Änderung müssen
+auch zwischenzeitliche Änderungen ausgeschlossen und der Journal weiterhin
+verbindlich sein.
+
+Abnahme Rückfallindex: drei Methoden ohne Fehler/Skips einschließlich manipulierter
+Bestandteile und ungültigem gebundenem Index; lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-rollback-index-verify.log. Noch keine vollständige
+Payload-/Schema-Prüfung und kein Rückrollen.
+
+### Schritt 8 – Prüfung der Rückfall-Dateien und Referenzen
+
+`OfflineRestoreFileManifestVerifier` validiert nach dem journalgebundenen Index
+die beiden privaten Dateiverzeichnisse mit strengem UTF-8/JSON. Die bekannten
+portablen Wurzeln und Dateikategorien werden gegen denselben Vertrag wie beim
+Archivimport geprüft; doppelte Pfade, unbekannte Felder, ungültige Reihenfolgen,
+Traversal, unzulässige Zustände und falsche Referenzen auf app-eigene Kopien
+werden abgewiesen. Jede aufgeführte app-eigene und externe Datei wird über Größe
+und SHA-256 vollständig rückgelesen; zusätzliche unbekannte Dateien verhindern
+eine Freigabe. Journal und direkte Manifest-Hashes werden am Ende erneut geprüft.
+
+Der Baustein prüft Dateinutzdaten und ihre internen Zuordnungen. Er beweist noch
+nicht, dass sämtliche Pfad-Hashes vollständig zu den Zeilen des gesicherten
+Datenbankbestands passen; Datenbankschema, Preference-Struktur, Credentials und
+die tatsächliche Rückfallanwendung bleiben ebenfalls weitere Schritte.
+
+Abnahme Rückfall-Dateiprüfung: vier Methoden ohne Fehler/Skips, einschließlich
+manipulierter Payloads, Traversal und ungültiger Referenz bei angepassten
+Manifest-Hashes. lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Der erste Kompilierversuch meldete einen fehlenden expliziten Kotlin-
+Null-Check; danach bestanden die Tests. Nachweise:
+/workspace/immopilot-rollback-files-verify-tests-fixed.log und
+/workspace/immopilot-rollback-files-verify-build.log.
+
+### Schritt 8 – Prüfung des Preference-Rückfallstands
+
+`OfflineRestorePreferenceVerifier` liest die journalgebundene Preference-Datei
+mit strengem UTF-8/JSON nach Indexprüfung. Alle klassifizierten BACKUP-Speicher
+müssen genau einmal vorhanden sein; unbekannte Speicher, doppelte Schlüssel,
+nicht zugelassene Geheimnisfelder, unbekannte Typen, fehlerhafte Zahlen und
+uneindeutige Mengen werden abgewiesen. Der Parser begrenzt die Datei und prüft
+das verfügbare Speicherbudget. Typen und auch historische Werte werden lesend
+übernommen; es erfolgt keine Änderung des aktuellen Preference-Bestands. Danach
+werden Journal und direkte Dateien erneut gegen den gebundenen Index geprüft.
+
+Die Rückfallanwendung muss später exakt diese geprüften Werte und Typen
+wiederherstellen, ohne nicht exportierte Geheimnisse oder lokale Konfiguration zu
+löschen. Der bestehende fachliche Restore validiert bestimmte neue Eingaberegeln;
+er darf deshalb nicht ungeprüft als Rückfallmechanik für historische Werte
+verwendet werden. Credentials und tatsächlicher Wiederanlauf fehlen weiterhin.
+
+Abnahme Preference-Prüfung: fünf Methoden ohne Fehler/Skips, darunter historische
+negative Werte, unzulässige Geheimnisfelder und fehlende, unbekannte sowie
+doppelte Speicher. lintDebug ohne Error/Fatal, assembleDebug und git diff --check
+bestanden. Nachweis: /workspace/immopilot-rollback-prefs-verify.log.
+
+### Schritt 8 – fehlende Cloud-Originale im Rückfallinventar
+
+Die Metadatenerfassung besitzt für den ausschließlich internen Rückfall einen
+separaten Referenzmodus. Ein Beleg mit Originalanspruch, aber ohne vorhandenen
+lokalen Pfad, und ein nicht lokal zugeordneter Drive-Anhang erzeugen darin
+stabile interne UNAVAILABLE-Verweise. Sie werden nicht als vorhandene Originale
+oder als vollständige Sicherung bezeichnet. Widersprüchliche oder ungültige alte
+Dateiprüfsummen werden für die Rückfallerfassung nicht als Wahrheit verwendet;
+die vorhandenen Bytes und unveränderten Datenbankwerte bleiben maßgeblich.
+
+Der Standardmodus für reguläre Vollsicherungen bleibt streng und bricht bei
+fehlenden Originalen oder widersprüchlichen Prüfsummen weiterhin ab. Der neue
+Rückfallmodus ist nur für die interne, private Bestandserfassung vorgesehen;
+er führt keinen Cloud-Zugriff aus und verändert den Bestand nicht.
+
+Abnahme: fünf bestehende Metadatentests und vier Rückfallreferenztests ohne
+Fehler/Skips; darunter ein Cloud-only-Beleg mit zusätzlichem fehlendem Anhang,
+während der strenge Vollbackup-Modus denselben Bestand ablehnt. lintDebug ohne
+Error/Fatal, assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-rollback-missing-cloud-tests.log und
+/workspace/immopilot-rollback-missing-cloud-build.log.
+
+### Schritt 8 – isolierte Datenbank- und Referenzprüfung
+
+`OfflineRestoreDatabaseVerifier` prüft zunächst den gebundenen Rückfallindex,
+die Dateinutzdaten und die fachlichen Preference-Daten. Die gesicherte Datenbank
+wird anschließend mit begrenztem Speicherbudget in einen neuen privaten
+Prüfbereich kopiert und gegen die gebundenen Bytes und den Hash rückgelesen.
+Room öffnet ausschließlich diese Kopie ohne destruktive Migration; eine zweite,
+frisch erzeugte Room-Datenbank liefert das aktuelle Vergleichsschema. Geprüft
+werden SQLite-Integrität, Version, klassifizierte Tabellen, Spalten, Fremdschlüssel
+und Indizes. Für die Referenzprüfung werden ausschließlich leere, lesende
+Prüf-Preferences verwendet; der aktuelle Preference-Bestand wird nicht geöffnet.
+
+Die aus der Datenbankkopie gewonnenen Referenzen müssen in Anzahl, Kennung und
+Pfad-Hash zu den geprüften Dateiverzeichnissen passen. App-eigene Referenzen
+müssen zudem auf die richtige fixierte Version zeigen. Bereits nicht verfügbare
+Originale bleiben als solche markiert. Für alte komma-getrennte Mehrseitenpfade
+verwendet die isolierte Prüfung die nachgewiesenen Rückfallreferenzen statt der
+möglicherweise durch einen unterbrochenen Restore veränderten Dateipfade. Der
+normale Reader und der strenge Vollbackup-Modus behalten ihre bisherigen Regeln.
+Der private Prüfbereich wird anschließend entfernt; eine Datenübernahme oder ein
+Rollback wird noch nicht ausgeführt.
+
+Vor tatsächlicher Anwendung müssen die geprüften Daten unter der weiterhin
+gehaltenen Wartung gegen zwischenzeitliche Änderungen geschützt, Credential-
+Rückfall und dauerhafte Phasenübergänge eingebunden sowie Wiederanlauf und
+vollständiger Rückfall durch Fehler-/Prozessstopptests nachgewiesen werden.
+
+Abnahme isolierte Datenbankprüfung: fünf Datenbankfälle, drei Indexfälle, fünf
+bestehende Metadatenfälle und der gezielte historische Komma-Dateipfadtest ohne
+Fehler/Skips; zusätzlich der einzelne Fehlerfall eines fehlenden Index bestanden.
+Darunter beschädigte DB, manipuliertes Schema, falscher Referenz-Hash und der
+Wiederanlauf mit verschwundenen alten Mehrseitenpfaden. lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-rollback-database-verify-tests-final.log,
+/workspace/immopilot-rollback-database-index-test.log und
+/workspace/immopilot-rollback-database-verify-build.log.
+
+### Schritt 8 – vollständige Registrierung von API-Schlüsseländerungen
+
+Die drei API-Schlüssel-Setter registrieren nun den gesamten Vorgang vor dem
+Zugriff auf den Android-Keystore, einschließlich möglicher Erzeugung eines
+Geräteschlüssels und des anschließenden Preference-Schreibens. Eingabepuffer
+werden auch dann gelöscht, wenn die Wartung bereits beim Eintritt ablehnt. Die
+zusammengehörige Einstellungsspeicherung im ViewModel hält zusätzlich eine
+Registrierung über alle ausgewählten Schlüssel und die Providerauswahl hinweg.
+Dadurch kann eine Wartung nicht zwischen diesen Teilen beginnen.
+
+Diese Korrektur schützt die bestehende Wartungsgrenze; sie implementiert noch
+keinen Credential-Rückfall und stellt keine Schlüssel wieder her. Es wurden nur
+synthetische Schlüssel mit dem vorhandenen Test-Keystore verwendet.
+
+Abnahme Credential-Wartungssperre: sieben Sicherheitstests ohne Fehler/Skips,
+darunter alle drei Anbieter, unveränderte Keystore-Aliase/Einstellungen und
+gelöschte Eingabepuffer bei gesperrter Wartung. lintDebug ohne Error/Fatal,
+assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-credential-maintenance-tests.log und
+/workspace/immopilot-credential-maintenance-build.log.
+
+### Schritt 8 – verschlüsselter Credential-Rückfallstand
+
+Bei ausdrücklich benötigtem Credential-Rückfall werden ausschließlich die bereits
+mit Android-Keystore verschlüsselten Werte und ihre Initialisierungsvektoren in
+eine private, größenbegrenzte Datei geschrieben. Die ursprünglichen Geräteschlüssel
+werden nur lesend verwendet, die Chiffretexte authentifiziert und temporäre
+Klartextpuffer gelöscht. Unvollständige oder beschädigte Einträge und fehlende
+Keystore-Aliase führen zum Abbruch, ohne Einstellungen zu reparieren oder Schlüssel
+zu erzeugen. Die Datei wird synchronisiert, zurückgelesen und mit Größe und Hash
+geprüft. Eine Wiederherstellung und die Einbindung in das Rückfallpaket folgen;
+ohne ausdrücklich gewählten Credential-Import dürfen Schlüssel unverändert bleiben.
+
+Abnahme: zehn Snapshot-Tests auf Android API 24 und 35 sowie sieben bestehende
+Sicherheitstests ohne Fehler oder Skips; ausschließlich synthetische Schlüssel.
+lintDebug, assembleDebug und git diff --check bestanden. Nachweise:
+/workspace/immopilot-credential-rollback-tests.log und
+/workspace/immopilot-credential-rollback-build.log.
+
+### Schritt 8 – optionale Bindung des Credential-Rückfalls
+
+Das Rückfallpaket vermerkt ausdrücklich, ob Zugangsschlüssel unverändert bleiben
+oder ihr bisheriger Zustand gesichert werden muss. Nur bei gewähltem Schlüsselimport
+wird die verschlüsselte Credential-Datei aufgenommen und ihre Größe und ihr Hash
+im journalgebundenen Manifest hinterlegt. Die Indexprüfung authentifiziert diese
+Datei und die ursprünglichen Keystore-Aliase erneut. Ohne Schlüsselimport werden
+beschädigte vorhandene Schlüssel weder gelesen noch verändert. Bestehende
+Rückfallmanifeste der Version 1 bleiben lesbar. Eine Datenübernahme findet durch
+diese Vorbereitung noch nicht statt.
+
+Abnahme: fünf gezielte Paket- und drei Indexprüfungen ohne Fehler oder Skips;
+darunter beschädigte bestehende Schlüssel ohne Import und Manipulation der
+gebundenen Credential-Datei. lintDebug, assembleDebug und git diff --check
+bestanden. Nachweis: /workspace/immopilot-credential-bundle-check.log.
+
+### Schritt 8 – Rückfall fachlicher Einstellungen
+
+Der interne Rückfallbaustein akzeptiert ausschließlich die aktive gemeinsame
+Wartungssperre und ein passendes Journal in der Phase ROLLBACK. Er prüft den
+gesamten journalgebundenen Einstellungsstand vor dem ersten Schreibvorgang und
+übernimmt anschließend pro Speicher ausschließlich die klassifizierten fachlichen
+Werte. Typen und historische negative Werte bleiben erhalten; geheime und nicht
+für das Backup freigegebene Schlüssel sowie lokale Speicher bleiben unangetastet.
+Jeder Speicher wird synchron bestätigt. Bei Abbruch oder Fehler bleibt das Journal
+bestehen und die Übernahme kann wiederholt werden; sie markiert den gesamten
+Rückfall nicht als abgeschlossen. Eine Einbindung in den Wiederanlauf und ein
+vollständiger Prozessstopptest stehen noch aus.
+
+Abnahme: sieben gezielte Einstellungstests ohne Fehler oder Skips, darunter
+wiederholte Übernahme, historische Werte, unveränderte Geheimnisse sowie Ablehnung
+von falscher Phase, fremder Wartungssperre und beschädigtem Snapshot. lintDebug,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-preference-rollback-check.log.
+
+### Schritt 8 – Rückfall der Datenbank
+
+Der interne Datenbankrückfall setzt eine aktive gemeinsame Wartungssperre und
+ein passendes Journal in der Phase ROLLBACK voraus. Vor dem ersten Schreibvorgang
+prüft er die vollständige Datenbankkopie einschließlich Schema, Referenzen,
+Dateinutzdaten und Einstellungen. Die klassifizierten Geschäfts- und lokalen
+Journaltabellen sowie SQLite-Zähler werden in einer Transaktion aus dem gebundenen
+Rückfallstand übernommen und beidseitig verglichen. Anschließend wird der
+abgeleitete Dokumentsuchindex neu aufgebaut. Währenddessen bleibt das Journal im
+Rückfallzustand; bei einem Abbruch kann die Übernahme erneut ausgeführt werden.
+Die Einbindung in den Wiederanlauf und echte Prozessstopptests stehen noch aus.
+
+Abnahme: acht gezielte Datenbanktests ohne Fehler oder Skips, darunter Wiederholung,
+IDs, manipulierte Datenbank und falsche Journalphase. lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis: /workspace/immopilot-database-rollback-check.log.
+
+### Schritt 8 – Rückfall verschlüsselter Zugangsdaten
+
+Der interne Credential-Rückfall verlangt die aktive gemeinsame Wartungssperre
+und ein passendes Journal in der Phase ROLLBACK. Wenn das Rückfallpaket einen
+Credential-Stand bindet, authentifiziert er diesen erneut und stellt die
+vorhandenen Chiffretexte und Initialisierungsvektoren gemeinsam mit einem
+synchronen Preference-Commit wieder her. Fehlende Einträge werden entsprechend
+dem ursprünglichen Stand entfernt; Geräteschlüssel werden weder erzeugt noch
+gelöscht. Andere Einstellungen bleiben unverändert. Ohne gewählten Credential-
+Import bleibt der Credential-Bestand unberührt. Das Journal bleibt bestehen;
+die Einbindung in den vollständigen Wiederanlauf steht noch aus.
+
+Abnahme: sechs gezielte Pakettests ohne Fehler/Skips und nach Korrektur des
+Fehlertexts ein erneuter gezielter Credential-Test ohne Fehler/Skips; lintDebug,
+assembleDebug und git diff --check bestanden. Beim ersten Testversuch wurde eine
+ungültig formatierte synthetische Eingabe korrekt abgewiesen und anschließend
+korrigiert. Nachweise: /workspace/immopilot-credential-replay-check-fixed.log
+und /workspace/immopilot-credential-replay-final.log.
+
+### Schritt 8 – Rückfall app-eigener Dateien
+
+Der interne Dateirückfall verlangt eine aktive gemeinsame Wartungssperre und
+ein Journal in der Phase ROLLBACK. Vor Änderungen prüft er den gebundenen
+Datenbank-, Referenz- und Dateistand. Nur zuvor gesicherte, klassifizierte
+app-eigene Dateipfade werden berücksichtigt; symbolische Links und unsichere
+Pfade werden abgewiesen. Jede Kopie wird mit Größen- und Hashprüfung in einem
+privaten Arbeitsverzeichnis erstellt, synchronisiert, atomar an ihren Platz
+verschoben und erneut gelesen. Zielverzeichnisse werden synchronisiert. Bereits
+fehlende Referenzen bleiben fehlend, externe Quellen und nicht im Rückfallstand
+gelistete Dateien werden nicht verändert. Das Journal bleibt bestehen, sodass
+abgebrochene Arbeit erneut versucht werden kann. Die Zuordnung und Bereinigung
+neu importierter Dateien sowie die Einbindung in den Wiederanlauf stehen aus.
+
+Abnahme: sieben gezielte Dateitests ohne Fehler/Skips, darunter wiederholte
+Rücknahme, unveränderte externe und zusätzliche Dateien, manipulierte Kopien und
+symbolische Links; lintDebug, assembleDebug und git diff --check bestanden.
+Robolectric konnte Androids Verzeichnisöffnung nicht ausführen und bildete den
+Umbenennungsaufruf nicht mit dem erwarteten Dateiaustausch ab. Die JVM-Tests
+verwenden deshalb echte atomare Verschiebung und Synchronisierung des lokalen
+Testdateisystems. Die produktiven Android-OS-Aufrufe müssen noch im Emulator
+verifiziert werden; ein Prozessstopptest wurde nicht durchgeführt. Nachweise:
+/workspace/immopilot-owned-file-rollback-diagnosis.log,
+/workspace/immopilot-owned-file-rollback-diagnosis2.log und
+/workspace/immopilot-owned-file-rollback-resumed.log.
+
+### Schritt 8 – vorgangsbezogene Dateizuordnung
+
+Ein rein lesender Dateiplan ordnet geprüfte Archivversionen eindeutigen,
+vorgangsbezogenen Pfaden unter den app-eigenen Original- und Exportverzeichnissen
+zu. Er erhält vorhandene Dateinamen, ordnet gemeinsame Originalreferenzen derselben
+Kopie zu und lehnt belegte Vorgangsverzeichnisse, symbolische Links und fehlende
+oder fachfremde Nutzdatenzuordnungen ab. Der Plan legt selbst keine Dateien an und
+berechtigt noch nicht zum Löschen. Vor dem Import müssen Plan und Dateibesitz noch
+dauerhaft journalgebunden, die Dateien sicher übertragen und Datenbankverweise
+umgeschrieben werden.
+
+Die von Android bereitgestellten Basispfade werden kanonisch aufgelöst; symbolische
+Links innerhalb der Zielpfade bleiben unzulässig. Dies gilt auch für den bereits
+vorhandenen Dateirückfall. Abnahme: acht Dateiplantests auf API 24/35 und acht
+Dateirückfalltests auf API 35 ohne Fehler/Skips, darunter symbolische Basispfade,
+belegte Ziele und symbolische Links in Zielpfaden. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-restore-canonical-roots-check.log.
+Die produktiven Android-Dateisystemaufrufe bleiben auf Emulator/Gerät zu prüfen.
+
+### Schritt 8 – dauerhafter Restore-Dateiplan
+
+Der vorgangsbezogene Dateiplan kann unter aktiver gemeinsamer Wartung als eigenes
+privates Artefakt mit begrenzter Größe gespeichert, synchronisiert und unter
+Angabe von Vorgangs-ID, Staging-ID, Größe und SHA-256 wieder eingelesen werden.
+Das Einlesen prüft das Dokument strikt, prüft den Dateihash vor und nach dem
+Parsen und rekonstruiert die Ziele aus den bekannten app-eigenen Basispfaden.
+Bereits teilweise angelegte Zieldateien sind beim Wiederanlauf zulässig, sofern
+keine unsicheren Pfade oder symbolischen Links vorliegen. Belegte Plandateien
+werden nie überschrieben. Der Plan selbst ist noch nicht an das Journal gebunden
+und berechtigt nicht zum Anlegen oder Löschen von Dateien; diese Bindung folgt.
+
+Abnahme: zwölf gezielte Testausführungen auf API 24/35 ohne Fehler/Skips, darunter
+Rücklesen nach teilweiser Anlage, Manipulation, ungültiger Inhalt mit passendem
+Hash, belegter Zielplatz und fremde Wartungssperre. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-file-plan-store-check.log.
+
+### Schritt 8 – Journalbindung des Dateiplans
+
+Eine neue Journalversion bindet den privaten Dateiplan über Vorgangs-ID,
+Staging-ID, Bytezahl und SHA-256. Das Anlegen dieser Journalversion setzt die
+aktive gemeinsame Wartungssperre, einen vollständig geprüften Plan und noch
+unbelegte Vorgangsverzeichnisse voraus. Bei jeder Rückfallindexprüfung wird der
+gebundene Plan erneut validiert; ein vertauschter oder veränderter Plan verhindert
+die Freigabe. Bestehende Journale der Version 2 bleiben unverändert lesbar. Das
+Journal allein legt keine Restore-Dateien an und übernimmt noch keine Daten.
+
+Abnahme: 18 gezielte Paket-, Journal- und Indexprüfungen ohne Fehler oder Skips,
+darunter Planmanipulation vor und nach Journalanlage, falsche Vorgangs-ID,
+belegtes Ziel, Phasenwechsel und bestehende Journale. lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis: /workspace/immopilot-journal-file-plan-check.log.
+Dateiimport, Bereinigung, vollständiger Wiederanlauf und echte Prozessstopptests
+sind weiterhin offen.
+
+### Schritt 8 – Besitzkennzeichnung und Bereinigung von Restore-Dateien
+
+Für einen durch Journal und Dateiplan gebundenen FILES-Abschnitt können die
+vorgangsbezogenen app-eigenen Zielverzeichnisse mit einer synchronisierten
+Besitzkennung versehen werden. Vorher werden der Rückfallstand und die
+Speicherreserve geprüft. Beim Rückfall werden alle betroffenen Verzeichnisse vor
+der ersten Löschung geprüft. Nur Dateien mit passendem Pfad, Größe und SHA-256
+sowie gültiger Besitzkennung werden entfernt; unbekannte oder veränderte Daten
+führen zum Abbruch und bleiben erhalten. Die Bereinigung ist wiederholbar und
+markiert das Journal nicht selbst als abgeschlossen. Ein leerer, vor der
+Besitzkennzeichnung unterbrochener Vorgangsordner kann sicher entfernt werden.
+Der eigentliche Dateiimport und die Einbindung in den Wiederanlauf fehlen noch.
+
+Abnahme: neun gezielte Pakettests ohne Fehler/Skips, darunter wiederholte
+Besitzkennzeichnung/Bereinigung sowie Schutz unbekannter und veränderter Dateien;
+lintDebug, assembleDebug und git diff --check bestanden. Die JVM-Tests verwenden
+echte atomare Dateisystemoperationen; die produktiven Android-Systemaufrufe und
+Prozessstopps müssen noch im Emulator geprüft werden. Nachweis:
+/workspace/immopilot-restore-owned-cleanup-check.log.
+
+### Schritt 8 – geprüfter Import von Restore-Dateien
+
+Der interne Dateiimport verlangt die aktive Wartung, ein Journal in der FILES-
+Phase und den daran gebundenen Dateiplan. Vor der ersten Änderung werden der
+Rückfallstand, das vollständige vorbereitete Archivmanifest und eine isolierte
+Room-Datenbank erneut geprüft. Danach werden ausschließlich vorgangsbezogene,
+besitzgekennzeichnete Ziele verwendet. Jede Archivdatei wird begrenzt in einen
+privaten temporären Bereich kopiert, synchronisiert und auf Größe und Hash
+geprüft. Ein atomarer Hardlink legt das Ziel nur an, wenn es noch nicht existiert;
+das Ziel wird anschließend erneut geprüft. Bestehende abweichende Dateien werden
+nicht überschrieben. Bereits korrekt übernommene Dateien können erneut geprüft
+werden; bei Abbruch bleibt das Journal bestehen und der vorbereitete Rückfall
+kann die nachgewiesenen Importdateien entfernen.
+
+Abnahme: fünf gezielte Archivinspektions- und neun Rückfallpakettests ohne
+Fehler/Skips, darunter erneuter Import, Schutz veränderter Zieldateien, beschädigte
+Archivdatei vor Zielanlage und anschließende Bereinigung. lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis: /workspace/immopilot-restore-file-import-check.log.
+Die JVM-Tests verwenden echte lokale Dateisystemoperationen; Android-Systemaufrufe,
+Prozessstopps und vollständige Restore-Orchestrierung sind noch im Emulator zu prüfen.
+
+### Schritt 8 – isolierte Datenbank mit neuen Dateiverweisen
+
+Nach vollständigem, erneut geprüftem Dateiimport kann eine frische isolierte Room-
+Prüfdatenbank aufgebaut werden. Der journalgebundene Dateiplan und die installierten
+Dateien werden zunächst vollständig geprüft. In einer Transaktion werden nur die
+klassifizierten Originalpfadspalten der isolierten Datenbank auf die geprüften
+Zieldateien umgeschrieben; Einzel- und mehrseitige Verweise werden unterstützt.
+Anschließend werden Tabellenanzahlen, SQLite-Integrität, Fremdschlüssel und
+Dateien erneut geprüft. IDs und Live-Datenbank bleiben bei dieser Vorbereitung
+unverändert. Die vorbereitete Prüfdatenbank muss geschlossen werden, bevor die
+zugehörige Archivinspektion geschlossen wird. Die Übernahme in die Live-Datenbank
+und der Wiederanlauf stehen noch aus.
+
+Abnahme: sechs gezielte Archiv-/Datenbanktests ohne Fehler/Skips, darunter
+fehlende installierte Dateien, Einzel- und Mehrseitenverweise sowie unveränderter
+Live-Bestand; lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-staged-database-check.log.
+
+### Schritt 8 – transaktionale Datenbankübernahme
+
+Der interne Datenbankimport setzt die DATABASE-Phase des gebundenen Journals und
+die gemeinsame Wartung voraus. Vor der Übernahme werden Rückfallstand,
+installierte Dateien und Archiv erneut geprüft und eine frische isolierte
+Datenbank mit den neuen Dateiverweisen vorbereitet. Nach SQLite-WAL-Checkpoint
+werden ausschließlich klassifizierte Geschäftstabellen in einer Transaktion
+ersetzt; IDs, Daten und SQLite-Sequenzen werden beidseitig gegen die isolierte
+Quelle verglichen. Alte lokale Dokumentmigrationsaufträge werden neutralisiert,
+damit sie nicht auf dem neuen Bestand erneut starten. Der abgeleitete Suchindex
+wird anschließend neu aufgebaut. Bei Fehler oder Abbruch bleibt das Journal
+bestehen; der gesicherte Datenbankrückfall kann den alten Zustand einschließlich
+lokaler Migrationsaufträge wiederherstellen. Einstellungen und Credential-Import
+werden durch diesen Baustein noch nicht übernommen.
+
+Abnahme: acht gezielte Archiv-/Datenbanktests ohne Fehler oder Skips, darunter
+wiederholte Übernahme, IDs, SQLite-Sequenz, Dateiverweise, neutralisierte alte
+Migrationsaufträge, absichtlicher SQL-Fehler mit atomarem Rückfall und
+Wiederherstellung des ursprünglichen Bestands. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis: /workspace/immopilot-live-database-import-check.log.
+Vollständige Orchestrierung, echter Prozessstopp und Android-Emulatorprüfung sind
+weiterhin offen.
+
+### Schritt 8 – Wiederherstellung fachlicher Einstellungen
+
+Der interne Einstellungsimport verlangt die PREFERENCES-Phase und die gemeinsame
+Wartung. Er prüft Rückfallstand, installierte Dateien, Archivmanifest und isolierte
+Room-Prüfung erneut, ersetzt anschließend nur klassifizierte fachliche Preferences
+und liest Typen und Werte vollständig zurück. Geheime und lokale Felder bleiben
+unverändert. `auto_backup` wird unabhängig vom Archivwert dauerhaft auf `false`
+gesetzt, damit wiederhergestellte Daten nicht automatisch mit Google Drive
+abgeglichen werden. Bei Fehler bleibt das Journal für den Rückfall bestehen.
+Vor Freigabe der Wartung muss die spätere Orchestrierung zusätzlich den bereits
+im Speicher vorhandenen UI-/Drive-Zustand aktualisieren; dies ist noch offen.
+Credential-Import ist ebenfalls noch nicht angeschlossen.
+
+Abnahme: zehn gezielte Archiv-/Restoretests ohne Fehler oder Skips, darunter
+wiederholte Übernahme, Erhalt lokaler Geheimnisse, deaktivierter automatischer
+Drive-Abgleich, Ablehnung manipulierter Metadaten und Rückfall. lintDebug,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-live-preference-import-check.log.
+
+### Schritt 8 – ausdrücklich ausgewählter Credential-Import
+
+Nur wenn der journalgebundene Rückfallstand auch den vorhandenen Credential-
+Zustand enthält, werden die im authentifizierten Archivabschnitt enthaltenen
+API-Schlüssel importiert. Vorher werden Rückfallstand, Dateiplan, Dateien und
+Archiv erneut geprüft. Vorhandene Android-Keystore-Aliase werden weiterverwendet;
+nicht im Archiv enthaltene Anbieter bleiben unverändert. Die gespeicherten
+Schlüssel werden synchron bestätigt und ausschließlich im Speicher durch einen
+verschlüsselten Rücklesedurchlauf verglichen. Temporäre Zeichenpuffer werden
+gelöscht. Ohne Auswahl werden keine Credentials verändert. Ein fehlender
+ursprünglicher Geräteschlüssel führt vor dem Import zum Abbruch; der gebundene
+Credential-Rückfall kann den bisherigen Zustand wiederherstellen.
+
+Abnahme: zwölf gezielte Archiv-/Restoretests und sieben Schlüssel-Sicherheitstests
+ohne Fehler/Skips, darunter simulierter Gerätewechsel, fehlender ursprünglicher
+Alias ohne Neuerzeugung, Erhalt nicht ausgewählter Schlüssel, Opt-out und Rückfall.
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-credential-import-check.log. Es wurden synthetische Schlüssel
+und ein Test-Keystore verwendet; die Android-Geräteprüfung steht noch aus.
+
+### Schritt 8 – automatische Drive-Synchronisierung nach Restore
+
+Automatische Drive-Aufrufe prüfen die dauerhaft gespeicherte `auto_backup`-
+Einstellung unmittelbar beim Start erneut. Das schützt auch verzögert
+vorgemerkte Arbeit, deren UI-Zustand noch aus der Zeit vor dem Restore stammt.
+Automatische Aufrufe bei Objekt- und Darlehensänderungen nutzen dieselbe Grenze.
+Ein vom Nutzer ausdrücklich über die Oberfläche gestarteter manueller Abgleich
+bleibt möglich; er aktiviert die automatische Synchronisierung nicht selbst.
+Der Einstellungsimport setzt `auto_backup` auf `false`. Die spätere vollständige
+Restore-Orchestrierung muss den UI-Zustand weiterhin vor Freigabe aktualisieren.
+
+Abnahme: ein gezielter Drive-Test mit veraltetem UI-Zustand, simuliertem Netzwerk
+und manuellem Start sowie der bestehende Test für die Aktualisierung des
+Restore-Einstellungszustands bestanden; keine Fehler oder Skips. lintDebug,
+assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-drive-restore-gate-check.log.
+
+### Schritt 8 – gemeinsame Sperre für Restore und Archivschlüssel
+
+Der Restore kann denselben exklusiven Schlüsselverwaltungs-Mutex wie
+Passworteinrichtung, Passwortwechsel und vollständige Archivveröffentlichung
+halten. Dies funktioniert auch auf einer Installation ohne vorhandene
+Schlüsselgeneration. Wartende Vorgänge sind abbrechbar; ein abgebrochener
+Passwortvorgang löscht seine Eingabepuffer. Die spätere Restore-Orchestrierung
+muss diese Sperre vor der Wartungssperre halten; sie ist hier noch nicht mit
+der Oberfläche verbunden.
+
+Abnahme: sechs gezielte Schlüsselverwaltungstests ohne Fehler/Skips, darunter
+wartende Passwortanlage und Archivverschlüsselung während der Restore-Sperre;
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-key-exclusivity-check.log.
+
+### Schritt 8 – Abschluss importierter Dateien
+
+Nach einem dauerhaft als COMMITTED markierten Restore kann der interne
+Dateiabschluss die Besitzkennzeichen entfernen. Zuvor werden alle gebundenen
+Zieldateien vollständig geprüft; unbekannte oder veränderte Inhalte verhindern
+den Abschluss. Bereits entfernte Kennzeichen sind bei einem Wiederanlauf zulässig,
+sofern alle Nutzdaten weiterhin passen. Die importierten Dateien werden nicht
+gelöscht; das Journal wird durch diesen Baustein noch nicht entfernt.
+
+Abnahme: zehn gezielte Rückfallpakettests ohne Fehler/Skips, darunter Schutz
+unbekannter Dateien und wiederholter Abschluss. lintDebug, assembleDebug und
+git diff --check bestanden. Der erste gemeinsame Prüflauf wurde nach erfolgreichen
+Tests durch eine Umgebungsneuverbindung unterbrochen; nur Lint/Build wurden
+anschließend abgeschlossen. Nachweise: /workspace/immopilot-restore-file-finish-check.log
+und /workspace/immopilot-restore-file-finish-build-resumed.log. Die produktiven
+Android-Dateisystemaufrufe und Prozessstopps bleiben für den Emulator offen.
+
+### Schritt 8 – geschützter Datenbankzugang beim Wiederanlauf
+
+Für die spätere Wiederanlaufsteuerung gibt es einen gesonderten Room-Zugang,
+der nur eine bereits vorhandene Datenbank öffnet und nur unter gehaltener
+Wartungssperre aufgebaut wird. Er registriert weder die normale asynchrone
+Startreparatur noch Migrationen. Ein fehlender Bestand oder ein älteres Schema
+wird abgewiesen, statt vor dem geprüften Rückfall eine Datenbank anzulegen oder
+zu verändern. Der normale Datenbankzugang einschließlich seiner bisherigen
+Migrationen und Startreparatur bleibt erhalten. Dieser Zugang ist noch nicht an
+den App-Start angeschlossen.
+
+Abnahme: vier gezielte Datenbanktests ohne Fehler/Skips, darunter unveränderte
+Altwerte unter Wartung, fehlende Datenbank, unverändertes älteres Schema sowie die
+bestehende reguläre Startreparatur und DAO-Koordination. Der erste Testlauf fand
+die Room-Schreibmoduskonfiguration vor Eintritt in die Sperre; nach Korrektur
+bestanden die vier Fälle, lintDebug, assembleDebug und git diff --check. Nachweise:
+/workspace/immopilot-recovery-database-open-check.log und
+/workspace/immopilot-recovery-database-open-fixed.log.
+
+### Schritt 8 – Rücklesen des Einstellungsrückfalls
+
+Nach dem synchronen Rückfall der fachlichen Preferences werden alle erlaubten
+Schlüssel, Typen und Werte erneut mit dem journalgebundenen Ausgangsstand
+verglichen. Ein gemeldeter Commit ohne tatsächliche Übernahme führt zum Abbruch;
+das Journal bleibt im Rückfallzustand. Der gleiche Vergleich wird bereits nach
+dem regulären Einstellungsimport verwendet und ändert keine geheimen oder
+lokalen Felder.
+
+Abnahme: acht gezielte Einstellungsprüfungen und zwei betroffene Importtests ohne
+Fehler/Skips, einschließlich eines synthetischen Speichers mit irreführendem
+Commit-Erfolg. lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-preference-rollback-readback-check.log.
+
+### Schritt 8 – Rücklesen von Credential- und SQLite-Rückfall
+
+Nach dem Credential-Rückfall werden die gespeicherten Chiffretexte erneut
+geöffnet und exakt mit dem journalgebundenen Ausgangszustand verglichen. Ein
+bloß gemeldeter Commit ohne tatsächliche Übernahme lässt das Journal gesperrt.
+Beim Datenbankrückfall werden zusätzlich die SQLite-Sequenzwerte vor dem
+Transaktionsabschluss in beide Richtungen mit der gesicherten Datenbank verglichen.
+
+Abnahme: vier gezielte Rückfalltests ohne Fehler/Skips, darunter ein synthetischer
+Credential-Speicher mit irreführendem Commit-Erfolg, ursprüngliche SQLite-Zähler,
+Credential-Rückfall und simulierter Gerätewechsel. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis:
+/workspace/immopilot-credential-sequence-rollback-check.log.
+
+### Schritt 8 – wiederholbarer interner Wiederanlauf
+
+Unter gehaltener gemeinsamer Wartung prüft der interne Wiederanlauf das vorhandene
+Journal und den gebundenen Rückfallstand. Nicht abgeschlossene Phasen werden auf
+ROLLBACK gesetzt; anschließend werden app-eigene Originaldateien, Datenbank,
+fachliche Einstellungen und gegebenenfalls Credentials zurückgesetzt und die
+nachgewiesenen Importdateien konservativ bereinigt. Erst nach diesen Schritten
+wird ROLLED_BACK dauerhaft markiert. Bei unbekannten oder veränderten Importdateien
+bleibt der Rückfall gesperrt und kann nach Behebung wiederholt werden. Bereits
+abgeschlossene Journale können ihre Dateikennzeichen wiederholbar abschließen.
+Der Aufrufer muss Datenbank und UI-Zustand sicher schließen beziehungsweise
+aktualisieren, bevor er ein terminales Journal entfernt. Die Anbindung an den
+App-Start und echte Prozessstopptests sind noch offen.
+
+Abnahme: drei gezielte Wiederanlauf- und Dateischutztests ohne Fehler/Skips,
+darunter Rückfall ohne ursprüngliches Archiv nach Datenbank-/Preference-/Credential-
+Änderungen, erneuter Aufruf und Erhalt unbekannter Importdateien. Die Tests
+simulieren eine Unterbrechung innerhalb eines JVM-Prozesses; sie sind kein echter
+Android-Prozessstopptest. lintDebug, assembleDebug und git diff --check bestanden.
+Nachweis: /workspace/immopilot-restore-recovery-held-check.log.
+
+### Schritt 8 – Startsteuerung für den internen Wiederanlauf
+
+Die interne Startsteuerung hält den Archivschlüssel-Mutex und anschließend die
+gemeinsame Wartungssperre. Bei offenem Journal öffnet sie für nicht abgeschlossene
+Phasen ausschließlich die vorhandene Datenbank über den geschützten
+Wiederanlaufzugang, führt den Rückfall aus und schließt die Datenbank. Erst bei
+erfolgreichem terminalem Zustand wird das Journal entfernt. Fehlende oder
+beschädigte Rückfalldaten lassen Journal und Bestand gesperrt. Ein bereits
+terminales Journal wird ohne erneutes Öffnen der Live-Datenbank abgeschlossen.
+Die Startoberfläche ruft diese Steuerung noch nicht auf; echte Android-
+Prozessstopps und die spätere Bereinigung privater Rückfallartefakte sind offen.
+
+Abnahme: die zwei gezielten dateibasierten Startfälle bestanden nach Korrektur
+einer Testpfadauflösung; der zusätzliche Credential-Wiederanlauftest scheiterte
+in einem gemeinsamen Lauf einmal bei der isolierten Datenbankprüfung und bestand
+sowohl isoliert als auch im anschließenden gemeinsamen Diagnoselauf. Die Ursache
+dieses einmaligen Fehlschlags ist nicht geklärt und bleibt ein offener Befund;
+es wurde keine Sicherheitsprüfung abgeschwächt. lintDebug, assembleDebug und
+git diff --check bestanden. Nachweise:
+/workspace/immopilot-startup-recovery-core-fixed.log,
+/workspace/immopilot-startup-recovery-isolation.log,
+/workspace/immopilot-startup-recovery-concurrent-diagnosis.log und
+/workspace/immopilot-startup-recovery-core-build.log.
+
+### Schritt 8 – Wiederanlauf vor dem App-Start
+
+Bei einem vorhandenen oder nicht lesbaren Restore-Journal zeigt die App zunächst
+den bestehenden Schutzbildschirm und startet den geprüften Wiederanlauf, bevor
+ein fachliches ViewModel erzeugt wird. Erst nach erfolgreichem Abschluss und
+Entfernen des terminalen Journals wird die normale Oberfläche aufgebaut. Bei
+einem Fehler bleibt der Bestand gesperrt; ein erneuter Versuch ist möglich.
+Ohne Journal startet die App wie bisher. Die Wiederanlauftests verwenden eine
+isolierte Testdatenbank und simulieren den Neustart durch Schließen und erneutes
+Öffnen; ein echter Android-Prozessstopp und produktive OS-Dateiaufrufe bleiben
+für den Emulator offen. Der zuvor dokumentierte einmalige Fehler der isolierten
+Archiv-Datenbankprüfung ist weiterhin ungeklärt.
+
+Abnahme: vier gezielte Compose-Starttests ohne Fehler/Skips, darunter normaler
+Start, erfolgreich wiederhergestellter Bestand und Sperre bei defektem Journal;
+lintDebug, assembleDebug und git diff --check bestanden. Der erste Auftrag wurde
+bei einer Umgebungsneuverbindung abgebrochen und zählt nicht als Ergebnis.
+Nachweis: /workspace/immopilot-startup-recovery-ui-resumed.log.
+
+### Schritt 8 – Sperre bei offenem Restore-Journal
+
+Die gemeinsame Snapshot-/Schreibkoordination kann einen offenen Restore dauerhaft
+für die Lebensdauer des Prozesses als gesperrt markieren. Neue fachliche
+Schreibzugriffe und Sicherungserfassungen werden dann auch nach Freigabe einer
+Wartungsinstanz abgewiesen. Eine neue Wartungsinstanz darf den Rückfall
+fortsetzen; nur sie kann die Sperre nach nachweislich entferntem Journal wieder
+lösen. Ein beschädigtes Journal wird ebenfalls als offen behandelt. Bereits vor
+der Sperre begonnene optimistische Erfassungen verlieren ihre Gültigkeit.
+Die Startoberfläche und die vollständige Restore-Orchestrierung müssen diese
+Sperre noch verwenden; zukünftige Hintergrund-Worker müssen das Journal vor
+ihrem Start ebenfalls beachten.
+
+Abnahme: ein gezielter Test des offenen Journals und fünf bestehende Wartungstests
+ohne Fehler/Skips, einschließlich fehlerhaftem Journal und erneuter Freigabe;
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-pending-restore-gate-check.log.
+
+### Schritt 8 – Wiederanlaufsperre in der Oberfläche
+
+Die Startsteuerung aktiviert die gemeinsame Schreibsperre bereits beim Erkennen
+eines offenen oder beschädigten Journals und löst sie erst nach dessen Entfernung
+unter Wartung wieder. Die Oberfläche beobachtet die Sperre auch während die App
+läuft und zeigt dann den Wiederanlauf statt der fachlichen Oberfläche. Die
+vollständige Restore-Ablaufsteuerung muss die Sperre unmittelbar nach Anlegen des
+Journals setzen; künftige Hintergrund-Worker müssen das Journal ebenfalls vor
+Schreibzugriffen beachten. Ein echter Prozessstopp und produktive Android-Datei-
+operationen sind weiterhin im Emulator zu prüfen.
+
+Abnahme: acht gezielte Start-, Rückfall- und Sperrentests ohne Fehler/Skips;
+lintDebug, assembleDebug und git diff --check bestanden. Das Buildprotokoll enthält
+eine KSP-Hintergrundausnahme, der Gradle-Auftrag endete dennoch erfolgreich.
+Nachweis: /workspace/immopilot-pending-restore-ui-gate-check.log.
+
+### Schritt 8 – abbruchsicherer Journalstart
+
+Der neue geschützte Journalstart aktiviert die gemeinsame Schreibsperre unter
+gehaltener Wartung vor dem ersten Coroutine-Wechsel und vor dem Schreiben des
+Journals. Bei Abbruch oder einem Fehler bleibt die Sperre aktiv; der Wiederanlauf
+prüft das Journal beziehungsweise dessen Abwesenheit, bevor er Schreibzugriffe
+freigibt. Die spätere vollständige Restore-Ablaufsteuerung muss diesen Einstieg
+verwenden; sie ist noch nicht angeschlossen.
+
+Abnahme: gezielter Test für fehlgeschlagenen und erfolgreichen Journalstart ohne
+Fehler/Skips, lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-protected-journal-gate.log.
+
+### Schritt 8 – zusammengefasster Restore-Speicherbedarf
+
+Nach dem Prüfen des Archivs und dem Anlegen der privaten Rückfallkopien kann der
+verbleibende Speicherbedarf für Importdateien, Dateirückfall, Datenbankprüfung,
+Transaktionen und Reserve konservativ berechnet werden. Der bereits belegte Platz
+für Archiv und Rückfallkopien ist im gemessenen freien Platz enthalten. Zur
+sicheren Behandlung verschiedener Dateisysteme wird der gesamte geschätzte Bedarf
+an jedem beteiligten privaten Speicherort vorausgesetzt; dadurch sind auch
+konservative Ablehnungen möglich. Bei Unterdeckung werden benötigte und verfügbare
+Bytes genannt. Die Schätzung ersetzt keine Einzelprüfungen oder Fehlerbehandlung
+bei sich änderndem freiem Platz. Die spätere Restore-Ablaufsteuerung muss diese
+Prüfung unter Wartung vor dem geschützten Journalstart aufrufen; eine vollständige
+Ende-zu-Ende-Abnahme steht noch aus.
+
+Abnahme: gezielter Test der Berechnung, Unterdeckung und Überlaufbehandlung ohne
+Fehler/Skips; lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-budget-check.log.
+
+### Schritt 8 – Lebensdauer geprüfter Archivdaten
+
+Geprüfte Archivdaten können vor Übergabe an eine länger laufende Arbeit mit einer
+synchron erworbenen Nutzung gehalten werden. Schließt die bisherige Eigentümerin
+oder der bisherige Eigentümer die Vorschau, bleiben die Daten bis zur Freigabe
+der letzten Nutzung erhalten; danach werden die privaten Prüfdaten entfernt.
+Neue Nutzungen nach dem Schließen sind ausgeschlossen. Die spätere Restore-
+Steuerung muss die Nutzung vor Übergabe an eine unabhängige Coroutine erwerben,
+bei jedem Abschluss freigeben und die Coroutine außerhalb der kurzlebigen
+Compose-Oberfläche betreiben. Diese Integration steht noch aus.
+
+Abnahme: gezielter Lebensdauertest ohne Fehler/Skips, einschließlich mehrfacher
+Freigabe und verzögerter Bereinigung; lintDebug, assembleDebug und git diff --check
+bestanden. Nachweis: /workspace/immopilot-restore-lease-check.log.
+
+### Schritt 8 – Bereinigung ungebundener Vorbereitungen
+
+Ein vollständig vorbereiteter Rückfallverbund und sein Dateiübernahmeplan können
+unter gemeinsamer Wartung vor dem Journalstart verworfen werden. Vor dem ersten
+Löschen werden Journalfreiheit, eindeutige kanonische Pfade, erlaubte Dateinamen,
+Verzeichnisinhalte, Größen und Prüfsummen kontrolliert. Bei unbekannten Dateien,
+abweichenden Inhalten, SQLite-Nebendateien oder einem vorhandenen Journal wird
+abgebrochen. Bestandsdateien und externe Originale werden nicht gelöscht. Der
+spätere Restore-Ablauf muss diese Funktion im Fehlerfall aufrufen; nach einem
+Prozessabbruch oder einem Fehler während der Bereinigung können private Reste
+verbleiben und benötigen weiterhin eine gesonderte Wiederanlaufstrategie.
+
+Abnahme: gezielter Test für unbekannte Dateien, Journalbindung, zulässige
+Bereinigung und Erhalt des Bestands ohne Fehler/Skips; lintDebug, assembleDebug
+und git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-discard-check.log.
+
+### Schritt 8 – interne Steuerung der vollständigen Wiederherstellung
+
+Die interne Steuerung verbindet unter Archivschlüssel-Mutex und gemeinsamer
+Wartung die erneute Archivprüfung, Dateiplan, Rückfallverbund, Speicher-Preflight,
+geschützten Journalstart und die Phasen für Dateien, Datenbank und Einstellungen.
+Credentials werden nur bei ausdrücklicher Auswahl übernommen. Nach Aktualisierung
+des gehaltenen Zustands wird der Abschluss journalisiert; bei Fehler oder Abbruch
+wird unter nicht abbrechbarer Wartung ein Rückfall versucht. Kann der Rückfall
+nicht sicher abgeschlossen werden, bleibt das Journal für den Wiederanlauf stehen.
+Nicht journalgebundene Vorbereitungen werden nach Prüfung bereinigt; ein Fehler bei
+der Bereinigung nach erfolgreichem Abschluss wird gesondert gemeldet. Die
+Steuerung ist noch nicht an die Oberfläche angeschlossen; ihr Aufrufer muss die
+Archivnutzung vor Übergabe an eine langlebige Coroutine erwerben und freigeben.
+Echte Android-Dateisystemaufrufe, Prozessstopps und die Behebung verwaister
+privater Vorbereitungsreste nach Prozessende sind weiterhin offen. Der zuvor
+dokumentierte einmalige Archivprüfungsfehler bleibt ungeklärt.
+
+Abnahme: zwei gezielte Tests mit synthetischen Archiven für erfolgreiche Übernahme,
+erzwungenen Dateiimportfehler und Rückfall, stabile ID, Originalbytes und
+abgeschaltete automatische Drive-Synchronisierung ohne Fehler/Skips; lintDebug,
+assembleDebug und git diff --check bestanden. Die Dateisystemoperationen wurden
+im JVM-Test ersetzt, nicht auf einem Android-Gerät geprüft. Nachweis:
+/workspace/immopilot-restore-coordinator-check.log.
+
+### Schritt 8 – bestätigter Restore aus der Vorschau
+
+Die Vorschau bietet nach Prüfung eine getrennte Bestätigung zum vollständigen
+Ersetzen des fachlichen Bestands. Sie erklärt den lokalen Rückfallstand und die
+anschließend ausgeschaltete automatische Drive-Synchronisierung. Enthaltene
+persönliche API-Schlüssel werden nur nach zusätzlicher Auswahl importiert; bei
+jedem Öffnen der Bestätigung ist diese Auswahl ausgeschaltet. Der Controller
+übernimmt das geprüfte Archiv vor dem Verlassen der Vorschau synchron und führt
+die Wiederherstellung in einer ViewModel-Arbeit aus. Die Archivnutzung wird nach
+Abschluss oder Abbruch im Hintergrund freigegeben; Einstellungen werden noch
+unter Wartung aktualisiert.
+
+Abnahme: drei gezielte Tests für tatsächliche Archivvorschau und Abbruch,
+Schlüsselwahl sowie Lebensdauer bei geschlossenem Vorschaufenster ohne Fehler
+oder Skips; lintDebug, assembleDebug und git diff --check bestanden. Die
+vollständige UI-Übernahme mit produktiven Android-Dateisystemaufrufen und echtem
+Prozessstopp ist weiterhin auf dem Emulator zu prüfen. Die Bereinigung privater
+Reste nach Prozessende sowie der zuvor dokumentierte einmalige Archivprüfungs-
+fehler bleiben offen. Nachweis: /workspace/immopilot-restore-ui-handoff-check.log.
+
+### Schritt 8 – Rückfall nach später Änderung und leere Installation
+
+Der vollständige interne Ablauf wurde zusätzlich mit leerem Zielbestand sowie mit
+einem erzwungenen Fehler nach Datenbank- und Einstellungsübernahme geprüft. Der
+Rückfall stellt den vorherigen Datenbank- und Einstellungsstand wieder her; bei
+der leeren Installation bleiben Immobilien- und Beleg-IDs, Zuordnung und
+Originalbytes erhalten. Die Tests verwenden isolierte künstliche Daten und JVM-
+Dateisystemoperationen; Android-Prozessstopps und produktive OS-Aufrufe sind
+weiterhin gesondert auf dem Emulator zu prüfen.
+
+Abnahme: beide gezielten Tests ohne Fehler/Skips, lintDebug, assembleDebug und
+git diff --check bestanden. Nachweis:
+/workspace/immopilot-restore-late-failure-check.log.
+
+### Schritt 9 – dauerhafter Verlauf geprüfter Sicherungen
+
+Ein eigener lokaler, atomar gespeicherter Verlauf unterscheidet vollständige
+Sicherungen, Teilsicherungen und Wiederherstellungen. Er behält die letzten
+relevanten Ereignisse auch dann getrennt, wenn der begrenzte Verlauf rotiert;
+wiederholte identische Ereignisse sind idempotent, widersprüchliche Wiederholungen
+werden abgewiesen. Der letzte Erfolg einer vollständigen oder teilweisen Sicherung
+bleibt bei späteren Fehlern erhalten. Ereignisse enthalten begrenzte Fehlerarten,
+keine Schlüssel und keine Rohfehlermeldungen. Der Speicher ist gerätelokal und
+erteilt keine Löschrechte für Archive.
+
+Die gemeinsame Sicherungs-Engine trägt den Versuch vor der Ausführung und einen
+vollständigen Erfolg erst nach geprüfter Veröffentlichung und Rücklesen des
+endgültigen Ziels ein. Abbruch und Fehler verändern den letzten Erfolg nicht.
+Zeitpunkt, Ziel, Größe und Umfang des geprüften Archivs werden getrennt vom letzten
+Versuch festgehalten. Die automatische Erfassung von Restore-Ereignissen und die
+Anzeige dieses Verlaufs in der Oberfläche stehen noch aus; eine Teilsicherung ist
+weiterhin keine freigegebene Funktion.
+
+Abnahme: zwei gezielte Tests für echte synthetische Veröffentlichung mit späterem
+Fehler sowie getrennte, begrenzte und beschädigte Verlaufseinträge ohne Fehler oder
+Skips; lintDebug, assembleDebug und git diff --check bestanden. Der erste Testlauf
+scheiterte, weil der synthetische Teil-Erfolg ohne vorherigen Start eingetragen
+worden war; der korrigierte Test bildet Start und Abschluss ab und deckt zusätzlich
+Wiederholungen und einen späteren Teilfehler ab. Nachweise:
+/workspace/immopilot-backup-history-check.log und
+/workspace/immopilot-backup-history-corrected.log.
+
+### Schritt 9 – Restore-Ereignis und Statusanzeige
+
+Die Wiederherstellung erhält eine dauerhafte Operationskennung und einen eigenen
+Verlaufseintrag. Abschluss oder Rückfall wird vor dem Entfernen des terminalen
+Journals gespeichert. Ein Wiederanlauf darf denselben Abschluss wiederholt
+melden, erzeugt aber keinen doppelten Eintrag; widersprüchliche Endzustände werden
+abgewiesen. Ist der Verlauf beschädigt oder nicht schreibbar, bleibt das Journal
+für einen sicheren erneuten Versuch erhalten. Ein Restore erzeugt keinen Erfolg
+für eine neu erstellte Sicherung.
+
+Die Sicherungskarte lädt den Verlauf erneut und zeigt letzten geprüften
+Vollerfolg, Zielname und Umfang, letzten Versuch sowie letzte Wiederherstellung
+getrennt an. Eine geprüfte Teilsicherung hätte eine eigene Anzeige; die
+Teilsicherungsfunktion selbst bleibt weiterhin nicht beauftragt. Offene Versuche
+werden ohne bestätigten Abschluss angezeigt. Ist ein Zielname nicht abrufbar,
+wird nur der fehlende Name gemeldet. Ein beschädigter Verlauf wird angezeigt,
+nicht stillschweigend zurückgesetzt.
+
+Abnahme: vier gezielte Restore-/Wiederanlauftests ohne Fehler/Skips, zwei gezielte
+Controller-Tests für erneutes Laden und ViewModel-Übergabe sowie der gezielte
+Anzeigetest bestanden; lintDebug, assembleDebug und git diff --check bestanden.
+Der erste Anzeigetestlauf scheiterte an einem vollständigen Textvergleich trotz
+zusätzlich angezeigter Uhrzeit; die korrigierte Teiltextprüfung und die spätere
+Prüfung des fehlenden Zielnamens bestanden. In den erfolgreichen Buildprotokollen
+tritt die bereits dokumentierte KSP-Hintergrundausnahme auf; Gradle meldete
+dennoch Erfolg. Nachweise: /workspace/immopilot-restore-history-check.log,
+/workspace/immopilot-history-ui-check.log,
+/workspace/immopilot-history-ui-corrected.log und
+/workspace/immopilot-history-ui-final.log. Echte Android-Prozessstopps und die
+Bereinigung privater Reste bleiben weiterhin für die Geräteprüfung offen.
+
+### Schritt 10 – festgelegte Kalender- und Konfliktstrategie
+
+Die gewünschte Regel wird mit aktiver/inaktiver Einstellung, Tages-/Wochenregel,
+lokaler Uhrzeit, aktueller IANA-Zeitzone, Konfigurationsgeneration und dem nächsten
+Solltermin samt eigener Vorgangskennung dauerhaft gespeichert. Ein Termin wird
+vor einer WorkManager-Registrierung gespeichert. Der Kalender verschiebt eine
+nicht existierende lokale Uhrzeit um die Länge der Sommerzeitlücke; bei einer
+doppelt vorkommenden Uhrzeit zählt nur die erste. Bei erkannter Zeitzonenänderung
+wird die lokale Uhrzeit in der neuen Gerätezeitzone neu berechnet und eine neue
+Generation gebildet.
+
+Jeder Solltermin erhält einen eigenen eindeutigen Work-Namen aus Generation und
+Vorgangskennung. `KEEP` wird nur zur idempotenten Registrierung genau dieses
+Termins verwendet; es gibt keine abhängig verketteten Folgeaufträge. Der Worker
+prüft vor dem Zugriff auf Room oder Schlüssel das Restore-Journal, vergleicht die
+Generation und beansprucht den Solltermin dauerhaft, bevor er exportiert. Der
+nächste Solltermin wird unabhängig vom Abschluss des laufenden Exports dauerhaft
+festgehalten und als eigener Auftrag registriert. Eine Konfigurationsänderung
+bricht bereits beanspruchte Exporte nicht ab; veraltete unbeanspruchte Aufträge
+beenden sich ohne Export. Nach einem Prozessabbruch darf ein bereits beanspruchter
+Termin nicht blind erneut exportiert werden: Er wird als unterbrochen ausgewiesen;
+die nächste künftige Ausführung wird rekonstruiert, ohne eine Serie versäumter
+Termine nachzuholen. App-/Worker-Eintritt, Neustart und relevante Zeitänderungen
+müssen die gespeicherte Sollplanung mit registrierten Arbeiten abgleichen und
+einen fehlenden Auftrag idempotent nachtragen. Force-Stop und ausgeschaltete
+Geräte erlauben keine zeitgenaue Ausführung.
+
+Dies ist die festgelegte Strategie, noch kein Nachweis einer funktionsfähigen
+WorkManager-Integration. Der App-Bestand verwendet minSdk 24, targetSdk 36 und
+Java-Zeit-Desugaring; WorkManager ist noch nicht eingebunden. Android dokumentiert
+für `KEEP`/`REPLACE` beziehungsweise abhängige Ketten die oben vermiedenen
+Konflikte: https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/manage-work.
+Für `dataSync`-Foreground-Dienste gelten auf Android 15 Laufzeitgrenzen und auf
+Android 16 Jobquoten auch für langfristige Worker:
+https://developer.android.com/develop/background-work/services/fgs/timeout und
+https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/long-running.
+Die konkrete Dienst-/Benachrichtigungskonfiguration wird mit dem Worker in
+Schritt 11 geprüft, nicht durch eine pauschale Berechtigung vorweggenommen.
+
+Die reine Kalenderberechnung ist implementiert. Vier gezielte Tests für tägliche
+und wöchentliche Termine, Sommerzeitlücke, doppelte Herbstzeit und Zeitzonenwechsel
+bestanden ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check sind
+erfolgreich. Dies belegt noch weder Registrierung noch Wiederanlauf der geplanten
+Arbeit. Nachweis: /workspace/immopilot-schedule-calendar-check.log.
+
+### Schritt 10 – dauerhafter Sollzustand und Anspruch
+
+Der gerätelokale Zeitplan speichert die Regel, Zielordner, ausdrückliche
+Credential-Auswahl, Generation, nächsten eindeutigen Termin und gegebenenfalls
+einen bereits begonnenen Vorgang atomar. Ein Start beansprucht genau den
+passenden fälligen Termin und speichert dabei bereits den nächsten künftigen
+Termin. Ein laufender Vorgang blockiert einen weiteren Start; eine geänderte oder
+deaktivierte Regel erhält den bereits laufenden Anspruch. Veraltete Termine
+starten keinen Export. Fehlende oder abgeschlossene Registrierungen können für
+den gespeicherten nächsten Termin erneut angelegt werden; bei unbekanntem
+WorkManager-Zustand wird vorsichtig abgewartet.
+
+Ein nachweislich beendeter oder fehlender Anspruch wird nach Abgleich mit dem
+lokalen Erfolgseintrag freigegeben und gegebenenfalls als unterbrochen vermerkt.
+Dazu muss der spätere Worker die Vorgangskennung unverändert an die
+Sicherungs-Engine und den Verlauf weitergeben. Die echte WorkManager-Abfrage,
+Ordnerberechtigungsprüfung, Aktivierung und der Abgleich nach Android-Neustart
+sind noch nicht angebunden; der neue Speicher selbst registriert keine Arbeit.
+
+Abnahme: vier gezielte Tests zu Speichern, doppeltem Anspruch, veränderter Regel,
+unterbrochenem Vorgang, erhaltenem Erfolg und beschädigten Dateien sowie zwei
+gezielte ergänzende Konflikttests ohne Fehler/Skips; lintDebug, assembleDebug und
+git diff --check bestanden. Nachweise: /workspace/immopilot-schedule-store-check.log
+und /workspace/immopilot-schedule-conflict-check.log.
+
+### Schritt 10 – gemeinsame Vorgangskennung
+
+Die Sicherungs-Engine kann die dauerhafte Kennung eines beanspruchten Termins
+übernehmen. Versuch und geprüfter Erfolg verwenden dieselbe Kennung; der
+Zeitplan-Wiederanlauf kann damit einen bereits bestätigten Erfolg erkennen. Ein
+erneuter Sicherungsstart mit einer bereits bekannten vollständigen Vorgangskennung
+wird vor erneuter Veröffentlichung abgewiesen. Manuelle Sicherungen erhalten
+weiterhin eigene neue Kennungen. Die Android-Registrierung und der Worker sind
+noch nicht angebunden.
+
+Abnahme: ein gezielter Integrationstest mit synthetischer vollständiger
+Veröffentlichung, doppeltem Start und Wiederanlaufabgleich ohne Fehler/Skips;
+lintDebug, assembleDebug und git diff --check bestanden. Nachweis:
+/workspace/immopilot-schedule-operation-id-check.log.
+
+### Schritt 10 – Abgleich mit WorkManager
+
+WorkManager 2.12.0 ist als benötigte Laufzeitabhängigkeit und `work-testing`
+ausschließlich für die gezielte Testumgebung eingebunden. Die offizielle
+Versionsinformation nennt minSdk 24, passend zur App:
+https://developer.android.com/jetpack/androidx/releases/work. Ein Vergleich des
+Debug-Laufzeitgraphen vor und nach der Einbindung ergab keine geänderten Versionen
+vorher vorhandener Module; neu aufgelöst wurden WorkManager und der benötigte
+Lifecycle-Service. Nachweise: /workspace/immopilot-runtime-deps-before-workmanager.log
+und /workspace/immopilot-runtime-deps-after-workmanager.log.
+
+Der Abgleich liest den dauerhaften Sollzustand, prüft einen vorhandenen Anspruch
+anhand des zugehörigen WorkManager-Namens und registriert einen fehlenden Termin
+als unabhängigen OneTime-Auftrag. `KEEP` gilt ausschließlich für dessen eigene
+Generation und Termin-ID. Ein gleichzeitiges Ändern des Zeitplans kann höchstens
+einen veralteten Auftrag zurücklassen; dieser muss vor Ausführung seine
+Generation erneut prüfen. Bestehende Aufträge werden nicht ersetzt oder
+abgebrochen. Bei nicht lesbarem WorkManager-Zustand wird kein Erfolg vorgetäuscht.
+
+Abnahme: ein gezielter WorkManager-Integrationstest mit isolierter Testdatenbank
+für parallelen/wiederholten Abgleich, Neustart nach Speicherung und unveränderte
+ältere Aufträge ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check
+bestanden. Der Testauftrag führt keinen Export aus. Ein echter Worker,
+App-/Boot-/Zeitänderungseinstieg, Zielberechtigung und Nutzeraktivierung sind
+noch nicht angebunden. Nachweis: /workspace/immopilot-workmanager-scheduler-check.log.
+
+### Schritt 10 – bestätigte Einstellungen beim Anspruch
+
+Beim erfolgreichen Beanspruchen eines Termins erhält der spätere Worker die
+unveränderliche Zeitplan- und Zielkonfiguration dieses Anspruchs. Eine spätere
+Änderung der Generation oder der automatischen Credential-Einwilligung verändert
+den bereits laufenden Export nicht. Die zugehörigen alten Ordnerrechte dürfen
+während eines laufenden Exports nicht vorzeitig entzogen werden. Der Worker muss
+diese übergebene Konfiguration verwenden; er ist noch nicht angebunden.
+
+Abnahme: gezielter Test für laufenden Anspruch, Zeitplanänderung und unveränderte
+Credential-Auswahl ohne Fehler/Skips; lintDebug, assembleDebug und git diff --check
+bestanden. Ein erster Lauf wurde durch einen Wechsel der Arbeitsumgebung vor dem
+Testergebnis unterbrochen; der vollständige Nachweis steht in
+/workspace/immopilot-schedule-consent-snapshot-resumed.log.
+
+### Schritte 10/11 – Ausführung eines beanspruchten Termins
+
+Die interne Ausführungslogik gleicht zunächst den Sollzustand ab und prüft das
+Restore-Journal vor dem Zugriff auf die fachliche Datenbank. Ein registrierter
+Writer-Anspruch schützt die anschließende Vorbereitung vor einem gleichzeitig
+beginnenden Restore und wird vor der eigentlichen Snapshot-Erfassung freigegeben.
+Nur ein fälliger, gültiger und noch nicht beanspruchter Termin übernimmt die zu
+seinem Anspruch gehörenden bestätigten Einstellungen. Der folgende Termin ist
+vor dem Export dauerhaft gespeichert. Ist ein älterer Export aktiv oder ein
+Restore offen, wird gewartet; veraltete und bereits beanspruchte Termine starten
+keinen zweiten Export. Fehler vor der Veröffentlichung werden ohne Erfolgseintrag
+im Verlauf erfasst; wenn der Verlauf nicht sicher geschrieben werden kann, bleibt
+der Anspruch für den späteren Abgleich erhalten.
+
+Abnahme: sechs gezielte Tests für Restore-Sperre, bestätigte Einstellungen,
+doppelten Anspruch, Überschneidung, Vorbereitungsfehler, Abbruch und eine
+fehlgeschlagene Folgeregistrierung ohne Fehler/Skips; lintDebug, assembleDebug und
+git diff --check bestanden. Die Android-Worker-Hülle, echte Zielprüfung,
+Benachrichtigung und Systemunterbrechung sind noch nicht angebunden. Nachweis:
+/workspace/immopilot-scheduled-runner-check.log.
+
+### Schritt 11 – Unterbrechung vor der Veröffentlichung
+
+Für geplante Sicherungen unterscheidet der Verlauf nun einen ausdrücklichen
+Abbruch von einer Systemunterbrechung. Wird die Vorbereitung nach dem Anspruch
+durch das System unterbrochen, bleibt der letzte geprüfte Erfolg unverändert;
+der Zustand wird als unterbrochen gespeichert und die Warnschnittstelle
+aufgerufen. Die Android-Worker-Hülle muss den tatsächlichen WorkManager-Stopgrund
+übergeben und die Warnung mit Benachrichtigungsberechtigung behandeln. Die
+Unterscheidung während der Archivveröffentlichung wird gesondert angebunden.
+
+Abnahme: zwei gezielte Tests für Abbruch und simulierte Systemunterbrechung vor
+der Veröffentlichung ohne Fehler/Skips; lintDebug, assembleDebug und git diff
+--check bestanden. Nachweis:
+/workspace/immopilot-system-interruption-prepare-check.log.
+
+### Schritt 11 – Unterbrechung bei der Veröffentlichung
+
+Die Sicherungs-Engine übernimmt bei einem Abbruch während der Veröffentlichung
+den vom Worker bestimmten Unterbrechungszustand. Eine Systemunterbrechung wird
+als solche statt als Nutzerabbruch gespeichert; ein bereits geprüfter und
+veröffentlichter Erfolg bleibt korrekt als Erfolg erfasst. Vor der bestätigten
+Veröffentlichung wird keine Erfolgsmeldung erzeugt. Der echte Worker muss noch
+den WorkManager-Stopgrund übergeben; ein tatsächliches Android-Zeitlimit ist
+weiterhin auf einem Gerät beziehungsweise Emulator nachzuweisen.
+
+Abnahme: ein gezielter Test mit simuliertem Zeitlimit während der Veröffentlichung
+ohne Fehler/Skips, einschließlich Bereinigung des eigenen unvollständigen Ziels;
+lintDebug, assembleDebug und git diff --check bestanden. Der vorherige Lauf wurde
+durch einen Umgebungswechsel unterbrochen; vollständiger Nachweis:
+/workspace/immopilot-system-interruption-publish-resumed.log.

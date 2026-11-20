@@ -18,7 +18,7 @@ internal object ConfirmedAfaValuesStore {
     fun read(context: Context, propertyId: String): ConfirmedAfaValues? {
         if (propertyId.isBlank()) return null
         return runCatching {
-            val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val raw = com.example.data.PersistentPreferenceInventory.open(context, PREFS)
                 .getString(propertyId, null) ?: return null
             val value = JSONObject(raw)
             ConfirmedAfaValues(
@@ -46,7 +46,7 @@ internal object ConfirmedAfaValuesStore {
             .put("cumulativeAfa", value.cumulativeAfa)
             .put("remainingBookValue", value.remainingBookValue)
             .put("source", value.source)
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return com.example.data.PersistentPreferenceInventory.open(context, PREFS)
             .edit().putString(propertyId, json.toString()).commit()
     }
 }

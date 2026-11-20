@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -38,6 +39,14 @@ internal object PersistentPreferenceInventory {
         Store("metadata_duplicate_cleanup_audit", Kind.LOCAL_ONLY)
     )
 
+    fun open(context: Context, name: String): SharedPreferences {
+        val store = requireNotNull(stores.singleOrNull { it.name == name }) {
+            "Unbekannter Preference-Speicher benötigt eine explizite Sicherungszuordnung."
+        }
+        val preferences = context.getSharedPreferences(store.name, Context.MODE_PRIVATE)
+        return if (store.kind == Kind.BACKUP) OfflineBackupCoordinator.shared.trackPreferences(preferences) else preferences
+    }
+
     private val secretKey = Regex(
         "(?i)(^|[_-])(api[_-]?key|key[_-]?(ciphertext|iv)|ciphertext|token|pin|tan|password|secret|credential)([_-]|$)"
     )
@@ -58,16 +67,16 @@ internal object PersistentPreferenceInventory {
         else -> false
     }
 
-    private fun permits(store: Store, key: String): Boolean =
+    internal fun permits(store: Store, key: String): Boolean =
         store.kind == Kind.BACKUP && (store.allowedKeys?.contains(key) ?: (businessKey(store, key) || !secretKey.containsMatchIn(key)))
 
     fun hasBackupValues(context: Context, store: Store): Boolean =
-        context.getSharedPreferences(store.name, Context.MODE_PRIVATE).all.keys.any { permits(store, it) }
+        open(context, store.name).all.keys.any { permits(store, it) }
 
     fun writePayload(context: Context, root: JSONObject) {
         stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
             val values = JSONObject()
-            context.getSharedPreferences(store.name, Context.MODE_PRIVATE).all.forEach { (key, value) ->
+            open(context, store.name).all.forEach { (key, value) ->
                 if (permits(store, key)) {
                     val typed = when (value) {
                         is String -> entry("string", value)
@@ -83,6 +92,43 @@ internal object PersistentPreferenceInventory {
             }
             root.put(requireNotNull(store.payloadKey), values)
         }
+    }
+
+    /** Streaming equivalent of writePayload for bounded private rollback staging. */
+    internal fun writePayload(context: Context, writer: android.util.JsonWriter, checkpoint: () -> Unit) {
+        writer.beginObject()
+        stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
+            checkpoint()
+            writer.name(requireNotNull(store.payloadKey)).beginObject()
+            open(context, store.name).all.toSortedMap().forEach { (key, value) ->
+                checkpoint()
+                if (permits(store, key)) {
+                    val type = when (value) {
+                        is String -> "string"
+                        is Int -> "int"
+                        is Long -> "long"
+                        is Float -> "float"
+                        is Boolean -> "boolean"
+                        is Set<*> -> "stringSet"
+                        else -> null
+                    }
+                    if (type != null) {
+                        writer.name(key).beginObject().name("type").value(type).name("value")
+                        when (value) {
+                            is String -> writer.value(value)
+                            is Int -> writer.value(value.toLong())
+                            is Long -> writer.value(value)
+                            is Float -> writer.value(value.toDouble())
+                            is Boolean -> writer.value(value)
+                            is Set<*> -> { writer.beginArray(); value.filterIsInstance<String>().sorted().forEach { writer.value(it) }; writer.endArray() }
+                        }
+                        writer.endObject()
+                    }
+                }
+            }
+            writer.endObject()
+        }
+        writer.endObject()
     }
 
     fun validatePayload(root: JSONObject) {
@@ -120,54 +166,56 @@ internal object PersistentPreferenceInventory {
         root: JSONObject,
         mode: RestoreMode = RestoreMode.MERGE
     ) {
-        stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
-            val values = root.optJSONObject(requireNotNull(store.payloadKey)) ?: return@forEach
-            val prefs = context.getSharedPreferences(store.name, Context.MODE_PRIVATE)
-            val editor = prefs.edit()
+        OfflineBackupCoordinator.shared.beginWrite().use {
+            stores.filter { it.kind == Kind.BACKUP }.forEach { store ->
+                val values = root.optJSONObject(requireNotNull(store.payloadKey)) ?: return@forEach
+                val prefs = open(context, store.name)
+                val editor = prefs.edit()
 
-            if (mode == RestoreMode.REPLACE_FULL) {
-                prefs.all.keys.filter { permits(store, it) }.forEach(editor::remove)
-            }
-
-            values.keys().forEach entryLoop@ { key ->
-                if (!permits(store, key)) return@entryLoop
-                val value = values.optJSONObject(key) ?: return@entryLoop
-
-                if (mode == RestoreMode.MERGE &&
-                    prefs.contains(key) &&
-                    store.name in setOf("tenant_history_prefs", "property_tasks_prefs")
-                ) {
-                    val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
-                    if (merged != null) editor.putString(key, merged)
-                    return@entryLoop
+                if (mode == RestoreMode.REPLACE_FULL) {
+                    prefs.all.keys.filter { permits(store, it) }.forEach(editor::remove)
                 }
 
-                // No per-field version exists in the remaining stores. A snapshot must not
-                // roll back unit values, rent, assignments, notes, drafts or settings.
-                if (mode == RestoreMode.MERGE && prefs.contains(key)) {
-                    if (value.optString("type") == "stringSet" && prefs.all[key] is Set<*>) {
-                        val array = value.getJSONArray("value")
-                        editor.putStringSet(key, prefs.getStringSet(key, emptySet()).orEmpty() +
-                            (0 until array.length()).map { array.getString(it) })
+                values.keys().forEach entryLoop@ { key ->
+                    if (!permits(store, key)) return@entryLoop
+                    val value = values.optJSONObject(key) ?: return@entryLoop
+
+                    if (mode == RestoreMode.MERGE &&
+                        prefs.contains(key) &&
+                        store.name in setOf("tenant_history_prefs", "property_tasks_prefs")
+                    ) {
+                        val merged = mergeStructuredStringValue(store.name, prefs.all[key] as? String, value)
+                        if (merged != null) editor.putString(key, merged)
+                        return@entryLoop
                     }
-                    return@entryLoop
-                }
 
-                when (value.optString("type")) {
-                    "string" -> editor.putString(key, value.getString("value"))
-                    "int" -> editor.putInt(key, value.getInt("value"))
-                    "long" -> editor.putLong(key, value.getLong("value"))
-                    "float" -> editor.putFloat(key, NumericWriteBoundary.float(value.getDouble("value"),
-                        nonNegative = store.name in setOf("wohneinheiten_prefs", "rent_plan_prefs")))
-                    "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
-                    "stringSet" -> {
-                        val array = value.getJSONArray("value")
-                        editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
+                    // No per-field version exists in the remaining stores. A snapshot must not
+                    // roll back unit values, rent, assignments, notes, drafts or settings.
+                    if (mode == RestoreMode.MERGE && prefs.contains(key)) {
+                        if (value.optString("type") == "stringSet" && prefs.all[key] is Set<*>) {
+                            val array = value.getJSONArray("value")
+                            editor.putStringSet(key, prefs.getStringSet(key, emptySet()).orEmpty() +
+                                (0 until array.length()).map { array.getString(it) })
+                        }
+                        return@entryLoop
                     }
-                    else -> error("Unbekannter Preference-Typ in der Sicherung.")
+
+                    when (value.optString("type")) {
+                        "string" -> editor.putString(key, value.getString("value"))
+                        "int" -> editor.putInt(key, value.getInt("value"))
+                        "long" -> editor.putLong(key, value.getLong("value"))
+                        "float" -> editor.putFloat(key, NumericWriteBoundary.float(value.getDouble("value"),
+                            nonNegative = store.name in setOf("wohneinheiten_prefs", "rent_plan_prefs")))
+                        "boolean" -> editor.putBoolean(key, value.getBoolean("value"))
+                        "stringSet" -> {
+                            val array = value.getJSONArray("value")
+                            editor.putStringSet(key, (0 until array.length()).map { array.getString(it) }.toSet())
+                        }
+                        else -> error("Unbekannter Preference-Typ in der Sicherung.")
+                    }
                 }
+                check(editor.commit()) { "Einstellungen konnten nicht dauerhaft wiederhergestellt werden." }
             }
-            check(editor.commit()) { "Einstellungen konnten nicht dauerhaft wiederhergestellt werden." }
         }
     }
 

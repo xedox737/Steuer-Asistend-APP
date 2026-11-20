@@ -101,6 +101,9 @@ secrets {
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
 dependencies {
+  implementation("com.google.crypto.tink:tink-android:1.24.0")
+  implementation("androidx.work:work-runtime:2.12.0")
+  implementation("org.bouncycastle:bcprov-jdk18on:1.86")
   coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
@@ -136,6 +139,7 @@ dependencies {
   implementation(libs.mlkit.text.recognition)
   implementation(libs.retrofit)
   testImplementation(libs.androidx.compose.ui.test.junit4)
+  testImplementation("androidx.work:work-testing:2.12.0")
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
   testImplementation(libs.junit)
