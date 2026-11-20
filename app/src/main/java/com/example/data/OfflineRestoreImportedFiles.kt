@@ -79,7 +79,8 @@ internal object OfflineRestoreImportedFiles {
         prepared: OfflineBackupRestoreInspector.Prepared,
         syncDirectory: (File) -> Unit = ::syncDirectory,
         rename: (File, File) -> Unit = { from, to -> Os.rename(from.path, to.path) },
-        link: (File, File) -> Unit = { from, to -> Os.link(from.path, to.path) }) {
+        publishDirectory: (File, File) -> Unit = rename) {
+        var stageDirectory: File? = null
         var temporary: File? = null
         try {
             OfflineBackupCoordinator.shared.requireMaintenance(token)
@@ -105,10 +106,12 @@ internal object OfflineRestoreImportedFiles {
                     require(root in plan.ownedDirectories && readMarker(File(root, MARKER)).contentEquals(marker(entry)))
                     require(child.absoluteFile == child.canonicalFile && destination.absoluteFile == destination.canonicalFile)
                     if (destination.exists()) { requireFile(destination, item.payload); continue }
-                    if (!child.exists()) { require(child.mkdir()); syncDirectory(root) }
-                    require(child.isDirectory && requireNotNull(child.list()).isEmpty())
+                    require(!child.exists() || (child.isDirectory && requireNotNull(child.list()).isEmpty()))
                     val source = requireNotNull(prepared.contents.parts.getValue(item.version.entry).file)
-                    val stage = File(state, "restore-payload-${UUID.randomUUID()}.tmp")
+                    val directory = File(state, "restore-payload-${UUID.randomUUID()}.tmp")
+                    require(directory.absoluteFile == directory.canonicalFile && directory.mkdir())
+                    stageDirectory = directory
+                    val stage = File(directory, destination.name)
                     require(stage.absoluteFile == stage.canonicalFile && stage.createNewFile()); temporary = stage
                     val digest = MessageDigest.getInstance("SHA-256"); var count = 0L
                     FileInputStream(source).use { input -> FileOutputStream(stage).use { output ->
@@ -124,11 +127,15 @@ internal object OfflineRestoreImportedFiles {
                     requireFile(stage, item.payload)
                     require(child.absoluteFile == child.canonicalFile && destination.absoluteFile == destination.canonicalFile && !destination.exists())
                     require(OfflineRestoreJournal(context).load() == entry)
-                    // A hard link is atomic and fails if the destination already exists.
-                    link(stage, destination)
-                    syncDirectory(child)
+                    // Publish the complete file-N directory in one rename. POSIX refuses
+                    // to replace a nonempty directory, including one containing a competing file.
+                    syncDirectory(directory)
+                    publishDirectory(directory, child)
+                    temporary = null
+                    stageDirectory = null
+                    syncDirectory(root)
+                    syncDirectory(state)
                     requireFile(destination, item.payload)
-                    require(stage.delete()); temporary = null; syncDirectory(state)
                 }
                 require(OfflineRestoreJournal(context).load() == entry)
             } }
@@ -140,7 +147,12 @@ internal object OfflineRestoreImportedFiles {
         catch (_: IllegalStateException) { invalid() }
         catch (_: NoSuchElementException) { invalid() }
         catch (_: SecurityException) { invalid() }
-        finally { withContext(NonCancellable + Dispatchers.IO) { temporary?.let { if (it.exists() && !it.delete()) invalid() } } }
+        finally {
+            withContext(NonCancellable + Dispatchers.IO) {
+                temporary?.let { if (it.exists() && !it.delete()) invalid() }
+                stageDirectory?.let { if (it.exists() && !it.delete()) invalid() }
+            }
+        }
     }
 
     /** Check that every planned file is installed and still matches its authenticated payload. */

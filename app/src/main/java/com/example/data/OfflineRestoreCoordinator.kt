@@ -13,11 +13,11 @@ import kotlinx.coroutines.withContext
 /** Coordinates a complete replacement while the caller retains the inspected archive. */
 internal object OfflineRestoreCoordinator {
     internal data class FileOperations(val sync: (File) -> Unit, val rename: (File, File) -> Unit,
-        val link: (File, File) -> Unit)
+        val publishDirectory: (File, File) -> Unit = rename)
     private val androidFiles = FileOperations({ directory ->
         val fd = Os.open(directory.path, OsConstants.O_RDONLY, 0)
         try { require(OsConstants.S_ISDIR(Os.fstat(fd).st_mode)); Os.fsync(fd) } finally { Os.close(fd) }
-    }, { from, to -> Os.rename(from.path, to.path) }, { from, to -> Os.link(from.path, to.path) })
+    }, { from, to -> Os.rename(from.path, to.path) })
 
     data class Result(val preparationCleanupFailed: Boolean)
 
@@ -51,7 +51,7 @@ internal object OfflineRestoreCoordinator {
                     OfflineBackupResourceBudget.checkRestore(context, archive, preparedRollback, filePlan)
                     var entry = journal.beginProtected(token, preparedRollback.id, preparedRollback.manifestBytes, preparedRollback.manifestSha256, preparedPlan)
                     entry = journal.advance(entry, OfflineRestoreJournal.Phase.FILES)
-                    OfflineRestoreImportedFiles.install(context, token, entry, archive, files.sync, files.rename, files.link)
+                    OfflineRestoreImportedFiles.install(context, token, entry, archive, files.sync, files.rename, files.publishDirectory)
                     entry = journal.advance(entry, OfflineRestoreJournal.Phase.DATABASE)
                     OfflineRestoreLiveDatabase.apply(context, database, token, entry, archive)
                     entry = journal.advance(entry, OfflineRestoreJournal.Phase.PREFERENCES)

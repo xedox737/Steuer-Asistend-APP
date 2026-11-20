@@ -156,7 +156,6 @@ class OfflineBackupRestoreInspectorTest {
     private fun atomicTestRename(from: File, to: File) {
         java.nio.file.Files.move(from.toPath(), to.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE)
     }
-    private fun atomicTestLink(from: File, to: File) { java.nio.file.Files.createLink(to.toPath(), from.toPath()) }
 
     @Test fun replacementCoordinatorCommitsValidatedArchiveWithLeaseAndDisablesAutoSync() = runBlocking<Unit> {
         val encrypted = archive()
@@ -170,7 +169,7 @@ class OfflineBackupRestoreInspectorTest {
                 assertTrue(OfflineBackupCoordinator.shared.restorePending.value)
                 assertFalse(target.getSharedPreferences("google_drive_prefs", 0).getBoolean("auto_backup", true))
                 refreshed = true
-            }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
+            }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename))
             assertTrue(refreshed); assertFalse(result.preparationCleanupFailed)
             assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
             val history = OfflineBackupHistory(target).load()
@@ -214,7 +213,7 @@ class OfflineBackupRestoreInspectorTest {
                         assertEquals("Archived house", targetDb.propertyDao().getAllProperties().single().name)
                         throw IllegalStateException("synthetic late failure")
                     }
-                }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
+                }, OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename))
             } }
             assertEquals(2, refreshCalls)
             assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
@@ -232,7 +231,7 @@ class OfflineBackupRestoreInspectorTest {
         try {
             target.getDatabasePath("receipt_database").parentFile!!.mkdirs()
             val result = OfflineRestoreCoordinator.restore(target, targetDb, prepared, false, {},
-                OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename, ::atomicTestLink))
+                OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename))
             assertFalse(result.preparationCleanupFailed)
             val property = targetDb.propertyDao().getAllProperties().single()
             val receipt = targetDb.receiptDao().getAllReceiptsIncludingDeletedList().single()
@@ -259,7 +258,7 @@ class OfflineBackupRestoreInspectorTest {
                 assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
                     OfflineRestoreStagedDatabase.prepare(target, token, files, prepared)
                 } }
-                repeat(2) { OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink) }
+                repeat(2) { OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename) }
                 assertEquals(1, plan.items.size)
                 assertArrayEquals(original.readBytes(), plan.items.single().destination.readBytes())
                 OfflineRestoreStagedDatabase.prepare(target, token, files, prepared).use { staged ->
@@ -272,7 +271,7 @@ class OfflineBackupRestoreInspectorTest {
                 assertEquals("keep live note", target.getSharedPreferences("bank_transaction_notes", 0).getString("note", null))
                 plan.items.single().destination.writeText("do not overwrite")
                 assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
-                    OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                    OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 } }
                 assertEquals("do not overwrite", plan.items.single().destination.readText())
                 plan.items.single().destination.writeBytes(original.readBytes())
@@ -298,7 +297,7 @@ class OfflineBackupRestoreInspectorTest {
                 val part = requireNotNull(prepared.contents.parts.getValue(plan.items.single().version.entry).file)
                 part.appendText("tampered")
                 assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
-                    OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                    OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 } }
                 assertTrue(plan.ownedDirectories.none { it.exists() }); assertEquals(files, journal.load())
                 assertEquals("Keep live", targetDb.propertyDao().getAllProperties().single().name)
@@ -322,7 +321,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 OfflineRestoreStagedDatabase.prepare(target, token, files, prepared).use { staged ->
                     val receipt = staged.database.receiptDao().getAllReceiptsIncludingDeletedList().single()
                     val restored = org.json.JSONArray(receipt.imageUrl)
@@ -354,7 +353,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 repeat(2) { OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared) }
                 assertEquals("archive-house", targetDb.propertyDao().getAllProperties().single().propertyId)
@@ -387,7 +386,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 token.writing { targetDb.openHelper.writableDatabase.execSQL("CREATE TRIGGER test_reject_insert BEFORE INSERT ON receipts BEGIN SELECT RAISE(ABORT, 'synthetic'); END") }
                 assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
@@ -427,7 +426,7 @@ class OfflineBackupRestoreInspectorTest {
                 assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
                     OfflineRestoreLivePreferences.apply(target, token, files, prepared)
                 } }
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
                 val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
@@ -461,7 +460,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
                 val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
@@ -499,7 +498,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token, includeCredentials = true)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
                 val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
@@ -545,7 +544,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token, includeCredentials = false)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
                 val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
@@ -581,7 +580,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token, includeCredentials = true)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 val database = journal.advance(files, OfflineRestoreJournal.Phase.DATABASE)
                 OfflineRestoreLiveDatabase.apply(target, targetDb, token, database, prepared)
                 val preferences = journal.advance(database, OfflineRestoreJournal.Phase.PREFERENCES)
@@ -618,7 +617,7 @@ class OfflineBackupRestoreInspectorTest {
                 val bundle = OfflineRestoreRollbackBundle.prepare(target, targetDb, token)
                 val initial = journal.beginWithFilePlan(token, bundle.id, bundle.manifestBytes, bundle.manifestSha256, snapshot)
                 val files = journal.advance(initial, OfflineRestoreJournal.Phase.FILES)
-                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename, ::atomicTestLink)
+                OfflineRestoreImportedFiles.install(target, token, files, prepared, ::syncTestDirectory, ::atomicTestRename)
                 unknown = File(plan.ownedDirectories.single(), "unknown-user-data").apply { writeText("preserve") }
             }
         } finally { prepared.close() }
