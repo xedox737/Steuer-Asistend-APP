@@ -178,6 +178,7 @@ class PrimaryNavigationComposeTest {
     private fun openMorePage(label: String, content: String) {
         clickTab(AppScreen.MORE)
         clickMore(label)
+        if (label == "Backup & Cloud") ui.onNodeWithTag("more_menu").performScrollToNode(hasText(content))
         ui.onNodeWithText(content).assertExists()
     }
     @Test fun propertyUnitToEveryPrimaryRootIncludingActiveProperties() = matrix { openPropertyUnit() }

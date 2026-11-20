@@ -638,6 +638,23 @@ class Phase11ESyncRegressionTest {
         assertEquals(1, vm.driveSyncReport.value!!.steps.sumOf { it.retries })
     }
 
+    @Test fun inventoryBindingConflictReportsReceiptAndOnlyMismatchedFieldWithoutWrites() = runBlocking {
+        seedReceipts(2)
+        val row = repo.getReceiptById(2)!!
+        repo.insert(row.copy(driveFileId = "different-local-original"))
+        val vm = connectedModel()
+        measure(vm, "index-binding-conflict")
+        val report = requireNotNull(vm.driveSyncReport.value)
+        val saved = requireNotNull(com.example.api.DriveSyncReport.fromJson(report.toJson()))
+        val step = saved.steps.single { it.internalReceiptId == row.internalId &&
+            it.failure?.check == com.example.api.DriveSyncCheck.INDEX_BINDING_MISMATCH }
+        assertEquals(listOf("mainDriveFileId"), step.failure!!.differentFields)
+        assertEquals(2, saved.notAttempted)
+        assertTrue(saved.germanText().contains("interne Beleg-ID=" + row.internalId))
+        assertFalse(saved.germanText().contains("different-local-original"))
+        assertTrue(remote.requests.all { it.method == "GET" })
+    }
+
     @Test fun dnsBeforeInitializationLeavesAllTwentyTwoReceiptsNotAttempted() = runBlocking {
         seedReceipts(22)
         val vm = connectedModel()

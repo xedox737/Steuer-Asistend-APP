@@ -54,7 +54,7 @@ internal class OfflineBackupMetadataWriter(
             val receipts = mutableListOf<ReceiptClaim>()
             val documentsWithOriginal = mutableSetOf<String>()
             val availableDriveIds = mutableSetOf<String>()
-            val attachmentDriveIds = mutableSetOf<String>()
+            val documentReferences = linkedMapOf<String, String>()
             val rowCounts = linkedMapOf<String, Long>()
             database.withTransaction {
                 val db = database.openHelper.writableDatabase
@@ -90,7 +90,7 @@ internal class OfflineBackupMetadataWriter(
                                     cancellation.ensureActive()
                                     // One row at a time; no list/JSONObject of database tables is materialized.
                                     val row = columns.associate { it.name to value(cursor, cursor.getColumnIndexOrThrow(it.name)) }.toMutableMap()
-                                    collectReferences(name, row, claims, receipts, documentsWithOriginal, availableDriveIds, attachmentDriveIds)
+                                    collectReferences(name, row, claims, receipts, documentsWithOriginal, availableDriveIds, documentReferences)
                                     writer.beginArray()
                                     columns.forEach { column -> writeValue(writer, row[column.name]) }
                                     writer.endArray()
@@ -134,9 +134,9 @@ internal class OfflineBackupMetadataWriter(
                     unavailable("receipt", "${receipt.id}\u0000$index", receipt.owner)
                 }
             }
-            val missingAttachments = attachmentDriveIds - availableDriveIds
+            val missingAttachments = documentReferences.keys - availableDriveIds
             if (missingAttachments.isNotEmpty() && referenceMode == ReferenceMode.STRICT_BACKUP)
-                invalid("Ein zusätzlicher Beleganhang besitzt keine lokal auflösbare Originalzuordnung.")
+                invalid("${documentReferences.getValue(missingAttachments.first())}: Die lokale Originaldatei konnte nicht zugeordnet werden.")
             if (referenceMode == ReferenceMode.ROLLBACK_INVENTORY) missingAttachments.sorted().forEach { driveId ->
                 unavailable("attachment", driveId, "Beleganhang mit nicht verfügbarer Originalzuordnung")
             }
@@ -176,7 +176,7 @@ internal class OfflineBackupMetadataWriter(
 
     private fun collectReferences(table: String, row: MutableMap<String, Any?>, claims: MutableMap<String, Claim>,
         receipts: MutableList<ReceiptClaim>, documentsWithOriginal: MutableSet<String>, availableDriveIds: MutableSet<String>,
-        attachmentDriveIds: MutableSet<String>) {
+        documentReferences: MutableMap<String, String>) {
         fun text(key: String) = row[key] as? String ?: ""
         val display = owner(table, row)
         if (table == "managed_documents" && text("localUri").isBlank()) {
@@ -197,7 +197,20 @@ internal class OfflineBackupMetadataWriter(
                 receipts += ReceiptClaim(text("internalId"), display)
             }
         }
-        if (table == "receipt_documents") text("driveFileId").takeIf(String::isNotBlank)?.let(attachmentDriveIds::add)
+        if (table == "receipt_documents" && text("driveFileId").isNotBlank()) {
+            val role = when (text("role")) {
+                "MAIN_RECEIPT" -> "Hauptdokument"
+                "ATTACHMENT" -> "Anhang"
+                "DELIVERY_NOTE" -> "Lieferschein"
+                "PAYMENT_PROOF" -> "Zahlungsnachweis"
+                "EMAIL" -> "E-Mail"
+                "E_INVOICE_XML" -> "E-Rechnung"
+                else -> "Dokument"
+            }
+            val filename = text("filename").substringAfterLast('/').substringAfterLast('\\').take(120)
+            val label = if (filename.isBlank()) role else "$role „$filename“"
+            documentReferences.putIfAbsent(text("driveFileId"), "Beleg ${text("receiptInternalId")}, $label")
+        }
         PATH_COLUMNS.forEach { column ->
             val raw = text(column)
             if (raw.isBlank()) return@forEach

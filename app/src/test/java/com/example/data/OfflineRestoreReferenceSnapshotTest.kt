@@ -122,6 +122,21 @@ class OfflineRestoreReferenceSnapshotTest {
         }
     }
 
+    @Test fun unresolvedMainReferenceNamesReceiptAndFileInStrictBackup() = runBlocking<Unit> {
+        database.receiptDocumentDao().insertDocument(ReceiptDocumentReference(
+            id = "old-main", receiptInternalId = "stable", driveFileId = "old-remote-id",
+            driveFolderId = null, filename = "private/path/rechnung.pdf", mimeType = "application/pdf",
+            sizeBytes = 123, role = "MAIN_RECEIPT", createdAt = "2026-11-11"
+        ))
+        val output = File(root, "strict-metadata.json")
+        val error = assertThrows(OfflineBackupValidationException::class.java) {
+            runBlocking { OfflineBackupMetadataWriter(context, database).write(output) }
+        }
+        assertEquals("Beleg stable, Hauptdokument „rechnung.pdf“: Die lokale Originaldatei konnte nicht zugeordnet werden.", error.message)
+        assertFalse(output.exists())
+        assertEquals("old-main", database.receiptDocumentDao().getDocumentsForReceipt("stable").single().id)
+    }
+
     @Test fun rollbackRecordsCloudOnlyReceiptAndAttachmentWhileFullBackupStillRejectsThem() = runBlocking<Unit> {
         database.receiptDao().insertReceipt(Receipt(id = 42, internalId = "cloud-only", propertyId = "house", aussteller = "Cloud",
             datum = "2026-11-11", uhrzeit = "", bruttobetrag = 1.0, hauptkategorie = "Kosten", unterkategorie = "Reparatur",
