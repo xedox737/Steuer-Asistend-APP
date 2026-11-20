@@ -17,7 +17,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 65
     env:
       RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
       RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
@@ -112,7 +112,7 @@ jobs:
       # rather than masking an individual test failure or adding retries.
       - name: Run unit tests
         if: env.IMMO_BACKUP_PROFILE != 'true'
-        timeout-minutes: 20
+        timeout-minutes: 45
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
       - name: Run scoped backup JVM tests

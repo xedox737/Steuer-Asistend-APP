@@ -946,8 +946,13 @@ fun MoreScreen(viewModel: ReceiptViewModel) {
         return
     }
     androidx.activity.compose.BackHandler(enabled = page != null) { page = null }
+    val menuScroll = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listScroll = if (page == null) menuScroll else androidx.compose.runtime.key(page) {
+        androidx.compose.foundation.lazy.rememberLazyListState()
+    }
     LazyColumn(
         Modifier.fillMaxSize().testTag("more_menu"),
+        state = listScroll,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(Ui2.spacing)
     ) {
