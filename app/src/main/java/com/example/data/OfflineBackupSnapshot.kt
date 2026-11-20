@@ -99,7 +99,6 @@ internal class OfflineBackupSnapshot private constructor(
                 database.openHelper.writableDatabase
                 OfflineBackupCoordinator.shared.awaitInitialization()
                 val capture = OfflineBackupCoordinator.shared.beginCapture()
-                val archiveInfo = OfflineBackupArchiveInfo.create()
                 val parent = File(context.filesDir, "offline-backup-staging")
                 if (!parent.isDirectory && !parent.mkdirs()) invalid("Privates Snapshot-Staging ist nicht verfügbar.")
                 val directory = File(parent, "snapshot-${UUID.randomUUID()}")
@@ -116,12 +115,37 @@ internal class OfflineBackupSnapshot private constructor(
                     }
                     val credentialBytes = credentialFile?.bytes ?: 0L
                     val metadata = OfflineBackupMetadataWriter(context, database).write(File(directory, "metadata.json"))
-                    progress(Progress(Stage.METADATA_CAPTURED, 0, 0))
                     val inventory = OfflineBackupFileInventory(context, maximumFiles)
                     val available = inventory.available()
-                    OfflineBackupResourceBudget.checkCapture(directory, metadata, available, credentialBytes)
                     val byCanonical = available.associateBy { it.source.canonicalPath }
                     val resolver = OfflineBackupResolver(context)
+                    val ownAuthority = "${context.packageName}.provider"
+                    val ownOriginalUris by lazy {
+                        available.filter { it.kind == OfflineBackupFileInventory.Kind.ORIGINAL &&
+                            (it.portablePath.startsWith("cache/") || it.portablePath.startsWith("files/managed_documents/"))
+                        }.map { androidx.core.content.FileProvider.getUriForFile(context, ownAuthority, it.source) }.toSet()
+                    }
+                    // Room and preferences remain bound to this generation. Observe every unversioned
+                    // external source before the common cut, then verify it again while staging.
+                    val references = metadata.references.map { reference ->
+                        if (reference.expectedSha256 != null || inventory.isCoordinated(reference.path)) reference
+                        else {
+                            val local = localFile(reference.path)
+                            if (local != null && !local.isAbsolute) invalid("${reference.owner}: Es ist nur ein relativer Dateiverweis gespeichert. Bitte den Beleg öffnen und das Original lokal laden.")
+                            if (local != null && local.canonicalPath !in byCanonical && !inventory.isSharedStorage(local))
+                                invalid("${reference.owner}: Der Verweis liegt außerhalb des Belegspeichers. Bitte das Original im Beleg erneut bereitstellen.")
+                            val uri = Uri.parse(reference.path)
+                            if (uri.scheme == "content" && uri.authority == ownAuthority &&
+                                uri.buildUpon().clearQuery().fragment(null).build() !in ownOriginalUris)
+                                invalid("${reference.owner}: Der interne Dateiverweis gehört zu keinem verfügbaren Original.")
+                            val observed = resolver.observe(reference.path, reference.owner)
+                            reference.copy(expectedSha256 = observed.sha256,
+                                expectedSize = reference.expectedSize ?: observed.bytes, verifiedCandidates = emptyList())
+                        }
+                    }
+                    val archiveInfo = OfflineBackupArchiveInfo.create()
+                    progress(Progress(Stage.METADATA_CAPTURED, 0, 0))
+                    OfflineBackupResourceBudget.checkCapture(directory, metadata.copy(references = references), available, credentialBytes)
                     val payloads = linkedMapOf<String, FixedFile>()
                     val versions = linkedMapOf<String, Version>()
                     val aliases = linkedMapOf<String, String>()
@@ -129,7 +153,6 @@ internal class OfflineBackupSnapshot private constructor(
                     var candidateNumber = 0
                     suspend fun pin(path: String, owner: String, hash: String?, size: Long?, candidates: List<String>): FixedFile {
                         currentCoroutineContext().ensureActive()
-                        if (hash == null && !inventory.isCoordinated(path)) invalid("$owner: Die Originalversion ist ohne gespeicherten Inhaltsnachweis nicht sicher fixierbar.")
                         val staged = File(directory, "copy-${candidateNumber++}")
                         val sha = resolver.copy(path, staged, owner, hash, size, candidates)
                         val bytes = staged.length()
@@ -152,7 +175,7 @@ internal class OfflineBackupSnapshot private constructor(
                             versions[id] = Version(id, path, kind, payload)
                         }
                     }
-                    metadata.references.forEach { reference ->
+                    references.forEach { reference ->
                         val owned = localFile(reference.path)?.canonicalPath?.let(byCanonical::get)
                         val id = owned?.portablePath ?: "external/${reference.key}"
                         val payload = versions[id]?.payload ?: pin(reference.path, reference.owner, reference.expectedSha256,

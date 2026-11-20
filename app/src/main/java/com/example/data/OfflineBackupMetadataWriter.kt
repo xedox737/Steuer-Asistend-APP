@@ -199,8 +199,12 @@ internal class OfflineBackupMetadataWriter(
         }
         if (table == "receipt_documents") text("driveFileId").takeIf(String::isNotBlank)?.let(attachmentDriveIds::add)
         PATH_COLUMNS.forEach { column ->
-            val raw = text(column)
-            if (raw.isBlank()) return@forEach
+            val stored = text(column)
+            if (stored.isBlank()) return@forEach
+            val raw = if (referenceMode == ReferenceMode.STRICT_BACKUP &&
+                table in RECEIPT_PATH_TABLES && '/' !in stored && '\\' !in stored && Uri.parse(stored).scheme == null) {
+                linkedDriveOriginal(row["id"] as? Number, stored) ?: stored
+            } else stored
             val direct = column == "localUri" || (table == "property_metadata" && column == "bildPfad")
             val paths = if (direct) listOf(raw) else ReceiptOriginalChain.paths(raw, referenceFileExists)
             val aliases = paths.map { path ->
@@ -230,6 +234,23 @@ internal class OfflineBackupMetadataWriter(
                 claim.key
             }
             row[column] = if (direct || aliases.size == 1) aliases.single() else JSONArray(aliases).toString()
+        }
+    }
+
+    /** Drive restore can leave just the remote filename in the receipt and its two mirror rows. */
+    private fun linkedDriveOriginal(id: Number?, filename: String): String? {
+        if (id == null) return null
+        val query = """
+            SELECT d.localUri FROM receipts r JOIN managed_documents d
+              ON d.receiptInternalId = r.internalId AND d.driveFileId = r.driveFileId
+             AND d.propertyId = r.propertyId
+            WHERE r.id = ? AND r.imageUrl = ? AND r.internalId <> '' AND r.driveFileId <> ''
+              AND r.imageUrl IN (d.storedFilename, d.originalFilename)
+              AND d.localUri <> '' AND d.sha256 <> ''
+            LIMIT 2
+        """.trimIndent()
+        return database.openHelper.writableDatabase.query(query, arrayOf(id.toLong(), filename)).use { cursor ->
+            if (cursor.count == 1 && cursor.moveToFirst()) cursor.getString(0) else null
         }
     }
 
@@ -291,6 +312,7 @@ internal class OfflineBackupMetadataWriter(
 
     internal companion object {
         const val MAX_BYTES = 64L * 1024 * 1024
+        private val RECEIPT_PATH_TABLES = setOf("receipts", "belege", "receipt_entities")
         val PATH_COLUMNS = setOf("imageUrl", "pdfPath", "bildPfad", "localUri")
         val SYSTEM_TABLES = setOf("room_master_table", "android_metadata")
         val LOCAL_TABLES = setOf("document_migration_journal")

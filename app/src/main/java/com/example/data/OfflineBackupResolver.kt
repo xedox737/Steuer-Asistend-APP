@@ -20,8 +20,21 @@ internal class OfflineBackupResolver(
         require(maximumBytes in 1L..MAX_ORIGINAL_BYTES) { "Die Originalgrößengrenze darf nur verringert werden." }
     }
     private class Unavailable(val detail: String, val mayTryCopy: Boolean = true) : Exception()
-    private data class Fingerprint(val bytes: Long, val sha256: String)
+    data class Fingerprint(val bytes: Long, val sha256: String)
     private val limitLabel: String get() = if (maximumBytes == MAX_ORIGINAL_BYTES) "1 GiB" else "$maximumBytes Byte"
+
+    /** Observe only the exact referenced original. This run-local proof never authorizes a replacement. */
+    suspend fun observe(path: String, owner: String): Fingerprint = try {
+        open(path).use { fingerprint(it, null) }.also {
+            if (it.bytes == 0L) throw Unavailable("Originaldatei ist leer (0 Byte).")
+        }
+    } catch (error: Unavailable) {
+        throw OfflineBackupValidationException("$owner: ${error.detail}")
+    } catch (_: IOException) {
+        throw OfflineBackupValidationException("$owner: Originaldatei konnte nicht vollständig gelesen werden.")
+    } catch (_: SecurityException) {
+        throw OfflineBackupValidationException("$owner: Zugriff auf die Originaldatei wurde verweigert.")
+    }
 
     suspend fun copy(
         path: String,

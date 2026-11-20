@@ -3789,3 +3789,20 @@ ohne Fehler/Skips, einschließlich Bereinigung des eigenen unvollständigen Ziel
 lintDebug, assembleDebug und git diff --check bestanden. Der vorherige Lauf wurde
 durch einen Umgebungswechsel unterbrochen; vollständiger Nachweis:
 /workspace/immopilot-system-interruption-publish-resumed.log.
+
+### Vollsicherung älterer Belegverweise
+
+Bei einem lesbaren, extern gespeicherten Original ohne hinterlegte Prüfsumme
+ermittelt die Vollsicherung Größe und SHA-256 am konkreten Verweis. Nach dieser
+ersten Erfassung aller betroffenen Verweise setzt sie den Snapshot-Zeitpunkt.
+Beim Kopieren ins private Staging müssen dieselben Bytes erneut lesbar sein.
+Der gemeinsame Generationsnachweis umfasst beide Lesephasen, Room und die
+Preferences. Die ermittelten Prüfsummen gelten ausschließlich für diesen Lauf.
+Eine bereits gespeicherte Prüfsumme oder Größenangabe bleibt verbindlich.
+
+Ein bloßer Drive-Dateiname in einem Beleg oder dessen Spiegelzeilen kann auf
+einen lokal gespeicherten Dokumentverweis abgebildet werden, wenn Beleg-ID,
+Objekt, Drive-Datei-ID und Dateiname übereinstimmen und genau ein zugehöriges
+Dokument einen Inhaltsnachweis besitzt. Die Auflösung erfolgt im Lesevorgang
+der Sicherung. Fehlt das Original, dient das Öffnen des Belegs mit einer
+verknüpften Drive-Datei zum lokalen Nachladen.
