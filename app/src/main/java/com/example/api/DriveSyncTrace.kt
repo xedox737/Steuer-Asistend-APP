@@ -49,6 +49,7 @@ enum class DriveSyncCheck(val label: String) {
     ORIGINAL_BASELINE_CHANGED_DURING_READ("Original wurde während des Baseline-Nachweises geändert; erneut sicher prüfen"),
     ORIGINAL_CHECKSUM_MISMATCH("Original-Hash passt nicht zum gespeicherten Vergleichsstand"),
     ORIGINAL_SIZE_INVALID("Für das Original wurde keine gültige Dateigröße nachgewiesen"),
+    DUPLICATE_LOCAL_ID("Mehrere lokale Belege haben dieselbe interne ID. Bitte in den Belegdetails die Originale zuordnen."),
     INDEX_BINDING_MISMATCH("Lokaler Beleg und Drive-Index haben unterschiedliche Dateibindungen"),
     INDEX_DELETED_LOCAL_ACTIVE("Drive-Index kennzeichnet einen lokal aktiven Beleg als gelöscht"),
     INDEX_RECEIPT_NOT_LOCAL("Ein aktiver Indexbeleg fehlt im lokalen Bestand"),

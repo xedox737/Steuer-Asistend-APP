@@ -22,8 +22,8 @@ concurrency:
 
 jobs:
   bank-performance:
-    # PR #184 touches shared bank entry points only for backup coordination.
-    if: github.event.pull_request.number != 184 || github.event.pull_request.head.ref != 'feat/local-full-backup' || github.event.pull_request.head.repo.full_name != github.repository
+    # These backup PRs touch ReceiptViewModel for backup coordination and receipt repair.
+    if: (github.event.pull_request.number != 184 && github.event.pull_request.number != 185) || github.event.pull_request.head.ref != 'feat/local-full-backup' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:

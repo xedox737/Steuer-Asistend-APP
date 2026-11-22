@@ -192,6 +192,9 @@ interface ReceiptDao {
     @Query("SELECT * FROM receipts WHERE id = :id")
     suspend fun getReceiptById(id: Int): Receipt?
 
+    @Query("SELECT * FROM receipts WHERE internalId = :internalId ORDER BY id")
+    suspend fun getRowsByInternalId(internalId: String): List<Receipt>
+
     @Query("SELECT * FROM receipts WHERE internalId = :internalId ORDER BY id LIMIT 1")
     suspend fun getReceiptByInternalId(internalId: String): Receipt?
 
@@ -872,6 +875,15 @@ class ReceiptRepository(
     private val receiptDocumentDao: ReceiptDocumentDao? = null,
     private val managedDocumentDao: ManagedDocumentDao? = null
 ) {
+    internal suspend fun requireUniqueReceiptIdentity(receipt: Receipt) {
+        if (receipt.internalId.isBlank()) return
+        val matches = receiptDao.getRowsByInternalId(receipt.internalId)
+        if (matches.any { it.id != receipt.id })
+            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.DUPLICATE_LOCAL_ID)
+        if (matches.isEmpty() && receipt.id > 0 && receiptDao.getReceiptById(receipt.id)?.internalId != receipt.internalId)
+            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.LOCAL_RECEIPT_CHANGED)
+    }
+
     suspend fun updateDriveSyncFields(snapshot: Receipt): Receipt {
         OfflineBackupCoordinator.shared.beginWrite().use {
             val changed = receiptDao.updateDriveSyncFields(snapshot.id, snapshot.internalId, snapshot.displayId,

@@ -147,6 +147,8 @@ class RenovationReviewStore(context: Context) {
     private val _snapshot = MutableStateFlow(RenovationReviewSnapshot())
     val snapshot = _snapshot.asStateFlow()
 
+    fun hasReceiptRelation(internalId: String): Boolean = prefs.contains("receipt_$internalId")
+
     suspend fun refresh() = withContext(Dispatchers.IO) { mutex.withLock { _snapshot.value = load() } }
 
     suspend fun saveMeasure(measure: RenovationMeasure) = withContext(Dispatchers.IO) {

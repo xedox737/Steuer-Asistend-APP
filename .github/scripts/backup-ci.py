@@ -13,6 +13,10 @@ PICKER = "app/src/androidTest/java/com/example/e2e/OfflineBackupPickerEmulatorTe
 METHOD = re.compile(r"@Test\b(?:\s*\([^)]*\))?\s+fun\s+([A-Za-z_]\w*|`[^`]+`)")
 
 
+DRIVE_CLASS = "com.example.ui.Phase11ESyncRegressionTest"
+REPAIR_METHOD = "collidingReceiptPairSeparatesAndSyncKeepsIndexedOriginalBytes"
+
+
 def expected(kind):
     prefix = f"app/src/{kind}/java/"
     paths = set(PATHS.read_text().splitlines())
@@ -37,6 +41,10 @@ def expected(kind):
             if len(set(methods)) != len(methods) or "@Config" in body:
                 raise ValueError(f"Unsupported test declarations in {name}")
             discovered += len(methods)
+            if f"{package}.{declaration.group(1)}" == DRIVE_CLASS:
+                if REPAIR_METHOD not in methods:
+                    raise ValueError("Missing Drive receipt repair regression")
+                methods = [REPAIR_METHOD]
             config = source[previous_end:declaration.start()]
             sdk_configs = re.findall(r"@Config\(\s*sdk\s*=\s*\[([^\]]+)\]", config)
             if len(sdk_configs) > 1:
@@ -80,7 +88,7 @@ def main():
         return
     wanted = expected(kind)
     if command == "classes":
-        print("\n".join(sorted({classname for classname, _ in wanted})))
+        print("\n".join(sorted({f"{owner}.{method}" if owner == DRIVE_CLASS else owner for owner, method in wanted})))
     elif command == "verify":
         verify(pathlib.Path(args[0]), wanted)
     else:

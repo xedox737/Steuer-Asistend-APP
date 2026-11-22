@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.net.Uri
 import com.example.api.AiProviderSettings
 import com.example.api.TestAndroidKeyStore
 import java.security.MessageDigest
@@ -20,6 +21,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -196,17 +198,95 @@ class OfflineBackupSnapshotTest {
         noOwnedRunLeft()
     }
 
-    @Test fun externalOriginalWithoutPriorContentProofCannotBecomeACompleteSnapshot() = runBlocking {
-        val uri = "content://synthetic/original.pdf?token=PRIVATE_SECRET"
+    private suspend fun legacyReferences(path: String) {
         database.managedDocumentDao().upsert(ManagedDocument("document", "house", receiptInternalId = receipt.internalId,
-            title = "Original", localUri = uri, originalFilename = "original.pdf"))
-        database.receiptDao().insertReceipt(receipt.copy(imageUrl = uri))
-        val error = assertThrows(OfflineBackupValidationException::class.java) { runBlocking { OfflineBackupSnapshot.capture(context, database) } }
-        assertTrue(error.message.orEmpty().contains("Inhaltsnachweis"))
+            title = "Original", localUri = path, originalFilename = "original.pdf"))
+        database.receiptDao().insertReceipt(receipt.copy(imageUrl = path))
+    }
+
+    @Test fun readableLegacyUriIsPinnedForBothOwnersAndSurvivesLaterChanges() = runBlocking {
+        val uri = Uri.parse("content://legacy.documents/original.pdf?token=PRIVATE_SECRET")
+        shadowOf(context.contentResolver).registerInputStreamSupplier(uri) { original.inputStream() }
+        legacyReferences(uri.toString())
+        withEngineKeys { keyContext ->
+            OfflineBackupArchiveEngine(keyContext, database).prepare().use { prepared ->
+                original.writeText("later version")
+                val content = decryptedEntries(prepared)
+                val metadata = JSONObject(content.getValue("metadata.json").toString(Charsets.UTF_8))
+                val alias = field(metadata, "receipts", "imageUrl") as String
+                assertEquals(alias, field(metadata, "managed_documents", "localUri"))
+                val manifest = JSONObject(content.getValue("manifest.json").toString(Charsets.UTF_8))
+                assertArrayEquals(bytes, content.getValue(manifest.getJSONObject("aliases").getString(alias)))
+                assertFalse(metadata.toString().contains("PRIVATE_SECRET"))
+            }
+        }
+        noOwnedRunLeft()
+    }
+
+    @Test fun unreadableLegacyUriCannotBeReplacedByAnIdenticallyNamedFile() = runBlocking {
+        val uri = Uri.parse("content://legacy.documents/original.pdf?token=PRIVATE_SECRET")
+        shadowOf(context.contentResolver).registerInputStreamSupplier(uri) { throw java.io.FileNotFoundException() }
+        legacyReferences(uri.toString())
+        val error = assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineBackupSnapshot.capture(context, database).close()
+        } }
+        assertTrue(error.message.orEmpty().contains("nicht lesbar"))
         assertFalse(error.message.orEmpty().contains("PRIVATE_SECRET"))
         assertFalse(error.message.orEmpty().contains(root.absolutePath))
         noOwnedRunLeft()
         assertArrayEquals(bytes, original.readBytes())
+    }
+
+    @Test fun changedLegacyUriAtCaptureBoundaryAbortsEvenWhenLengthMatches() = runBlocking {
+        val uri = Uri.parse("content://legacy.documents/original.pdf?token=PRIVATE_SECRET")
+        var current = bytes
+        shadowOf(context.contentResolver).registerInputStreamSupplier(uri) { current.inputStream() }
+        legacyReferences(uri.toString())
+        val error = assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineBackupSnapshot.capture(context, database) { progress ->
+                if (progress.stage == OfflineBackupSnapshot.Stage.METADATA_CAPTURED) current = ByteArray(bytes.size)
+            }.close()
+        } }
+        assertTrue(error.message.orEmpty().contains("Prüfsumme"))
+        assertFalse(error.message.orEmpty().contains("PRIVATE_SECRET"))
+        noOwnedRunLeft()
+    }
+
+    @Test fun driveFilenameAndItsMirrorsUseTheSameVerifiedLocallyDownloadedDocument() = runBlocking {
+        val name = "legacy.jpg"
+        database.receiptDao().insertReceipt(receipt.copy(imageUrl = name, driveFileId = "main-drive-id"))
+        database.belegDao().insertBeleg(Beleg(receipt.id.toLong(), 10.0, receipt.datum, "", "", name))
+        database.receiptEntityDao().insert(ReceiptEntity(receipt.id, receipt.datum, "", 10.0, name))
+        val document = ManagedDocument("document", "house", receiptInternalId = receipt.internalId,
+            title = "Original", localUri = original.absolutePath, storedFilename = name,
+            sha256 = StableDocumentIdentity.sha256(bytes), driveFileId = "different-drive-id")
+        database.managedDocumentDao().upsert(document)
+        assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineBackupSnapshot.capture(context, database).close()
+        } }
+        database.managedDocumentDao().upsert(document.copy(driveFileId = "main-drive-id"))
+        OfflineBackupSnapshot.capture(context, database).use { snapshot ->
+            val content = entries(snapshot)
+            val metadata = JSONObject(content.getValue("metadata.json").toString(Charsets.UTF_8))
+            val alias = field(metadata, "managed_documents", "localUri") as String
+            assertEquals(alias, field(metadata, "receipts", "imageUrl"))
+            assertEquals(alias, field(metadata, "receipt_entities", "pdfPath"))
+            assertEquals(alias, field(metadata, "belege", "bildPfad"))
+            val manifest = JSONObject(content.getValue("manifest.json").toString(Charsets.UTF_8))
+            assertArrayEquals(bytes, content.getValue(manifest.getJSONObject("aliases").getString(alias)))
+        }
+        assertEquals(name, database.receiptDao().getReceiptById(receipt.id)!!.imageUrl)
+        noOwnedRunLeft()
+    }
+
+    @Test fun bareLegacyFilenameRequiresLocalDownloadEvenWithIdenticallyNamedManagedFile() = runBlocking {
+        legacyReferences(original.name)
+        val error = assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineBackupSnapshot.capture(context, database).close()
+        } }
+        assertTrue(error.message.orEmpty().contains("Original lokal laden"))
+        assertFalse(error.message.orEmpty().contains(root.absolutePath))
+        noOwnedRunLeft()
     }
 
     @Test fun limitsAndCancellationRemoveOnlyOwnNewStagingAndKeepPreviousArchive() {
@@ -249,6 +329,41 @@ class OfflineBackupSnapshotTest {
         assertTrue(staging.listFiles()!!.none { it.name.startsWith("encrypted-") })
         assertTrue(staging.walkTopDown().none { it.isDirectory &&
             (it.name.startsWith("verify-") || it.name.startsWith("reread-") || it.name.startsWith("probe-")) })
+    }
+
+    @Test fun separateTwoReceiptsWithSharedIdentityAndRestoreBothOriginals() = runBlocking<Unit> {
+        val keeper = receipt.copy(imageUrl = original.absolutePath, driveFileId = "main", driveMetadataFileId = "meta")
+        val other = keeper.copy(id = 42, imageUrl = retained.absolutePath, driveFileId = "other")
+        retained.writeText("%PDF-1.4 second invoice")
+        database.receiptDao().insertReceipt(keeper)
+        database.receiptDao().insertReceipt(other)
+        val secondHash = StableDocumentIdentity.sha256(retained.readBytes())
+        ReceiptIdentityRepair.apply(database, keeper, other, original, retained, StableDocumentIdentity.sha256(bytes), secondHash,
+            mapOf("main" to StableDocumentIdentity.sha256(bytes), "other" to secondHash), "main")
+        val split = database.receiptDao().getReceiptById(42)!!
+        assertNotEquals(keeper.internalId, split.internalId)
+        assertNull(split.driveMetadataFileId)
+        assertNull(split.driveFileId)
+        assertEquals(keeper, database.receiptDao().getReceiptById(41))
+        withEngineKeys { keyContext ->
+            OfflineBackupArchiveEngine(keyContext, database).prepare().use { prepared ->
+                val fixed = decryptedEntries(prepared)
+                assertEquals(2L, prepared.summary.rowCounts["receipts"])
+                assertTrue(fixed.values.any { it.contentEquals(bytes) })
+                assertTrue(fixed.values.any { it.contentEquals(retained.readBytes()) })
+                OfflineBackupRestoreInspector.inspect(keyContext, "synthetic-recovery-password".toCharArray()) {
+                    prepared.file.inputStream()
+                }.use { restored ->
+                    val dao = restored.probe.database.receiptDao()
+                    val first = requireNotNull(dao.getReceiptById(41))
+                    val second = requireNotNull(dao.getReceiptById(42))
+                    assertEquals(keeper.internalId, first.internalId)
+                    assertEquals(split.internalId, second.internalId)
+                    assertArrayEquals(bytes, File(first.imageUrl).readBytes())
+                    assertArrayEquals(retained.readBytes(), File(second.imageUrl).readBytes())
+                }
+            }
+        }
     }
 
     @Test fun enginePreparesCompleteEncryptedSnapshotWithCredentialsExcludedByDefault() = runBlocking<Unit> {
@@ -346,7 +461,7 @@ class OfflineBackupSnapshotTest {
         override fun access(tree: android.net.Uri) = access
         override fun create(tree: android.net.Uri, name: String): OfflineBackupDestination.Created {
             beforeCreate(); created++
-            val uri = android.net.Uri.parse("content://engine.test/document/${UUID.randomUUID()}")
+            val uri = Uri.parse("content://engine.test/document/${UUID.randomUUID()}")
             documents[uri] = byteArrayOf(); return OfflineBackupDestination.Created(uri, true)
         }
         override fun write(uri: android.net.Uri): java.io.OutputStream = object : ByteArrayOutputStream() {
@@ -354,7 +469,7 @@ class OfflineBackupSnapshotTest {
         }
         override fun read(uri: android.net.Uri): java.io.InputStream { beforeRead(); return documents.getValue(uri).inputStream() }
         override fun rename(uri: android.net.Uri, name: String): android.net.Uri {
-            val renamed = android.net.Uri.parse("content://engine.test/document/${UUID.randomUUID()}")
+            val renamed = Uri.parse("content://engine.test/document/${UUID.randomUUID()}")
             documents[renamed] = documents.remove(uri)!!; return renamed
         }
         override fun delete(uri: android.net.Uri) = documents.remove(uri) != null
@@ -367,7 +482,7 @@ class OfflineBackupSnapshotTest {
                 OfflineBackupGenerationStore(keyContext).loadCurrent()!!.use { assertEquals(id, it.recovery.generationId) }
             }
             val backend = PublishingBackend(beforeCreate = { noOwnedRunLeft(); assertCurrentGeneration() }, beforeRead = { assertCurrentGeneration() })
-            val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
+            val destination = OfflineBackupDestination(keyContext, Uri.parse("content://engine.test/tree/root"), backend)
             val schedule = OfflineBackupScheduleStore(keyContext)
             val rule = OfflineBackupSchedule.Rule(OfflineBackupSchedule.Cadence.DAILY, java.time.LocalTime.of(7, 0), null, java.time.ZoneId.of("UTC"))
             val state = schedule.configure(OfflineBackupScheduleStore.Config(true, rule, "content://engine.test/tree/root", false),
@@ -408,7 +523,7 @@ class OfflineBackupSnapshotTest {
     @Test fun engineRejectsUnavailableDestinationBeforeStartingSnapshotWork() = runBlocking<Unit> {
         withEngineKeys { keyContext ->
             val backend = PublishingBackend({}, {}).apply { access = access.copy(availableBytes = null) }
-            val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
+            val destination = OfflineBackupDestination(keyContext, Uri.parse("content://engine.test/tree/root"), backend)
             var captured = false
             assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
                 OfflineBackupArchiveEngine(keyContext, database).publish(destination, snapshotProgress = { captured = true })
@@ -421,7 +536,7 @@ class OfflineBackupSnapshotTest {
     @Test fun systemInterruptionDuringPublicationNeverRecordsSuccessOrLeavesNewTarget() = runBlocking<Unit> {
         withEngineKeys { keyContext ->
             val backend = PublishingBackend({}, {})
-            val destination = OfflineBackupDestination(keyContext, android.net.Uri.parse("content://engine.test/tree/root"), backend)
+            val destination = OfflineBackupDestination(keyContext, Uri.parse("content://engine.test/tree/root"), backend)
             val operationId = UUID.randomUUID().toString()
             assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking {
                 OfflineBackupArchiveEngine(keyContext, database).publish(destination,

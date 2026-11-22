@@ -116,6 +116,8 @@ jobs:
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
       - name: Run scoped backup JVM tests
+        env:
+          JAVA_TOOL_OPTIONS: -Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2
         if: env.IMMO_BACKUP_PROFILE == 'true'
         run: |
           classes=$(python3 .github/scripts/backup-ci.py classes test)

@@ -984,6 +984,42 @@ class Phase11ESyncRegressionTest {
         assertEquals(0, noOp.getInt("filesCreate") + noOp.getInt("filesUpdate"))
     }
 
+    @Test fun collidingReceiptPairSeparatesAndSyncKeepsIndexedOriginalBytes() = runBlocking {
+        seedReceipts(1, localBytes = true)
+        val first = repo.getReceiptById(1)!!
+        val firstBytes = remote.entries.getValue(first.driveFileId!!).bytes.copyOf()
+        val otherBytes = firstBytes.copyOf().apply { this[lastIndex] = 9 }
+        val second = first.copy(id = 2, imageUrl = "second-invoice.png", driveFileId = "legacy-second-file")
+        remote.put("legacy-second-file", "second.png", config.receiptsFolderId, mime = "image/png").bytes = otherBytes.copyOf()
+        db.receiptDao().insertReceipt(second)
+        db.receiptDocumentDao().insertDocument(ReceiptDocumentReference("legacy-second-attachment", first.internalId,
+            requireNotNull(second.driveFileId), config.receiptsFolderId, "second.png", "image/png",
+            otherBytes.size.toLong(), "MAIN_RECEIPT", "2026-01-01"))
+        val vm = connectedModel()
+        val blocked = measure(vm, "duplicate-before-write")
+        assertEquals(0, blocked.getInt("filesCreate") + blocked.getInt("filesUpdate"))
+        assertTrue(vm.driveSyncReport.value!!.germanText().contains("DUPLICATE_LOCAL_ID"))
+        val originalUri = android.net.Uri.fromFile(File(first.imageUrl))
+        val beforeRepair = remote.requests.size
+        val bad = runCatching { vm.separateReceiptOriginals(listOf(first, second), mapOf(1 to originalUri, 2 to originalUri)) }
+        assertTrue(bad.isFailure)
+        assertEquals(first, repo.getReceiptById(1))
+        assertEquals(second, repo.getReceiptById(2))
+        vm.separateReceiptOriginals(listOf(first, second), mapOf(1 to originalUri))
+        assertTrue(remote.requests.drop(beforeRepair).all { it.method == "GET" || it.method == "HEAD" })
+        val separated = repo.getReceiptById(2)!!
+        assertNotEquals(first.internalId, separated.internalId)
+        assertNull(separated.driveFileId)
+        val synced = measure(vm, "sync-separated-originals")
+        assertFalse(synced.toString() + vm.driveSyncReport.value!!.germanText(), synced.getBoolean("hasSyncError"))
+        val assigned = requireNotNull(repo.getReceiptById(2)!!.driveFileId)
+        assertNotEquals(first.driveFileId, assigned)
+        assertEquals(assigned, repo.getDocumentsForReceipt(separated.internalId).single { it.id == "legacy-second-attachment" }.driveFileId)
+        assertArrayEquals(firstBytes, remote.entries.getValue(first.driveFileId!!).bytes)
+        assertArrayEquals(otherBytes, remote.entries.getValue("legacy-second-file").bytes)
+        assertArrayEquals(otherBytes, remote.entries.getValue(assigned).bytes)
+    }
+
     @Test fun receiptConflictReportsOnlyFieldNamesAndRevisionEvidenceAfterRestart() = runBlocking {
         seedReceipts(1)
         val row = repo.getReceiptById(1)!!
