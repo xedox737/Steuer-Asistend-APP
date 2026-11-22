@@ -175,7 +175,9 @@ class PersistentStorageInventoryTest {
     )
 
     private fun classifiedCacheUses(source: String, owner: String): Map<String, Int> {
-        val clean = source.replace(Regex("(?s)/\\*.*?\\*/|//[^\\n]*"), "")
+        // MIME types and URLs in string literals can contain comment delimiters.
+        val literalsOrComments = Regex("\"\"\"[\\s\\S]*?\"\"\"|\"(?:\\\\.|[^\"\\\\])*+\"|(?s:/\\*.*?\\*/)|//[^\\n]*")
+        val clean = literalsOrComments.replace(source) { if (it.value.startsWith('/')) " " else it.value }
         val matches = cacheRules[owner].orEmpty().mapValues { (_, pattern) -> Regex(pattern).findAll(clean).toList() }
         Regex("\\b(cacheDir|externalCacheDir|getCacheDir|getExternalCacheDir|getExternalCacheDirs)\\b").findAll(clean).forEach { use ->
             assertTrue("$owner: Cache-Zugriff braucht eine ausdrückliche Sicherungszuordnung",

@@ -1702,8 +1702,7 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
                 coordinator.beginMaintenance().use { lease -> lease.suspending {
                     check(!coordinator.restorePending.value) { "Bitte zuerst die laufende Wiederherstellung abschließen." }
                     require(database.receiptDao().getRowsByInternalId(old).toSet() == shown.toSet()) { "Belege wurden verändert." }
-                    require(!com.example.data.PersistentPreferenceInventory.open(getApplication(), com.example.data.RenovationReviewStore.PREFS)
-                        .contains("receipt_$old")) { "Eine Maßnahmenzuordnung hat nur die gemeinsame ID. Einzelprüfung erforderlich." }
+                    require(!renovationStore.hasReceiptRelation(old)) { "Eine Maßnahmenzuordnung hat nur die gemeinsame ID. Einzelprüfung erforderlich." }
                     val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
                         ?: error("Die bestehende Drive-Konfiguration ist nicht lesbar.")
                     val index = drivePersistenceRepository.getReceiptIndexFromDrive(token, config)
