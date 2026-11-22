@@ -133,6 +133,21 @@ class OfflineBackupMetadataWriterTest {
         assertEquals(content, database.managedDocumentDao().getById("stable-document")!!.localUri)
     }
 
+    @Test fun legacyAttachmentRequiresMatchingDocumentAndReceiptIdentity() = runBlocking {
+        val attachment = ReceiptDocumentReference("stable-document", "other-receipt", "private-drive-id",
+            null, "annex.pdf", "application/pdf", originalBytes.size.toLong(), "OTHER", "")
+        database.receiptDocumentDao().insertDocument(attachment)
+        val error = assertThrows(OfflineBackupValidationException::class.java) { runBlocking {
+            OfflineBackupMetadataWriter(context, database).write(output())
+        } }
+        assertTrue(error.message.orEmpty().contains("annex.pdf"))
+        assertTrue(error.message.orEmpty().contains("other-receipt"))
+        assertFalse(error.message.orEmpty().contains("private-drive-id"))
+        database.receiptDocumentDao().insertDocument(attachment.copy(receiptInternalId = receipt.internalId))
+        val draft = OfflineBackupMetadataWriter(context, database).write(output())
+        assertEquals(document().sha256, draft.references.single().expectedSha256)
+    }
+
     @Test fun metadataOnlyDocumentIsPreservedButClaimedMissingOriginalAborts() = runBlocking {
         database.managedDocumentDao().upsert(document().copy(localUri = "", sha256 = "", fileSizeBytes = 0))
         val draft = OfflineBackupMetadataWriter(context, database).write(output())

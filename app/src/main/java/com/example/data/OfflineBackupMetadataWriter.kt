@@ -54,7 +54,7 @@ internal class OfflineBackupMetadataWriter(
             val receipts = mutableListOf<ReceiptClaim>()
             val documentsWithOriginal = mutableSetOf<String>()
             val availableDriveIds = mutableSetOf<String>()
-            val attachmentDriveIds = mutableSetOf<String>()
+            val attachmentDriveIds = linkedMapOf<String, String>()
             val rowCounts = linkedMapOf<String, Long>()
             database.withTransaction {
                 val db = database.openHelper.writableDatabase
@@ -134,9 +134,9 @@ internal class OfflineBackupMetadataWriter(
                     unavailable("receipt", "${receipt.id}\u0000$index", receipt.owner)
                 }
             }
-            val missingAttachments = attachmentDriveIds - availableDriveIds
+            val missingAttachments = attachmentDriveIds.keys - availableDriveIds
             if (missingAttachments.isNotEmpty() && referenceMode == ReferenceMode.STRICT_BACKUP)
-                invalid("Ein zusätzlicher Beleganhang besitzt keine lokal auflösbare Originalzuordnung.")
+                invalid("Beleganhang ohne lokale Originalzuordnung: ${attachmentDriveIds.getValue(missingAttachments.first())}. Bitte das zugehörige Original lokal bereitstellen.")
             if (referenceMode == ReferenceMode.ROLLBACK_INVENTORY) missingAttachments.sorted().forEach { driveId ->
                 unavailable("attachment", driveId, "Beleganhang mit nicht verfügbarer Originalzuordnung")
             }
@@ -176,7 +176,7 @@ internal class OfflineBackupMetadataWriter(
 
     private fun collectReferences(table: String, row: MutableMap<String, Any?>, claims: MutableMap<String, Claim>,
         receipts: MutableList<ReceiptClaim>, documentsWithOriginal: MutableSet<String>, availableDriveIds: MutableSet<String>,
-        attachmentDriveIds: MutableSet<String>) {
+        attachmentDriveIds: MutableMap<String, String>) {
         fun text(key: String) = row[key] as? String ?: ""
         val display = owner(table, row)
         if (table == "managed_documents" && text("localUri").isBlank()) {
@@ -197,7 +197,16 @@ internal class OfflineBackupMetadataWriter(
                 receipts += ReceiptClaim(text("internalId"), display)
             }
         }
-        if (table == "receipt_documents") text("driveFileId").takeIf(String::isNotBlank)?.let(attachmentDriveIds::add)
+        if (table == "receipt_documents") text("driveFileId").takeIf(String::isNotBlank)?.let { driveId ->
+            val filename = Uri.parse(text("filename")).lastPathSegment.orEmpty().substringAfterLast('\\')
+            val linkedLocal = database.openHelper.writableDatabase.query(
+                """SELECT 1 FROM managed_documents WHERE documentId=? AND receiptInternalId=?
+                    AND receiptInternalId<>'' AND COALESCE(driveFileId,'')='' AND localUri<>''
+                    AND length(sha256)=64 AND (? IS NULL OR fileSizeBytes=?)""",
+                arrayOf<Any?>(text("id"), text("receiptInternalId"), row["sizeBytes"], row["sizeBytes"])
+            ).use { it.moveToFirst() }
+            if (!linkedLocal) attachmentDriveIds.putIfAbsent(driveId, "„$filename“ (Beleg-ID: ${text("receiptInternalId")})")
+        }
         PATH_COLUMNS.forEach { column ->
             val stored = text(column)
             if (stored.isBlank()) return@forEach

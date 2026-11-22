@@ -1676,8 +1676,15 @@ class DrivePersistenceRepository(
             val originalId = entry.getString("mainDriveFileId")
             if (!seenMetadata.add(metadataId) || (originalId.isNotBlank() && !seenOriginals.add(originalId)))
                 throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
-            if (row.driveMetadataFileId != metadataId || row.driveFileId.orEmpty() != originalId)
-                throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_BINDING_MISMATCH)
+            if (row.driveMetadataFileId != metadataId || row.driveFileId.orEmpty() != originalId) {
+                com.example.api.DriveSyncTrace.step<Nothing>(com.example.api.DriveSyncPhase.RECEIPT_INDEX, row.internalId) {
+                    throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.INDEX_BINDING_MISMATCH,
+                        differentFields = buildList {
+                            if (row.driveMetadataFileId != metadataId) add("driveMetadataFileId")
+                            if (row.driveFileId.orEmpty() != originalId) add("driveFileId")
+                        })
+                }
+            }
             indexEvidence[row.internalId] = FilelessLogbookContract.read(entry)
             if (indexEvidence[row.internalId] != null && originalId.isNotBlank())
                 throw com.example.api.DriveAccessFailure(com.example.api.DriveAccessFailure.Reason.INVALID_METADATA)
