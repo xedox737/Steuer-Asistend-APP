@@ -20,7 +20,6 @@ import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.captureRoboImage
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -74,8 +73,7 @@ class Ui2ComponentPreviewTest {
         // Same Roborazzi capture path convention as MoreMenuComposeTest.
         val path = "build/reports/immopilot-ui-preview/components-phone.png"
         onView(isRoot()).captureRoboImage(path)
-        val bitmap = BitmapFactory.decodeFile(path)
-        assertNotNull("The screenshot must be readable", bitmap)
+        val bitmap = requireNotNull(BitmapFactory.decodeFile(path)) { "The screenshot must be readable" }
         assertTrue("The screenshot must have a useful width", bitmap.width > 300)
         assertTrue("The screenshot must have a useful height", bitmap.height > 300)
         bitmap.recycle()
