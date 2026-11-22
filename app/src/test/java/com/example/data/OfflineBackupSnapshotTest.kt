@@ -331,6 +331,41 @@ class OfflineBackupSnapshotTest {
             (it.name.startsWith("verify-") || it.name.startsWith("reread-") || it.name.startsWith("probe-")) })
     }
 
+    @Test fun separateTwoReceiptsWithSharedIdentityAndRestoreBothOriginals() = runBlocking<Unit> {
+        val keeper = receipt.copy(imageUrl = original.absolutePath, driveFileId = "main", driveMetadataFileId = "meta")
+        val other = keeper.copy(id = 42, imageUrl = retained.absolutePath, driveFileId = "other")
+        retained.writeText("%PDF-1.4 second invoice")
+        database.receiptDao().insertReceipt(keeper)
+        database.receiptDao().insertReceipt(other)
+        val secondHash = StableDocumentIdentity.sha256(retained.readBytes())
+        ReceiptIdentityRepair.apply(database, keeper, other, original, retained, StableDocumentIdentity.sha256(bytes), secondHash,
+            mapOf("main" to StableDocumentIdentity.sha256(bytes), "other" to secondHash), "main")
+        val split = database.receiptDao().getReceiptById(42)!!
+        assertNotEquals(keeper.internalId, split.internalId)
+        assertNull(split.driveMetadataFileId)
+        assertNull(split.driveFileId)
+        assertEquals(keeper, database.receiptDao().getReceiptById(41))
+        withEngineKeys { keyContext ->
+            OfflineBackupArchiveEngine(keyContext, database).prepare().use { prepared ->
+                val fixed = decryptedEntries(prepared)
+                assertEquals(2L, prepared.summary.rowCounts["receipts"])
+                assertTrue(fixed.values.any { it.contentEquals(bytes) })
+                assertTrue(fixed.values.any { it.contentEquals(retained.readBytes()) })
+                OfflineBackupRestoreInspector.inspect(keyContext, "synthetic-recovery-password".toCharArray()) {
+                    prepared.file.inputStream()
+                }.use { restored ->
+                    val dao = restored.probe.database.receiptDao()
+                    val first = requireNotNull(dao.getReceiptById(41))
+                    val second = requireNotNull(dao.getReceiptById(42))
+                    assertEquals(keeper.internalId, first.internalId)
+                    assertEquals(split.internalId, second.internalId)
+                    assertArrayEquals(bytes, File(first.imageUrl).readBytes())
+                    assertArrayEquals(retained.readBytes(), File(second.imageUrl).readBytes())
+                }
+            }
+        }
+    }
+
     @Test fun enginePreparesCompleteEncryptedSnapshotWithCredentialsExcludedByDefault() = runBlocking<Unit> {
         withEngineKeys { keyContext ->
             OfflineBackupArchiveEngine(keyContext, database).prepare().use { prepared ->

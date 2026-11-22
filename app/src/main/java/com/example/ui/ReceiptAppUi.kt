@@ -3499,6 +3499,47 @@ internal fun ReceiptAdditionalData(receipt: Receipt, viewModel: ReceiptViewModel
     }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val allReceipts by viewModel.receipts.collectAsStateWithLifecycle()
+        val pair = allReceipts.filter { receipt.internalId.isNotBlank() && it.internalId == receipt.internalId }.sortedBy { it.id }
+        if (pair.size == 2) {
+            var choosing by remember(receipt.id) { mutableStateOf(false) }
+            var enlarged by remember { mutableStateOf<Bitmap?>(null) }
+            enlarged?.let { FullScreenReceiptPreviewDialog(it) { enlarged = null } }
+            var picking by remember { mutableIntStateOf(0) }
+            var sources by remember(receipt.id) { mutableStateOf(emptyMap<Int, android.net.Uri>()) }
+            var busy by remember { mutableStateOf(false) }
+            var problem by remember { mutableStateOf("") }
+            val scope = rememberCoroutineScope()
+            val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) sources = sources + (picking to uri)
+            }
+            Button(onClick = { choosing = true }) { Text("Doppelte Beleg-ID prüfen") }
+            if (choosing) AlertDialog(onDismissRequest = { if (!busy) choosing = false },
+                title = { Text("Originale den beiden Belegen zuordnen") },
+                text = { Column {
+                    Text("Prüfe beide Originale. Bei Bedarf kannst du für jeden Datensatz die passende Datei auswählen. Der über Drive bestätigte Beleg behält seine ID. Der andere erhält eine neue ID.")
+                    pair.forEach { row ->
+                        Text("Datensatz ${row.id} · ${row.getEffectiveDisplayId()}")
+                        val uri = sources[row.id]
+                        if (uri == null) ReceiptThumbnailBox(row.imageUrl, row, Modifier.size(72.dp)) { enlarged = it }
+                        else Text(uri.lastPathSegment?.substringAfterLast('/') ?: "Ausgewähltes Original")
+                        TextButton(enabled = !busy, onClick = { picking = row.id; picker.launch(arrayOf("image/*", "application/pdf")) }) {
+                            Text("Original auswählen")
+                        }
+                    }
+                    if (problem.isNotBlank()) Text(problem)
+                } },
+                confirmButton = { TextButton(enabled = !busy, onClick = {
+                    busy = true
+                    scope.launch {
+                        try { viewModel.separateReceiptOriginals(pair, sources); choosing = false }
+                        catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                        catch (e: Exception) { problem = e.localizedMessage ?: "Zuordnung konnte nicht geprüft werden." }
+                        finally { busy = false }
+                    }
+                }) { Text(if (busy) "Prüfung läuft …" else "Prüfen und getrennt speichern") } },
+                dismissButton = { TextButton(enabled = !busy, onClick = { choosing = false }) { Text("Abbrechen") } })
+        }
                     // 2. Extrahiertes Metadaten Grid / Detail-Tabelle
                     Text(
                         text = "Extrahierte Belegdaten",
@@ -3990,7 +4031,7 @@ fun ReceiptPreviewSection(receipt: Receipt, viewModel: ReceiptViewModel) {
     var fullScreenImage by remember { mutableStateOf<Bitmap?>(null) }
     
     val downloadStatusMap by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
-    val status = downloadStatusMap[receipt.internalId]
+    val status = downloadStatusMap[receipt.id]
     
     var pendingRepairFile by remember { mutableStateOf<File?>(null) }
     var pendingValidation by remember { mutableStateOf<FileValidationResult?>(null) }
@@ -12202,7 +12243,7 @@ fun DocumentStatusOverviewDialog(
                 )
 
                 receipts.forEach { receipt ->
-                    val status = downloadStatusMap[receipt.internalId]
+                    val status = downloadStatusMap[receipt.id]
                     val isMissingOrError = receipt.driveFileId.isNullOrEmpty() || status?.state == DocumentState.ERROR || status?.state == DocumentState.UNSUPPORTED
 
                     Card(

@@ -33,6 +33,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -1651,17 +1652,17 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
         _restoreReport.value = null
     }
 
-    private val _documentDownloadStatus = MutableStateFlow<Map<String, DocumentDownloadStatus>>(emptyMap())
-    val documentDownloadStatus: StateFlow<Map<String, DocumentDownloadStatus>> = _documentDownloadStatus.asStateFlow()
+    private val _documentDownloadStatus = MutableStateFlow<Map<Int, DocumentDownloadStatus>>(emptyMap())
+    val documentDownloadStatus: StateFlow<Map<Int, DocumentDownloadStatus>> = _documentDownloadStatus.asStateFlow()
 
     fun checkDocumentStatus(receipt: Receipt) {
-        val currentStatus = _documentDownloadStatus.value[receipt.internalId]
+        val currentStatus = _documentDownloadStatus.value[receipt.id]
         if (currentStatus?.state == DocumentState.DOWNLOADING || currentStatus?.state == DocumentState.AVAILABLE) {
             return
         }
 
         viewModelScope.launch(Dispatchers.IO) {
-            _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.CHECKING))
+            _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.CHECKING))
             
             val paths = if (receipt.imageUrl.isNotEmpty()) com.example.data.ReceiptOriginalChain.paths(receipt.imageUrl) else emptyList()
             val filesExist = paths.isNotEmpty() && paths.all { path -> 
@@ -1678,24 +1679,107 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
             if (filesExist) {
                 val mime = receipt.originalMimeType ?: ""
                 if (mime.contains("text/plain", ignoreCase = true)) {
-                    _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.UNSUPPORTED, receipt.imageUrl, "Testdokument – keine Bildvorschau verfügbar"))
+                    _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.UNSUPPORTED, receipt.imageUrl, "Testdokument – keine Bildvorschau verfügbar"))
                 } else {
-                    _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.AVAILABLE, receipt.imageUrl))
+                    _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.AVAILABLE, receipt.imageUrl))
                 }
             } else if (!receipt.driveFileId.isNullOrEmpty()) {
-                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.DOWNLOAD_REQUIRED))
+                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.DOWNLOAD_REQUIRED))
                 downloadReceiptDocument(receipt)
             } else {
-                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Keine lokale Datei und keine Drive-ID vorhanden."))
+                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.ERROR, null, "Keine lokale Datei und keine Drive-ID vorhanden."))
             }
         }
     }
+
+    internal suspend fun separateReceiptOriginals(shown: List<Receipt>, selected: Map<Int, android.net.Uri>) =
+        withContext(Dispatchers.IO) {
+            require(shown.size == 2 && shown.map { it.id }.distinct().size == 2)
+            driveMutationGate.withLock {
+                val token = getValidToken(requireNotNull(_googleAccountEmail.value) { "Drive-Anmeldung erforderlich." })
+                val old = shown.first().internalId
+                val coordinator = com.example.data.OfflineBackupCoordinator.shared
+                coordinator.beginMaintenance().use { lease -> lease.suspending {
+                    check(!coordinator.restorePending.value) { "Bitte zuerst die laufende Wiederherstellung abschließen." }
+                    require(database.receiptDao().getRowsByInternalId(old).toSet() == shown.toSet()) { "Belege wurden verändert." }
+                    require(!com.example.data.PersistentPreferenceInventory.open(getApplication(), com.example.data.RenovationReviewStore.PREFS)
+                        .contains("receipt_$old")) { "Eine Maßnahmenzuordnung hat nur die gemeinsame ID. Einzelprüfung erforderlich." }
+                    val config = drivePersistenceRepository.getExistingDriveAppConfigReadOnly(token)
+                        ?: error("Die bestehende Drive-Konfiguration ist nicht lesbar.")
+                    val index = drivePersistenceRepository.getReceiptIndexFromDrive(token, config)
+                    val entry = index.singleOrNull { it.internalId == old } ?: error("Drive-Index nicht eindeutig.")
+                    require(entry.syncStatus != "DELETED" && entry.metadataFileId.isNotBlank() && entry.mainDriveFileId.isNotBlank() &&
+                        index.none { it.internalId != old && (it.metadataFileId == entry.metadataFileId || it.mainDriveFileId == entry.mainDriveFileId) })
+                    val snapshot = GoogleDriveClient.downloadSyncJsonSnapshot(token, entry.metadataFileId)
+                    val remote = drivePersistenceRepository.parsePersistedReceipt(snapshot.read.json)
+                    require(snapshot.read.unavailableOriginalIds.isEmpty() && remote.internalId == old && remote.driveFileId == entry.mainDriveFileId &&
+                        remote.documents.all { it.driveFileId == entry.mainDriveFileId } &&
+                        remote.originalDocuments.all { it.driveFileId == entry.mainDriveFileId }) {
+                        "Drive enthält weitere oder abweichende Originalzuordnungen. Einzelprüfung erforderlich."
+                    }
+                    val ids = (listOf(entry.mainDriveFileId) + shown.mapNotNull { it.driveFileId } + database.receiptDocumentDao().getDocumentsForReceipt(old).map { it.driveFileId } +
+                        database.managedDocumentDao().getAllByReceiptId(old).mapNotNull { it.driveFileId }).filter(String::isNotBlank).distinct()
+                    val fingerprints = ids.associateWith { GoogleDriveClient.getOriginalFingerprintChecked(token, it) }
+                    val hashes = fingerprints.mapValues { (_, fp) ->
+                        require(fp.size > 0 && fp.sha256.matches(Regex("[0-9a-f]{64}"))) { "Ein Drive-Original hat keinen prüfbaren Inhaltsnachweis." }
+                        fp.sha256
+                    }
+                    val storage = com.example.data.ReceiptOriginalStorage(getApplication())
+                    val copies = mutableListOf<java.io.File>()
+                    var committed = false
+                    try {
+                        val files = shown.associate { row ->
+                            val path = com.example.data.ReceiptOriginalChain.paths(row.imageUrl).singleOrNull()
+                            val parsed = path?.let(android.net.Uri::parse)
+                            val local = selected[row.id] ?: when {
+                                parsed?.scheme == "content" -> parsed
+                                parsed?.scheme == "file" && File(parsed.path.orEmpty()).isFile -> parsed
+                                !path.isNullOrBlank() && File(path).isAbsolute && File(path).isFile -> android.net.Uri.fromFile(File(path))
+                                else -> null
+                            }
+                            val file = if (local != null) File(storage.importOriginal(local).localUri) else {
+                                val sourceId = if (remote.receiptId == row.id) entry.mainDriveFileId else row.driveFileId
+                                val fp = fingerprints[sourceId]
+                                require(fp != null && fp.size in 1L..32L * 1024 * 1024) { "Bitte das Original für Datensatz ${row.id} auswählen." }
+                                val bytes = GoogleDriveClient.downloadFileBytesChecked(token, fp.fileId)
+                                require(bytes.size.toLong() == fp.size && com.example.data.StableDocumentIdentity.sha256(bytes) == fp.sha256) {
+                                    "Drive-Original während der Prüfung verändert. Bitte erneut öffnen."
+                                }
+                                storage.storeDownloadedVersion(bytes, row.storedFilename ?: "original")
+                            }
+                            copies += file
+                            require(com.example.util.DatevOriginalAttachmentPolicy.detect(file) != null) { "Originalformat nicht unterstützt." }
+                            row.id to file
+                        }
+                        val localHashes = files.mapValues { com.example.data.ReceiptIdentityRepair.hash(it.value) }
+                        val keeper = shown.singleOrNull { localHashes[it.id] == hashes.getValue(entry.mainDriveFileId) }
+                        require(keeper != null && keeper.driveMetadataFileId == entry.metadataFileId &&
+                            (remote.receiptId == null || remote.receiptId <= 0 || keeper.id == remote.receiptId)) {
+                            "Das Original aus dem Drive-Index passt nicht eindeutig zum ausgewählten Datensatz."
+                        }
+                        val other = shown.single { it.id != keeper.id }
+                        require(other.driveMetadataFileId.isNullOrBlank() || other.driveMetadataFileId == entry.metadataFileId) {
+                            "Der zweite Beleg besitzt eigene Drive-Metadaten. Beide Cloud-Zuordnungen müssen einzeln geprüft werden."
+                        }
+                        val first = files.getValue(keeper.id)
+                        val second = files.getValue(other.id)
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        withContext(kotlinx.coroutines.NonCancellable) {
+                            com.example.data.ReceiptIdentityRepair.apply(database, keeper, other, first, second,
+                                localHashes.getValue(keeper.id), localHashes.getValue(other.id), hashes, entry.mainDriveFileId)
+                            committed = true
+                        }
+                    } finally { if (!committed) copies.forEach { it.delete() } }
+                    _documentDownloadStatus.value = _documentDownloadStatus.value - shown.map { it.id }.toSet()
+                } }
+            }
+        }
 
     fun forceDocumentDownload(receipt: Receipt) {
         com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             try {
                 // Keep previous versions until all remote originals have passed validation.
-                _documentDownloadStatus.value = _documentDownloadStatus.value.toMutableMap().apply { remove(receipt.internalId) }
+                _documentDownloadStatus.value = _documentDownloadStatus.value.toMutableMap().apply { remove(receipt.id) }
                 downloadReceiptDocument(receipt, forceRemote = true)
             } catch (e: Exception) {
                 DiagnosticLog.e("ReceiptViewModel", "Error in forceDocumentDownload")
@@ -1816,11 +1900,11 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
     fun downloadReceiptDocument(receipt: Receipt, forceRemote: Boolean = false) {
         val email = _googleAccountEmail.value
         if (email.isNullOrEmpty()) {
-            _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Nicht an Google Drive angemeldet."))
+            _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.ERROR, null, "Nicht an Google Drive angemeldet."))
             return
         }
         
-        _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.DOWNLOADING))
+        _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.DOWNLOADING))
         
         com.example.data.OfflineBackupCoordinator.shared.launch(viewModelScope, Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
@@ -1838,20 +1922,20 @@ class ReceiptViewModel(application: Application) : AndroidViewModel(application)
 
                     val mime = receipt.originalMimeType ?: ""
                     if (mime.contains("text/plain", ignoreCase = true)) {
-                        _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.UNSUPPORTED, localPath, "Testdokument – keine Bildvorschau verfügbar"))
+                        _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.UNSUPPORTED, localPath, "Testdokument – keine Bildvorschau verfügbar"))
                     } else {
-                        _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.AVAILABLE, localPath))
+                        _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.AVAILABLE, localPath))
                     }
                     _driveSyncStatus.value = "Dokument geladen."
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 DiagnosticLog.e("ReceiptViewModel", "Timeout downloading document")
                 _driveSyncStatus.value = "Zeitüberschreitung beim Laden."
-                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Zeitüberschreitung (30s) beim Download."))
+                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.ERROR, null, "Zeitüberschreitung (30s) beim Download."))
             } catch (e: Exception) {
                 DiagnosticLog.e("ReceiptViewModel", "Error downloading document")
                 _driveSyncStatus.value = "Fehler beim Laden: ${e.message}"
-                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.internalId to DocumentDownloadStatus(DocumentState.ERROR, null, "Download fehlgeschlagen: ${e.message}"))
+                _documentDownloadStatus.value = _documentDownloadStatus.value + (receipt.id to DocumentDownloadStatus(DocumentState.ERROR, null, "Download fehlgeschlagen: ${e.message}"))
             }
         }
     }
@@ -6155,7 +6239,7 @@ data class AiSearchUiState(
                     val updated = res.updatedReceipt
                     _documentDownloadStatus.value = _documentDownloadStatus.value.toMutableMap().apply {
                         put(
-                            receipt.internalId,
+                            receipt.id,
                             DocumentDownloadStatus(
                                 state = DocumentState.AVAILABLE,
                                 localPath = updated.imageUrl,

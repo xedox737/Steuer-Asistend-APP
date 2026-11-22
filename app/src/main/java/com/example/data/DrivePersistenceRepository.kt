@@ -1658,6 +1658,8 @@ class DrivePersistenceRepository(
         val seenOriginals = hashSetOf<String>()
         val indexEvidence = mutableMapOf<String, String?>()
         val localById = local.associateBy { it.internalId }
+        if (local.filter { it.internalId.isNotBlank() }.groupBy { it.internalId }.any { it.value.size > 1 })
+            throw com.example.api.DriveSyncConflict(com.example.api.DriveSyncCheck.DUPLICATE_LOCAL_ID)
         val localOriginals = localRepository.getAllManagedDocuments().groupBy { it.receiptInternalId }
         val baselines = java.util.concurrent.ConcurrentLinkedQueue<Pair<ManagedDocument, String>>()
         val checks = mutableListOf<Triple<String, String, Receipt>>()
@@ -2070,6 +2072,7 @@ class DrivePersistenceRepository(
         receipt: Receipt
     ): Boolean = receiptSyncGate.run {
       OfflineBackupCoordinator.shared.beginWrite().use {
+        localRepository.requireUniqueReceiptIdentity(receipt)
         try {
             DiagnosticLog.d(TAG, "Syncing receipt to Drive. ID")
             
@@ -2236,7 +2239,7 @@ class DrivePersistenceRepository(
                 }
             }
 
-            if (driveFileId.isNullOrEmpty()) {
+            if (driveFileId.isNullOrEmpty() && !currentReceipt.internalId.startsWith("split-")) {
                 val formattedDate = currentReceipt.datum.trim().replace(".", "-").replace("/", "-")
                 val sanitizedAussteller = currentReceipt.aussteller.replace("[^a-zA-Z0-9]".toRegex(), "_").ifEmpty { "Beleg" }
                 val tempFilename = "Beleg_${formattedDate}_${sanitizedAussteller}_${currentReceipt.bruttobetrag}"
@@ -2443,7 +2446,16 @@ class DrivePersistenceRepository(
             }
 
             val existingDocs = localRepository.getDocumentsForReceipt(currentReceipt.internalId)
-            val docRef = existingDocs.find { it.driveFileId == driveFileId } ?: ReceiptDocumentReference(
+            val pendingMain = if (currentReceipt.internalId.startsWith("split-")) existingDocs.filter {
+                it.role == ReceiptDocumentRole.MAIN_RECEIPT.name && it.driveFileId.isBlank()
+            } else emptyList()
+            pendingMain.forEach { reference ->
+                localRepository.insertDocument(reference.copy(driveFileId = requireNotNull(driveFileId),
+                    driveFolderId = actualDriveFolderId ?: targetFolderId))
+            }
+            val docRef = existingDocs.find { it.driveFileId == driveFileId }
+                ?: pendingMain.firstOrNull()?.copy(driveFileId = requireNotNull(driveFileId), driveFolderId = actualDriveFolderId ?: targetFolderId)
+                ?: ReceiptDocumentReference(
                 id = UUID.randomUUID().toString(),
                 receiptInternalId = currentReceipt.internalId,
                 driveFileId = driveFileId!!,
@@ -2971,6 +2983,7 @@ class DrivePersistenceRepository(
         deletionReason: String = "Vom Nutzer gelöscht"
     ): DeletionResult {
       OfflineBackupCoordinator.shared.beginWrite().use {
+        localRepository.requireUniqueReceiptIdentity(receipt)
         val now = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(Date())
         val deletionUuid = java.util.UUID.randomUUID().toString()
 
@@ -3941,6 +3954,7 @@ class DrivePersistenceRepository(
 
     suspend fun downloadDocumentOnDemand(accessToken: String, receipt: Receipt, forceRemote: Boolean = false): String {
         OfflineBackupCoordinator.shared.beginWrite().use {
+        localRepository.requireUniqueReceiptIdentity(receipt)
             val documents = localRepository.getAllManagedDocuments().filter { it.receiptInternalId == receipt.internalId }
             val references = localRepository.getDocumentsForReceipt(receipt.internalId)
             if (documents.isNotEmpty() || references.size > 1) {
@@ -4355,6 +4369,7 @@ class DrivePersistenceRepository(
         validationResult: com.example.ui.FileValidationResult
     ): RepairResult {
       OfflineBackupCoordinator.shared.beginWrite().use {
+        localRepository.requireUniqueReceiptIdentity(receipt)
         try {
             DiagnosticLog.d(TAG, "Starting repair and upload for receipt internalId")
 

@@ -61,10 +61,11 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
     val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val downloads by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
+    val uniqueInternalId = current.internalId.isNotBlank() && receipts.count { it.internalId == current.internalId } == 1
     val entries = links.filter {
-        it.receiptId == current.id || (current.internalId.isNotBlank() && it.receiptInternalId == current.internalId)
+        it.receiptId == current.id || (uniqueInternalId && it.receiptInternalId == current.internalId)
     }.mapNotNull { link -> transactions.firstOrNull { it.transactionId == link.transactionId }?.let { link to it } }
-    val status = downloads[current.internalId]
+    val status = downloads[current.id]
     val paths = com.example.data.ReceiptOriginalChain.paths(status?.localPath ?: current.imageUrl).filter { it.isNotBlank() }
     var selectedFile by remember(current.id) { mutableIntStateOf(0) }
     val path = paths.getOrNull(selectedFile) ?: paths.firstOrNull()
@@ -108,7 +109,7 @@ fun ReceiptDetailDialog(receipt: Receipt, viewModel: ReceiptViewModel, onDismiss
             }.onFailure { message = "Datei konnte nicht gelesen werden: ${it.localizedMessage}" }
         }
     }
-    LaunchedEffect(current.internalId, current.imageUrl) { viewModel.checkDocumentStatus(current) }
+    LaunchedEffect(current.id, current.internalId, current.imageUrl) { viewModel.checkDocumentStatus(current) }
     LaunchedEffect(receipts, deletionRequested) {
         if (deletionRequested && receipts.none { it.id == receipt.id }) onDismiss()
     }
@@ -191,12 +192,13 @@ fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () 
     val transactions by viewModel.bankTransactions.collectAsStateWithLifecycle()
     val properties by viewModel.properties.collectAsStateWithLifecycle()
     val downloads by viewModel.documentDownloadStatus.collectAsStateWithLifecycle()
+    val uniqueInternalId = current.internalId.isNotBlank() && receipts.count { it.internalId == current.internalId } == 1
     val entries = links.filter {
-        it.receiptId == current.id || (current.internalId.isNotBlank() && it.receiptInternalId == current.internalId)
+        it.receiptId == current.id || (uniqueInternalId && it.receiptInternalId == current.internalId)
     }.mapNotNull { link ->
         transactions.firstOrNull { it.transactionId == link.transactionId }?.let { link to it }
     }
-    val status = downloads[current.internalId]
+    val status = downloads[current.id]
     val paths = com.example.data.ReceiptOriginalChain.paths(status?.localPath ?: current.imageUrl).filter { it.isNotBlank() }
     var selectedFile by remember(current.id) { mutableIntStateOf(0) }
     val path = paths.getOrNull(selectedFile) ?: paths.firstOrNull()
@@ -244,7 +246,7 @@ fun ReceiptDetailScreen(viewModel: ReceiptViewModel, receiptId: Int, onBack: () 
         }
     }
 
-    LaunchedEffect(current.internalId, current.imageUrl) { viewModel.checkDocumentStatus(current) }
+    LaunchedEffect(current.id, current.internalId, current.imageUrl) { viewModel.checkDocumentStatus(current) }
     LaunchedEffect(receipts, deletionRequested) {
         if (deletionRequested && receipts.none { it.id == receiptId }) onBack()
     }

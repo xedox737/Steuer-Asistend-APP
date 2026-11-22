@@ -157,7 +157,7 @@ class ReceiptOriginalPersistenceTest {
         vm.forceDocumentDownload(receipt)
         kotlinx.coroutines.withContext(Dispatchers.Default) {
             kotlinx.coroutines.withTimeout(5000) {
-                vm.documentDownloadStatus.first { it[receipt.internalId]?.state == DocumentState.ERROR }
+                vm.documentDownloadStatus.first { it[receipt.id]?.state == DocumentState.ERROR }
             }
         }
         originals.forEach { (document, bytes) ->
