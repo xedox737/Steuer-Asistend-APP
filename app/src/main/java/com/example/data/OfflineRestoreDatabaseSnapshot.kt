@@ -38,26 +38,13 @@ internal object OfflineRestoreDatabaseSnapshot {
                     if (!file.createNewFile()) invalid("Der private Rückfallplatz ist bereits belegt.")
                     owned = file
                     val empty = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath).build()
-                    try { empty.openHelper.writableDatabase } finally { empty.close() }
-                    var attached = false
                     try {
-                        original.execSQL("ATTACH DATABASE ? AS restore_rollback", arrayOf(file.absolutePath)); attached = true
-                        original.query("PRAGMA restore_rollback.journal_mode=DELETE").use { require(it.moveToFirst() && it.getString(0).equals("delete", true)) }
                         original.beginTransaction()
                         try {
-                            original.execSQL("PRAGMA defer_foreign_keys=ON")
-                            for (table in tables) original.execSQL("INSERT INTO restore_rollback.`$table` SELECT * FROM main.`$table`")
-                            original.execSQL("DELETE FROM restore_rollback.sqlite_sequence")
-                            original.execSQL("INSERT INTO restore_rollback.sqlite_sequence SELECT * FROM main.sqlite_sequence")
-                            for (table in tables) {
-                                val difference = "SELECT * FROM main.`$table` EXCEPT SELECT * FROM restore_rollback.`$table`"
-                                val reverse = "SELECT * FROM restore_rollback.`$table` EXCEPT SELECT * FROM main.`$table`"
-                                require(!original.query(difference).use { it.moveToFirst() })
-                                require(!original.query(reverse).use { it.moveToFirst() })
-                            }
+                            OfflineRestoreRowCopy.replace(original::query, empty.openHelper.writableDatabase, tables)
                             original.setTransactionSuccessful()
                         } finally { original.endTransaction() }
-                    } finally { if (attached) original.execSQL("DETACH DATABASE restore_rollback") }
+                    } finally { empty.close() }
                     val copy = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath).build()
                     val counts = try {
                         val database = copy.openHelper.readableDatabase
