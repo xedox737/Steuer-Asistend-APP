@@ -69,14 +69,30 @@ def verify(report, wanted):
     print(f"Verified {len(cases)} test methods")
 
 
+def backup_profile(changed):
+    approved = set(PATHS.read_text().splitlines())
+    data = "app/src/main/java/com/example/data/"
+    core = {p for p in approved if p.startswith((data + "OfflineBackup", data + "OfflineRestore"))}
+    core.add(data + "DrivePersistenceRepository.kt")
+    # The historical inventory also contains unrelated bank, tax and property code.
+    # Limit development selection to the mapped feature and its navigation/CI support.
+    support = {
+        "app/src/main/java/com/example/ui/ImmobilienManagerFeature.kt",
+        ".github/workflows/android-ci.yml",
+        ".github/scripts/backup-ci.py",
+        ".github/scripts/backup-ci-paths.txt",
+        ".github/scripts/tests/test_backup_ci.py",
+    }
+    tests = {p for p in approved if p.startswith(("app/src/test/", "app/src/androidTest/"))}
+    return bool(changed & (core | tests)) and changed <= core | tests | support
+
+
 def main():
     command, kind, *args = sys.argv[1:]
-    if command == "scope":
+    if command == "profile":
         changes = subprocess.check_output(["git", "diff", "--name-only", "--no-renames", "-z", kind, "HEAD"])
         changed = {path.decode() for path in changes.split(b"\0") if path}
-        unknown = changed - set(PATHS.read_text().splitlines())
-        if not changed or unknown:
-            raise ValueError(f"Backup profile requires a nonempty, approved diff. Unknown paths: {sorted(unknown)}")
+        print("true" if backup_profile(changed) else "false")
         return
     wanted = expected(kind)
     if command == "classes":

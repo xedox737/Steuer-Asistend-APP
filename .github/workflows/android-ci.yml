@@ -4,6 +4,7 @@ on:
   push:
     branches: [main, "agent/**"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [main]
   workflow_dispatch:
 
@@ -16,6 +17,9 @@ permissions:
 
 jobs:
   verify:
+    name: ${{ github.event.pull_request.draft && 'development-verify' || 'verify' }}
+    outputs:
+      backup_profile: ${{ steps.selection.outputs.profile }}
     runs-on: ubuntu-latest
     timeout-minutes: 65
     env:
@@ -30,14 +34,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate backup-only PR scope
-        if: github.event_name == 'pull_request' && github.head_ref == 'feat/local-full-backup'
+      - name: Select tests from the draft PR diff
+        id: selection
+        if: github.event_name == 'pull_request' && github.event.pull_request.draft
         env:
           BACKUP_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          python3 .github/scripts/backup-ci.py scope "$BACKUP_BASE"
-          echo 'IMMO_BACKUP_PROFILE=true' >> "$GITHUB_ENV"
-
+          profile=$(python3 .github/scripts/backup-ci.py profile "$BACKUP_BASE")
+          echo "profile=$profile" >> "$GITHUB_OUTPUT"
+          echo "IMMO_BACKUP_PROFILE=$profile" >> "$GITHUB_ENV"
+          echo "Scoped backup, Drive and restore tests: $profile" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -220,6 +226,9 @@ jobs:
       # Signed app-debug artifacts remain available; no parallel release can overwrite them.
 
   android-emulator-e2e:
+    name: ${{ github.event.pull_request.draft && 'development-emulator' || 'android-emulator-e2e' }}
+    env:
+      IMMO_BACKUP_PROFILE: ${{ needs.verify.outputs.backup_profile }}
     needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -231,15 +240,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Validate backup-only PR scope
-        if: github.event_name == 'pull_request' && github.head_ref == 'feat/local-full-backup'
-        env:
-          BACKUP_BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          python3 .github/scripts/backup-ci.py scope "$BACKUP_BASE"
-          echo 'IMMO_BACKUP_PROFILE=true' >> "$GITHUB_ENV"
-
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
