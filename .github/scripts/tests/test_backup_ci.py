@@ -10,6 +10,14 @@ SPEC.loader.exec_module(backup_ci)
 
 
 class BackupCiTest(unittest.TestCase):
+    def test_profile_only_selects_mapped_feature_changes(self):
+        restore = "app/src/main/java/com/example/data/OfflineRestoreRowCopy.kt"
+        drive = "app/src/main/java/com/example/data/DrivePersistenceRepository.kt"
+        self.assertTrue(backup_ci.backup_profile({restore, drive, ".github/workflows/android-ci.yml"}))
+        for paths in (set(), {".github/workflows/android-ci.yml"}, {restore, "app/build.gradle.kts"},
+                      {drive, "app/src/main/java/com/example/ui/BankFeature.kt"}, {restore, "unknown"}):
+            self.assertFalse(backup_ci.backup_profile(paths))
+
     def test_source_selection_contains_android_and_jvm_methods(self):
         self.assertIn(("com.example.e2e.OfflineBackupScheduleEmulatorTest",
                        "missingRegistrationIsRecreatedOnceOnAndroid"), backup_ci.expected("androidTest"))

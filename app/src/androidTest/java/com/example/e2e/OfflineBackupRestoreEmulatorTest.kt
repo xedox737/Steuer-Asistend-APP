@@ -14,7 +14,9 @@ import com.example.data.PropertyMetadata
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -53,6 +55,11 @@ class OfflineBackupRestoreEmulatorTest {
                     }
                 }
                 assertEquals(property, properties.getPropertyByPropertyId(property.propertyId))
+                // Opening a screen subscribes through Room's invalidation tracker after restore.
+                val observed = withTimeout(10_000) {
+                    properties.getAllPropertiesFlow().first { rows -> rows.any { it.propertyId == property.propertyId } }
+                }
+                assertEquals(property, observed.single { it.propertyId == property.propertyId })
                 assertEquals(OfflineBackupHistory.Outcome.RESTORED, OfflineBackupHistory(target).load().lastRestore?.outcome)
             }
         } finally {

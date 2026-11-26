@@ -153,3 +153,7 @@ docs/backup-persistence-inventory.md
 .github/workflows/android-ci.yml
 .github/workflows/bank-performance.yml
 app/src/androidTest/java/com/example/e2e/OfflineBackupPickerEmulatorTest.kt
+app/src/main/java/com/example/data/OfflineRestoreRowCopy.kt
+app/src/test/java/com/example/ui/MoreMenuComposeTest.kt
+app/src/test/java/com/example/ui/Phase11ESyncRegressionTest.kt
+app/src/test/java/com/example/ui/PrimaryNavigationComposeTest.kt

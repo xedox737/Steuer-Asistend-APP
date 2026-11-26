@@ -37,30 +37,20 @@ internal object OfflineRestoreDatabaseSnapshot {
                     val file = File(directory, "rollback-$id.db")
                     if (!file.createNewFile()) invalid("Der private Rückfallplatz ist bereits belegt.")
                     owned = file
-                    val empty = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath).build()
-                    try { empty.openHelper.writableDatabase } finally { empty.close() }
-                    var attached = false
-                    try {
-                        original.execSQL("ATTACH DATABASE ? AS restore_rollback", arrayOf(file.absolutePath)); attached = true
-                        original.query("PRAGMA restore_rollback.journal_mode=DELETE").use { require(it.moveToFirst() && it.getString(0).equals("delete", true)) }
+                    // Rollback later opens this sealed file read-only. WAL readers can leave
+                    // -wal/-shm files, which the verified cleanup correctly refuses to delete.
+                    val copy = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath)
+                        .setJournalMode(androidx.room.RoomDatabase.JournalMode.TRUNCATE).build()
+                    val counts = try {
+                        val database = copy.openHelper.writableDatabase
+                        database.query("PRAGMA journal_mode=DELETE").use {
+                            require(it.moveToFirst() && it.getString(0).equals("delete", ignoreCase = true))
+                        }
                         original.beginTransaction()
                         try {
-                            original.execSQL("PRAGMA defer_foreign_keys=ON")
-                            for (table in tables) original.execSQL("INSERT INTO restore_rollback.`$table` SELECT * FROM main.`$table`")
-                            original.execSQL("DELETE FROM restore_rollback.sqlite_sequence")
-                            original.execSQL("INSERT INTO restore_rollback.sqlite_sequence SELECT * FROM main.sqlite_sequence")
-                            for (table in tables) {
-                                val difference = "SELECT * FROM main.`$table` EXCEPT SELECT * FROM restore_rollback.`$table`"
-                                val reverse = "SELECT * FROM restore_rollback.`$table` EXCEPT SELECT * FROM main.`$table`"
-                                require(!original.query(difference).use { it.moveToFirst() })
-                                require(!original.query(reverse).use { it.moveToFirst() })
-                            }
+                            OfflineRestoreRowCopy.replace(original::query, database, tables)
                             original.setTransactionSuccessful()
                         } finally { original.endTransaction() }
-                    } finally { if (attached) original.execSQL("DETACH DATABASE restore_rollback") }
-                    val copy = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath).build()
-                    val counts = try {
-                        val database = copy.openHelper.readableDatabase
                         database.query("PRAGMA integrity_check").use { require(it.moveToFirst() && it.getString(0) == "ok" && !it.moveToNext()) }
                         tables.associateWith { scalar(database, "SELECT COUNT(*) FROM `$it`") }
                     } finally { copy.close() }
