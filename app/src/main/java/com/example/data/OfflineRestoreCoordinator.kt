@@ -88,12 +88,13 @@ internal object OfflineRestoreCoordinator {
                                         OfflineBackupHistory.Failure.UNKNOWN else null)) }
                                 catch (historyError: Exception) { error.addSuppressed(historyError) }
                             }
+                            // The maintenance token still excludes writers while private files are removed.
+                            if (coordinator.restorePending.value) coordinator.clearRestorePending(context, token)
                             val fixedPlan = plan; val fixedRollback = rollback
                             if (fixedPlan != null) {
                                 if (fixedRollback != null) OfflineRestoreRollbackBundle.discardUnjournalled(context, token, fixedRollback, fixedPlan)
                                 else OfflineRestoreFilePlanStore.discardUnjournalled(context, token, fixedPlan)
                             }
-                            if (coordinator.restorePending.value) coordinator.clearRestorePending(context, token)
                         }
                     } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
                     if (committed) return@suspending Result(preparationCleanupFailed = true)

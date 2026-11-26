@@ -189,10 +189,11 @@ class OfflineBackupRestoreInspectorTest {
         val prepared = OfflineBackupRestoreInspector.inspect(target, password()) { encrypted.inputStream() }
         try {
             target.getDatabasePath("receipt_database").parentFile!!.mkdirs()
-            assertThrows(Exception::class.java) { runBlocking {
+            val failure = assertThrows(Exception::class.java) { runBlocking {
                 OfflineRestoreCoordinator.restore(target, targetDb, prepared, false, {},
                     OfflineRestoreCoordinator.FileOperations(::syncTestDirectory, ::atomicTestRename) { _, _ -> throw java.io.IOException("synthetic failure") })
             } }
+            if (failure.suppressed.isNotEmpty()) throw AssertionError("Rollback cleanup failed", failure)
             assertNull(OfflineRestoreJournal(target).load()); assertFalse(OfflineBackupCoordinator.shared.restorePending.value)
             assertEquals(OfflineBackupHistory.Outcome.ROLLED_BACK, OfflineBackupHistory(target).load().lastRestore?.outcome)
             liveUnchanged()

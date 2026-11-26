@@ -121,13 +121,21 @@ jobs:
         timeout-minutes: 45
         run: gradle testDebugUnitTest -Proborazzi.test.record=true --stacktrace --no-daemon
 
+      - name: Check restore rollback and menu capture first
+        if: env.IMMO_BACKUP_PROFILE == 'true'
+        run: |
+          gradle testDebugUnitTest --fail-fast --stacktrace \
+            --tests 'com.example.data.OfflineBackupRestoreInspectorTest.replacementCoordinatorRollsBackAfterFileInstallFailure' \
+            --tests 'com.example.ui.MoreMenuComposeTest.taskGroupsOrderMembershipWidthsAndColoredIconsMatchTheRequestedMenu' \
+            -Proborazzi.test.record=true --max-workers=1
+
       - name: Run scoped backup JVM tests
         if: env.IMMO_BACKUP_PROFILE == 'true'
         run: |
           classes=$(python3 .github/scripts/backup-ci.py classes test)
           args=()
           while IFS= read -r class; do args+=(--tests "$class"); done <<< "$classes"
-          gradle testDebugUnitTest "${args[@]}" -Proborazzi.test.verify=true --max-workers=1 --stacktrace --no-daemon
+          gradle testDebugUnitTest "${args[@]}" -Proborazzi.test.record=true --max-workers=1 --stacktrace --no-daemon
 
       - name: Verify actual backup JVM methods
         if: always() && env.IMMO_BACKUP_PROFILE == 'true'

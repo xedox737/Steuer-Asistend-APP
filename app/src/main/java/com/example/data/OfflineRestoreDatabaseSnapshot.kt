@@ -37,17 +37,20 @@ internal object OfflineRestoreDatabaseSnapshot {
                     val file = File(directory, "rollback-$id.db")
                     if (!file.createNewFile()) invalid("Der private Rückfallplatz ist bereits belegt.")
                     owned = file
-                    val empty = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath).build()
-                    try {
+                    // Rollback later opens this sealed file read-only. WAL readers can leave
+                    // -wal/-shm files, which the verified cleanup correctly refuses to delete.
+                    val copy = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath)
+                        .setJournalMode(androidx.room.RoomDatabase.JournalMode.TRUNCATE).build()
+                    val counts = try {
+                        val database = copy.openHelper.writableDatabase
+                        database.query("PRAGMA journal_mode=DELETE").use {
+                            require(it.moveToFirst() && it.getString(0).equals("delete", ignoreCase = true))
+                        }
                         original.beginTransaction()
                         try {
-                            OfflineRestoreRowCopy.replace(original::query, empty.openHelper.writableDatabase, tables)
+                            OfflineRestoreRowCopy.replace(original::query, database, tables)
                             original.setTransactionSuccessful()
                         } finally { original.endTransaction() }
-                    } finally { empty.close() }
-                    val copy = Room.databaseBuilder(context, AppDatabase::class.java, file.absolutePath).build()
-                    val counts = try {
-                        val database = copy.openHelper.readableDatabase
                         database.query("PRAGMA integrity_check").use { require(it.moveToFirst() && it.getString(0) == "ok" && !it.moveToNext()) }
                         tables.associateWith { scalar(database, "SELECT COUNT(*) FROM `$it`") }
                     } finally { copy.close() }
