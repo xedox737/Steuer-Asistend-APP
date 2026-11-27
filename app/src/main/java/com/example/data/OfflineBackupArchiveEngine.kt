@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FilterOutputStream
@@ -14,6 +15,27 @@ import kotlinx.coroutines.withContext
 
 /** One verified pipeline for manual/scheduled archives; holds its generation through publication. */
 internal class OfflineBackupArchiveEngine(private val context: Context, private val database: AppDatabase) {
+    enum class Stage { WRITING, VERIFYING, FINALIZING }
+
+    data class Published(
+        val uri: Uri,
+        val backupId: String,
+        val bytes: Long,
+        val sha256: String,
+        val archiveInfo: OfflineBackupArchiveInfo,
+        val summary: OfflineBackupSnapshot.Summary
+    )
+
+    interface Target {
+        fun preflight(expectedCipherBytes: Long = 0)
+
+        suspend fun publish(
+            source: Prepared,
+            generation: OfflineBackupKeyEnvelope.Generation,
+            progress: (Stage) -> Unit = {}
+        ): Published
+    }
+
     class Prepared internal constructor(val file: File, val summary: OfflineBackupSnapshot.Summary,
         internal val resources: OfflineBackupResourceBudget.Estimate, val archiveInfo: OfflineBackupArchiveInfo) : AutoCloseable {
         override fun close() {
@@ -39,24 +61,24 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
             if (!delivered) pending?.close()
         }
     }
-    suspend fun publish(destination: OfflineBackupDestination,
+    suspend fun publish(destination: Target,
         consent: OfflineBackupCredentialSection.Consent = OfflineBackupCredentialSection.Consent(),
         trigger: OfflineBackupCredentialSection.Trigger = OfflineBackupCredentialSection.Trigger.MANUAL,
         snapshotProgress: (OfflineBackupSnapshot.Progress) -> Unit = {},
-        destinationProgress: (OfflineBackupDestination.Stage) -> Unit = {},
+        destinationProgress: (OfflineBackupArchiveEngine.Stage) -> Unit = {},
         operationId: String = UUID.randomUUID().toString(),
-        cancellationOutcome: () -> OfflineBackupHistory.Outcome = { OfflineBackupHistory.Outcome.CANCELLED }): OfflineBackupDestination.Published =
+        cancellationOutcome: () -> OfflineBackupHistory.Outcome = { OfflineBackupHistory.Outcome.CANCELLED }): OfflineBackupArchiveEngine.Published =
         withContext(Dispatchers.IO) {
             val history = OfflineBackupHistory(context)
             val origin = if (trigger == OfflineBackupCredentialSection.Trigger.MANUAL) OfflineBackupHistory.Origin.MANUAL
                 else OfflineBackupHistory.Origin.AUTOMATIC
-            fun event(outcome: OfflineBackupHistory.Outcome, published: OfflineBackupDestination.Published? = null,
+            fun event(outcome: OfflineBackupHistory.Outcome, published: OfflineBackupArchiveEngine.Published? = null,
                 failure: OfflineBackupHistory.Failure? = null): OfflineBackupHistory.Event = OfflineBackupHistory.Event(
                 operationId, OfflineBackupHistory.Kind.FULL, outcome, System.currentTimeMillis(), published?.bytes, failure, origin,
                 published?.backupId, published?.uri?.toString(), published?.summary?.files?.toLong(),
                 published?.summary?.rowCounts?.values?.fold(0L) { total, count -> Math.addExact(total, count) })
             history.beginFullBackup(operationId, origin, System.currentTimeMillis())
-            var published: OfflineBackupDestination.Published? = null
+            var published: OfflineBackupArchiveEngine.Published? = null
             try {
                 destination.preflight()
                 OfflineBackupKeyManager(context).withCurrentGeneration { generation ->
@@ -93,7 +115,7 @@ internal class OfflineBackupArchiveEngine(private val context: Context, private 
 
     private suspend fun prepareHeld(generation: OfflineBackupKeyEnvelope.Generation,
         consent: OfflineBackupCredentialSection.Consent, trigger: OfflineBackupCredentialSection.Trigger,
-        progress: (OfflineBackupSnapshot.Progress) -> Unit, destination: OfflineBackupDestination? = null): Prepared {
+        progress: (OfflineBackupSnapshot.Progress) -> Unit, destination: Target? = null): Prepared {
         var pending: Prepared? = null; var handedOver = false
         try {
             val result = OfflineBackupSnapshot.capture(context, database, credentials =

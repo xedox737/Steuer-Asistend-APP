@@ -61,9 +61,9 @@ internal class OfflineBackupWorker(context: Context, parameters: WorkerParameter
                                 updateProgress(text, progress.completed, progress.total)
                             }, destinationProgress = { stage ->
                                 val text = when (stage) {
-                                    OfflineBackupDestination.Stage.WRITING -> "Sicherung wird gespeichert …"
-                                    OfflineBackupDestination.Stage.VERIFYING -> "Sicherung wird rückgelesen …"
-                                    OfflineBackupDestination.Stage.FINALIZING -> "Sicherung wird abgeschlossen …"
+                                    OfflineBackupArchiveEngine.Stage.WRITING -> "Sicherung wird gespeichert …"
+                                    OfflineBackupArchiveEngine.Stage.VERIFYING -> "Sicherung wird rückgelesen …"
+                                    OfflineBackupArchiveEngine.Stage.FINALIZING -> "Sicherung wird abgeschlossen …"
                                 }
                                 updateProgress(text, 0, 0)
                             }, operationId = operationId, cancellationOutcome = ::cancellationOutcome)
