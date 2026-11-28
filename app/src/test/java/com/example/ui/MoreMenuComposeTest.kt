@@ -135,12 +135,21 @@ class MoreMenuComposeTest {
         openMore()
         listOf("AfA Gebäude" to "Gebäude abschreiben", "Sanierungs-Monitor" to "Sanierung & 15%-Prüfung",
             "Gelernte Regeln" to "Gelerntes KI-Wissen", "Backup & Cloud" to "Google Drive Backup").forEach { (title, content) ->
-            click(title); ui.onNodeWithText(content).assertExists(); shell()
+            click(title)
+            if (title == "Backup & Cloud") {
+                ui.onNodeWithText("Zurück zu Mehr").assertIsDisplayed()
+                menu().performScrollToNode(hasText(content))
+            }
+            ui.onNodeWithText(content).assertExists()
+            shell()
             assertEquals("Internal pages keep the existing More route", AppScreen.MORE, vm.currentScreen.value)
             if (back) systemBack()
             else if (title == "AfA Gebäude") ui.onNodeWithContentDescription("Zurück").performClick()
             else if (title == "Sanierungs-Monitor") ui.onNodeWithContentDescription("Zurück").performClick()
-            else ui.onNodeWithText("Zurück zu Mehr").performClick()
+            else {
+                menu().performScrollToNode(hasText("Zurück zu Mehr"))
+                ui.onNodeWithText("Zurück zu Mehr").assertIsDisplayed().performClick()
+            }
             assertMenu()
         }
         systemBack()
