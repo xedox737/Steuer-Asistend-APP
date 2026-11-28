@@ -426,7 +426,7 @@ class OfflineBackupSnapshotTest {
             assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking {
                 OfflineBackupArchiveEngine(keyContext, database).publish(destination,
                     trigger = OfflineBackupCredentialSection.Trigger.SCHEDULED,
-                    destinationProgress = { if (it == OfflineBackupDestination.Stage.WRITING) throw kotlinx.coroutines.CancellationException("synthetic timeout") },
+                    destinationProgress = { if (it == OfflineBackupArchiveEngine.Stage.WRITING) throw kotlinx.coroutines.CancellationException("synthetic timeout") },
                     operationId = operationId, cancellationOutcome = { OfflineBackupHistory.Outcome.INTERRUPTED })
             } }
             val history = OfflineBackupHistory(keyContext).load()

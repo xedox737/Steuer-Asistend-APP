@@ -45,7 +45,7 @@ internal class OfflineBackupController(private val context: Context, private val
     data class State(val loaded: Boolean = false, val operation: Operation? = null,
         val config: OfflineBackupSettings.Config = OfflineBackupSettings.Config(), val generationId: String? = null,
         val keyProblem: String? = null, val folderReady: Boolean = false, val folderLabel: String = "Kein Sicherungsordner gewählt",
-        val status: String? = null, val lastPublished: OfflineBackupDestination.Published? = null,
+        val status: String? = null, val lastPublished: OfflineBackupArchiveEngine.Published? = null,
         val history: OfflineBackupHistory.History? = null, val historyProblem: String? = null,
         val lastSuccessTargetLabel: String? = null,
         val schedule: OfflineBackupScheduleStore.State? = null, val scheduleProblem: String? = null) {
@@ -128,9 +128,9 @@ internal class OfflineBackupController(private val context: Context, private val
                 OfflineBackupSnapshot.Stage.ORIGINALS_FIXED -> "${progress.completed} Dateiversionen fixiert …"
                 OfflineBackupSnapshot.Stage.SNAPSHOT_FIXED -> "Vollsicherung wird verschlüsselt und geprüft …"
             }) } }, destinationProgress = { stage -> mutable.update { it.copy(status = when (stage) {
-                OfflineBackupDestination.Stage.WRITING -> "Vollsicherung wird in den Zielordner geschrieben …"
-                OfflineBackupDestination.Stage.VERIFYING -> "Zielsicherung wird vollständig rückgelesen und geprüft …"
-                OfflineBackupDestination.Stage.FINALIZING -> "Geprüfte Vollsicherung wird fertiggestellt …"
+                OfflineBackupArchiveEngine.Stage.WRITING -> "Vollsicherung wird in den Zielordner geschrieben …"
+                OfflineBackupArchiveEngine.Stage.VERIFYING -> "Zielsicherung wird vollständig rückgelesen und geprüft …"
+                OfflineBackupArchiveEngine.Stage.FINALIZING -> "Geprüfte Vollsicherung wird fertiggestellt …"
             }) } })
         mutable.update { it.copy(lastPublished = result, status = "Vollsicherung gespeichert und vollständig geprüft.") }
     }

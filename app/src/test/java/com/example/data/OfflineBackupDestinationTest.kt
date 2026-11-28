@@ -135,7 +135,7 @@ class OfflineBackupDestinationTest {
 
     @Test fun closesWritesFullyProbesTargetThenRenamesAndChecksFinalUri() = runBlocking<Unit> {
         withSource { source, generation ->
-            val backend = FakeBackend(); val stages = mutableListOf<OfflineBackupDestination.Stage>()
+            val backend = FakeBackend(); val stages = mutableListOf<OfflineBackupArchiveEngine.Stage>()
             val published = OfflineBackupDestination(context, tree, backend).publish(source, generation) { stages += it }
             assertArrayEquals(source.file.readBytes(), backend.nodes.getValue(published.uri).bytes)
             val sha = MessageDigest.getInstance("SHA-256").digest(source.file.readBytes()).joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
@@ -143,7 +143,7 @@ class OfflineBackupDestinationTest {
             assertEquals(source.archiveInfo, published.archiveInfo)
             assertEquals(source.file.inputStream().use { OfflineBackupArchiveHeader.read(it).dataKey.archiveId }, published.backupId)
             assertTrue(backend.nodes.getValue(published.uri).name.endsWith(".immopilot"))
-            assertEquals(OfflineBackupDestination.Stage.entries, stages)
+            assertEquals(OfflineBackupArchiveEngine.Stage.entries, stages)
             assertTrue(backend.operations.indexOf("write-close") < backend.operations.indexOf("read-1"))
             assertTrue(backend.operations.indexOf("read-close-1") < backend.operations.indexOf("rename"))
             assertTrue(backend.operations.indexOf("rename") < backend.operations.indexOf("read-2"))
@@ -179,7 +179,7 @@ class OfflineBackupDestinationTest {
 
     @Test fun cancellationAtEachPublicationStageRemovesOnlyOwnedPendingDocument() = runBlocking<Unit> {
         withSource { source, generation ->
-            OfflineBackupDestination.Stage.entries.forEach { stage ->
+            OfflineBackupArchiveEngine.Stage.entries.forEach { stage ->
                 val backend = FakeBackend()
                 assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking {
                     OfflineBackupDestination(context, tree, backend).publish(source, generation) { if (it == stage) throw kotlinx.coroutines.CancellationException("synthetic stop") }

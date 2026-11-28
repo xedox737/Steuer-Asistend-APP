@@ -5,6 +5,8 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.system.Os
 import android.system.OsConstants
+import com.example.data.OfflineBackupArchiveEngine.Published
+import com.example.data.OfflineBackupArchiveEngine.Stage
 import java.io.File
 import java.io.FileOutputStream
 import java.io.FilterOutputStream
@@ -20,12 +22,9 @@ import kotlinx.coroutines.withContext
 
 /** Creates only new owned documents. Caller holds its generation throughout publication. */
 internal class OfflineBackupDestination(private val context: Context, private val tree: Uri,
-    private val backend: Backend = SafBackend(context)) {
+    private val backend: Backend = SafBackend(context)) : OfflineBackupArchiveEngine.Target {
     data class Access(val persistedReadWrite: Boolean, val directory: Boolean, val canCreate: Boolean, val availableBytes: Long?)
     data class Created(val uri: Uri, val canRename: Boolean)
-    data class Published(val uri: Uri, val backupId: String, val bytes: Long, val sha256: String,
-        val archiveInfo: OfflineBackupArchiveInfo, val summary: OfflineBackupSnapshot.Summary)
-    enum class Stage { WRITING, VERIFYING, FINALIZING }
     interface Backend {
         fun access(tree: Uri): Access
         fun create(tree: Uri, name: String): Created
@@ -35,8 +34,8 @@ internal class OfflineBackupDestination(private val context: Context, private va
         fun delete(uri: Uri): Boolean
     }
 
-    suspend fun publish(source: OfflineBackupArchiveEngine.Prepared, generation: OfflineBackupKeyEnvelope.Generation,
-        progress: (Stage) -> Unit = {}): Published = withContext(Dispatchers.IO) {
+    override suspend fun publish(source: OfflineBackupArchiveEngine.Prepared, generation: OfflineBackupKeyEnvelope.Generation,
+        progress: (Stage) -> Unit): Published = withContext(Dispatchers.IO) {
         var owned: Uri? = null; var directory: File? = null; var complete = false
         try {
             currentCoroutineContext().ensureActive()
@@ -95,7 +94,7 @@ internal class OfflineBackupDestination(private val context: Context, private va
     }
 
     /** Read-only provider/space gate, called before snapshot work and again with measured sizes. */
-    fun preflight(expectedCipherBytes: Long = 0) {
+    override fun preflight(expectedCipherBytes: Long) {
         try {
             require(expectedCipherBytes in 0..(2L * 1024 * 1024 * 1024 + 64L * 1024 * 1024))
             val access = backend.access(tree)
